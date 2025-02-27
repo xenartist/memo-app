@@ -10,6 +10,7 @@ mod components;
 mod storage;
 mod config;
 mod rpc;
+mod encrypt;
 
 use router::{Route, Home, NotFound};
 

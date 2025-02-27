@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 use log::info;
+use crate::encrypt;
 
 // wallet data structure
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct WalletData {
-    pub mnemonic: String,
+    pub encrypted_mnemonic: String,  // Encrypted mnemonic phrase
     pub address: String,
     pub created_at: u64, // Unix timestamp
 }
@@ -138,8 +139,12 @@ pub fn get_storage() -> Box<dyn Storage> {
     }
 }
 
-// create new wallet and save it
-pub fn create_and_save_wallet(mnemonic: String) -> Result<WalletData, String> {
+// create new wallet and save it with encryption
+pub fn create_and_save_wallet(mnemonic: String, password: &str) -> Result<WalletData, String> {
+    // 加密助记词
+    let encrypted_mnemonic = encrypt::encrypt(&mnemonic, password)
+        .map_err(|e| format!("Failed to encrypt mnemonic: {}", e))?;
+    
     // Generate a wallet address from the mnemonic
     let address = generate_solana_address_from_mnemonic(&mnemonic);
     
@@ -147,7 +152,7 @@ pub fn create_and_save_wallet(mnemonic: String) -> Result<WalletData, String> {
     let now = get_current_timestamp();
         
     let wallet = WalletData {
-        mnemonic,
+        encrypted_mnemonic,
         address,
         created_at: now,
     };
@@ -156,6 +161,12 @@ pub fn create_and_save_wallet(mnemonic: String) -> Result<WalletData, String> {
     storage.save_wallet(&wallet)?;
     
     Ok(wallet)
+}
+
+// Decrypt mnemonic phrase
+pub fn decrypt_mnemonic(wallet: &WalletData, password: &str) -> Result<String, String> {
+    encrypt::decrypt(&wallet.encrypted_mnemonic, password)
+        .map_err(|e| format!("Failed to decrypt mnemonic: {}", e))
 }
 
 // Get current timestamp in a cross-platform way
