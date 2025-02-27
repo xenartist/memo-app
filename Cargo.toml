@@ -1,0 +1,58 @@
+[package]
+name = "my_cross_platform_app"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# Dioxus core dependencies
+dioxus = { version = "0.6.2", features = ["router", "web"] }
+dioxus-router = "0.6.2"
+
+# Platform-specific dependencies (conditionally included)
+dioxus-web = { version = "0.6.2" }
+dioxus-desktop = { version = "0.6.2", optional = true }
+dioxus-mobile = { version = "0.6.2", optional = true }
+
+# For serialization/deserialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# For logging
+log = "0.4"
+wasm-logger = { version = "0.2" }
+simple_logger = { version = "4.2.0", optional = true }
+
+[features]
+default = ["web"]
+web = []
+desktop = ["dioxus/desktop", "dep:dioxus-desktop", "dep:simple_logger", "tokio-full"]
+mobile = ["dioxus/mobile", "dep:dioxus-mobile", "dep:simple_logger", "tokio-full"]
+tokio-full = ["tokio"]
+
+# Build configurations for different platforms
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+web-sys = "0.3"
+js-sys = "0.3"
+# Specify compatible versions for web
+getrandom = { version = "0.2", features = ["js"] }
+# Limited tokio for wasm
+tokio = { version = "1.36.0", features = ["sync", "macros", "time"] }
+
+# For non-wasm targets
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1.36.0", features = ["full"], optional = true }
+
+[profile]
+
+[profile.wasm-dev]
+inherits = "dev"
+opt-level = 1
+
+[profile.server-dev]
+inherits = "dev"
+
+[profile.android-dev]
+inherits = "dev"
