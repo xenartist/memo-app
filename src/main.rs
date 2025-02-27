@@ -5,7 +5,11 @@ use dioxus_router::prelude::*;
 use dioxus_web::launch::launch_cfg;
 
 mod router;
-use router::{Route, Home, About, Settings, NotFound};
+mod wallet;
+mod components;
+mod storage;
+
+use router::{Route, Home, NotFound};
 
 // Initialize logging based on platform
 #[cfg(feature = "web")]
