@@ -34,6 +34,14 @@ pub fn Home() -> Element {
     let mut decryption_password = use_signal(|| String::new());
     let mut show_decrypt_modal = use_signal(|| false);
     
+    // Import wallet related states
+    let mut show_import_modal = use_signal(|| false);
+    let mut import_mnemonic = use_signal(|| String::new());
+    let mut import_password = use_signal(|| String::new());
+    let mut import_confirm_password = use_signal(|| String::new());
+    let mut show_import_password_modal = use_signal(|| false);
+    let mut is_importing = use_signal(|| false);
+    
     // Hex string for the pixel canvas
     let pixel_hex = "00003FFF000000001FFFFE00000007FFFFF8000001FFFFFFE000003FFFFFFF000007FFFFFFF80000FFFFFFFFC0001FFFFFFFFE0003FFFFFFFFF0007FFFFFFFFF800FFFFFFFFFFC01FFCFFFFCFFE01FFCFFFF8FFE03FFE7FFF9FFF03FFF3FFF3FFF07FFF9FFE7FFF87FFF9FFCFFFF87FFFCFFCFFFF8FFFFE7F9FFFFCFFFFF3F3FFFFCFFFFF1E7FFFFCFFFFF9E7FFFFCFFFFFCCFFFFFCFFFFFE1FFFFFCFFFFFE3FFFFFCFFFFFF3FFFFFCFFFFFE1FFFFFCFFFFFCCFFFFFCFFFFF9C7FFFFCFFFFF9E7FFFFCFFFFF3F3FFFFCFFFFE7F9FFFFC7FFFCFF8FFFF87FFFCFFCFFFF87FFF9FFE7FFF83FFF3FFF3FFF03FFE7FFF1FFF01FFC7FFF9FFE01FFCFFFFCFFE00FFFFFFFFFFC007FFFFFFFFF8003FFFFFFFFF0001FFFFFFFFE0000FFFFFFFFC00007FFFFFFF800003FFFFFFF000001FFFFFFE0000007FFFFF80000001FFFFE000000003FFF00000";
     
@@ -85,6 +93,90 @@ pub fn Home() -> Element {
         show_password_modal.set(true);
         
         log::info!("New Wallet button clicked, showing password modal");
+    };
+    
+    let show_import_wallet_modal = move |_: MouseEvent| {
+        // Reset import states
+        import_mnemonic.set(String::new());
+        error_message.set(String::new());
+        show_import_modal.set(true);
+        
+        log::info!("Import Wallet button clicked, showing import modal");
+    };
+    
+    let confirm_import_mnemonic = move |_: MouseEvent| {
+        let mnemonic_str = import_mnemonic.read().clone();
+        
+        // Validate mnemonic
+        if mnemonic_str.is_empty() {
+            error_message.set("Recovery phrase cannot be empty".to_string());
+            return;
+        }
+        
+        // Validate mnemonic format
+        if let Err(err) = wallet::validate_mnemonic(&mnemonic_str) {
+            error_message.set(format!("Invalid recovery phrase: {}", err));
+            return;
+        }
+        
+        // Mnemonic validation passed, show password modal
+        show_import_modal.set(false);
+        import_password.set(String::new());
+        import_confirm_password.set(String::new());
+        show_import_password_modal.set(true);
+        error_message.set(String::new());
+        
+        log::info!("Import mnemonic validated, showing password modal");
+    };
+    
+    let confirm_import_password = move |_: MouseEvent| {
+        is_importing.set(true);
+        let mnemonic_str = import_mnemonic.read().clone();
+        let pwd = import_password.read().clone();
+        let confirm_pwd = import_confirm_password.read().clone();
+        
+        // Validate password
+        if pwd.is_empty() {
+            error_message.set("Password cannot be empty".to_string());
+            is_importing.set(false);
+            return;
+        }
+        
+        if pwd != confirm_pwd {
+            error_message.set("Passwords do not match".to_string());
+            is_importing.set(false);
+            return;
+        }
+        
+        // Save imported wallet
+        match storage::create_and_save_wallet(mnemonic_str, &pwd) {
+            Ok(wallet) => {
+                let address = wallet.address.clone();
+                wallet_address.set(address.clone());
+                wallet_saved.set(true);
+                error_message.set(String::new());
+                show_import_password_modal.set(false);
+                
+                log::info!("Wallet imported successfully with address: {}", address);
+                
+                // Fetch wallet balance for the imported wallet
+                fetch_balance(address, wallet_balance.clone(), is_loading_balance.clone());
+            },
+            Err(err) => {
+                error_message.set(format!("Failed to import wallet: {}", err));
+                log::error!("Failed to import wallet: {}", err);
+            }
+        }
+        
+        is_importing.set(false);
+    };
+    
+    let close_import_modal = move |_: MouseEvent| {
+        show_import_modal.set(false);
+    };
+    
+    let close_import_password_modal = move |_: MouseEvent| {
+        show_import_password_modal.set(false);
     };
     
     let confirm_password_and_show_mnemonic = move |_: MouseEvent| {
@@ -254,10 +346,18 @@ pub fn Home() -> Element {
                 
                 if !is_wallet_saved {
                     rsx! {
-                        button {
-                            class: "new-wallet-btn",
-                            onclick: generate_new_wallet,
-                            "New Wallet"
+                        div { class: "wallet-creation",
+                            button {
+                                class: "new-wallet-btn",
+                                onclick: generate_new_wallet,
+                                "New Wallet"
+                            }
+                            
+                            button {
+                                class: "import-wallet-btn",
+                                onclick: show_import_wallet_modal,
+                                "Import Wallet"
+                            }
                         }
                     }
                 } else {
@@ -441,6 +541,98 @@ pub fn Home() -> Element {
                                             "Decrypting..."
                                         } else {
                                             "View Phrase"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    rsx! { Fragment {} }
+                }
+            }
+            
+            // Import wallet modal
+            {
+                if *show_import_modal.read() {
+                    rsx! {
+                        div { class: "modal-overlay",
+                            div { class: "modal import-modal",
+                                h2 { "Import Wallet" }
+                                p { "Enter your recovery phrase (12 words separated by spaces)" }
+                                
+                                div { class: "form-group",
+                                    textarea {
+                                        class: "mnemonic-input",
+                                        value: "{import_mnemonic}",
+                                        oninput: move |evt| import_mnemonic.set(evt.value().clone()),
+                                        placeholder: "Enter your 12-word recovery phrase"
+                                    }
+                                }
+                                
+                                div { class: "modal-actions",
+                                    button {
+                                        class: "cancel-btn",
+                                        onclick: close_import_modal,
+                                        "Cancel"
+                                    }
+                                    button {
+                                        class: "confirm-btn",
+                                        onclick: confirm_import_mnemonic,
+                                        "Continue"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    rsx! { Fragment {} }
+                }
+            }
+            
+            // Import wallet password modal
+            {
+                if *show_import_password_modal.read() {
+                    rsx! {
+                        div { class: "modal-overlay",
+                            div { class: "modal password-modal",
+                                h2 { "Set Wallet Password" }
+                                p { "This password will be used to encrypt your recovery phrase." }
+                                
+                                div { class: "form-group",
+                                    label { "Password:" }
+                                    input {
+                                        r#type: "password",
+                                        value: "{import_password}",
+                                        oninput: move |evt| import_password.set(evt.value().clone()),
+                                        placeholder: "Enter password"
+                                    }
+                                }
+                                
+                                div { class: "form-group",
+                                    label { "Confirm Password:" }
+                                    input {
+                                        r#type: "password",
+                                        value: "{import_confirm_password}",
+                                        oninput: move |evt| import_confirm_password.set(evt.value().clone()),
+                                        placeholder: "Confirm password"
+                                    }
+                                }
+                                
+                                div { class: "modal-actions",
+                                    button {
+                                        class: "cancel-btn",
+                                        onclick: close_import_password_modal,
+                                        "Cancel"
+                                    }
+                                    button {
+                                        class: "confirm-btn",
+                                        onclick: confirm_import_password,
+                                        disabled: *is_importing.read(),
+                                        if *is_importing.read() {
+                                            "Importing..."
+                                        } else {
+                                            "Import Wallet"
                                         }
                                     }
                                 }

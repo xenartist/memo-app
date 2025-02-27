@@ -141,7 +141,7 @@ pub fn get_storage() -> Box<dyn Storage> {
 
 // create new wallet and save it with encryption
 pub fn create_and_save_wallet(mnemonic: String, password: &str) -> Result<WalletData, String> {
-    // 加密助记词
+    // Encrypt the mnemonic phrase
     let encrypted_mnemonic = encrypt::encrypt(&mnemonic, password)
         .map_err(|e| format!("Failed to encrypt mnemonic: {}", e))?;
     
