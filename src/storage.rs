@@ -193,15 +193,23 @@ fn generate_solana_address_from_mnemonic(mnemonic: &str) -> String {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     
-    // Create a hash from the mnemonic
-    let mut hasher = DefaultHasher::new();
-    mnemonic.hash(&mut hasher);
-    let hash = hasher.finish();
+    // Create multiple hashes to get more bytes
+    let mut bytes = Vec::with_capacity(32);
     
-    // Convert to bytes for base58 encoding
-    let bytes = hash.to_be_bytes();
+    // Use different seeds to generate different hashes
+    for i in 0..4 {
+        let mut hasher = DefaultHasher::new();
+        mnemonic.hash(&mut hasher);
+        i.hash(&mut hasher); // Add a seed to get different hashes
+        let hash = hasher.finish();
+        let hash_bytes = hash.to_be_bytes();
+        bytes.extend_from_slice(&hash_bytes);
+    }
     
-    // Use a simple base58 encoding (simplified for demo)
+    // Ensure we have exactly 32 bytes (Solana public key size)
+    bytes.truncate(32);
+    
+    // Use base58 encoding (Solana addresses are base58 encoded)
     // In a real app, you would use proper Ed25519 key derivation
     bs58::encode(bytes).into_string()
 } 
