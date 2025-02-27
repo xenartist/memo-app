@@ -8,6 +8,8 @@ mod router;
 mod wallet;
 mod components;
 mod storage;
+mod config;
+mod rpc;
 
 use router::{Route, Home, NotFound};
 

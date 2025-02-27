@@ -188,28 +188,132 @@ pub fn load_wallet() -> Result<Option<WalletData>, String> {
 }
 
 // Generate a Solana-style wallet address from mnemonic
-// This is a simplified implementation for demo purposes
+// Using standard BIP44 derivation path: m/44'/501'/0'/0'
 fn generate_solana_address_from_mnemonic(mnemonic: &str) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
+    use bip39::{Mnemonic, Language};
+    use sha2::{Sha512, Digest};
+    use hmac::{Hmac, Mac};
+    use pbkdf2::pbkdf2;
+    use ed25519_dalek::{PublicKey, SecretKey};
     
-    // Create multiple hashes to get more bytes
-    let mut bytes = Vec::with_capacity(32);
+    type HmacSha512 = Hmac<Sha512>;
     
-    // Use different seeds to generate different hashes
-    for i in 0..4 {
-        let mut hasher = DefaultHasher::new();
-        mnemonic.hash(&mut hasher);
-        i.hash(&mut hasher); // Add a seed to get different hashes
-        let hash = hasher.finish();
-        let hash_bytes = hash.to_be_bytes();
-        bytes.extend_from_slice(&hash_bytes);
+    // Parse the mnemonic
+    let mnemonic = Mnemonic::parse_normalized(mnemonic)
+        .expect("Invalid mnemonic");
+    
+    // Get the seed from the mnemonic (with empty passphrase)
+    let seed = mnemonic.to_seed("");
+    
+    // BIP44 path for Solana: m/44'/501'/0'/0'
+    let path = "m/44'/501'/0'/0'";
+    
+    // Derive the key using BIP32/BIP44
+    let derived_key = derive_key_from_path(&seed, path)
+        .expect("Failed to derive key");
+    
+    // Get the public key from the derived private key
+    let secret_key = SecretKey::from_bytes(&derived_key)
+        .expect("Invalid secret key");
+    let public_key = PublicKey::from(&secret_key);
+    
+    // Encode the public key in base58 (Solana format)
+    let address = bs58::encode(public_key.as_bytes()).into_string();
+    
+    log::info!("Generated Solana address using BIP44 path: {}", path);
+    address
+}
+
+// Helper function to derive a key from a seed using a BIP32/BIP44 path
+fn derive_key_from_path(seed: &[u8], path: &str) -> Result<[u8; 32], String> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha512;
+    
+    type HmacSha512 = Hmac<Sha512>;
+    
+    // Parse the path
+    let path_components = parse_derivation_path(path)?;
+    
+    // Start with the master key
+    let mut key = [0u8; 64]; // 512 bits
+    
+    // Derive the master key from the seed
+    let mut hmac = HmacSha512::new_from_slice(b"ed25519 seed")
+        .map_err(|_| "HMAC error".to_string())?;
+    hmac.update(seed);
+    let result = hmac.finalize().into_bytes();
+    key.copy_from_slice(&result[..64]);
+    
+    // Derive child keys according to the path
+    for component in path_components {
+        // Prepare the data for HMAC
+        let mut data = vec![0u8]; // Version byte
+        data.extend_from_slice(&key[32..64]); // Chain code
+        
+        // Add the index with hardened bit if needed
+        let mut index_bytes = [0u8; 4];
+        let index = if component.hardened {
+            component.index | 0x80000000
+        } else {
+            component.index
+        };
+        index_bytes[0] = ((index >> 24) & 0xFF) as u8;
+        index_bytes[1] = ((index >> 16) & 0xFF) as u8;
+        index_bytes[2] = ((index >> 8) & 0xFF) as u8;
+        index_bytes[3] = (index & 0xFF) as u8;
+        data.extend_from_slice(&index_bytes);
+        
+        // Compute the HMAC
+        let mut hmac = HmacSha512::new_from_slice(&key[..32])
+            .map_err(|_| "HMAC error".to_string())?;
+        hmac.update(&data);
+        let result = hmac.finalize().into_bytes();
+        
+        // Update the key
+        key.copy_from_slice(&result[..64]);
     }
     
-    // Ensure we have exactly 32 bytes (Solana public key size)
-    bytes.truncate(32);
+    // Return the first 32 bytes as the private key
+    let mut private_key = [0u8; 32];
+    private_key.copy_from_slice(&key[..32]);
+    Ok(private_key)
+}
+
+// Helper struct for path components
+struct PathComponent {
+    index: u32,
+    hardened: bool,
+}
+
+// Parse a BIP32/BIP44 derivation path
+fn parse_derivation_path(path: &str) -> Result<Vec<PathComponent>, String> {
+    let mut components = Vec::new();
     
-    // Use base58 encoding (Solana addresses are base58 encoded)
-    // In a real app, you would use proper Ed25519 key derivation
-    bs58::encode(bytes).into_string()
+    // Split the path by '/'
+    let parts: Vec<&str> = path.split('/').collect();
+    
+    // Check if the path starts with 'm'
+    if parts.is_empty() || parts[0] != "m" {
+        return Err("Path must start with 'm'".to_string());
+    }
+    
+    // Parse each component
+    for part in &parts[1..] {
+        let hardened = part.ends_with('\'');
+        let index_str = if hardened {
+            &part[..part.len() - 1]
+        } else {
+            part
+        };
+        
+        let index = index_str.parse::<u32>()
+            .map_err(|_| format!("Invalid path component: {}", part))?;
+        
+        components.push(PathComponent {
+            index,
+            hardened,
+        });
+    }
+    
+    Ok(components)
 } 
