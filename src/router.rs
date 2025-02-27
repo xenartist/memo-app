@@ -26,6 +26,14 @@ pub fn Home() -> Element {
     let mut wallet_balance = use_signal(|| None::<f64>);
     let mut is_loading_balance = use_signal(|| false);
     
+    // Password related states
+    let mut password = use_signal(|| String::new());
+    let mut confirm_password = use_signal(|| String::new());
+    let mut show_password_modal = use_signal(|| false);
+    let mut is_decrypting = use_signal(|| false);
+    let mut decryption_password = use_signal(|| String::new());
+    let mut show_decrypt_modal = use_signal(|| false);
+    
     // Hex string for the pixel canvas
     let pixel_hex = "00003FFF000000001FFFFE00000007FFFFF8000001FFFFFFE000003FFFFFFF000007FFFFFFF80000FFFFFFFFC0001FFFFFFFFE0003FFFFFFFFF0007FFFFFFFFF800FFFFFFFFFFC01FFCFFFFCFFE01FFCFFFF8FFE03FFE7FFF9FFF03FFF3FFF3FFF07FFF9FFE7FFF87FFF9FFCFFFF87FFFCFFCFFFF8FFFFE7F9FFFFCFFFFF3F3FFFFCFFFFF1E7FFFFCFFFFF9E7FFFFCFFFFFCCFFFFFCFFFFFE1FFFFFCFFFFFE3FFFFFCFFFFFF3FFFFFCFFFFFE1FFFFFCFFFFFCCFFFFFCFFFFF9C7FFFFCFFFFF9E7FFFFCFFFFF3F3FFFFCFFFFE7F9FFFFC7FFFCFF8FFFF87FFFCFFCFFFF87FFF9FFE7FFF83FFF3FFF3FFF03FFE7FFF1FFF01FFC7FFF9FFE01FFCFFFFCFFE00FFFFFFFFFFC007FFFFFFFFF8003FFFFFFFFF0001FFFFFFFFE0000FFFFFFFFC00007FFFFFFF800003FFFFFFF000001FFFFFFE0000007FFFFF80000001FFFFE000000003FFF00000";
     
@@ -52,7 +60,6 @@ pub fn Home() -> Element {
                 wallet_address.set(address.clone());
                 wallet_saved.set(true);
                 log::info!("Loaded existing wallet with address: {}", address);
-                log::info!("Mnemonic (first few words): {}", wallet.mnemonic.split_whitespace().take(3).collect::<Vec<_>>().join(" ") + "...");
                 
                 // Fetch wallet balance
                 fetch_balance(address, wallet_balance.clone(), is_loading_balance.clone());
@@ -71,15 +78,44 @@ pub fn Home() -> Element {
         // Generate a new mnemonic
         let new_mnemonic = wallet::generate_mnemonic();
         mnemonic.set(new_mnemonic);
+        
+        // Show password input modal
+        password.set(String::new());
+        confirm_password.set(String::new());
+        show_password_modal.set(true);
+        
+        log::info!("New Wallet button clicked, showing password modal");
+    };
+    
+    let confirm_password_and_show_mnemonic = move |_: MouseEvent| {
+        let pwd = password.read().clone();
+        let confirm_pwd = confirm_password.read().clone();
+        
+        // Validate password
+        if pwd.is_empty() {
+            error_message.set("Password cannot be empty".to_string());
+            return;
+        }
+        
+        if pwd != confirm_pwd {
+            error_message.set("Passwords do not match".to_string());
+            return;
+        }
+        
+        // Password validation passed, show mnemonic
+        show_password_modal.set(false);
         show_modal.set(true);
         wallet_saved.set(false);
-        log::info!("New Wallet button clicked, showing mnemonic");
+        error_message.set(String::new());
+        
+        log::info!("Password confirmed, showing mnemonic");
     };
     
     let save_wallet = move |_: ()| {
         let mnemonic_str = mnemonic.read().clone();
+        let pwd = password.read().clone();
         
-        match storage::create_and_save_wallet(mnemonic_str) {
+        match storage::create_and_save_wallet(mnemonic_str, &pwd) {
             Ok(wallet) => {
                 let address = wallet.address.clone();
                 wallet_address.set(address.clone());
@@ -107,6 +143,15 @@ pub fn Home() -> Element {
         show_modal.set(false);
     };
     
+    let close_password_modal = move |_: MouseEvent| {
+        show_password_modal.set(false);
+    };
+    
+    let close_decrypt_modal = move |_: MouseEvent| {
+        show_decrypt_modal.set(false);
+        decryption_password.set(String::new());
+    };
+    
     let clear_wallet = move |_: MouseEvent| {
         #[cfg(target_arch = "wasm32")]
         {
@@ -124,6 +169,52 @@ pub fn Home() -> Element {
                 }
             }
         }
+    };
+    
+    let show_decrypt_dialog = move |_: MouseEvent| {
+        decryption_password.set(String::new());
+        show_decrypt_modal.set(true);
+        is_decrypting.set(false);
+        error_message.set(String::new());
+    };
+    
+    let decrypt_mnemonic = move |_: MouseEvent| {
+        is_decrypting.set(true);
+        let pwd = decryption_password.read().clone();
+        
+        if pwd.is_empty() {
+            error_message.set("Password cannot be empty".to_string());
+            is_decrypting.set(false);
+            return;
+        }
+        
+        match storage::load_wallet() {
+            Ok(Some(wallet)) => {
+                match storage::decrypt_mnemonic(&wallet, &pwd) {
+                    Ok(decrypted_mnemonic) => {
+                        mnemonic.set(decrypted_mnemonic);
+                        show_modal.set(true);
+                        show_decrypt_modal.set(false);
+                        error_message.set(String::new());
+                        log::info!("Mnemonic decrypted successfully");
+                    },
+                    Err(err) => {
+                        error_message.set(format!("Failed to decrypt mnemonic: {}", err));
+                        log::error!("Failed to decrypt mnemonic: {}", err);
+                    }
+                }
+            },
+            Ok(None) => {
+                error_message.set("No wallet found".to_string());
+                log::error!("No wallet found");
+            },
+            Err(err) => {
+                error_message.set(format!("Failed to load wallet: {}", err));
+                log::error!("Failed to load wallet: {}", err);
+            }
+        }
+        
+        is_decrypting.set(false);
     };
     
     let refresh_balance = move |_: MouseEvent| {
@@ -222,8 +313,14 @@ pub fn Home() -> Element {
                                 p { class: "no-transactions", "No transactions yet" }
                             }
                             
-                            // Add clear wallet button
-                            div { class: "clear-wallet",
+                            // Add buttons for wallet management
+                            div { class: "wallet-management",
+                                button {
+                                    class: "action-btn view-mnemonic-btn",
+                                    onclick: show_decrypt_dialog,
+                                    "View Recovery Phrase"
+                                }
+                                
                                 button {
                                     class: "action-btn clear-btn",
                                     onclick: clear_wallet,
@@ -255,6 +352,99 @@ pub fn Home() -> Element {
                     rsx! {
                         div { class: "error-message",
                             "{err}"
+                        }
+                    }
+                } else {
+                    rsx! { Fragment {} }
+                }
+            }
+            
+            // Password input modal
+            {
+                if *show_password_modal.read() {
+                    rsx! {
+                        div { class: "modal-overlay",
+                            div { class: "modal password-modal",
+                                h2 { "Set Wallet Password" }
+                                p { "This password will be used to encrypt your recovery phrase." }
+                                
+                                div { class: "form-group",
+                                    label { "Password:" }
+                                    input {
+                                        r#type: "password",
+                                        value: "{password}",
+                                        oninput: move |evt| password.set(evt.value().clone()),
+                                        placeholder: "Enter password"
+                                    }
+                                }
+                                
+                                div { class: "form-group",
+                                    label { "Confirm Password:" }
+                                    input {
+                                        r#type: "password",
+                                        value: "{confirm_password}",
+                                        oninput: move |evt| confirm_password.set(evt.value().clone()),
+                                        placeholder: "Confirm password"
+                                    }
+                                }
+                                
+                                div { class: "modal-actions",
+                                    button {
+                                        class: "cancel-btn",
+                                        onclick: close_password_modal,
+                                        "Cancel"
+                                    }
+                                    button {
+                                        class: "confirm-btn",
+                                        onclick: confirm_password_and_show_mnemonic,
+                                        "Confirm"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    rsx! { Fragment {} }
+                }
+            }
+            
+            // Mnemonic decryption modal
+            {
+                if *show_decrypt_modal.read() {
+                    rsx! {
+                        div { class: "modal-overlay",
+                            div { class: "modal decrypt-modal",
+                                h2 { "Enter Wallet Password" }
+                                p { "Enter your password to view your recovery phrase." }
+                                
+                                div { class: "form-group",
+                                    label { "Password:" }
+                                    input {
+                                        r#type: "password",
+                                        value: "{decryption_password}",
+                                        oninput: move |evt| decryption_password.set(evt.value().clone()),
+                                        placeholder: "Enter password"
+                                    }
+                                }
+                                
+                                div { class: "modal-actions",
+                                    button {
+                                        class: "cancel-btn",
+                                        onclick: close_decrypt_modal,
+                                        "Cancel"
+                                    }
+                                    button {
+                                        class: "confirm-btn",
+                                        onclick: decrypt_mnemonic,
+                                        disabled: *is_decrypting.read(),
+                                        if *is_decrypting.read() {
+                                            "Decrypting..."
+                                        } else {
+                                            "View Phrase"
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 } else {
