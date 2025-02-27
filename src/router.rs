@@ -24,12 +24,27 @@ pub fn Home() -> Element {
     
     // Try to load existing wallet on component mount
     use_effect(move || {
+        // Debug: Print localStorage content
+        #[cfg(target_arch = "wasm32")]
+        {
+            if let Some(window) = web_sys::window() {
+                if let Ok(Some(local_storage)) = window.local_storage() {
+                    if let Ok(Some(wallet_data)) = local_storage.get_item("wallet_data") {
+                        log::info!("Raw wallet data in localStorage: {}", wallet_data);
+                    } else {
+                        log::info!("No wallet_data found in localStorage");
+                    }
+                }
+            }
+        }
+        
         // Load wallet data
         match storage::load_wallet() {
             Ok(Some(wallet)) => {
-                wallet_address.set(wallet.address);
+                wallet_address.set(wallet.address.clone());
                 wallet_saved.set(true);
-                log::info!("Loaded existing wallet");
+                log::info!("Loaded existing wallet with address: {}", wallet.address);
+                log::info!("Mnemonic (first few words): {}", wallet.mnemonic.split_whitespace().take(3).collect::<Vec<_>>().join(" ") + "...");
             },
             Ok(None) => {
                 log::info!("No existing wallet found");
@@ -78,6 +93,24 @@ pub fn Home() -> Element {
         show_modal.set(false);
     };
     
+    let clear_wallet = move |_: MouseEvent| {
+        #[cfg(target_arch = "wasm32")]
+        {
+            if let Some(window) = web_sys::window() {
+                if let Ok(Some(local_storage)) = window.local_storage() {
+                    let _ = local_storage.remove_item("wallet_data");
+                    log::info!("Wallet data cleared from localStorage");
+                    
+                    // Reset state
+                    wallet_address.set(String::new());
+                    wallet_saved.set(false);
+                    mnemonic.set(String::new());
+                    error_message.set(String::new());
+                }
+            }
+        }
+    };
+    
     rsx! {
         // Header with wallet address
         header {
@@ -88,6 +121,7 @@ pub fn Home() -> Element {
             {
                 let addr = wallet_address.read();
                 if !addr.is_empty() {
+                    log::info!("Displaying wallet address: {}", addr);
                     rsx! {
                         WalletAddressDisplay { address: addr.clone() }
                     }
@@ -116,7 +150,7 @@ pub fn Home() -> Element {
                 } else {
                     rsx! { 
                         div { class: "wallet-dashboard",
-                            h1 { "Welcome to Your X1 Wallet" }
+                            h1 { "Memo Inscription - X1" }
                             
                             div { class: "wallet-balance",
                                 h2 { "Balance" }
@@ -133,6 +167,15 @@ pub fn Home() -> Element {
                             div { class: "transaction-history",
                                 h2 { "Recent Transactions" }
                                 p { class: "no-transactions", "No transactions yet" }
+                            }
+                            
+                            // Add clear wallet button
+                            div { class: "clear-wallet",
+                                button {
+                                    class: "action-btn clear-btn",
+                                    onclick: clear_wallet,
+                                    "Clear Wallet (Debug)"
+                                }
                             }
                         }
                     }
