@@ -19,8 +19,11 @@ pub fn generate_mnemonic() -> String {
 }
 
 /// Validates if a mnemonic phrase is valid
-pub fn validate_mnemonic(phrase: &str) -> bool {
-    Mnemonic::parse_normalized(phrase).is_ok()
+pub fn validate_mnemonic(phrase: &str) -> Result<(), String> {
+    match Mnemonic::parse_normalized(phrase) {
+        Ok(_) => Ok(()),
+        Err(_) => Err("Invalid mnemonic phrase. Please check that you've entered 12 valid words.".to_string()),
+    }
 }
 
 #[cfg(test)]
@@ -31,6 +34,6 @@ mod tests {
     fn test_generate_and_validate_mnemonic() {
         let mnemonic = generate_mnemonic();
         assert_eq!(mnemonic.split_whitespace().count(), 12);
-        assert!(validate_mnemonic(&mnemonic));
+        assert!(validate_mnemonic(&mnemonic).is_ok());
     }
 } 
