@@ -846,4 +846,47 @@ nav a:hover {
 .session-status.inactive {
     background-color: rgba(255, 87, 34, 0.1);
     color: #ff5722;
+}
+
+/* Mint button */
+.mint-btn {
+    background-color: #8a2be2; /* Purple color for mint button */
+    color: white;
+}
+
+.mint-btn:hover {
+    background-color: #9b4deb;
+}
+
+/* Mint modal */
+.mint-modal {
+    max-width: 500px;
+}
+
+.mint-modal h2 {
+    color: #8a2be2;
+    margin-bottom: 10px;
+}
+
+.mint-modal p {
+    margin-bottom: 20px;
+    color: #666;
+}
+
+/* Mint form styles will be added later */
+.nft-description {
+    width: 100%;
+    min-height: 100px;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    resize: vertical;
+    font-family: inherit;
+    font-size: 14px;
+}
+
+.nft-description:focus {
+    border-color: #8a2be2;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(138, 43, 226, 0.2);
 } 

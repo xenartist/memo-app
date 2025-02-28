@@ -9,7 +9,8 @@ use crate::handlers::{
     confirm_import_mnemonic, confirm_import_password, show_decrypt_dialog, decrypt_mnemonic,
     clear_wallet, refresh_balance, handle_session_password_submit, handle_session_password_cancel,
     show_send_transaction_modal, prepare_transaction, confirm_transaction_with_password,
-    create_sign_and_send_transaction, close_send_modal, close_transaction_password_modal
+    create_sign_and_send_transaction, close_send_modal, close_transaction_password_modal,
+    show_mint_modal, close_mint_modal, process_mint
 };
 use crate::services::fetch_balance;
 use std::rc::Rc;
@@ -56,6 +57,12 @@ pub fn Home() -> Element {
     let mut show_transaction_password_modal = use_signal(|| false);
     let mut prepared_transaction = use_signal(|| None::<wallet::Transaction>);
     let mut session_active = use_signal(|| session::is_session_active());
+    
+    // Mint related states
+    let mut show_mint_modal = use_signal(|| false);
+    let mut is_minting = use_signal(|| false);
+    let mut nft_name = use_signal(|| String::new());
+    let mut nft_description = use_signal(|| String::new());
     
     // Hex string for the pixel canvas
     let pixel_hex = "00003FFF000000001FFFFE00000007FFFFF8000001FFFFFFE000003FFFFFFF000007FFFFFFF80000FFFFFFFFC0001FFFFFFFFE0003FFFFFFFFF0007FFFFFFFFF800FFFFFFFFFFC01FFCFFFFCFFE01FFCFFFF8FFE03FFE7FFF9FFF03FFF3FFF3FFF07FFF9FFE7FFF87FFF9FFCFFFF87FFFCFFCFFFF8FFFFE7F9FFFFCFFFFF3F3FFFFCFFFFF1E7FFFFCFFFFF9E7FFFFCFFFFFCCFFFFFCFFFFFE1FFFFFCFFFFFE3FFFFFCFFFFFF3FFFFFCFFFFFE1FFFFFCFFFFFCCFFFFFCFFFFF9C7FFFFCFFFFF9E7FFFFCFFFFF3F3FFFFCFFFFE7F9FFFFC7FFFCFF8FFFF87FFFCFFCFFFF87FFF9FFE7FFF83FFF3FFF3FFF03FFE7FFF1FFF01FFC7FFF9FFE01FFCFFFFCFFE00FFFFFFFFFFC007FFFFFFFFF8003FFFFFFFFF0001FFFFFFFFE0000FFFFFFFFC00007FFFFFFF800003FFFFFFF000001FFFFFFE0000007FFFFF80000001FFFFE000000003FFF00000";
@@ -196,6 +203,24 @@ pub fn Home() -> Element {
     
     let close_send_modal_handler = close_send_modal(show_send_modal.clone());
     let close_transaction_password_modal_handler = close_transaction_password_modal(show_transaction_password_modal.clone());
+    
+    // Mint handlers
+    let show_mint_modal_handler = move |_: MouseEvent| {
+        error_message.set("".to_string());
+        show_mint_modal.set(true);
+        log::info!("Mint button clicked, showing mint modal. Session active: {}", session_active.read());
+    };
+    
+    let close_mint_modal_handler = close_mint_modal(show_mint_modal.clone());
+    
+    let process_mint_handler = process_mint(
+        error_message.clone(),
+        is_minting.clone(),
+        show_mint_modal.clone(),
+        session_active.clone(),
+        nft_name.clone(),
+        nft_description.clone()
+    );
     
     let close_import_modal = move |_: MouseEvent| {
         show_import_modal.set(false);
@@ -373,6 +398,11 @@ pub fn Home() -> Element {
                                     class: "action-btn send-btn", 
                                     onclick: show_send_transaction_modal_handler,
                                     "Send" 
+                                }
+                                button { 
+                                    class: "action-btn mint-btn", 
+                                    onclick: show_mint_modal_handler,
+                                    "Mint" 
                                 }
                             }
                             
@@ -726,6 +756,77 @@ pub fn Home() -> Element {
                                             "Signing..."
                                         } else {
                                             "Sign & Send"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    rsx! { Fragment {} }
+                }
+            }
+            
+            // Add Mint modal
+            {
+                if *show_mint_modal.read() {
+                    rsx! {
+                        div { class: "modal-overlay",
+                            div { class: "modal mint-modal",
+                                h2 { "Mint NFT" }
+                                p { "Create your own NFT on the X1 Testnet" }
+                                
+                                div { class: "form-group",
+                                    label { "NFT Name:" }
+                                    input {
+                                        r#type: "text",
+                                        value: "{nft_name}",
+                                        oninput: move |evt| nft_name.set(evt.value().clone()),
+                                        placeholder: "Enter NFT name"
+                                    }
+                                }
+                                
+                                div { class: "form-group",
+                                    label { "Description:" }
+                                    textarea {
+                                        class: "nft-description",
+                                        value: "{nft_description}",
+                                        oninput: move |evt| nft_description.set(evt.value().clone()),
+                                        placeholder: "Enter NFT description"
+                                    }
+                                }
+                                
+                                // Show session status
+                                {
+                                    if *session_active.read() {
+                                        rsx! {
+                                            div { class: "session-status active",
+                                                "Wallet session active - Ready to mint"
+                                            }
+                                        }
+                                    } else {
+                                        rsx! {
+                                            div { class: "session-status inactive",
+                                                "Wallet session inactive - Please unlock your wallet first"
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                div { class: "modal-actions",
+                                    button {
+                                        class: "cancel-btn",
+                                        onclick: close_mint_modal_handler,
+                                        "Cancel"
+                                    }
+                                    button {
+                                        class: "confirm-btn",
+                                        onclick: process_mint_handler,
+                                        disabled: *is_minting.read(),
+                                        if *is_minting.read() {
+                                            "Minting..."
+                                        } else {
+                                            "Mint NFT"
                                         }
                                     }
                                 }
