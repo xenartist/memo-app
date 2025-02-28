@@ -125,6 +125,9 @@ pub fn Home() -> Element {
                         show_session_password_modal.set(false);
                         is_decrypting.set(false);
                         
+                        // Update session status
+                        session_active.set(session::is_session_active());
+                        
                         // Get the wallet address
                         if let Some(address) = wallet::get_wallet_address() {
                             let address_clone = address.clone();
@@ -239,6 +242,9 @@ pub fn Home() -> Element {
                     error_message.set(String::new());
                     show_import_password_modal.set(false);
                     
+                    // Update session status
+                    session_active.set(session::is_session_active());
+                    
                     log::info!("Wallet imported successfully with address: {}", address_clone);
                     
                     // Fetch wallet balance for the imported wallet
@@ -322,6 +328,10 @@ pub fn Home() -> Element {
                     
                     // Clear the session
                     session::clear_session();
+                    
+                    // Update session status
+                    session_active.set(false);
+                    
                     log::info!("Wallet session cleared");
                 }
             }
