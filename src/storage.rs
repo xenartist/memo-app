@@ -7,8 +7,6 @@ use crate::session;
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct WalletData {
     pub encrypted_mnemonic: String,  // Encrypted mnemonic phrase
-    pub address: String,
-    pub created_at: u64, // Unix timestamp
 }
 
 // storage interface
@@ -87,8 +85,12 @@ pub mod file_storage {
     
     impl FileStorage {
         pub fn new() -> Self {
+            #[cfg(feature = "dirs")]
             let mut path = dirs::data_local_dir()
                 .unwrap_or_else(|| PathBuf::from("."));
+                
+            #[cfg(not(feature = "dirs"))]
+            let mut path = PathBuf::from(".");
                 
             path.push("my_cross_platform_app");
             fs::create_dir_all(&path).ok();
@@ -146,23 +148,20 @@ pub fn create_and_save_wallet(mnemonic: String, password: &str) -> Result<Wallet
     let encrypted_mnemonic = encrypt::encrypt(&mnemonic, password)
         .map_err(|e| format!("Failed to encrypt mnemonic: {}", e))?;
     
-    // Generate a wallet address from the mnemonic
-    let address = generate_solana_address_from_mnemonic(&mnemonic);
-    
-    // Get current timestamp in a way that works on both native and web platforms
-    let now = get_current_timestamp();
-        
+    // Create wallet data with just the encrypted mnemonic
     let wallet = WalletData {
         encrypted_mnemonic,
-        address,
-        created_at: now,
     };
     
     let storage = get_storage();
     storage.save_wallet(&wallet)?;
     
-    // Store the mnemonic in the session for temporary use
-    session::store_mnemonic(mnemonic);
+    // Generate keypair from mnemonic
+    let keypair = crate::wallet::generate_keypair_from_mnemonic(&mnemonic)
+        .map_err(|e| format!("Failed to generate keypair: {}", e))?;
+    
+    // Store the mnemonic and keypair in the session for temporary use
+    session::store_mnemonic_and_keys(mnemonic, keypair);
     
     Ok(wallet)
 }
@@ -173,8 +172,12 @@ pub fn decrypt_mnemonic(wallet: &WalletData, password: &str) -> Result<String, S
     let mnemonic = encrypt::decrypt(&wallet.encrypted_mnemonic, password)
         .map_err(|e| format!("Failed to decrypt mnemonic: {}", e))?;
     
-    // Store the decrypted mnemonic in the session for temporary use
-    session::store_mnemonic(mnemonic.clone());
+    // Generate keypair from mnemonic
+    let keypair = crate::wallet::generate_keypair_from_mnemonic(&mnemonic)
+        .map_err(|e| format!("Failed to generate keypair: {}", e))?;
+    
+    // Store the decrypted mnemonic and keypair in the session for temporary use
+    session::store_mnemonic_and_keys(mnemonic.clone(), keypair);
     
     Ok(mnemonic)
 }
