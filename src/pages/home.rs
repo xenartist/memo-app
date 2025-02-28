@@ -61,8 +61,8 @@ pub fn Home() -> Element {
     // Mint related states
     let mut show_mint_modal = use_signal(|| false);
     let mut is_minting = use_signal(|| false);
-    let mut nft_name = use_signal(|| String::new());
-    let mut nft_description = use_signal(|| String::new());
+    let mut memo_name = use_signal(|| String::new());
+    let mut memo_description = use_signal(|| String::new());
     
     // Hex string for the pixel canvas
     let pixel_hex = "00003FFF000000001FFFFE00000007FFFFF8000001FFFFFFE000003FFFFFFF000007FFFFFFF80000FFFFFFFFC0001FFFFFFFFE0003FFFFFFFFF0007FFFFFFFFF800FFFFFFFFFFC01FFCFFFFCFFE01FFCFFFF8FFE03FFE7FFF9FFF03FFF3FFF3FFF07FFF9FFE7FFF87FFF9FFCFFFF87FFFCFFCFFFF8FFFFE7F9FFFFCFFFFF3F3FFFFCFFFFF1E7FFFFCFFFFF9E7FFFFCFFFFFCCFFFFFCFFFFFE1FFFFFCFFFFFE3FFFFFCFFFFFF3FFFFFCFFFFFE1FFFFFCFFFFFCCFFFFFCFFFFF9C7FFFFCFFFFF9E7FFFFCFFFFF3F3FFFFCFFFFE7F9FFFFC7FFFCFF8FFFF87FFFCFFCFFFF87FFF9FFE7FFF83FFF3FFF3FFF03FFE7FFF1FFF01FFC7FFF9FFE01FFCFFFFCFFE00FFFFFFFFFFC007FFFFFFFFF8003FFFFFFFFF0001FFFFFFFFE0000FFFFFFFFC00007FFFFFFF800003FFFFFFF000001FFFFFFE0000007FFFFF80000001FFFFE000000003FFF00000";
@@ -218,8 +218,8 @@ pub fn Home() -> Element {
         is_minting.clone(),
         show_mint_modal.clone(),
         session_active.clone(),
-        nft_name.clone(),
-        nft_description.clone()
+        memo_name.clone(),
+        memo_description.clone()
     );
     
     let close_import_modal = move |_: MouseEvent| {
@@ -406,9 +406,9 @@ pub fn Home() -> Element {
                                 }
                             }
                             
-                            // Add Memo NFT Display with Pixel Canvas
-                            div { class: "memo-nft",
-                                div { class: "memo-nft-title", "Memo Inscription" }
+                            // Add Memo Display with Pixel Canvas
+                            div { class: "memo",
+                                div { class: "memo-title", "Memo Inscription" }
                                 PixelCanvas { hex_string: pixel_hex.to_string() }
                             }
                             
@@ -773,27 +773,33 @@ pub fn Home() -> Element {
                     rsx! {
                         div { class: "modal-overlay",
                             div { class: "modal mint-modal",
-                                h2 { "Mint NFT" }
-                                p { "Create your own NFT on the X1 Testnet" }
+                                h2 { "Mint Memo Inscription" }
+                                p { "Create your own Memo Inscription on the X1 Testnet" }
                                 
                                 div { class: "form-group",
-                                    label { "NFT Name:" }
+                                    label { "Memo Name:" }
                                     input {
                                         r#type: "text",
-                                        value: "{nft_name}",
-                                        oninput: move |evt| nft_name.set(evt.value().clone()),
-                                        placeholder: "Enter NFT name"
+                                        value: "{memo_name}",
+                                        oninput: move |evt| memo_name.set(evt.value().clone()),
+                                        placeholder: "Enter memo inscription name"
                                     }
                                 }
                                 
                                 div { class: "form-group",
                                     label { "Description:" }
                                     textarea {
-                                        class: "nft-description",
-                                        value: "{nft_description}",
-                                        oninput: move |evt| nft_description.set(evt.value().clone()),
-                                        placeholder: "Enter NFT description"
+                                        class: "memo-description",
+                                        value: "{memo_description}",
+                                        oninput: move |evt| memo_description.set(evt.value().clone()),
+                                        placeholder: "Enter memo inscription description"
                                     }
+                                }
+                                
+                                // Add Pixel Canvas Preview
+                                div { class: "pixel-preview",
+                                    h3 { "Memo Inscription Preview:" }
+                                    PixelCanvas { hex_string: pixel_hex.to_string() }
                                 }
                                 
                                 // Show session status
@@ -826,7 +832,7 @@ pub fn Home() -> Element {
                                         if *is_minting.read() {
                                             "Minting..."
                                         } else {
-                                            "Mint NFT"
+                                            "Mint Memo Inscription"
                                         }
                                     }
                                 }

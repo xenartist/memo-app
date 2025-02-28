@@ -874,7 +874,7 @@ nav a:hover {
 }
 
 /* Mint form styles will be added later */
-.nft-description {
+.memo-description {
     width: 100%;
     min-height: 100px;
     padding: 8px;
@@ -885,8 +885,32 @@ nav a:hover {
     font-size: 14px;
 }
 
-.nft-description:focus {
+.memo-description:focus {
     border-color: #8a2be2;
     outline: none;
     box-shadow: 0 0 0 2px rgba(138, 43, 226, 0.2);
+}
+
+/* Pixel Preview in Mint Modal */
+.pixel-preview {
+    margin: 20px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.pixel-preview h3 {
+    margin-bottom: 15px;
+    color: #2c3e50;
+    font-size: 16px;
+}
+
+/* Adjust pixel canvas size in the modal */
+.mint-modal .pixel-canvas-container {
+    margin: 0;
+}
+
+.mint-modal .pixel-grid {
+    width: 250px;
+    height: 250px;
 } 
