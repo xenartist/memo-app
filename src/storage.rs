@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use log::info;
 use crate::encrypt;
+use crate::session;
 
 // wallet data structure
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -160,13 +161,39 @@ pub fn create_and_save_wallet(mnemonic: String, password: &str) -> Result<Wallet
     let storage = get_storage();
     storage.save_wallet(&wallet)?;
     
+    // Store the mnemonic in the session for temporary use
+    session::store_mnemonic(mnemonic);
+    
     Ok(wallet)
 }
 
 // Decrypt mnemonic phrase
 pub fn decrypt_mnemonic(wallet: &WalletData, password: &str) -> Result<String, String> {
-    encrypt::decrypt(&wallet.encrypted_mnemonic, password)
-        .map_err(|e| format!("Failed to decrypt mnemonic: {}", e))
+    // Try to decrypt the mnemonic
+    let mnemonic = encrypt::decrypt(&wallet.encrypted_mnemonic, password)
+        .map_err(|e| format!("Failed to decrypt mnemonic: {}", e))?;
+    
+    // Store the decrypted mnemonic in the session for temporary use
+    session::store_mnemonic(mnemonic.clone());
+    
+    Ok(mnemonic)
+}
+
+// Get mnemonic from session or decrypt if needed
+pub fn get_mnemonic_for_signing(wallet: &WalletData, password: Option<&str>) -> Result<String, String> {
+    // First try to get the mnemonic from the session
+    if let Some(mnemonic) = session::retrieve_mnemonic() {
+        info!("Using mnemonic from active session");
+        return Ok(mnemonic);
+    }
+    
+    // If not in session, we need a password to decrypt
+    if let Some(pwd) = password {
+        info!("No active session, decrypting mnemonic with password");
+        decrypt_mnemonic(wallet, pwd)
+    } else {
+        Err("No active session and no password provided".to_string())
+    }
 }
 
 // Get current timestamp in a cross-platform way

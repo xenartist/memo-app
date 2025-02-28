@@ -11,6 +11,7 @@ mod storage;
 mod config;
 mod rpc;
 mod encrypt;
+mod session;
 
 use router::{Route, Home, NotFound};
 
