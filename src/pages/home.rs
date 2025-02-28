@@ -15,6 +15,88 @@ use crate::handlers::{
 use crate::services::fetch_balance;
 use std::rc::Rc;
 use std::cell::RefCell;
+use web_sys::{File, HtmlInputElement, FileReader};
+
+#[cfg(target_arch = "wasm32")]
+use {
+    wasm_bindgen::prelude::*,
+    wasm_bindgen::JsCast,
+    web_sys::{Blob, FileList},
+    js_sys::{Uint8Array, ArrayBuffer},
+    wasm_bindgen_futures::spawn_local,
+};
+
+// Function to process image data and convert to hex string
+#[cfg(target_arch = "wasm32")]
+fn process_image_data(data: Vec<u8>, mut hex_signal: Signal<Option<String>>, mut is_processing: Signal<bool>) {
+    // Convert image data to binary grid (50x50)
+    let mut binary_grid = vec![vec![0; 50]; 50];
+    let threshold = 128;
+    
+    // Process each pixel
+    for y in 0..50 {
+        for x in 0..50 {
+            let idx = ((y * 50) + x) * 4;
+            if idx + 2 < data.len() {
+                let r = data[idx] as u32;
+                let g = data[idx + 1] as u32;
+                let b = data[idx + 2] as u32;
+                
+                // Calculate grayscale value
+                let gray_value = (r + g + b) / 3;
+                
+                // Determine if black(1) or white(0) based on threshold
+                binary_grid[y as usize][x as usize] = if gray_value < threshold { 1 } else { 0 };
+            }
+        }
+    }
+    
+    // Generate hexadecimal string
+    let mut hex_string = String::new();
+    
+    for row in &binary_grid {
+        for chunk_start in (0..row.len()).step_by(4) {
+            let end = std::cmp::min(chunk_start + 4, row.len());
+            let chunk = &row[chunk_start..end];
+            
+            // Convert 4 binary bits to hexadecimal
+            let mut value = 0;
+            for (i, &bit) in chunk.iter().enumerate() {
+                value |= bit << (3 - i);
+            }
+            
+            hex_string.push_str(&format!("{:X}", value));
+        }
+    }
+    
+    // Update state
+    hex_signal.set(Some(hex_string));
+    is_processing.set(false);
+}
+
+// Function to handle file selection
+#[cfg(target_arch = "wasm32")]
+fn handle_file_select(file: web_sys::File, hex_signal: Signal<Option<String>>, is_processing: Signal<bool>) {
+    let reader = FileReader::new().unwrap();
+    let reader_clone = reader.clone();
+    
+    let onload_callback = Closure::wrap(Box::new(move || {
+        if let Ok(result) = reader_clone.result() {
+            if let Some(array_buffer) = result.dyn_ref::<ArrayBuffer>() {
+                let uint8_array = Uint8Array::new(array_buffer);
+                let mut data = vec![0; uint8_array.length() as usize];
+                uint8_array.copy_to(&mut data);
+                
+                // Process the image data
+                process_image_data(data, hex_signal.clone(), is_processing.clone());
+            }
+        }
+    }) as Box<dyn FnMut()>);
+    
+    reader.set_onload(Some(onload_callback.as_ref().unchecked_ref()));
+    reader.read_as_array_buffer(&file).unwrap();
+    onload_callback.forget();
+}
 
 // Home page component
 pub fn Home() -> Element {
@@ -63,6 +145,8 @@ pub fn Home() -> Element {
     let mut is_minting = use_signal(|| false);
     let mut memo_name = use_signal(|| String::new());
     let mut memo_description = use_signal(|| String::new());
+    let mut uploaded_image_hex = use_signal(|| None::<String>);
+    let mut is_processing_image = use_signal(|| false);
     
     // Hex string for the pixel canvas
     let pixel_hex = "00003FFF000000001FFFFE00000007FFFFF8000001FFFFFFE000003FFFFFFF000007FFFFFFF80000FFFFFFFFC0001FFFFFFFFE0003FFFFFFFFF0007FFFFFFFFF800FFFFFFFFFFC01FFCFFFFCFFE01FFCFFFF8FFE03FFE7FFF9FFF03FFF3FFF3FFF07FFF9FFE7FFF87FFF9FFCFFFF87FFFCFFCFFFF8FFFFE7F9FFFFCFFFFF3F3FFFFCFFFFF1E7FFFFCFFFFF9E7FFFFCFFFFFCCFFFFFCFFFFFE1FFFFFCFFFFFE3FFFFFCFFFFFF3FFFFFCFFFFFE1FFFFFCFFFFFCCFFFFFCFFFFF9C7FFFFCFFFFF9E7FFFFCFFFFF3F3FFFFCFFFFE7F9FFFFC7FFFCFF8FFFF87FFFCFFCFFFF87FFF9FFE7FFF83FFF3FFF3FFF03FFE7FFF1FFF01FFC7FFF9FFE01FFCFFFFCFFE00FFFFFFFFFFC007FFFFFFFFF8003FFFFFFFFF0001FFFFFFFFE0000FFFFFFFFC00007FFFFFFF800003FFFFFFF000001FFFFFFE0000007FFFFF80000001FFFFE000000003FFF00000";
@@ -796,10 +880,67 @@ pub fn Home() -> Element {
                                     }
                                 }
                                 
+                                // Add image upload button
+                                div { class: "form-group",
+                                    label { "Upload Image:" }
+                                    div { class: "image-upload-container",
+                                        input {
+                                            r#type: "file",
+                                            id: "image-upload",
+                                            accept: "image/*",
+                                            onchange: move |evt| {
+                                                #[cfg(target_arch = "wasm32")]
+                                                {
+                                                    if let Some(files) = evt.files() {
+                                                        if let Some(file) = files.files().first() {
+                                                            is_processing_image.set(true);
+                                                            if let Some(web_file) = file.as_any().downcast_ref::<web_sys::File>() {
+                                                                handle_file_select(web_file.clone(), uploaded_image_hex.clone(), is_processing_image.clone());
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        button {
+                                            class: "upload-image-btn",
+                                            onclick: move |_| {
+                                                #[cfg(target_arch = "wasm32")]
+                                                {
+                                                    use web_sys::{window, HtmlInputElement};
+                                                    if let Some(element) = window()
+                                                        .and_then(|w| w.document())
+                                                        .and_then(|d| d.get_element_by_id("image-upload"))
+                                                    {
+                                                        let input: HtmlInputElement = element.dyn_into().unwrap();
+                                                        let _ = input.click();
+                                                    }
+                                                }
+                                            },
+                                            disabled: *is_processing_image.read(),
+                                            if *is_processing_image.read() {
+                                                "Processing..."
+                                            } else {
+                                                "Choose Image"
+                                            }
+                                        }
+                                    }
+                                }
+                                
                                 // Add Pixel Canvas Preview
                                 div { class: "pixel-preview",
                                     h3 { "Memo Inscription Preview:" }
-                                    PixelCanvas { hex_string: pixel_hex.to_string() }
+                                    {
+                                        if let Some(hex) = uploaded_image_hex.read().as_ref() {
+                                            rsx! {
+                                                PixelCanvas { hex_string: hex.clone() }
+                                            }
+                                        } else {
+                                            rsx! {
+                                                PixelCanvas { hex_string: pixel_hex.to_string() }
+                                            }
+                                        }
+                                    }
                                 }
                                 
                                 // Show session status
@@ -861,4 +1002,4 @@ pub fn Home() -> Element {
             }
         }
     }
-} 
+}
