@@ -4,7 +4,11 @@ use dioxus::prelude::*;
 use dioxus_router::prelude::*;
 use dioxus_web::launch::launch_cfg;
 
-mod router;
+// 更新模块结构
+mod routes;
+mod pages;
+mod handlers;
+mod services;
 mod wallet;
 mod components;
 mod storage;
@@ -13,7 +17,8 @@ mod rpc;
 mod encrypt;
 mod session;
 
-use router::{Route, Home, NotFound};
+// 从routes模块导入Route
+use routes::Route;
 
 // Initialize logging based on platform
 #[cfg(feature = "web")]
