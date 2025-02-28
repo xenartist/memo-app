@@ -33,8 +33,8 @@ pub fn process_mint(
     mut is_minting: Signal<bool>,
     mut show_modal: Signal<bool>,
     session_active: Signal<bool>,
-    nft_name: Signal<String>,
-    nft_description: Signal<String>,
+    memo_name: Signal<String>,
+    memo_description: Signal<String>,
 ) -> impl FnMut(MouseEvent) {
     move |_| {
         // Reset error message
@@ -47,14 +47,14 @@ pub fn process_mint(
         }
         
         // Validate input
-        let name = nft_name.read().clone();
+        let name = memo_name.read().clone();
         if name.is_empty() {
-            error_message.set("NFT name cannot be empty".to_string());
+            error_message.set("Memo name cannot be empty".to_string());
             return;
         }
         
         // Get description
-        let description = nft_description.read().clone();
+        let description = memo_description.read().clone();
         
         // Set minting state to true
         is_minting.set(true);
@@ -67,8 +67,8 @@ pub fn process_mint(
         // In a real app, you would call your blockchain API here
         
         // For demo purposes, we'll just log the minting and update the UI after a delay
-        log::info!("NFT '{}' minted successfully: {}", name, description);
-        error_message.set(format!("NFT '{}' minted successfully!", name));
+        log::info!("Memo '{}' minted successfully: {}", name, description);
+        error_message.set(format!("Memo '{}' minted successfully!", name));
         
         // Reset states after "minting"
         is_minting.set(false);
