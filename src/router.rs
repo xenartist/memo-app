@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use dioxus_router::prelude::*;
 use crate::wallet;
 use crate::storage;
-use crate::components::{MnemonicModal, WalletAddressDisplay, PixelCanvas};
+use crate::components::{MnemonicModal, WalletAddressDisplay, PixelCanvas, PasswordModal};
 use crate::config;
 use crate::rpc::RpcService;
 use crate::wallet::{Transaction, SignedTransaction};
@@ -35,6 +35,10 @@ pub fn Home() -> Element {
     let mut is_decrypting = use_signal(|| false);
     let mut decryption_password = use_signal(|| String::new());
     let mut show_decrypt_modal = use_signal(|| false);
+    
+    // Session check modal
+    let mut show_session_password_modal = use_signal(|| false);
+    let mut session_password_error = use_signal(|| String::new());
     
     // Import wallet related states
     let mut show_import_modal = use_signal(|| false);
@@ -76,19 +80,24 @@ pub fn Home() -> Element {
         
         // Load wallet data
         match storage::load_wallet() {
-            Ok(Some(_)) => {
-                // Check if we have an active session with a public key
-                if let Some(address) = wallet::get_wallet_address() {
-                    let address_clone = address.clone();
-                    wallet_address.set(address);
-                    wallet_saved.set(true);
-                    log::info!("Loaded existing wallet with address: {}", address_clone);
-                    
-                    // Fetch wallet balance
-                    fetch_balance(address_clone, wallet_balance.clone(), is_loading_balance.clone());
+            Ok(Some(wallet)) => {
+                wallet_saved.set(true);
+                
+                // Check if we have an active session
+                if session::is_session_active() {
+                    // Session is active, get the wallet address
+                    if let Some(address) = wallet::get_wallet_address() {
+                        let address_clone = address.clone();
+                        wallet_address.set(address);
+                        log::info!("Loaded existing wallet with address: {}", address_clone);
+                        
+                        // Fetch wallet balance
+                        fetch_balance(address_clone, wallet_balance.clone(), is_loading_balance.clone());
+                    }
                 } else {
-                    log::info!("Wallet exists but no active session");
-                    wallet_saved.set(true);
+                    // No active session, show password modal
+                    log::info!("Wallet exists but no active session, showing password modal");
+                    show_session_password_modal.set(true);
                 }
             },
             Ok(None) => {
@@ -100,6 +109,58 @@ pub fn Home() -> Element {
             }
         }
     });
+    
+    // Handle session password submission
+    let handle_session_password_submit = move |pwd: String| {
+        session_password_error.set(String::new());
+        is_decrypting.set(true);
+        
+        // Load wallet data
+        match storage::load_wallet() {
+            Ok(Some(wallet)) => {
+                // Try to decrypt the mnemonic
+                match storage::decrypt_mnemonic(&wallet, &pwd) {
+                    Ok(_) => {
+                        // Successfully decrypted and stored in session
+                        show_session_password_modal.set(false);
+                        is_decrypting.set(false);
+                        
+                        // Get the wallet address
+                        if let Some(address) = wallet::get_wallet_address() {
+                            let address_clone = address.clone();
+                            wallet_address.set(address);
+                            log::info!("Unlocked wallet with address: {}", address_clone);
+                            
+                            // Fetch wallet balance
+                            fetch_balance(address_clone, wallet_balance.clone(), is_loading_balance.clone());
+                        }
+                    },
+                    Err(err) => {
+                        is_decrypting.set(false);
+                        session_password_error.set(format!("Failed to unlock wallet: {}", err));
+                        log::error!("Failed to decrypt mnemonic: {}", err);
+                    }
+                }
+            },
+            Ok(None) => {
+                is_decrypting.set(false);
+                session_password_error.set("No wallet found".to_string());
+                log::error!("No wallet found when trying to decrypt");
+            },
+            Err(err) => {
+                is_decrypting.set(false);
+                session_password_error.set(format!("Failed to load wallet: {}", err));
+                log::error!("Failed to load wallet: {}", err);
+            }
+        }
+    };
+    
+    // Handle session password cancel
+    let handle_session_password_cancel = move |_| {
+        show_session_password_modal.set(false);
+        // User canceled, but we still need to show they have a wallet
+        wallet_saved.set(true);
+    };
     
     let generate_new_wallet = move |_: MouseEvent| {
         // Generate a new mnemonic
@@ -915,6 +976,15 @@ pub fn Home() -> Element {
                 } else {
                     rsx! { Fragment {} }
                 }
+            }
+            
+            // Session password modal
+            PasswordModal {
+                visible: *show_session_password_modal.read(),
+                on_submit: handle_session_password_submit,
+                on_cancel: handle_session_password_cancel,
+                error_message: Some(session_password_error.read().clone()),
+                is_loading: Some(*is_decrypting.read())
             }
             
             // Render the mnemonic modal
