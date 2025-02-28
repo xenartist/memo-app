@@ -45,30 +45,103 @@ pub struct SignedTransaction {
     pub public_key: String,
 }
 
-/// Sign a transaction using the wallet
-pub fn sign_transaction(transaction: &Transaction, password: Option<&str>) -> Result<SignedTransaction, String> {
-    // Load the wallet
-    let wallet = match storage::load_wallet()? {
-        Some(wallet) => wallet,
-        None => return Err("No wallet found".to_string()),
+/// Generate keypair from mnemonic
+pub fn generate_keypair_from_mnemonic(mnemonic: &str) -> Result<ed25519_dalek::Keypair, String> {
+    use ed25519_dalek::{Keypair, SecretKey, PublicKey};
+    
+    // Derive private key from mnemonic
+    let private_key = derive_private_key_from_mnemonic(mnemonic)?;
+    
+    // Create a secret key from the private key bytes
+    let secret = SecretKey::from_bytes(&private_key)
+        .map_err(|_| "Invalid private key".to_string())?;
+    
+    // Derive the public key
+    let public = PublicKey::from(&secret);
+    
+    // Create a keypair
+    let keypair = Keypair {
+        secret,
+        public,
     };
     
-    // Get the mnemonic (from session if available, otherwise decrypt with password)
-    let mnemonic = storage::get_mnemonic_for_signing(&wallet, password)?;
+    Ok(keypair)
+}
+
+/// Sign a transaction using the wallet
+pub fn sign_transaction(transaction: &Transaction, password: Option<&str>) -> Result<SignedTransaction, String> {
+    // First try to get the keypair from the session
+    if let Some(keypair) = session::retrieve_keypair() {
+        debug!("Using keypair from active session");
+        
+        // Sign the transaction with the keypair
+        let signature = sign_data_with_keypair(&keypair, &format!("{:?}", transaction))?;
+        
+        // Return the signed transaction
+        return Ok(SignedTransaction {
+            transaction: transaction.clone(),
+            signature,
+            public_key: hex::encode(keypair.public.to_bytes()),
+        });
+    }
     
-    // Derive the private key from mnemonic
-    let private_key = derive_private_key_from_mnemonic(&mnemonic)?;
+    // If no active session, load the wallet and decrypt with password
+    if let Some(pwd) = password {
+        debug!("No active session, decrypting wallet with password");
+        
+        // Load the wallet
+        let wallet = match storage::load_wallet()? {
+            Some(wallet) => wallet,
+            None => return Err("No wallet found".to_string()),
+        };
+        
+        // Decrypt the mnemonic and store in session (this will also store the keypair)
+        let _ = storage::decrypt_mnemonic(&wallet, pwd)?;
+        
+        // Now try again with the session
+        if let Some(keypair) = session::retrieve_keypair() {
+            // Sign the transaction with the keypair
+            let signature = sign_data_with_keypair(&keypair, &format!("{:?}", transaction))?;
+            
+            // Return the signed transaction
+            return Ok(SignedTransaction {
+                transaction: transaction.clone(),
+                signature,
+                public_key: hex::encode(keypair.public.to_bytes()),
+            });
+        }
+        
+        return Err("Failed to get keypair from session after decryption".to_string());
+    }
     
-    // Sign the transaction (simplified for demonstration)
-    let signature = sign_data_with_private_key(&private_key, &format!("{:?}", transaction))?;
+    Err("No active session and no password provided".to_string())
+}
+
+/// Sign data with keypair
+fn sign_data_with_keypair(keypair: &ed25519_dalek::Keypair, data: &str) -> Result<String, String> {
+    use ed25519_dalek::Signer;
+    use sha2::{Sha512, Digest};
     
-    // Get the public key
-    let public_key = get_public_key_from_private_key(&private_key)?;
+    debug!("Signing data with keypair");
     
-    Ok(SignedTransaction {
-        transaction: transaction.clone(),
-        signature,
-        public_key,
+    // Hash the data
+    let mut hasher = Sha512::new();
+    hasher.update(data.as_bytes());
+    let message = &hasher.finalize()[..];
+    
+    // Sign the message
+    let signature = keypair.sign(message);
+    
+    // Return the signature as a hex string
+    Ok(hex::encode(signature.to_bytes()))
+}
+
+/// Get wallet address from session
+pub fn get_wallet_address() -> Option<String> {
+    // Get public key from session
+    session::retrieve_public_key().map(|pubkey| {
+        // Format as Solana address (base58 encoding of public key)
+        bs58::encode(pubkey.as_bytes()).into_string()
     })
 }
 
@@ -89,53 +162,6 @@ fn derive_private_key_from_mnemonic(mnemonic: &str) -> Result<Vec<u8>, String> {
     private_key.extend_from_slice(&seed[0..32]);
     
     Ok(private_key)
-}
-
-/// Sign data with private key (simplified)
-fn sign_data_with_private_key(private_key: &[u8], data: &str) -> Result<String, String> {
-    use ed25519_dalek::{Keypair, SecretKey, PublicKey, Signature, Signer};
-    use sha2::{Sha512, Digest};
-    
-    debug!("Signing data with private key");
-    
-    // Create a secret key from the private key bytes
-    let secret = SecretKey::from_bytes(private_key)
-        .map_err(|_| "Invalid private key".to_string())?;
-    
-    // Derive the public key
-    let public = PublicKey::from(&secret);
-    
-    // Create a keypair
-    let keypair = Keypair {
-        secret,
-        public,
-    };
-    
-    // Hash the data
-    let mut hasher = Sha512::new();
-    hasher.update(data.as_bytes());
-    let message = &hasher.finalize()[..];
-    
-    // Sign the message - using the correct method for ed25519-dalek 1.0.1
-    let signature = keypair.sign(message);
-    
-    // Return the signature as a hex string
-    Ok(hex::encode(signature.to_bytes()))
-}
-
-/// Get public key from private key
-fn get_public_key_from_private_key(private_key: &[u8]) -> Result<String, String> {
-    use ed25519_dalek::{SecretKey, PublicKey};
-    
-    // Create a secret key from the private key bytes
-    let secret = SecretKey::from_bytes(private_key)
-        .map_err(|_| "Invalid private key".to_string())?;
-    
-    // Derive the public key
-    let public = PublicKey::from(&secret);
-    
-    // Return the public key as a hex string
-    Ok(hex::encode(public.to_bytes()))
 }
 
 #[cfg(test)]

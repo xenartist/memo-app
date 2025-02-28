@@ -76,14 +76,20 @@ pub fn Home() -> Element {
         
         // Load wallet data
         match storage::load_wallet() {
-            Ok(Some(wallet)) => {
-                let address = wallet.address.clone();
-                wallet_address.set(address.clone());
-                wallet_saved.set(true);
-                log::info!("Loaded existing wallet with address: {}", address);
-                
-                // Fetch wallet balance
-                fetch_balance(address, wallet_balance.clone(), is_loading_balance.clone());
+            Ok(Some(_)) => {
+                // Check if we have an active session with a public key
+                if let Some(address) = wallet::get_wallet_address() {
+                    let address_clone = address.clone();
+                    wallet_address.set(address);
+                    wallet_saved.set(true);
+                    log::info!("Loaded existing wallet with address: {}", address_clone);
+                    
+                    // Fetch wallet balance
+                    fetch_balance(address_clone, wallet_balance.clone(), is_loading_balance.clone());
+                } else {
+                    log::info!("Wallet exists but no active session");
+                    wallet_saved.set(true);
+                }
             },
             Ok(None) => {
                 log::info!("No existing wallet found");
@@ -163,17 +169,23 @@ pub fn Home() -> Element {
         
         // Save imported wallet
         match storage::create_and_save_wallet(mnemonic_str, &pwd) {
-            Ok(wallet) => {
-                let address = wallet.address.clone();
-                wallet_address.set(address.clone());
-                wallet_saved.set(true);
-                error_message.set(String::new());
-                show_import_password_modal.set(false);
-                
-                log::info!("Wallet imported successfully with address: {}", address);
-                
-                // Fetch wallet balance for the imported wallet
-                fetch_balance(address, wallet_balance.clone(), is_loading_balance.clone());
+            Ok(_) => {
+                // Get address from session
+                if let Some(address) = wallet::get_wallet_address() {
+                    let address_clone = address.clone();
+                    wallet_address.set(address);
+                    wallet_saved.set(true);
+                    error_message.set(String::new());
+                    show_import_password_modal.set(false);
+                    
+                    log::info!("Wallet imported successfully with address: {}", address_clone);
+                    
+                    // Fetch wallet balance for the imported wallet
+                    fetch_balance(address_clone, wallet_balance.clone(), is_loading_balance.clone());
+                } else {
+                    error_message.set("Failed to get wallet address from session".to_string());
+                    log::error!("Failed to get wallet address from session");
+                }
             },
             Err(err) => {
                 error_message.set(format!("Failed to import wallet: {}", err));
@@ -216,32 +228,7 @@ pub fn Home() -> Element {
         log::info!("Password confirmed, showing mnemonic");
     };
     
-    let save_wallet = move |_: ()| {
-        let mnemonic_str = mnemonic.read().clone();
-        let pwd = password.read().clone();
-        
-        match storage::create_and_save_wallet(mnemonic_str, &pwd) {
-            Ok(wallet) => {
-                let address = wallet.address.clone();
-                wallet_address.set(address.clone());
-                wallet_saved.set(true);
-                error_message.set(String::new());
-                log::info!("Wallet saved successfully with address: {}", address);
-                log::info!("wallet_saved state is now: {}", *wallet_saved.read());
-                
-                // Fetch wallet balance for the new wallet
-                fetch_balance(address, wallet_balance.clone(), is_loading_balance.clone());
-            },
-            Err(err) => {
-                error_message.set(format!("Failed to save wallet: {}", err));
-                log::error!("Failed to save wallet: {}", err);
-            }
-        }
-        
-        show_modal.set(false);
-    };
-    
-    let close_modal = move |_: ()| {
+    let _close_modal = move |_: ()| {
         if !*wallet_saved.read() {
             log::warn!("Modal closed without saving wallet");
         }
@@ -308,8 +295,13 @@ pub fn Home() -> Element {
                         log::info!("Mnemonic decrypted successfully");
                         
                         // Update session status for UI
-                        if *show_send_modal.read() {
-                            session_active.set(session::is_session_active());
+                        session_active.set(session::is_session_active());
+                        
+                        // Update wallet address from session
+                        if let Some(address) = wallet::get_wallet_address() {
+                            let address_clone = address.clone();
+                            wallet_address.set(address);
+                            log::info!("Updated wallet address from session: {}", address_clone);
                         }
                     },
                     Err(err) => {
@@ -929,7 +921,7 @@ pub fn Home() -> Element {
             MnemonicModal {
                 mnemonic: mnemonic.read().clone(),
                 visible: *show_modal.read(),
-                on_close: save_wallet
+                on_close: _close_modal
             }
         }
     }
