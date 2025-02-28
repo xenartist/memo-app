@@ -928,4 +928,35 @@ nav a:hover {
 .mint-modal .pixel-grid {
     width: 250px;
     height: 250px;
+}
+
+/* Image upload button styles */
+.image-upload-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 5px;
+}
+
+.image-upload-container input[type="file"] {
+    display: none;
+}
+
+.upload-image-btn {
+    background-color: #8a2be2;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+}
+
+.upload-image-btn:hover {
+    background-color: #9b4deb;
+}
+
+.upload-image-btn:disabled {
+    background-color: #b794f4;
+    cursor: not-allowed;
 } 
