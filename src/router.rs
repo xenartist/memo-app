@@ -5,6 +5,8 @@ use crate::storage;
 use crate::components::{MnemonicModal, WalletAddressDisplay, PixelCanvas};
 use crate::config;
 use crate::rpc::RpcService;
+use crate::wallet::{Transaction, SignedTransaction};
+use crate::session;
 
 // Define application routes
 #[derive(Routable, Clone)]
@@ -41,6 +43,17 @@ pub fn Home() -> Element {
     let mut import_confirm_password = use_signal(|| String::new());
     let mut show_import_password_modal = use_signal(|| false);
     let mut is_importing = use_signal(|| false);
+    
+    // Transaction related states
+    let mut show_send_modal = use_signal(|| false);
+    let mut recipient_address = use_signal(|| String::new());
+    let mut send_amount = use_signal(|| String::new());
+    let mut transaction_memo = use_signal(|| String::new());
+    let mut is_sending = use_signal(|| false);
+    let mut transaction_password = use_signal(|| String::new());
+    let mut show_transaction_password_modal = use_signal(|| false);
+    let mut prepared_transaction = use_signal(|| None::<Transaction>);
+    let mut session_active = use_signal(|| session::is_session_active());
     
     // Hex string for the pixel canvas
     let pixel_hex = "00003FFF000000001FFFFE00000007FFFFF8000001FFFFFFE000003FFFFFFF000007FFFFFFF80000FFFFFFFFC0001FFFFFFFFE0003FFFFFFFFF0007FFFFFFFFF800FFFFFFFFFFC01FFCFFFFCFFE01FFCFFFF8FFE03FFE7FFF9FFF03FFF3FFF3FFF07FFF9FFE7FFF87FFF9FFCFFFF87FFFCFFCFFFF8FFFFE7F9FFFFCFFFFF3F3FFFFCFFFFF1E7FFFFCFFFFF9E7FFFFCFFFFFCCFFFFFCFFFFFE1FFFFFCFFFFFE3FFFFFCFFFFFF3FFFFFCFFFFFE1FFFFFCFFFFFCCFFFFFCFFFFF9C7FFFFCFFFFF9E7FFFFCFFFFF3F3FFFFCFFFFE7F9FFFFC7FFFCFF8FFFF87FFFCFFCFFFF87FFF9FFE7FFF83FFF3FFF3FFF03FFE7FFF1FFF01FFC7FFF9FFE01FFCFFFFCFFE00FFFFFFFFFFC007FFFFFFFFF8003FFFFFFFFF0001FFFFFFFFE0000FFFFFFFFC00007FFFFFFF800003FFFFFFF000001FFFFFFE0000007FFFFF80000001FFFFE000000003FFF00000";
@@ -258,6 +271,10 @@ pub fn Home() -> Element {
                     mnemonic.set(String::new());
                     error_message.set(String::new());
                     wallet_balance.set(None);
+                    
+                    // Clear the session
+                    session::clear_session();
+                    log::info!("Wallet session cleared");
                 }
             }
         }
@@ -289,6 +306,11 @@ pub fn Home() -> Element {
                         show_decrypt_modal.set(false);
                         error_message.set(String::new());
                         log::info!("Mnemonic decrypted successfully");
+                        
+                        // Update session status for UI
+                        if *show_send_modal.read() {
+                            session_active.set(session::is_session_active());
+                        }
                     },
                     Err(err) => {
                         error_message.set(format!("Failed to decrypt mnemonic: {}", err));
@@ -314,6 +336,125 @@ pub fn Home() -> Element {
         if !address.is_empty() {
             fetch_balance(address, wallet_balance.clone(), is_loading_balance.clone());
         }
+    };
+    
+    // Show send transaction modal
+    let show_send_transaction_modal = move |_: MouseEvent| {
+        recipient_address.set(String::new());
+        send_amount.set(String::new());
+        transaction_memo.set(String::new());
+        error_message.set(String::new());
+        show_send_modal.set(true);
+        
+        // Check if session is active
+        session_active.set(session::is_session_active());
+        
+        log::info!("Send button clicked, showing send modal. Session active: {}", *session_active.read());
+    };
+    
+    // Sign and send transaction
+    let mut sign_and_send_transaction = move |password: Option<&str>| {
+        is_sending.set(true);
+        error_message.set(String::new());
+        
+        if let Some(tx) = prepared_transaction.read().as_ref() {
+            log::info!("Signing transaction to send {} {} to {}", tx.amount, config::TOKEN_SYMBOL, tx.to);
+            
+            // Sign the transaction
+            match crate::wallet::sign_transaction(tx, password) {
+                Ok(signed_tx) => {
+                    // In a real app, you would send the transaction to the network here
+                    log::info!("Transaction signed successfully: {:?}", signed_tx);
+                    
+                    // For demo purposes, just log the transaction and show success
+                    is_sending.set(false);
+                    show_transaction_password_modal.set(false);
+                    show_send_modal.set(false);
+                    
+                    // Show success message
+                    error_message.set(format!("Transaction of {} {} to {} sent successfully!", 
+                        tx.amount, config::TOKEN_SYMBOL, tx.to));
+                        
+                    // Update session active state
+                    session_active.set(session::is_session_active());
+                },
+                Err(err) => {
+                    log::error!("Failed to sign transaction: {}", err);
+                    error_message.set(format!("Failed to sign transaction: {}", err));
+                    is_sending.set(false);
+                }
+            }
+        } else {
+            error_message.set("No transaction prepared".to_string());
+            is_sending.set(false);
+        }
+    };
+    
+    // Prepare transaction
+    let prepare_transaction = move |_: MouseEvent| {
+        // Validate inputs
+        let to_address = recipient_address.read().clone();
+        if to_address.is_empty() {
+            error_message.set("Recipient address cannot be empty".to_string());
+            return;
+        }
+        
+        let amount_str = send_amount.read().clone();
+        let amount = match amount_str.parse::<f64>() {
+            Ok(a) if a > 0.0 => a,
+            _ => {
+                error_message.set("Invalid amount".to_string());
+                return;
+            }
+        };
+        
+        let memo = transaction_memo.read().clone();
+        let memo = if memo.is_empty() { None } else { Some(memo) };
+        
+        // Get sender address
+        let from_address = wallet_address.read().clone();
+        
+        // Create transaction
+        let transaction = Transaction {
+            from: from_address,
+            to: to_address,
+            amount,
+            memo,
+        };
+        
+        prepared_transaction.set(Some(transaction));
+        
+        // If session is active, proceed directly to signing
+        // Otherwise, show password modal
+        if *session_active.read() {
+            sign_and_send_transaction(None::<&str>);
+        } else {
+            transaction_password.set(String::new());
+            show_send_modal.set(false);
+            show_transaction_password_modal.set(true);
+        }
+    };
+    
+    // Confirm transaction with password
+    let confirm_transaction_with_password = move |_: MouseEvent| {
+        let password = transaction_password.read().clone();
+        
+        if password.is_empty() {
+            error_message.set("Password cannot be empty".to_string());
+            return;
+        }
+        
+        sign_and_send_transaction(Some(&password));
+    };
+    
+    // Close send modal
+    let close_send_modal = move |_: MouseEvent| {
+        show_send_modal.set(false);
+    };
+    
+    // Close transaction password modal
+    let close_transaction_password_modal = move |_: MouseEvent| {
+        show_transaction_password_modal.set(false);
     };
     
     rsx! {
@@ -365,6 +506,23 @@ pub fn Home() -> Element {
                         div { class: "wallet-dashboard",
                             h1 { "Memo Inscription - X1 Testnet" }
                             
+                            // Add session status indicator
+                            {
+                                if *session_active.read() {
+                                    rsx! {
+                                        div { class: "session-indicator active",
+                                            "Wallet Session Active"
+                                        }
+                                    }
+                                } else {
+                                    rsx! {
+                                        div { class: "session-indicator inactive",
+                                            "Wallet Session Inactive"
+                                        }
+                                    }
+                                }
+                            }
+                            
                             div { class: "wallet-balance",
                                 div { class: "balance-header",
                                     h2 { "Balance" }
@@ -399,7 +557,11 @@ pub fn Home() -> Element {
                             
                             div { class: "wallet-actions",
                                 button { class: "action-btn receive-btn", "Receive" }
-                                button { class: "action-btn send-btn", "Send" }
+                                button { 
+                                    class: "action-btn send-btn", 
+                                    onclick: show_send_transaction_modal,
+                                    "Send" 
+                                }
                             }
                             
                             // Add Memo NFT Display with Pixel Canvas
@@ -633,6 +795,125 @@ pub fn Home() -> Element {
                                             "Importing..."
                                         } else {
                                             "Import Wallet"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    rsx! { Fragment {} }
+                }
+            }
+            
+            // Add send transaction modal
+            {
+                if *show_send_modal.read() {
+                    rsx! {
+                        div { class: "modal-overlay",
+                            div { class: "modal send-modal",
+                                h2 { "Send {config::TOKEN_SYMBOL}" }
+                                
+                                div { class: "form-group",
+                                    label { "Recipient Address:" }
+                                    input {
+                                        r#type: "text",
+                                        value: "{recipient_address}",
+                                        oninput: move |evt| recipient_address.set(evt.value().clone()),
+                                        placeholder: "Enter recipient address"
+                                    }
+                                }
+                                
+                                div { class: "form-group",
+                                    label { "Amount:" }
+                                    input {
+                                        r#type: "text",
+                                        value: "{send_amount}",
+                                        oninput: move |evt| send_amount.set(evt.value().clone()),
+                                        placeholder: "Enter amount to send"
+                                    }
+                                }
+                                
+                                div { class: "form-group",
+                                    label { "Memo (optional):" }
+                                    input {
+                                        r#type: "text",
+                                        value: "{transaction_memo}",
+                                        oninput: move |evt| transaction_memo.set(evt.value().clone()),
+                                        placeholder: "Enter memo (optional)"
+                                    }
+                                }
+                                
+                                // Show session status
+                                {
+                                    if *session_active.read() {
+                                        rsx! {
+                                            div { class: "session-status active",
+                                                "Wallet session active - No password needed"
+                                            }
+                                        }
+                                    } else {
+                                        rsx! {
+                                            div { class: "session-status inactive",
+                                                "Wallet session inactive - Password will be required"
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                div { class: "modal-actions",
+                                    button {
+                                        class: "cancel-btn",
+                                        onclick: close_send_modal,
+                                        "Cancel"
+                                    }
+                                    button {
+                                        class: "confirm-btn",
+                                        onclick: prepare_transaction,
+                                        "Send"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    rsx! { Fragment {} }
+                }
+            }
+            
+            // Add transaction password modal
+            {
+                if *show_transaction_password_modal.read() {
+                    rsx! {
+                        div { class: "modal-overlay",
+                            div { class: "modal password-modal",
+                                h2 { "Enter Wallet Password" }
+                                p { "Enter your password to sign the transaction." }
+                                
+                                div { class: "form-group",
+                                    label { "Password:" }
+                                    input {
+                                        r#type: "password",
+                                        value: "{transaction_password}",
+                                        oninput: move |evt| transaction_password.set(evt.value().clone()),
+                                        placeholder: "Enter password"
+                                    }
+                                }
+                                
+                                div { class: "modal-actions",
+                                    button {
+                                        class: "cancel-btn",
+                                        onclick: close_transaction_password_modal,
+                                        "Cancel"
+                                    }
+                                    button {
+                                        class: "confirm-btn",
+                                        onclick: confirm_transaction_with_password,
+                                        disabled: *is_sending.read(),
+                                        if *is_sending.read() {
+                                            "Signing..."
+                                        } else {
+                                            "Sign & Send"
                                         }
                                     }
                                 }

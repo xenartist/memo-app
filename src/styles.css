@@ -751,4 +751,45 @@ nav a:hover {
     outline: none;
     border-color: #3182ce;
     box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1);
+}
+
+/* Session indicator styles */
+.session-indicator {
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin: 10px 0;
+    font-size: 14px;
+    text-align: center;
+    font-weight: 500;
+}
+
+.session-indicator.active {
+    background-color: rgba(0, 200, 83, 0.1);
+    color: #00c853;
+    border: 1px solid #00c853;
+}
+
+.session-indicator.inactive {
+    background-color: rgba(255, 87, 34, 0.1);
+    color: #ff5722;
+    border: 1px solid #ff5722;
+}
+
+/* Session status in modal */
+.session-status {
+    margin: 15px 0;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 14px;
+    text-align: center;
+}
+
+.session-status.active {
+    background-color: rgba(0, 200, 83, 0.1);
+    color: #00c853;
+}
+
+.session-status.inactive {
+    background-color: rgba(255, 87, 34, 0.1);
+    color: #ff5722;
 } 
