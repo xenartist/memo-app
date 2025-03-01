@@ -7,13 +7,13 @@ edition = "2021"
 
 [dependencies]
 # Dioxus core dependencies
-dioxus = { version = "0.6.2", features = ["router", "web"] }
-dioxus-router = "0.6.2"
+dioxus = { version = "0.6.1", features = ["router", "web"] }
+dioxus-router = "0.6.1"
 
 # Platform-specific dependencies (conditionally included)
-dioxus-web = { version = "0.6.2" }
-dioxus-desktop = { version = "0.6.2", optional = true }
-dioxus-mobile = { version = "0.6.2", optional = true }
+dioxus-web = { version = "0.6.1" }
+dioxus-desktop = { version = "0.6.1", optional = true }
+dioxus-mobile = { version = "0.6.1", optional = true }
 
 # For serialization/deserialization
 serde = { version = "1.0", features = ["derive"] }
