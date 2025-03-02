@@ -1,13 +1,22 @@
-use egui::{CentralPanel, Context, FontId, TextStyle, Grid, RadioButton, Ui, ScrollArea, Frame, Vec2};
+use egui::{CentralPanel, Context, FontId, TextStyle, Grid, RadioButton, Ui, ScrollArea, Frame, Vec2, TextEdit};
 use super::Screen;
 use bip39::Mnemonic;
 use rand::{rngs::OsRng, RngCore};
+use std::fs::{self, File};
+use std::io::Write;
+use crate::encrypt;
 
 pub struct NewWalletScreen {
     // Store recovery seed words
     seed_words: Vec<String>,
     // Whether to use 24 words (otherwise use 12)
     use_24_words: bool,
+    // Password for encrypting the wallet
+    password: String,
+    // Confirm password
+    confirm_password: String,
+    // Status message
+    status_message: String,
 }
 
 impl Default for NewWalletScreen {
@@ -15,6 +24,9 @@ impl Default for NewWalletScreen {
         let mut screen = Self {
             seed_words: Vec::new(),
             use_24_words: false,
+            password: String::new(),
+            confirm_password: String::new(),
+            status_message: String::new(),
         };
         // Initialize with 12 words
         screen.generate_seed_words();
@@ -76,6 +88,38 @@ impl NewWalletScreen {
                         });
                 });
             });
+    }
+
+    // Save wallet to file
+    fn save_wallet(&mut self, password: &str) -> Result<(), String> {
+        // Join seed words into a single string
+        let seed_phrase = self.seed_words.join(" ");
+        
+        // Encrypt the seed phrase
+        let encrypted_data = encrypt::encrypt(&seed_phrase, password)
+            .map_err(|e| format!("Encryption error: {}", e))?;
+        
+        // Get the executable directory
+        let exe_path = std::env::current_exe()
+            .map_err(|e| format!("Failed to get executable path: {}", e))?;
+        let exe_dir = exe_path.parent()
+            .ok_or_else(|| "Failed to get executable directory".to_string())?;
+        
+        // Create wallets directory if it doesn't exist
+        let wallets_dir = exe_dir.join("wallets");
+        fs::create_dir_all(&wallets_dir)
+            .map_err(|e| format!("Failed to create wallets directory: {}", e))?;
+        
+        // Create wallet file
+        let wallet_path = wallets_dir.join("memo-encrypted.wallet");
+        let mut file = File::create(wallet_path)
+            .map_err(|e| format!("Failed to create wallet file: {}", e))?;
+        
+        // Write encrypted data to file
+        file.write_all(encrypted_data.as_bytes())
+            .map_err(|e| format!("Failed to write to wallet file: {}", e))?;
+        
+        Ok(())
     }
 
     pub fn render(&mut self, ctx: &Context) -> Option<Screen> {
@@ -157,12 +201,53 @@ impl NewWalletScreen {
                             
                             ui.add_space(20.0);
                             
+                            // Password fields for encryption
+                            ui.vertical_centered(|ui| {
+                                ui.label("Enter password to encrypt your new wallet:");
+                                ui.add_space(5.0);
+                                
+                                // Password field
+                                ui.horizontal(|ui| {
+                                    ui.label("Password:      ");
+                                    ui.add(TextEdit::singleline(&mut self.password)
+                                        .password(true)
+                                        .hint_text("Enter password")
+                                        .desired_width(300.0));
+                                });
+                                
+                                ui.add_space(5.0);
+                                
+                                // Confirm password field
+                                ui.horizontal(|ui| {
+                                    ui.label("Confirm:       ");
+                                    ui.add(TextEdit::singleline(&mut self.confirm_password)
+                                        .password(true)
+                                        .hint_text("Confirm password")
+                                        .desired_width(300.0));
+                                });
+                                
+                                // Display status message if any
+                                if !self.status_message.is_empty() {
+                                    ui.add_space(10.0);
+                                    ui.colored_label(
+                                        if self.status_message.starts_with("Error") { 
+                                            egui::Color32::RED 
+                                        } else { 
+                                            egui::Color32::GREEN 
+                                        },
+                                        &self.status_message
+                                    );
+                                }
+                            });
+                            
+                            ui.add_space(20.0);
+                            
                             // Bottom buttons inside the form
                             ui.horizontal(|ui| {
                                 // Calculate button sizes and spacing
                                 let button_size = Vec2::new(150.0, 40.0);
                                 let available_width = ui.available_width();
-                                let spacing = (available_width - 2.0 * button_size.x) / 3.0;
+                                let spacing = (available_width - 3.0 * button_size.x) / 4.0;
                                 
                                 ui.add_space(spacing);
                                 
@@ -175,6 +260,32 @@ impl NewWalletScreen {
                                 if ui.add_sized(button_size, egui::Button::new("Regenerate Seed")).clicked() {
                                     self.generate_seed_words();
                                 }
+                                
+                                ui.add_space(spacing);
+                                
+                                if ui.add_sized(button_size, egui::Button::new("Save Wallet")).clicked() {
+                                    // Validate passwords
+                                    if self.password.is_empty() {
+                                        self.status_message = "Error: Password cannot be empty".to_string();
+                                    } else if self.password != self.confirm_password {
+                                        self.status_message = "Error: Passwords do not match".to_string();
+                                    } else {
+                                        // Clone password to avoid borrowing issues
+                                        let password = self.password.clone();
+                                        
+                                        // Save wallet
+                                        match self.save_wallet(&password) {
+                                            Ok(_) => {
+                                                self.status_message = "Wallet saved successfully!".to_string();
+                                            }
+                                            Err(e) => {
+                                                self.status_message = format!("Error: {}", e);
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                ui.add_space(spacing);
                             });
                         });
                     

@@ -14,3 +14,7 @@ serde_json = "1.0"  # for JSON serialization
 directories = "5.0"  # for finding the right directory for app data
 rand = "0.8.5"  # for random number generation
 bip39 = "2.0.0"  # for generating BIP39 mnemonic phrases
+argon2 = "0.5.2"  # for password hashing
+chacha20poly1305 = "0.10.1"  # for encryption
+hex = "0.4.3"  # for hex encoding/decoding
+log = "0.4.20"  # for logging

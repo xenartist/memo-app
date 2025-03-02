@@ -1,4 +1,5 @@
 mod screens;
+mod encrypt;
 
 use eframe::{egui, App, CreationContext};
 use screens::{
