@@ -55,7 +55,26 @@ impl App for MemoApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Render the current screen and check if we need to switch to another screen
         let next_screen = match self.current_screen {
-            Screen::Login => self.login_screen.render(ctx),
+            Screen::Login => {
+                let result = self.login_screen.render(ctx);
+                
+                // Check if wallet was unlocked successfully
+                if let Some(Screen::MainScreen) = result {
+                    // Try to get seed phrase from login screen
+                    match self.login_screen.get_seed_phrase() {
+                        Ok(seed_phrase) => {
+                            // Set seed phrase and create main screen
+                            self.set_seed_phrase(seed_phrase);
+                        },
+                        Err(_) => {
+                            // If there was an error, stay on login screen
+                            return;
+                        }
+                    }
+                }
+                
+                result
+            },
             Screen::NewWallet => {
                 let result = self.new_wallet_screen.render(ctx);
                 
@@ -122,6 +141,12 @@ impl App for MemoApp {
                     if self.current_screen != Screen::ImportWallet {
                         // Reset import wallet screen when navigating to it
                         self.import_wallet_screen = ImportWalletScreen::new();
+                    }
+                },
+                Screen::Login => {
+                    if self.current_screen != Screen::Login {
+                        // Reset login screen when navigating to it
+                        self.login_screen = LoginScreen::new();
                     }
                 },
                 _ => {}
