@@ -68,7 +68,18 @@ impl App for MemoApp {
                 
                 result
             },
-            Screen::ImportWallet => self.import_wallet_screen.render(ctx),
+            Screen::ImportWallet => {
+                let result = self.import_wallet_screen.render(ctx);
+                
+                // Check if wallet was imported successfully
+                if let Some(Screen::MainScreen) = result {
+                    // Get seed phrase from import wallet screen
+                    let seed_phrase = self.import_wallet_screen.get_seed_phrase();
+                    self.set_seed_phrase(seed_phrase);
+                }
+                
+                result
+            },
             Screen::MainScreen => {
                 if let Some(main_screen) = &mut self.main_screen {
                     main_screen.render(ctx)
@@ -82,6 +93,40 @@ impl App for MemoApp {
         
         // Update the current screen if needed
         if let Some(screen) = next_screen {
+            // Reset screens when navigating away from them
+            match self.current_screen {
+                Screen::NewWallet => {
+                    if screen != Screen::NewWallet {
+                        // Reset new wallet screen when navigating away
+                        self.new_wallet_screen = NewWalletScreen::new();
+                    }
+                },
+                Screen::ImportWallet => {
+                    if screen != Screen::ImportWallet {
+                        // Reset import wallet screen when navigating away
+                        self.import_wallet_screen = ImportWalletScreen::new();
+                    }
+                },
+                _ => {}
+            }
+            
+            // Also reset screens when navigating to them from other screens
+            match screen {
+                Screen::NewWallet => {
+                    if self.current_screen != Screen::NewWallet {
+                        // Reset new wallet screen when navigating to it
+                        self.new_wallet_screen = NewWalletScreen::new();
+                    }
+                },
+                Screen::ImportWallet => {
+                    if self.current_screen != Screen::ImportWallet {
+                        // Reset import wallet screen when navigating to it
+                        self.import_wallet_screen = ImportWalletScreen::new();
+                    }
+                },
+                _ => {}
+            }
+            
             self.current_screen = screen;
         }
     }
