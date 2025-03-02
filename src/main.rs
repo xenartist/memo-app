@@ -164,7 +164,7 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
     eframe::run_native(
-        "Memo App",
+        "Memo",
         native_options,
         Box::new(|cc| Ok(Box::new(MemoApp::new(cc))))
     )
