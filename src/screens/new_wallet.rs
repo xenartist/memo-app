@@ -201,6 +201,16 @@ impl NewWalletScreen {
                             
                             ui.add_space(20.0);
                             
+                            // Regenerate seed button
+                            ui.vertical_centered(|ui| {
+                                let button_size = Vec2::new(200.0, 40.0);
+                                if ui.add_sized(button_size, egui::Button::new("Regenerate Seed")).clicked() {
+                                    self.generate_seed_words();
+                                }
+                            });
+                            
+                            ui.add_space(20.0);
+                            
                             // Password fields for encryption
                             ui.vertical_centered(|ui| {
                                 ui.label("Enter password to encrypt your new wallet:");
@@ -245,9 +255,9 @@ impl NewWalletScreen {
                             // Bottom buttons inside the form
                             ui.horizontal(|ui| {
                                 // Calculate button sizes and spacing
-                                let button_size = Vec2::new(150.0, 40.0);
+                                let button_size = Vec2::new(200.0, 40.0);
                                 let available_width = ui.available_width();
-                                let spacing = (available_width - 3.0 * button_size.x) / 4.0;
+                                let spacing = (available_width - 2.0 * button_size.x) / 3.0;
                                 
                                 ui.add_space(spacing);
                                 
@@ -257,13 +267,7 @@ impl NewWalletScreen {
                                 
                                 ui.add_space(spacing);
                                 
-                                if ui.add_sized(button_size, egui::Button::new("Regenerate Seed")).clicked() {
-                                    self.generate_seed_words();
-                                }
-                                
-                                ui.add_space(spacing);
-                                
-                                if ui.add_sized(button_size, egui::Button::new("Save Wallet")).clicked() {
+                                if ui.add_sized(button_size, egui::Button::new("Create Encrypted Wallet")).clicked() {
                                     // Validate passwords
                                     if self.password.is_empty() {
                                         self.status_message = "Error: Password cannot be empty".to_string();
