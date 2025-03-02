@@ -1,4 +1,4 @@
-use egui::{CentralPanel, Context, Vec2, FontId, TextStyle};
+use egui::{CentralPanel, Context, Vec2, FontId, TextStyle, Frame};
 
 // Different screens in our application
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -40,26 +40,47 @@ impl LoginScreen {
         ctx.set_style(style);
 
         CentralPanel::default().show(ctx, |ui| {
-            // Add some space at the top to center the content vertically
-            ui.add_space(100.0);
+            // Get available size
+            let available_size = ui.available_size();
             
-            // Center the content horizontally
+            // Calculate vertical position to center the form
+            let form_height = 250.0; // Approximate height of our form
+            let vertical_margin = (available_size.y - form_height) / 2.0;
+            if vertical_margin > 0.0 {
+                ui.add_space(vertical_margin);
+            }
+            
+            // Center content horizontally
             ui.vertical_centered(|ui| {
-                ui.heading("Welcome to Memo World");
-                ui.add_space(30.0);
+                // Set a fixed width for the form
+                let form_width = 400.0;
                 
-                // Make buttons a bit larger
-                let button_size = Vec2::new(250.0, 60.0);
-                
-                if ui.add_sized(button_size, egui::Button::new("New Wallet")).clicked() {
-                    next_screen = Some(Screen::NewWallet);
-                }
-                
-                ui.add_space(20.0);
-                
-                if ui.add_sized(button_size, egui::Button::new("Import Wallet")).clicked() {
-                    next_screen = Some(Screen::ImportWallet);
-                }
+                // Create a frame for the form with fixed width
+                Frame::group(ui.style())
+                    .inner_margin(30.0)
+                    .outer_margin(10.0)
+                    .show(ui, |ui| {
+                        // Set the maximum width for the content
+                        ui.set_max_width(form_width);
+                        
+                        ui.vertical_centered(|ui| {
+                            ui.heading("Welcome to Memo World");
+                            ui.add_space(30.0);
+                            
+                            // Make buttons a bit larger
+                            let button_size = Vec2::new(250.0, 60.0);
+                            
+                            if ui.add_sized(button_size, egui::Button::new("New Wallet")).clicked() {
+                                next_screen = Some(Screen::NewWallet);
+                            }
+                            
+                            ui.add_space(20.0);
+                            
+                            if ui.add_sized(button_size, egui::Button::new("Import Wallet")).clicked() {
+                                next_screen = Some(Screen::ImportWallet);
+                            }
+                        });
+                    });
             });
         });
 
