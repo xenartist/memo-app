@@ -1,24 +1,31 @@
+mod screens;
+
 use eframe::{egui, App, CreationContext};
-use egui::{CentralPanel, Vec2};
+use screens::{
+    Screen,
+    login::LoginScreen,
+    new_wallet::NewWalletScreen,
+    import_wallet::ImportWalletScreen,
+};
 
 // Application state
 struct MemoApp {
-    // Track the current screen/state of the app
+    // Current screen/state of the app
     current_screen: Screen,
-}
-
-// Different screens in our application
-enum Screen {
-    Login,
-    NewWallet,
-    ImportWallet,
-    // We'll add more screens later
+    
+    // Screen instances
+    login_screen: LoginScreen,
+    new_wallet_screen: NewWalletScreen,
+    import_wallet_screen: ImportWalletScreen,
 }
 
 impl Default for MemoApp {
     fn default() -> Self {
         Self {
             current_screen: Screen::Login,
+            login_screen: LoginScreen::new(),
+            new_wallet_screen: NewWalletScreen::new(),
+            import_wallet_screen: ImportWalletScreen::new(),
         }
     }
 }
@@ -28,65 +35,20 @@ impl MemoApp {
     fn new(_cc: &CreationContext<'_>) -> Self {
         Self::default()
     }
-    
-    // Render the login screen with two buttons
-    fn render_login_screen(&mut self, ctx: &egui::Context) {
-        CentralPanel::default().show(ctx, |ui| {
-            // Add some space at the top to center the content vertically
-            ui.add_space(100.0);
-            
-            // Center the content horizontally
-            ui.vertical_centered(|ui| {
-                ui.heading("Welcome to Memo App");
-                ui.add_space(20.0);
-                
-                // Make buttons a bit larger
-                let button_size = Vec2::new(200.0, 50.0);
-                
-                if ui.add_sized(button_size, egui::Button::new("New Wallet")).clicked() {
-                    self.current_screen = Screen::NewWallet;
-                }
-                
-                ui.add_space(10.0);
-                
-                if ui.add_sized(button_size, egui::Button::new("Import Wallet")).clicked() {
-                    self.current_screen = Screen::ImportWallet;
-                }
-            });
-        });
-    }
-
-    // Placeholder for the new wallet screen
-    fn render_new_wallet_screen(&mut self, ctx: &egui::Context) {
-        CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Create New Wallet");
-            // We'll implement this later
-            
-            if ui.button("Back").clicked() {
-                self.current_screen = Screen::Login;
-            }
-        });
-    }
-
-    // Placeholder for the import wallet screen
-    fn render_import_wallet_screen(&mut self, ctx: &egui::Context) {
-        CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Import Existing Wallet");
-            // We'll implement this later
-            
-            if ui.button("Back").clicked() {
-                self.current_screen = Screen::Login;
-            }
-        });
-    }
 }
 
 impl App for MemoApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        match self.current_screen {
-            Screen::Login => self.render_login_screen(ctx),
-            Screen::NewWallet => self.render_new_wallet_screen(ctx),
-            Screen::ImportWallet => self.render_import_wallet_screen(ctx),
+        // Render the current screen and check if we need to switch to another screen
+        let next_screen = match self.current_screen {
+            Screen::Login => self.login_screen.render(ctx),
+            Screen::NewWallet => self.new_wallet_screen.render(ctx),
+            Screen::ImportWallet => self.import_wallet_screen.render(ctx),
+        };
+        
+        // Update the current screen if needed
+        if let Some(screen) = next_screen {
+            self.current_screen = screen;
         }
     }
 }
@@ -94,12 +56,12 @@ impl App for MemoApp {
 fn main() -> eframe::Result<()> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([800.0, 600.0]),
+            .with_inner_size([1920.0, 1080.0]),
         ..Default::default()
     };
     eframe::run_native(
         "Memo App",
         native_options,
-        Box::new(|cc| Box::new(MemoApp::new(cc)))
+        Box::new(|cc| Ok(Box::new(MemoApp::new(cc))))
     )
 }
