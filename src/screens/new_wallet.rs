@@ -122,6 +122,11 @@ impl NewWalletScreen {
         Ok(())
     }
 
+    // Get the seed phrase
+    pub fn get_seed_phrase(&self) -> String {
+        self.seed_words.join(" ")
+    }
+
     pub fn render(&mut self, ctx: &Context) -> Option<Screen> {
         let mut next_screen = None;
 
@@ -281,6 +286,8 @@ impl NewWalletScreen {
                                         match self.save_wallet(&password) {
                                             Ok(_) => {
                                                 self.status_message = "Wallet saved successfully!".to_string();
+                                                // Navigate to main screen after successful wallet creation
+                                                next_screen = Some(Screen::MainScreen);
                                             }
                                             Err(e) => {
                                                 self.status_message = format!("Error: {}", e);

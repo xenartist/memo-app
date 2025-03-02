@@ -7,6 +7,7 @@ use screens::{
     login::LoginScreen,
     new_wallet::NewWalletScreen,
     import_wallet::ImportWalletScreen,
+    main_screen::MainScreen,
 };
 
 // Application state
@@ -18,6 +19,10 @@ struct MemoApp {
     login_screen: LoginScreen,
     new_wallet_screen: NewWalletScreen,
     import_wallet_screen: ImportWalletScreen,
+    main_screen: Option<MainScreen>,
+    
+    // Seed phrase for wallet
+    seed_phrase: Option<String>,
 }
 
 impl Default for MemoApp {
@@ -27,6 +32,8 @@ impl Default for MemoApp {
             login_screen: LoginScreen::new(),
             new_wallet_screen: NewWalletScreen::new(),
             import_wallet_screen: ImportWalletScreen::new(),
+            main_screen: None,
+            seed_phrase: None,
         }
     }
 }
@@ -36,6 +43,12 @@ impl MemoApp {
     fn new(_cc: &CreationContext<'_>) -> Self {
         Self::default()
     }
+    
+    // Set the seed phrase and create main screen
+    fn set_seed_phrase(&mut self, seed_phrase: String) {
+        self.seed_phrase = Some(seed_phrase.clone());
+        self.main_screen = Some(MainScreen::new(&seed_phrase));
+    }
 }
 
 impl App for MemoApp {
@@ -43,8 +56,28 @@ impl App for MemoApp {
         // Render the current screen and check if we need to switch to another screen
         let next_screen = match self.current_screen {
             Screen::Login => self.login_screen.render(ctx),
-            Screen::NewWallet => self.new_wallet_screen.render(ctx),
+            Screen::NewWallet => {
+                let result = self.new_wallet_screen.render(ctx);
+                
+                // Check if wallet was created successfully
+                if let Some(Screen::MainScreen) = result {
+                    // Get seed phrase from new wallet screen
+                    let seed_phrase = self.new_wallet_screen.get_seed_phrase();
+                    self.set_seed_phrase(seed_phrase);
+                }
+                
+                result
+            },
             Screen::ImportWallet => self.import_wallet_screen.render(ctx),
+            Screen::MainScreen => {
+                if let Some(main_screen) = &mut self.main_screen {
+                    main_screen.render(ctx)
+                } else {
+                    // Fallback to login if main screen is not initialized
+                    self.current_screen = Screen::Login;
+                    None
+                }
+            },
         };
         
         // Update the current screen if needed

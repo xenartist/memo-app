@@ -2,6 +2,13 @@
 pub mod login;
 pub mod new_wallet;
 pub mod import_wallet;
+pub mod main_screen;
 
-// Re-export Screen enum for use in main
-pub use login::Screen; 
+// Different screens in our application
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Screen {
+    Login,
+    NewWallet,
+    ImportWallet,
+    MainScreen,
+} 

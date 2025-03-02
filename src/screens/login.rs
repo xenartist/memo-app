@@ -1,13 +1,5 @@
 use egui::{CentralPanel, Context, Vec2, FontId, TextStyle, Frame};
-
-// Different screens in our application
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Screen {
-    Login,
-    NewWallet,
-    ImportWallet,
-    // We'll add more screens later
-}
+use super::Screen;
 
 pub struct LoginScreen {
     // Add any login screen specific state here
