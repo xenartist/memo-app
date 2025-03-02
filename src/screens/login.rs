@@ -1,7 +1,6 @@
-use egui::{CentralPanel, Context, Vec2, FontId, TextStyle, Frame, TextEdit};
+use egui::{CentralPanel, Context, Vec2, FontId, TextStyle, Frame, TextEdit, RichText};
 use super::Screen;
 use std::fs;
-use std::path::Path;
 use crate::encrypt;
 
 pub struct LoginScreen {
@@ -72,15 +71,15 @@ impl LoginScreen {
         let mut style = (*ctx.style()).clone();
         style.text_styles.insert(
             TextStyle::Button,
-            FontId::new(20.0, egui::FontFamily::Proportional)
+            FontId::new(22.0, egui::FontFamily::Proportional)
         );
         style.text_styles.insert(
             TextStyle::Heading,
-            FontId::new(30.0, egui::FontFamily::Proportional)
+            FontId::new(32.0, egui::FontFamily::Proportional)
         );
         style.text_styles.insert(
             TextStyle::Body,
-            FontId::new(18.0, egui::FontFamily::Proportional)
+            FontId::new(22.0, egui::FontFamily::Proportional)
         );
         ctx.set_style(style);
 
@@ -114,14 +113,15 @@ impl LoginScreen {
                             
                             if self.wallet_exists {
                                 // Wallet exists, show unlock form
-                                ui.label("Enter password to unlock your wallet:");
+                                ui.label(RichText::new("Enter password to unlock your wallet:").size(22.0));
                                 ui.add_space(10.0);
                                 
                                 // Password field
                                 ui.add(TextEdit::singleline(&mut self.password)
                                     .password(true)
                                     .hint_text("Enter password")
-                                    .desired_width(300.0));
+                                    .desired_width(300.0)
+                                    .font(FontId::new(22.0, egui::FontFamily::Proportional)));
                                 
                                 ui.add_space(20.0);
                                 
@@ -131,7 +131,7 @@ impl LoginScreen {
                                 if ui.add_sized(button_size, egui::Button::new("Unlock Wallet")).clicked() {
                                     // Try to decrypt wallet
                                     match self.decrypt_wallet() {
-                                        Ok(seed_phrase) => {
+                                        Ok(_) => {
                                             // Return seed phrase with MainScreen
                                             return next_screen = Some(Screen::MainScreen);
                                         }

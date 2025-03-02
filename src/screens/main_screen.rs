@@ -1,8 +1,8 @@
-use egui::{CentralPanel, Context, FontId, TextStyle, Frame, Vec2, TopBottomPanel, Ui, RichText, Color32};
+use egui::{CentralPanel, Context, FontId, TextStyle, Vec2, TopBottomPanel, Ui, RichText, Color32};
 use super::Screen;
 use hmac::{Hmac, Mac};
 use sha2::Sha512;
-use ed25519_dalek::{SecretKey, SigningKey};
+use ed25519_dalek::SigningKey;
 use bs58;
 
 type HmacSha512 = Hmac<Sha512>;
@@ -154,17 +154,18 @@ impl MainScreen {
     // Show wallet address in the top panel
     fn show_wallet_address(&self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            ui.label("Wallet Address: ");
+            ui.label(RichText::new("Wallet Address: ").size(20.0));
             
             // Display address with different color
             ui.label(
                 RichText::new(&self.wallet_address)
                     .color(Color32::LIGHT_BLUE)
                     .monospace()
+                    .size(20.0)
             );
             
             // Add copy button
-            if ui.button("📋 Copy").clicked() {
+            if ui.button(RichText::new("📋 Copy").size(20.0)).clicked() {
                 ui.ctx().copy_text(self.wallet_address.clone());
             }
         });
@@ -177,15 +178,15 @@ impl MainScreen {
         let mut style = (*ctx.style()).clone();
         style.text_styles.insert(
             TextStyle::Button,
-            FontId::new(20.0, egui::FontFamily::Proportional)
+            FontId::new(22.0, egui::FontFamily::Proportional)
         );
         style.text_styles.insert(
             TextStyle::Heading,
-            FontId::new(30.0, egui::FontFamily::Proportional)
+            FontId::new(36.0, egui::FontFamily::Proportional)
         );
         style.text_styles.insert(
             TextStyle::Body,
-            FontId::new(18.0, egui::FontFamily::Proportional)
+            FontId::new(22.0, egui::FontFamily::Proportional)
         );
         ctx.set_style(style);
 

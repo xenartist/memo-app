@@ -134,15 +134,15 @@ impl NewWalletScreen {
         let mut style = (*ctx.style()).clone();
         style.text_styles.insert(
             TextStyle::Button,
-            FontId::new(20.0, egui::FontFamily::Proportional)
+            FontId::new(22.0, egui::FontFamily::Proportional)
         );
         style.text_styles.insert(
             TextStyle::Heading,
-            FontId::new(30.0, egui::FontFamily::Proportional)
+            FontId::new(36.0, egui::FontFamily::Proportional)
         );
         style.text_styles.insert(
             TextStyle::Body,
-            FontId::new(18.0, egui::FontFamily::Proportional)
+            FontId::new(22.0, egui::FontFamily::Proportional)
         );
         ctx.set_style(style);
 
