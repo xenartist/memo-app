@@ -24,3 +24,4 @@ sha2 = "0.10.8"  # for SHA256/512 hashing
 bs58 = "0.5.0"  # for Base58 encoding (Solana addresses)
 reqwest = { version = "0.11", features = ["json", "blocking"] }  # for HTTP requests
 tokio = { version = "1.0", features = ["full"] }  # async runtime
+image = "0.25.5"
