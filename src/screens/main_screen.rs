@@ -1,4 +1,4 @@
-use egui::{CentralPanel, Context, FontId, TextStyle, Vec2, TopBottomPanel, Ui, RichText, Color32, Window, Rect, Pos2, Stroke, Rounding};
+use egui::{CentralPanel, Context, FontId, TextStyle, Vec2, TopBottomPanel, Ui, RichText, Color32, Window, Rect, Pos2, Stroke, Rounding, SidePanel};
 use super::Screen;
 use hmac::{Hmac, Mac};
 use sha2::Sha512;
@@ -11,6 +11,24 @@ use image::DynamicImage;
 
 type HmacSha512 = Hmac<Sha512>;
 
+// Menu items
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum MenuItem {
+    Inscription,
+    PanelA,
+    PanelB,
+}
+
+impl MenuItem {
+    fn label(&self) -> &'static str {
+        match self {
+            MenuItem::Inscription => "Inscription",
+            MenuItem::PanelA => "Panel A",
+            MenuItem::PanelB => "Panel B",
+        }
+    }
+}
+
 pub struct MainScreen {
     // Wallet public key (Solana address)
     wallet_address: String,
@@ -21,6 +39,8 @@ pub struct MainScreen {
     // Last balance update time
     last_balance_update: Option<Instant>,
     rpc_client: RpcClient,
+    // Current selected menu item
+    selected_menu: MenuItem,
     // Image dialog state
     show_image_dialog: bool,
     // Imported image hex string
@@ -37,6 +57,7 @@ impl MainScreen {
             balance: 0.0,
             last_balance_update: None,
             rpc_client: RpcClient::default_testnet(),
+            selected_menu: MenuItem::Inscription,  // Default to Inscription
             show_image_dialog: false,
             image_hex: None,
             image_binary: None,
@@ -247,7 +268,7 @@ impl MainScreen {
 
     // Show image import dialog
     fn show_image_dialog(&mut self, ui: &mut Ui) {
-        Window::new("Image Import")
+        Window::new("New Inscription")
             .default_size(Vec2::new(600.0, 700.0))
             .show(ui.ctx(), |ui| {
                 ui.vertical_centered(|ui| {
@@ -334,6 +355,59 @@ impl MainScreen {
             });
     }
 
+    // Show left menu panel
+    fn show_menu_panel(&mut self, ui: &mut Ui) {
+        for menu_item in [MenuItem::Inscription, MenuItem::PanelA, MenuItem::PanelB].iter() {
+            let is_selected = &self.selected_menu == menu_item;
+            let text = RichText::new(menu_item.label())
+                .size(22.0)
+                .strong()
+                .color(if is_selected { Color32::WHITE } else { Color32::LIGHT_GRAY });
+            
+            if ui.add(egui::SelectableLabel::new(is_selected, text)).clicked() {
+                self.selected_menu = *menu_item;
+            }
+            ui.add_space(10.0);
+        }
+    }
+
+    // Show inscription panel content
+    fn show_inscription_panel(&mut self, ui: &mut Ui) {
+        ui.vertical_centered(|ui| {
+            ui.heading("Inscription");
+            ui.add_space(20.0);
+            
+            // Image import button
+            let button_size = Vec2::new(200.0, 40.0);
+            if ui.add_sized(button_size, egui::Button::new("New Inscription")).clicked() {
+                self.show_image_dialog = true;
+            }
+            
+            // Show image dialog if open
+            if self.show_image_dialog {
+                self.show_image_dialog(ui);
+            }
+        });
+    }
+
+    // Show panel A content
+    fn show_panel_a(&mut self, ui: &mut Ui) {
+        ui.vertical_centered(|ui| {
+            ui.heading("Panel A");
+            ui.add_space(20.0);
+            ui.label("This is Panel A content");
+        });
+    }
+
+    // Show panel B content
+    fn show_panel_b(&mut self, ui: &mut Ui) {
+        ui.vertical_centered(|ui| {
+            ui.heading("Panel B");
+            ui.add_space(20.0);
+            ui.label("This is Panel B content");
+        });
+    }
+
     pub fn render(&mut self, ctx: &Context) -> Option<Screen> {
         let mut next_screen = None;
 
@@ -361,33 +435,31 @@ impl MainScreen {
             ui.separator();
         });
 
-        // Main content
+        // Left menu panel
+        SidePanel::left("menu_panel")
+            .default_width(200.0)
+            .show(ctx, |ui| {
+                ui.add_space(20.0);
+                self.show_menu_panel(ui);
+                
+                // Add logout button at the bottom
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
+                    ui.add_space(20.0);
+                    if ui.button(RichText::new("Logout").size(22.0)).clicked() {
+                        next_screen = Some(Screen::Login);
+                    }
+                    ui.add_space(20.0);
+                });
+            });
+
+        // Main content area
         CentralPanel::default().show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.heading("Memo App Main Screen");
-                ui.add_space(20.0);
-                
-                // Image import button
-                let button_size = Vec2::new(200.0, 40.0);
-                if ui.add_sized(button_size, egui::Button::new("Import Image")).clicked() {
-                    self.show_image_dialog = true;
-                }
-                
-                ui.add_space(20.0);
-                
-                // Logout button
-                if ui.add_sized(button_size, egui::Button::new("Logout")).clicked() {
-                    next_screen = Some(Screen::Login);
-                }
-            });
+            match self.selected_menu {
+                MenuItem::Inscription => self.show_inscription_panel(ui),
+                MenuItem::PanelA => self.show_panel_a(ui),
+                MenuItem::PanelB => self.show_panel_b(ui),
+            }
         });
-        
-        // Show image dialog if open
-        if self.show_image_dialog {
-            CentralPanel::default().show(ctx, |ui| {
-                self.show_image_dialog(ui);
-            });
-        }
 
         next_screen
     }
