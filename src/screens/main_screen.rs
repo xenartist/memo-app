@@ -176,7 +176,7 @@ impl MainScreen {
             );
             
             // Add copy button (copies the full address)
-            if ui.button(RichText::new("📋 Copy Full Address").size(20.0)).clicked() {
+            if ui.button(RichText::new("📋 Copy").size(20.0)).clicked() {
                 ui.ctx().copy_text(self.wallet_address.clone());
             }
         });
