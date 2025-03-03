@@ -1,4 +1,4 @@
-use egui::{Ui, Vec2, RichText, Window, Rect, Pos2, Color32, Stroke, Rounding};
+use egui::{Ui, Vec2, RichText, Window, Rect, Pos2, Color32, Stroke, Rounding, Button};
 use crate::core::img2hex::{self, image_to_hex};
 
 pub struct InscriptionPanel {
@@ -31,6 +31,14 @@ impl InscriptionPanel {
             .default_size(Vec2::new(600.0, 700.0))
             .show(ui.ctx(), |ui| {
                 ui.vertical_centered(|ui| {
+                    // Add close button in the top-right corner
+                    ui.horizontal(|ui| {
+                        ui.add_space(ui.available_width() - 60.0);
+                        if ui.add_sized(Vec2::new(50.0, 30.0), Button::new("✖")).clicked() {
+                            self.show_image_dialog = false;
+                        }
+                    });
+
                     ui.heading("Import and Convert Image");
                     ui.add_space(20.0);
                     
