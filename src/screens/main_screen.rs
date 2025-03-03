@@ -8,6 +8,11 @@ use std::time::{Duration, Instant};
 use crate::core::rpc::RpcClient;
 use crate::core::img2hex::{self, image_to_hex};
 use image::DynamicImage;
+use super::panels::{
+    inscription::InscriptionPanel,
+    panel_a::PanelA,
+    panel_b::PanelB,
+};
 
 type HmacSha512 = Hmac<Sha512>;
 
@@ -47,6 +52,10 @@ pub struct MainScreen {
     image_hex: Option<String>,
     // Binary representation for display
     image_binary: Option<String>,
+    // Panel instances
+    inscription_panel: InscriptionPanel,
+    panel_a: PanelA,
+    panel_b: PanelB,
 }
 
 impl MainScreen {
@@ -61,6 +70,9 @@ impl MainScreen {
             show_image_dialog: false,
             image_hex: None,
             image_binary: None,
+            inscription_panel: InscriptionPanel::new(),
+            panel_a: PanelA::new(),
+            panel_b: PanelB::new(),
         };
         
         // Generate wallet address from seed
@@ -371,43 +383,6 @@ impl MainScreen {
         }
     }
 
-    // Show inscription panel content
-    fn show_inscription_panel(&mut self, ui: &mut Ui) {
-        ui.vertical_centered(|ui| {
-            ui.heading("Inscription");
-            ui.add_space(20.0);
-            
-            // Image import button
-            let button_size = Vec2::new(200.0, 40.0);
-            if ui.add_sized(button_size, egui::Button::new("New Inscription")).clicked() {
-                self.show_image_dialog = true;
-            }
-            
-            // Show image dialog if open
-            if self.show_image_dialog {
-                self.show_image_dialog(ui);
-            }
-        });
-    }
-
-    // Show panel A content
-    fn show_panel_a(&mut self, ui: &mut Ui) {
-        ui.vertical_centered(|ui| {
-            ui.heading("Panel A");
-            ui.add_space(20.0);
-            ui.label("This is Panel A content");
-        });
-    }
-
-    // Show panel B content
-    fn show_panel_b(&mut self, ui: &mut Ui) {
-        ui.vertical_centered(|ui| {
-            ui.heading("Panel B");
-            ui.add_space(20.0);
-            ui.label("This is Panel B content");
-        });
-    }
-
     pub fn render(&mut self, ctx: &Context) -> Option<Screen> {
         let mut next_screen = None;
 
@@ -455,9 +430,9 @@ impl MainScreen {
         // Main content area
         CentralPanel::default().show(ctx, |ui| {
             match self.selected_menu {
-                MenuItem::Inscription => self.show_inscription_panel(ui),
-                MenuItem::PanelA => self.show_panel_a(ui),
-                MenuItem::PanelB => self.show_panel_b(ui),
+                MenuItem::Inscription => self.inscription_panel.show(ui),
+                MenuItem::PanelA => self.panel_a.show(ui),
+                MenuItem::PanelB => self.panel_b.show(ui),
             }
         });
 
