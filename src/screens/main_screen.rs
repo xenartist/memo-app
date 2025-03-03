@@ -151,21 +151,32 @@ impl MainScreen {
         Ok((derived_key, derived_chain_code))
     }
     
+    // Format wallet address with mask
+    fn format_masked_address(&self) -> String {
+        if self.wallet_address.len() < 8 {
+            return self.wallet_address.clone();
+        }
+        
+        let prefix = &self.wallet_address[..4];
+        let suffix = &self.wallet_address[self.wallet_address.len() - 4..];
+        format!("{}****{}", prefix, suffix)
+    }
+    
     // Show wallet address in the top panel
     fn show_wallet_address(&self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.label(RichText::new("Wallet Address: ").size(20.0));
             
-            // Display address with different color
+            // Display masked address with different color
             ui.label(
-                RichText::new(&self.wallet_address)
+                RichText::new(&self.format_masked_address())
                     .color(Color32::LIGHT_BLUE)
                     .monospace()
                     .size(20.0)
             );
             
-            // Add copy button
-            if ui.button(RichText::new("📋 Copy").size(20.0)).clicked() {
+            // Add copy button (copies the full address)
+            if ui.button(RichText::new("📋 Copy Full Address").size(20.0)).clicked() {
                 ui.ctx().copy_text(self.wallet_address.clone());
             }
         });
