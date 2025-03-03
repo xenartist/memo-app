@@ -2,7 +2,7 @@ use egui::{CentralPanel, Context, FontId, TextStyle, Frame, Vec2, TextEdit, Grid
 use super::Screen;
 use std::fs::{self, File};
 use std::io::Write;
-use crate::encrypt;
+use crate::core::encrypt;
 use bip39::Mnemonic;
 
 pub struct ImportWalletScreen {

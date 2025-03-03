@@ -1,7 +1,7 @@
 use egui::{CentralPanel, Context, Vec2, FontId, TextStyle, Frame, TextEdit, RichText};
 use super::Screen;
 use std::fs;
-use crate::encrypt;
+use crate::core::encrypt;
 
 pub struct LoginScreen {
     // Password for unlocking wallet

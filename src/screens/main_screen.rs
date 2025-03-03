@@ -4,6 +4,8 @@ use hmac::{Hmac, Mac};
 use sha2::Sha512;
 use ed25519_dalek::SigningKey;
 use bs58;
+use std::time::{Duration, Instant};
+use crate::core::rpc::RpcClient;
 
 type HmacSha512 = Hmac<Sha512>;
 
@@ -12,6 +14,11 @@ pub struct MainScreen {
     wallet_address: String,
     // Seed phrase (stored temporarily)
     seed_phrase: String,
+    // Balance in SOL
+    balance: f64,
+    // Last balance update time
+    last_balance_update: Option<Instant>,
+    rpc_client: RpcClient,
 }
 
 impl MainScreen {
@@ -19,6 +26,9 @@ impl MainScreen {
         let mut screen = Self {
             wallet_address: String::new(),
             seed_phrase: seed_phrase.to_string(),
+            balance: 0.0,
+            last_balance_update: None,
+            rpc_client: RpcClient::default_testnet(),
         };
         
         // Generate wallet address from seed
@@ -162,8 +172,40 @@ impl MainScreen {
         format!("{}****{}", prefix, suffix)
     }
     
+    // Query balance from RPC
+    fn query_balance(&self) -> Result<f64, String> {
+        self.rpc_client.get_balance(&self.wallet_address)
+    }
+
+    // Update balance if needed
+    fn update_balance(&mut self) {
+        let should_update = match self.last_balance_update {
+            None => true,
+            Some(last_update) => last_update.elapsed() > Duration::from_secs(30), // Update every 30 seconds
+        };
+
+        if should_update {
+            match self.query_balance() {
+                Ok(balance) => {
+                    self.balance = balance;
+                    self.last_balance_update = Some(Instant::now());
+                }
+                Err(_) => {
+                    // If there's an error, we'll keep the old balance
+                    if self.last_balance_update.is_none() {
+                        self.balance = 0.0;
+                        self.last_balance_update = Some(Instant::now());
+                    }
+                }
+            }
+        }
+    }
+    
     // Show wallet address in the top panel
-    fn show_wallet_address(&self, ui: &mut Ui) {
+    fn show_wallet_address(&mut self, ui: &mut Ui) {
+        // Update balance before displaying
+        self.update_balance();
+
         ui.horizontal(|ui| {
             ui.label(RichText::new("Wallet Address: ").size(20.0));
             
@@ -179,6 +221,16 @@ impl MainScreen {
             if ui.button(RichText::new("📋 Copy").size(20.0)).clicked() {
                 ui.ctx().copy_text(self.wallet_address.clone());
             }
+
+            ui.add_space(10.0);
+            
+            // Display balance
+            ui.label(
+                RichText::new(format!("Balance: {:.9} SOL", self.balance))
+                    .color(Color32::LIGHT_GREEN)
+                    .monospace()
+                    .size(20.0)
+            );
         });
     }
 

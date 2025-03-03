@@ -4,7 +4,7 @@ use bip39::Mnemonic;
 use rand::{rngs::OsRng, RngCore};
 use std::fs::{self, File};
 use std::io::Write;
-use crate::encrypt;
+use crate::core::encrypt;
 
 pub struct NewWalletScreen {
     // Store recovery seed words
