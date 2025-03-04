@@ -21,8 +21,8 @@ struct MemoApp {
     import_wallet_screen: ImportWalletScreen,
     main_screen: Option<MainScreen>,
     
-    // Seed phrase for wallet
-    seed_phrase: Option<String>,
+    // Wallet address
+    wallet_address: Option<String>,
 }
 
 impl Default for MemoApp {
@@ -33,7 +33,7 @@ impl Default for MemoApp {
             new_wallet_screen: NewWalletScreen::new(),
             import_wallet_screen: ImportWalletScreen::new(),
             main_screen: None,
-            seed_phrase: None,
+            wallet_address: None,
         }
     }
 }
@@ -44,10 +44,21 @@ impl MemoApp {
         Self::default()
     }
     
-    // Set the seed phrase and create main screen
+    // Set the wallet address and create main screen
+    fn set_wallet_address(&mut self, address: String) {
+        self.wallet_address = Some(address.clone());
+        self.main_screen = Some(MainScreen::new_with_address(&address));
+    }
+    
+    // Set the seed phrase and create main screen (for new or imported wallets)
     fn set_seed_phrase(&mut self, seed_phrase: String) {
-        self.seed_phrase = Some(seed_phrase.clone());
+        // Create a main screen with the seed phrase
         self.main_screen = Some(MainScreen::new(&seed_phrase));
+        
+        // Get the wallet address from the main screen
+        if let Some(main_screen) = &self.main_screen {
+            self.wallet_address = Some(main_screen.get_wallet_address());
+        }
     }
 }
 
@@ -60,16 +71,13 @@ impl App for MemoApp {
                 
                 // Check if wallet was unlocked successfully
                 if let Some(Screen::MainScreen) = result {
-                    // Try to get seed phrase from login screen
-                    match self.login_screen.get_seed_phrase() {
-                        Ok(seed_phrase) => {
-                            // Set seed phrase and create main screen
-                            self.set_seed_phrase(seed_phrase);
-                        },
-                        Err(_) => {
-                            // If there was an error, stay on login screen
-                            return;
-                        }
+                    // Try to get wallet address from login screen
+                    if let Some(address) = self.login_screen.get_wallet_address() {
+                        // Set wallet address and create main screen
+                        self.set_wallet_address(address);
+                    } else {
+                        // If there was an error, stay on login screen
+                        return;
                     }
                 }
                 

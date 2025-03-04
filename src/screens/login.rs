@@ -9,6 +9,8 @@ pub struct LoginScreen {
     status_message: String,
     // Flag to indicate if wallet file exists
     wallet_exists: bool,
+    // Wallet address (after successful login)
+    wallet_address: Option<String>,
 }
 
 impl Default for LoginScreen {
@@ -20,6 +22,7 @@ impl Default for LoginScreen {
             password: String::new(),
             status_message: String::new(),
             wallet_exists,
+            wallet_address: None,
         }
     }
 }
@@ -29,13 +32,15 @@ impl LoginScreen {
         Self::default()
     }
     
-    // Decrypt wallet file and get seed phrase
-    pub fn decrypt_wallet(&self) -> Result<String, String> {
+    // Decrypt wallet file and get wallet address
+    pub fn decrypt_wallet(&mut self) -> Result<(), String> {
         // Use the Wallet module to load the wallet
         let wallet = Wallet::load_wallet(&self.password)?;
         
-        // Return the seed phrase
-        Ok(wallet.get_seed_phrase().to_string())
+        // Store the wallet address
+        self.wallet_address = Some(wallet.address.clone());
+        
+        Ok(())
     }
 
     pub fn render(&mut self, ctx: &Context) -> Option<Screen> {
@@ -106,7 +111,7 @@ impl LoginScreen {
                                     // Try to decrypt wallet
                                     match self.decrypt_wallet() {
                                         Ok(_) => {
-                                            // Return seed phrase with MainScreen
+                                            // Return with MainScreen
                                             return next_screen = Some(Screen::MainScreen);
                                         }
                                         Err(e) => {
@@ -146,8 +151,8 @@ impl LoginScreen {
         next_screen
     }
     
-    // Get the decrypted seed phrase
-    pub fn get_seed_phrase(&self) -> Result<String, String> {
-        self.decrypt_wallet()
+    // Get the wallet address
+    pub fn get_wallet_address(&self) -> Option<String> {
+        self.wallet_address.clone()
     }
 } 
