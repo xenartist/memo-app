@@ -2,7 +2,7 @@
 name = "memo"
 version = "0.1.0"
 edition = "2021"
-authors = ["Your Name"]
+authors = ["artist"]
 description = "A memo application built with egui"
 
 [dependencies]
@@ -21,16 +21,16 @@ log = "0.4.20"  # for logging
 hmac = "0.12.1"  # for HMAC operations
 sha2 = "0.10.8"  # for SHA256/512 hashing
 bs58 = "0.5.1"  # Base58 codec implementation
-ed25519-dalek = "2.1.1"
-reqwest = { version = "0.11", features = ["json", "blocking"] }  # for HTTP requests
-tokio = { version = "1.0", features = ["full"] }  # async runtime
-image = "0.24.6"
+ed25519-dalek = "2.1.1" # Fast and efficient ed25519 EdDSA handling 
+reqwest = { version = "0.12.12", features = ["json", "blocking"] }  # for HTTP requests
+tokio = "1.43.0"  # async runtime
+image = "0.25.5"
 rfd = "0.15.2"
 
 # Solana dependencies
 solana-sdk = "2.2.1" 
 solana-client = "2.2.1"
-spl-token = { version = "4.0.0", features = ["no-entrypoint"] }
-spl-associated-token-account = { version = "6.0.0", features = ["no-entrypoint"] }
-spl-memo = { version = "4.0.0", features = ["no-entrypoint"] }
+spl-token = "7.0.0"
+spl-associated-token-account = "6.0.0"
+spl-memo = "6.0.0"
 
