@@ -1,10 +1,6 @@
 use egui::{CentralPanel, Context, FontId, TextStyle, Grid, RadioButton, Ui, ScrollArea, Frame, Vec2, TextEdit};
 use super::Screen;
-use bip39::Mnemonic;
-use rand::{rngs::OsRng, RngCore};
-use std::fs::{self, File};
-use std::io::Write;
-use crate::core::encrypt;
+use crate::core::wallet::Wallet;
 
 pub struct NewWalletScreen {
     // Store recovery seed words
@@ -41,20 +37,18 @@ impl NewWalletScreen {
 
     // Generate BIP39 mnemonic seed words
     fn generate_seed_words(&mut self) {
-        // Determine entropy size based on word count
-        // 16 bytes (128 bits) for 12 words, 32 bytes (256 bits) for 24 words
-        let entropy_size = if self.use_24_words { 32 } else { 16 };
+        // Determine word count
+        let word_count = if self.use_24_words { 24 } else { 12 };
         
-        // Generate random entropy
-        let mut entropy = vec![0u8; entropy_size];
-        OsRng.fill_bytes(&mut entropy);
-        
-        // Create mnemonic from entropy
-        let mnemonic = Mnemonic::from_entropy(&entropy).expect("Failed to generate mnemonic");
-        
-        // Get the phrase as a string and split into words
-        let phrase = mnemonic.to_string();
-        self.seed_words = phrase.split_whitespace().map(String::from).collect();
+        // Generate seed words using the Wallet module
+        match Wallet::generate_seed_words(word_count) {
+            Ok(words) => self.seed_words = words,
+            Err(e) => {
+                self.status_message = format!("Error generating seed words: {}", e);
+                // Ensure we have the right number of empty words
+                self.seed_words = vec![String::new(); word_count];
+            }
+        }
     }
 
     // Display recovery seed words in a grid
@@ -88,38 +82,6 @@ impl NewWalletScreen {
                         });
                 });
             });
-    }
-
-    // Save wallet to file
-    fn save_wallet(&mut self, password: &str) -> Result<(), String> {
-        // Join seed words into a single string
-        let seed_phrase = self.seed_words.join(" ");
-        
-        // Encrypt the seed phrase
-        let encrypted_data = encrypt::encrypt(&seed_phrase, password)
-            .map_err(|e| format!("Encryption error: {}", e))?;
-        
-        // Get the executable directory
-        let exe_path = std::env::current_exe()
-            .map_err(|e| format!("Failed to get executable path: {}", e))?;
-        let exe_dir = exe_path.parent()
-            .ok_or_else(|| "Failed to get executable directory".to_string())?;
-        
-        // Create wallets directory if it doesn't exist
-        let wallets_dir = exe_dir.join("wallets");
-        fs::create_dir_all(&wallets_dir)
-            .map_err(|e| format!("Failed to create wallets directory: {}", e))?;
-        
-        // Create wallet file
-        let wallet_path = wallets_dir.join("memo-encrypted.wallet");
-        let mut file = File::create(wallet_path)
-            .map_err(|e| format!("Failed to create wallet file: {}", e))?;
-        
-        // Write encrypted data to file
-        file.write_all(encrypted_data.as_bytes())
-            .map_err(|e| format!("Failed to write to wallet file: {}", e))?;
-        
-        Ok(())
     }
 
     // Get the seed phrase
@@ -279,11 +241,11 @@ impl NewWalletScreen {
                                     } else if self.password != self.confirm_password {
                                         self.status_message = "Error: Passwords do not match".to_string();
                                     } else {
-                                        // Clone password to avoid borrowing issues
-                                        let password = self.password.clone();
+                                        // Get seed phrase
+                                        let seed_phrase = self.get_seed_phrase();
                                         
-                                        // Save wallet
-                                        match self.save_wallet(&password) {
+                                        // Save wallet using the Wallet module
+                                        match Wallet::save_wallet(&seed_phrase, &self.password) {
                                             Ok(_) => {
                                                 self.status_message = "Wallet saved successfully!".to_string();
                                                 // Navigate to main screen after successful wallet creation

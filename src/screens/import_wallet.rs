@@ -1,9 +1,6 @@
 use egui::{CentralPanel, Context, FontId, TextStyle, Frame, Vec2, TextEdit, Grid, RadioButton, ScrollArea};
 use super::Screen;
-use std::fs::{self, File};
-use std::io::Write;
-use crate::core::encrypt;
-use bip39::Mnemonic;
+use crate::core::wallet::Wallet;
 
 pub struct ImportWalletScreen {
     // Whether to use 24 words (otherwise use 12)
@@ -55,52 +52,6 @@ impl ImportWalletScreen {
             // Remove excess inputs if we need fewer
             self.seed_words.truncate(target_count);
         }
-    }
-    
-    // Validate the mnemonic phrase
-    fn validate_mnemonic(&self) -> Result<String, String> {
-        // Join the seed words
-        let phrase = self.seed_words.join(" ");
-        
-        // Check if any words are empty
-        if self.seed_words.iter().any(|word| word.trim().is_empty()) {
-            return Err("All seed words must be filled".to_string());
-        }
-        
-        // Validate the mnemonic
-        match Mnemonic::parse_normalized(&phrase) {
-            Ok(_) => Ok(phrase),
-            Err(e) => Err(format!("Invalid mnemonic: {}", e)),
-        }
-    }
-    
-    // Save wallet to file
-    fn save_wallet(&self, seed_phrase: &str, password: &str) -> Result<(), String> {
-        // Encrypt the seed phrase
-        let encrypted_data = encrypt::encrypt(seed_phrase, password)
-            .map_err(|e| format!("Encryption error: {}", e))?;
-        
-        // Get the executable directory
-        let exe_path = std::env::current_exe()
-            .map_err(|e| format!("Failed to get executable path: {}", e))?;
-        let exe_dir = exe_path.parent()
-            .ok_or_else(|| "Failed to get executable directory".to_string())?;
-        
-        // Create wallets directory if it doesn't exist
-        let wallets_dir = exe_dir.join("wallets");
-        fs::create_dir_all(&wallets_dir)
-            .map_err(|e| format!("Failed to create wallets directory: {}", e))?;
-        
-        // Create wallet file
-        let wallet_path = wallets_dir.join("memo-encrypted.wallet");
-        let mut file = File::create(wallet_path)
-            .map_err(|e| format!("Failed to create wallet file: {}", e))?;
-        
-        // Write encrypted data to file
-        file.write_all(encrypted_data.as_bytes())
-            .map_err(|e| format!("Failed to write to wallet file: {}", e))?;
-        
-        Ok(())
     }
     
     // Get the seed phrase
@@ -273,7 +224,7 @@ impl ImportWalletScreen {
                                 
                                 if ui.add_sized(button_size, egui::Button::new("Import Encrypted Wallet")).clicked() {
                                     // Validate mnemonic
-                                    match self.validate_mnemonic() {
+                                    match Wallet::validate_mnemonic(&self.seed_words) {
                                         Ok(seed_phrase) => {
                                             // Validate passwords
                                             if self.password.is_empty() {
@@ -282,7 +233,7 @@ impl ImportWalletScreen {
                                                 self.status_message = "Error: Passwords do not match".to_string();
                                             } else {
                                                 // Save wallet
-                                                match self.save_wallet(&seed_phrase, &self.password) {
+                                                match Wallet::save_wallet(&seed_phrase, &self.password) {
                                                     Ok(_) => {
                                                         self.status_message = "Wallet imported successfully!".to_string();
                                                         // Navigate to main screen after successful import

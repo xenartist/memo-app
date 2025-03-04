@@ -1,7 +1,6 @@
 use egui::{CentralPanel, Context, Vec2, FontId, TextStyle, Frame, TextEdit, RichText};
 use super::Screen;
-use std::fs;
-use crate::core::encrypt;
+use crate::core::wallet::Wallet;
 
 pub struct LoginScreen {
     // Password for unlocking wallet
@@ -15,7 +14,7 @@ pub struct LoginScreen {
 impl Default for LoginScreen {
     fn default() -> Self {
         // Check if wallet file exists
-        let wallet_exists = Self::check_wallet_file_exists();
+        let wallet_exists = Wallet::wallet_file_exists();
         
         Self {
             password: String::new(),
@@ -30,38 +29,13 @@ impl LoginScreen {
         Self::default()
     }
     
-    // Check if wallet file exists
-    fn check_wallet_file_exists() -> bool {
-        // Get the executable directory
-        if let Ok(exe_path) = std::env::current_exe() {
-            if let Some(exe_dir) = exe_path.parent() {
-                let wallet_path = exe_dir.join("wallets").join("memo-encrypted.wallet");
-                return wallet_path.exists();
-            }
-        }
-        false
-    }
-    
     // Decrypt wallet file and get seed phrase
     pub fn decrypt_wallet(&self) -> Result<String, String> {
-        // Get the executable directory
-        let exe_path = std::env::current_exe()
-            .map_err(|e| format!("Failed to get executable path: {}", e))?;
-        let exe_dir = exe_path.parent()
-            .ok_or_else(|| "Failed to get executable directory".to_string())?;
+        // Use the Wallet module to load the wallet
+        let wallet = Wallet::load_wallet(&self.password)?;
         
-        // Get wallet file path
-        let wallet_path = exe_dir.join("wallets").join("memo-encrypted.wallet");
-        
-        // Read encrypted data from file
-        let encrypted_data = fs::read_to_string(wallet_path)
-            .map_err(|e| format!("Failed to read wallet file: {}", e))?;
-        
-        // Decrypt data
-        let seed_phrase = encrypt::decrypt(&encrypted_data, &self.password)
-            .map_err(|e| format!("Decryption error: {}", e))?;
-        
-        Ok(seed_phrase)
+        // Return the seed phrase
+        Ok(wallet.get_seed_phrase().to_string())
     }
 
     pub fn render(&mut self, ctx: &Context) -> Option<Screen> {
