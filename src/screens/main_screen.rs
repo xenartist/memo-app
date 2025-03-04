@@ -1,20 +1,15 @@
 use egui::{CentralPanel, Context, FontId, TextStyle, Vec2, TopBottomPanel, Ui, RichText, Color32, Window, Rect, Pos2, Stroke, Rounding, SidePanel};
 use super::Screen;
-use hmac::{Hmac, Mac};
-use sha2::Sha512;
-use ed25519_dalek::SigningKey;
-use bs58;
 use std::time::{Duration, Instant};
 use crate::core::rpc::RpcClient;
 use crate::core::img2hex::{self, image_to_hex};
-use image::DynamicImage;
+use crate::core::wallet::Wallet;
+use solana_sdk::signature::Keypair;
 use super::panels::{
     inscription::InscriptionPanel,
     panel_a::PanelA,
     panel_b::PanelB,
 };
-
-type HmacSha512 = Hmac<Sha512>;
 
 // Menu items
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -35,10 +30,8 @@ impl MenuItem {
 }
 
 pub struct MainScreen {
-    // Wallet public key (Solana address)
-    wallet_address: String,
-    // Seed phrase (stored temporarily)
-    seed_phrase: String,
+    // Wallet instance
+    wallet: Wallet,
     // Balance in SOL
     balance: f64,
     // Last balance update time
@@ -60,9 +53,17 @@ pub struct MainScreen {
 
 impl MainScreen {
     pub fn new(seed_phrase: &str) -> Self {
-        let mut screen = Self {
-            wallet_address: String::new(),
-            seed_phrase: seed_phrase.to_string(),
+        // Create wallet from seed phrase
+        let wallet = match Wallet::new(seed_phrase) {
+            Ok(wallet) => wallet,
+            Err(_) => {
+                // Create a wallet with empty address in case of error
+                Wallet::new_with_address("Error loading wallet")
+            }
+        };
+        
+        Self {
+            wallet,
             balance: 0.0,
             last_balance_update: None,
             rpc_client: RpcClient::default_testnet(),
@@ -73,152 +74,12 @@ impl MainScreen {
             inscription_panel: InscriptionPanel::new(),
             panel_a: PanelA::new(),
             panel_b: PanelB::new(),
-        };
-        
-        // Generate wallet address from seed
-        screen.generate_wallet_address();
-        
-        screen
-    }
-    
-    // Generate Solana wallet address from seed phrase
-    fn generate_wallet_address(&mut self) {
-        if self.seed_phrase.is_empty() {
-            self.wallet_address = "No wallet loaded".to_string();
-            return;
         }
-        
-        // Derive the private key using BIP44 for Solana (m/44'/501'/0'/0')
-        let private_key = match self.derive_private_key() {
-            Ok(key) => key,
-            Err(e) => {
-                self.wallet_address = format!("Error generating address: {}", e);
-                return;
-            }
-        };
-        
-        // Convert private key to public key
-        let signing_key = SigningKey::from_bytes(&private_key);
-        let public_key = signing_key.verifying_key();
-        
-        // Convert public key to Solana address (base58 encoding of public key bytes)
-        let address = bs58::encode(public_key.as_bytes()).into_string();
-        self.wallet_address = address;
-    }
-    
-    // Derive private key using BIP44 for Solana (m/44'/501'/0'/0')
-    fn derive_private_key(&self) -> Result<[u8; 32], String> {
-        // Convert seed phrase to seed bytes
-        let seed = self.seed_to_bytes()?;
-        
-        // BIP44 path for Solana: m/44'/501'/0'/0'
-        let path = "m/44'/501'/0'/0'";
-        
-        // Derive master key
-        let (master_key, chain_code) = self.derive_master_key(&seed)?;
-        
-        // Derive child keys according to path
-        let mut key = master_key;
-        let mut code = chain_code;
-        
-        // Parse path and derive each level
-        let path_components: Vec<&str> = path.split('/').collect();
-        for &component in path_components.iter().skip(1) { // Skip 'm'
-            let hardened = component.ends_with('\'');
-            let index_str = if hardened {
-                &component[0..component.len()-1]
-            } else {
-                component
-            };
-            
-            let mut index = index_str.parse::<u32>().map_err(|_| "Invalid path component".to_string())?;
-            if hardened {
-                index += 0x80000000; // Hardened key
-            }
-            
-            // Derive child key
-            let (child_key, child_code) = self.derive_child_key(&key, &code, index)?;
-            key = child_key;
-            code = child_code;
-        }
-        
-        // Create 32-byte array for the key
-        let mut result = [0u8; 32];
-        result.copy_from_slice(&key[0..32]);
-        
-        Ok(result)
-    }
-    
-    // Convert seed phrase to seed bytes
-    fn seed_to_bytes(&self) -> Result<Vec<u8>, String> {
-        // Use BIP39 to convert mnemonic to seed
-        let mnemonic = bip39::Mnemonic::parse_normalized(&self.seed_phrase)
-            .map_err(|e| format!("Invalid mnemonic: {}", e))?;
-        
-        // Generate seed with empty passphrase
-        let seed = mnemonic.to_seed("");
-        
-        Ok(seed.to_vec())
-    }
-    
-    // Derive master key from seed
-    fn derive_master_key(&self, seed: &[u8]) -> Result<(Vec<u8>, Vec<u8>), String> {
-        // HMAC-SHA512 with key "ed25519 seed"
-        let mut mac = HmacSha512::new_from_slice(b"ed25519 seed")
-            .map_err(|_| "Failed to create HMAC".to_string())?;
-        
-        mac.update(seed);
-        let result = mac.finalize().into_bytes();
-        
-        // Split result into key and chain code
-        let key = result[0..32].to_vec();
-        let chain_code = result[32..64].to_vec();
-        
-        Ok((key, chain_code))
-    }
-    
-    // Derive child key
-    fn derive_child_key(&self, key: &[u8], chain_code: &[u8], index: u32) -> Result<(Vec<u8>, Vec<u8>), String> {
-        let mut mac = HmacSha512::new_from_slice(chain_code)
-            .map_err(|_| "Failed to create HMAC".to_string())?;
-        
-        // For hardened keys, use 0x00 || key || index
-        // For normal keys, use public_key || index
-        if index >= 0x80000000 {
-            mac.update(&[0x00]);
-            mac.update(key);
-        } else {
-            // For normal derivation, we would use the public key, but Solana uses hardened derivation
-            // This branch shouldn't be reached for Solana wallets
-            return Err("Non-hardened derivation not supported for Solana".to_string());
-        }
-        
-        // Append index in big-endian
-        mac.update(&[(index >> 24) as u8, (index >> 16) as u8, (index >> 8) as u8, index as u8]);
-        
-        let result = mac.finalize().into_bytes();
-        
-        // Split result into key and chain code
-        let derived_key = result[0..32].to_vec();
-        let derived_chain_code = result[32..64].to_vec();
-        
-        Ok((derived_key, derived_chain_code))
-    }
-    
-    // Format wallet address with mask
-    fn format_masked_address(&self) -> String {
-        if self.wallet_address.len() < 8 {
-            return self.wallet_address.clone();
-        }
-        
-        let prefix = &self.wallet_address[..4];
-        let suffix = &self.wallet_address[self.wallet_address.len() - 4..];
-        format!("{}****{}", prefix, suffix)
     }
     
     // Query balance from RPC
     fn query_balance(&self) -> Result<f64, String> {
-        self.rpc_client.get_balance(&self.wallet_address)
+        self.rpc_client.get_balance(&self.wallet.address)
     }
 
     // Update balance if needed
@@ -255,7 +116,7 @@ impl MainScreen {
             
             // Display masked address with different color
             ui.label(
-                RichText::new(&self.format_masked_address())
+                RichText::new(&self.wallet.format_masked_address())
                     .color(Color32::LIGHT_BLUE)
                     .monospace()
                     .size(20.0)
@@ -263,7 +124,7 @@ impl MainScreen {
             
             // Add copy button (copies the full address)
             if ui.button(RichText::new("📋 Copy").size(20.0)).clicked() {
-                ui.ctx().copy_text(self.wallet_address.clone());
+                ui.ctx().copy_text(self.wallet.address.clone());
             }
 
             ui.add_space(10.0);
