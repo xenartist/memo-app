@@ -1,6 +1,3 @@
-use hmac::{Hmac, Mac};
-use sha2::Sha512;
-use ed25519_dalek::SigningKey;
 use bs58;
 use bip39::{self, Mnemonic};
 use rand::{rngs::OsRng, RngCore};
@@ -8,33 +5,31 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
 use crate::core::encrypt;
+use solana_sdk::signature::{Keypair, Signer};
+use solana_sdk::signer::keypair::keypair_from_seed;
 
-type HmacSha512 = Hmac<Sha512>;
-
+#[derive(Clone)]
 pub struct Wallet {
     // Wallet public key (Solana address)
     pub address: String,
-    // We no longer store the seed phrase in memory for security
 }
 
 impl Wallet {
     // Create a new wallet from seed phrase
-    // This method is now only used during initial wallet creation or import
-    // It doesn't store the seed phrase in memory after generating the address
     pub fn new(seed_phrase: &str) -> Result<Self, String> {
         if seed_phrase.is_empty() {
             return Err("Empty seed phrase".to_string());
         }
         
-        // Derive the private key using BIP44 for Solana (m/44'/501'/0'/0')
-        let private_key = Self::derive_private_key_from_seed(seed_phrase)?;
+        // Convert seed phrase to seed bytes
+        let seed = Self::seed_to_bytes(seed_phrase)?;
         
-        // Convert private key to public key
-        let signing_key = SigningKey::from_bytes(&private_key);
-        let public_key = signing_key.verifying_key();
+        // Create keypair from seed
+        let keypair = keypair_from_seed(&seed[..32])
+            .map_err(|e| format!("Failed to create keypair: {}", e))?;
         
-        // Convert public key to Solana address (base58 encoding of public key bytes)
-        let address = bs58::encode(public_key.as_bytes()).into_string();
+        // Get public key as Solana address
+        let address = bs58::encode(keypair.pubkey().to_bytes()).into_string();
         
         Ok(Self {
             address,
@@ -46,50 +41,6 @@ impl Wallet {
         Self {
             address: address.to_string(),
         }
-    }
-    
-    // Derive private key using BIP44 for Solana (m/44'/501'/0'/0')
-    // This is now a static method that takes a seed phrase as input
-    pub fn derive_private_key_from_seed(seed_phrase: &str) -> Result<[u8; 32], String> {
-        // Convert seed phrase to seed bytes
-        let seed = Self::seed_to_bytes(seed_phrase)?;
-        
-        // BIP44 path for Solana: m/44'/501'/0'/0'
-        let path = "m/44'/501'/0'/0'";
-        
-        // Derive master key
-        let (master_key, chain_code) = Self::derive_master_key(&seed)?;
-        
-        // Derive child keys according to path
-        let mut key = master_key;
-        let mut code = chain_code;
-        
-        // Parse path and derive each level
-        let path_components: Vec<&str> = path.split('/').collect();
-        for &component in path_components.iter().skip(1) { // Skip 'm'
-            let hardened = component.ends_with('\'');
-            let index_str = if hardened {
-                &component[0..component.len()-1]
-            } else {
-                component
-            };
-            
-            let mut index = index_str.parse::<u32>().map_err(|_| "Invalid path component".to_string())?;
-            if hardened {
-                index += 0x80000000; // Hardened key
-            }
-            
-            // Derive child key
-            let (child_key, child_code) = Self::derive_child_key(&key, &code, index)?;
-            key = child_key;
-            code = child_code;
-        }
-        
-        // Create 32-byte array for the key
-        let mut result = [0u8; 32];
-        result.copy_from_slice(&key[0..32]);
-        
-        Ok(result)
     }
     
     // Convert seed phrase to seed bytes
@@ -104,50 +55,6 @@ impl Wallet {
         Ok(seed.to_vec())
     }
     
-    // Derive master key from seed
-    fn derive_master_key(seed: &[u8]) -> Result<(Vec<u8>, Vec<u8>), String> {
-        // HMAC-SHA512 with key "ed25519 seed"
-        let mut mac = HmacSha512::new_from_slice(b"ed25519 seed")
-            .map_err(|_| "Failed to create HMAC".to_string())?;
-        
-        mac.update(seed);
-        let result = mac.finalize().into_bytes();
-        
-        // Split result into key and chain code
-        let key = result[0..32].to_vec();
-        let chain_code = result[32..64].to_vec();
-        
-        Ok((key, chain_code))
-    }
-    
-    // Derive child key
-    fn derive_child_key(key: &[u8], chain_code: &[u8], index: u32) -> Result<(Vec<u8>, Vec<u8>), String> {
-        let mut mac = HmacSha512::new_from_slice(chain_code)
-            .map_err(|_| "Failed to create HMAC".to_string())?;
-        
-        // For hardened keys, use 0x00 || key || index
-        // For normal keys, use public_key || index
-        if index >= 0x80000000 {
-            mac.update(&[0x00]);
-            mac.update(key);
-        } else {
-            // For normal derivation, we would use the public key, but Solana uses hardened derivation
-            // This branch shouldn't be reached for Solana wallets
-            return Err("Non-hardened derivation not supported for Solana".to_string());
-        }
-        
-        // Append index in big-endian
-        mac.update(&[(index >> 24) as u8, (index >> 16) as u8, (index >> 8) as u8, index as u8]);
-        
-        let result = mac.finalize().into_bytes();
-        
-        // Split result into key and chain code
-        let derived_key = result[0..32].to_vec();
-        let derived_chain_code = result[32..64].to_vec();
-        
-        Ok((derived_key, derived_chain_code))
-    }
-    
     // Format wallet address with mask (e.g., "abcd****wxyz")
     pub fn format_masked_address(&self) -> String {
         if self.address.len() < 8 {
@@ -157,38 +64,6 @@ impl Wallet {
         let prefix = &self.address[..4];
         let suffix = &self.address[self.address.len() - 4..];
         format!("{}****{}", prefix, suffix)
-    }
-    
-    // Get the signing key by providing a password
-    // This method decrypts the wallet file to get the seed phrase,
-    // then derives the signing key, and immediately discards the seed phrase
-    pub fn get_signing_key_with_password(address: &str, password: &str) -> Result<SigningKey, String> {
-        // Load the encrypted wallet file
-        let wallet_path = Self::get_wallet_file_path()?;
-        
-        // Read encrypted data from file
-        let encrypted_data = fs::read_to_string(wallet_path)
-            .map_err(|e| format!("Failed to read wallet file: {}", e))?;
-        
-        // Decrypt data to get seed phrase
-        let seed_phrase = encrypt::decrypt(&encrypted_data, password)
-            .map_err(|e| format!("Decryption error: {}", e))?;
-        
-        // Derive private key from seed phrase
-        let private_key = Self::derive_private_key_from_seed(&seed_phrase)?;
-        
-        // Create signing key
-        let signing_key = SigningKey::from_bytes(&private_key);
-        
-        // Verify that the address matches
-        let public_key = signing_key.verifying_key();
-        let derived_address = bs58::encode(public_key.as_bytes()).into_string();
-        
-        if derived_address != address {
-            return Err("Address mismatch. The provided password may be incorrect.".to_string());
-        }
-        
-        Ok(signing_key)
     }
     
     // Generate new BIP39 mnemonic seed words
@@ -298,5 +173,34 @@ impl Wallet {
         
         // Create wallet from seed phrase
         Self::new(&seed_phrase)
+    }
+
+    // Get keypair using password
+    pub fn get_keypair_with_password(&self, password: &str) -> Result<Keypair, String> {
+        // Load the encrypted wallet file
+        let wallet_path = Self::get_wallet_file_path()?;
+        
+        // Read encrypted data from file
+        let encrypted_data = fs::read_to_string(wallet_path)
+            .map_err(|e| format!("Failed to read wallet file: {}", e))?;
+        
+        // Decrypt data to get seed phrase
+        let seed_phrase = encrypt::decrypt(&encrypted_data, password)
+            .map_err(|e| format!("Decryption error: {}", e))?;
+        
+        // Convert seed phrase to seed bytes
+        let seed = Self::seed_to_bytes(&seed_phrase)?;
+        
+        // Create keypair from seed
+        let keypair = keypair_from_seed(&seed[..32])
+            .map_err(|e| format!("Failed to create keypair: {}", e))?;
+        
+        // Verify that the address matches
+        let derived_address = bs58::encode(keypair.pubkey().to_bytes()).into_string();
+        if derived_address != self.address {
+            return Err("Address mismatch. The provided password may be incorrect.".to_string());
+        }
+        
+        Ok(keypair)
     }
 } 

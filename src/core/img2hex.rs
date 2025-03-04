@@ -1,4 +1,4 @@
-use image::{DynamicImage, GenericImageView, ImageBuffer, Luma};
+use image::DynamicImage;
 
 // Convert image to hex string
 pub fn image_to_hex(img: &DynamicImage) -> String {

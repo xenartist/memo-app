@@ -2,7 +2,6 @@ use std::str::FromStr;
 use solana_sdk::{
     pubkey::Pubkey,
     instruction::{Instruction, AccountMeta},
-    system_program,
     signature::{Keypair, Signer},
     commitment_config::CommitmentConfig,
     transaction::Transaction,
@@ -140,7 +139,7 @@ impl MemoClient {
         Ok(signature.to_string())
     }
 
-    // Get token account balance
+    #[allow(dead_code)]
     pub fn get_balance(&self) -> Result<f64, String> {
         let token_account = get_associated_token_address(
             &self.payer.pubkey(),
@@ -157,7 +156,7 @@ impl MemoClient {
         }
     }
 
-    // Get account info for display
+    #[allow(dead_code)]
     pub fn get_account_info(&self) -> String {
         let token_account = get_associated_token_address(
             &self.payer.pubkey(),

@@ -1,17 +1,13 @@
-use egui::{CentralPanel, Context, FontId, TextStyle, Vec2, TopBottomPanel, Ui, RichText, Color32, Window, Rect, Pos2, Stroke, CornerRadius, SidePanel};
+use egui::{CentralPanel, Context, FontId, TextStyle, TopBottomPanel, Ui, RichText, Color32, SidePanel};
 use super::Screen;
 use std::time::{Duration, Instant};
 use crate::core::rpc::RpcClient;
-use crate::core::img2hex::{self, image_to_hex};
 use crate::core::wallet::Wallet;
-use crate::core::memo::{self, MemoClient};
-use solana_sdk::signature::Keypair;
+use crate::core::memo;
 use super::password_dialog::PasswordDialog;
-use super::panels::{
-    inscription::InscriptionPanel,
-    panel_a::PanelA,
-    panel_b::PanelB,
-};
+use crate::screens::panels::inscription::InscriptionPanel;
+use crate::screens::panels::panel_a::PanelA;
+use crate::screens::panels::panel_b::PanelB;
 use std::sync::{Arc, Mutex};
 
 // Menu items
@@ -42,18 +38,14 @@ pub struct MainScreen {
     rpc_client: RpcClient,
     // Current selected menu item
     selected_menu: MenuItem,
-    // Image dialog state
-    show_image_dialog: bool,
-    // Imported image hex string
-    image_hex: Option<String>,
-    // Binary representation for display
-    image_binary: Option<String>,
     // Status message for inscription
-    inscription_status: String,
+    inscription_status: Option<String>,
     // Password dialog for secure operations
     password_dialog: PasswordDialog,
     // Pending hex data for inscription (waiting for password)
     pending_inscription_hex: Option<String>,
+    // Shared status for inscription process
+    inscription_status_arc: Option<Arc<Mutex<String>>>,
     // Panel instances
     inscription_panel: InscriptionPanel,
     panel_a: PanelA,
@@ -77,12 +69,10 @@ impl MainScreen {
             last_balance_update: None,
             rpc_client: RpcClient::default_testnet(),
             selected_menu: MenuItem::Inscription,  // Default to Inscription
-            show_image_dialog: false,
-            image_hex: None,
-            image_binary: None,
-            inscription_status: String::new(),
+            inscription_status: None,
             password_dialog: PasswordDialog::new(),
             pending_inscription_hex: None,
+            inscription_status_arc: None,
             inscription_panel: InscriptionPanel::new(),
             panel_a: PanelA::new(),
             panel_b: PanelB::new(),
@@ -100,12 +90,10 @@ impl MainScreen {
             last_balance_update: None,
             rpc_client: RpcClient::default_testnet(),
             selected_menu: MenuItem::Inscription,  // Default to Inscription
-            show_image_dialog: false,
-            image_hex: None,
-            image_binary: None,
-            inscription_status: String::new(),
+            inscription_status: None,
             password_dialog: PasswordDialog::new(),
             pending_inscription_hex: None,
+            inscription_status_arc: None,
             inscription_panel: InscriptionPanel::new(),
             panel_a: PanelA::new(),
             panel_b: PanelB::new(),
@@ -179,289 +167,6 @@ impl MainScreen {
         });
     }
 
-    // Create inscription using memo
-    async fn create_inscription(&mut self, hex_data: &str, password: &str) -> Result<String, String> {
-        // Get signing key using password
-        let signing_key = Wallet::get_signing_key_with_password(&self.wallet.address, password)?;
-        
-        // Convert SigningKey to Keypair (assuming this is needed for memo_client)
-        let keypair = Keypair::from_bytes(&signing_key.to_bytes())
-            .map_err(|e| format!("Failed to create keypair: {}", e))?;
-        
-        // Create memo client
-        let memo_client = memo::create_memo_client(keypair)?;
-        
-        // Mint with memo
-        memo_client.mint_with_memo(hex_data.to_string()).await
-    }
-
-    // Process the inscription with the provided password
-    fn process_inscription_with_password(&mut self, password: String) {
-        // Get the pending hex data
-        if let Some(hex_data) = self.pending_inscription_hex.take() {
-            // Update status
-            self.inscription_status = "Creating inscription...".to_string();
-            
-            // Clone necessary data for the async task
-            let wallet_address = self.wallet.address.clone();
-            let hex_clone = hex_data.clone();
-            let password_clone = password.clone();
-            
-            // Create a shared status that can be updated from the async task
-            let inscription_status = Arc::new(Mutex::new(String::new()));
-            let status_clone = inscription_status.clone();
-            
-            // Create a shared reference to the inscription status in MainScreen
-            let main_screen_status = Arc::new(Mutex::new(String::new()));
-            let main_status_clone = main_screen_status.clone();
-            
-            // Spawn a thread to handle the async task
-            std::thread::spawn(move || {
-                // Create a new runtime for this thread
-                let rt = tokio::runtime::Runtime::new().unwrap();
-                
-                // Execute the async task in the runtime
-                rt.block_on(async {
-                    // Get signing key using password
-                    let signing_key_result = Wallet::get_signing_key_with_password(&wallet_address, &password_clone);
-                    
-                    match signing_key_result {
-                        Ok(signing_key) => {
-                            // Convert SigningKey to Keypair
-                            let keypair_result = Keypair::from_bytes(&signing_key.to_bytes());
-                            
-                            match keypair_result {
-                                Ok(keypair) => {
-                                    // Create memo client
-                                    let memo_client_result = memo::create_memo_client(keypair);
-                                    
-                                    match memo_client_result {
-                                        Ok(memo_client) => {
-                                            // Mint with memo
-                                            match memo_client.mint_with_memo(hex_clone).await {
-                                                Ok(signature) => {
-                                                    // Update status with success message
-                                                    let mut status = status_clone.lock().unwrap();
-                                                    *status = format!("Inscription created! Signature: {}", signature);
-                                                }
-                                                Err(e) => {
-                                                    // Update status with error message
-                                                    let mut status = status_clone.lock().unwrap();
-                                                    *status = format!("Error creating inscription: {}", e);
-                                                }
-                                            }
-                                        }
-                                        Err(e) => {
-                                            // Update status with error message
-                                            let mut status = status_clone.lock().unwrap();
-                                            *status = format!("Error creating memo client: {}", e);
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    // Update status with error message
-                                    let mut status = status_clone.lock().unwrap();
-                                    *status = format!("Error creating keypair: {}", e);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            // Update status with error message
-                            let mut status = status_clone.lock().unwrap();
-                            *status = format!("Error getting signing key: {}", e);
-                        }
-                    }
-                });
-            });
-            
-            // Set up a timer to check for status updates
-            let status_clone = inscription_status.clone();
-            
-            std::thread::spawn(move || {
-                // Wait a bit to allow the async task to start
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                
-                // Check for status updates every 100ms
-                loop {
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                    
-                    let status = status_clone.lock().unwrap();
-                    if !status.is_empty() {
-                        // We have a status update, update the shared status
-                        let mut main_status = main_status_clone.lock().unwrap();
-                        *main_status = status.clone();
-                        break;
-                    }
-                }
-            });
-            
-            // Set up a timer to check for updates to the shared status
-            let main_status_clone = main_screen_status.clone();
-            let this_status = &mut self.inscription_status;
-            
-            // Create a thread to periodically check for status updates
-            std::thread::spawn(move || {
-                loop {
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                    
-                    // Check if there's a status update
-                    let status = main_status_clone.lock().unwrap();
-                    if !status.is_empty() {
-                        // We have a status update, update the UI on the next frame
-                        // We can't directly update self.inscription_status here because
-                        // we're in a different thread, so we'll use a channel or another
-                        // mechanism to communicate with the main thread
-                        break;
-                    }
-                }
-            });
-        }
-    }
-
-    // Update inscription status from shared state
-    fn update_inscription_status(&mut self, status: String) {
-        self.inscription_status = status;
-    }
-
-    // Show image import dialog
-    fn show_image_dialog(&mut self, ui: &mut Ui) {
-        Window::new("New Inscription")
-            .default_size(Vec2::new(600.0, 700.0))
-            .show(ui.ctx(), |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.heading("Import and Convert Image");
-                    ui.add_space(20.0);
-                    
-                    // Import button
-                    if ui.button("Choose Image").clicked() {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("Image", &["png", "jpg", "jpeg", "gif", "bmp"])
-                            .pick_file() 
-                        {
-                            // Load and convert image
-                            if let Ok(img) = image::open(&path) {
-                                let hex = image_to_hex(&img);
-                                self.image_binary = Some(img2hex::hex_to_binary(&hex));
-                                self.image_hex = Some(hex);
-                                self.inscription_status = String::new(); // Clear status when new image is loaded
-                            }
-                        }
-                    }
-                    
-                    ui.add_space(20.0);
-                    
-                    // Display pixel art if available
-                    if let Some(binary) = &self.image_binary {
-                        // Calculate pixel size based on available width
-                        let available_width = ui.available_width().min(500.0);
-                        let pixel_size = (available_width / 48.0).floor();
-                        let total_size = pixel_size * 48.0;
-                        
-                        // Create a frame for the pixel art
-                        let (response, painter) = ui.allocate_painter(
-                            Vec2::new(total_size, total_size),
-                            egui::Sense::hover()
-                        );
-                        
-                        let rect = response.rect;
-                        
-                        // Draw background
-                        painter.rect_filled(rect, CornerRadius::default(), Color32::WHITE);
-                        
-                        // Draw pixels
-                        for (i, bit) in binary.chars().enumerate() {
-                            if bit == '1' {
-                                let x = (i % 48) as f32 * pixel_size;
-                                let y = (i / 48) as f32 * pixel_size;
-                                
-                                painter.rect_filled(
-                                    Rect::from_min_size(
-                                        Pos2::new(rect.min.x + x, rect.min.y + y),
-                                        Vec2::new(pixel_size, pixel_size)
-                                    ),
-                                    CornerRadius::default(),
-                                    Color32::BLACK
-                                );
-                            }
-                        }
-                        
-                        // Draw grid
-                        for i in 0..=48 {
-                            let x = rect.min.x + i as f32 * pixel_size;
-                            let y = rect.min.y + i as f32 * pixel_size;
-                            
-                            painter.line_segment(
-                                [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
-                                Stroke::new(0.5, Color32::GRAY)
-                            );
-                            painter.line_segment(
-                                [Pos2::new(rect.min.x, y), Pos2::new(rect.max.x, y)],
-                                Stroke::new(0.5, Color32::GRAY)
-                            );
-                        }
-                        
-                        ui.add_space(20.0);
-                        
-                        // Display hex string
-                        if let Some(hex) = &self.image_hex {
-                            ui.label("Hex representation:");
-                            ui.add_space(5.0);
-                            ui.label(RichText::new(hex).monospace());
-                            
-                            ui.add_space(20.0);
-                            
-                            // Add the "Inscribe It!" button below the hex string
-                            let inscribe_button_size = Vec2::new(250.0, 50.0);
-                            let inscribe_button = egui::Button::new(
-                                RichText::new("Inscribe It!")
-                                    .size(24.0)
-                                    .strong()
-                                    .color(Color32::WHITE)
-                            )
-                            .fill(Color32::from_rgb(76, 175, 80)); // Green color
-                            
-                            // Clone hex for the closure
-                            let hex_clone = hex.clone();
-                            
-                            // Create a mutable reference to self for the callback
-                            // We need to do this before borrowing self.password_dialog
-                            let self_ptr = self as *mut MainScreen;
-                            
-                            if ui.add_sized(inscribe_button_size, inscribe_button).clicked() {
-                                // Store the hex data for later use
-                                self.pending_inscription_hex = Some(hex_clone);
-                                
-                                // Request password from user
-                                self.password_dialog.request_password(move |password| {
-                                    // Safety: We ensure that this pointer is valid
-                                    // This is safe because the callback is executed in the same thread
-                                    // where the UI is running, not in a separate thread
-                                    unsafe {
-                                        (*self_ptr).process_inscription_with_password(password);
-                                    }
-                                });
-                            }
-                            
-                            // Display status message if any
-                            if !self.inscription_status.is_empty() {
-                                ui.add_space(10.0);
-                                ui.colored_label(
-                                    if self.inscription_status.starts_with("Error") { 
-                                        Color32::RED 
-                                    } else if self.inscription_status.starts_with("Creating") {
-                                        Color32::YELLOW
-                                    } else { 
-                                        Color32::GREEN 
-                                    },
-                                    &self.inscription_status
-                                );
-                            }
-                        }
-                    }
-                });
-            });
-    }
-
     // Show left menu panel
     fn show_menu_panel(&mut self, ui: &mut Ui) {
         for menu_item in [MenuItem::Inscription, MenuItem::PanelA, MenuItem::PanelB].iter() {
@@ -480,6 +185,41 @@ impl MainScreen {
 
     pub fn render(&mut self, ctx: &Context) -> Option<Screen> {
         let mut next_screen = None;
+
+        // Set up the callback for the inscription panel
+        let self_ptr = self as *mut MainScreen;
+        self.inscription_panel.set_inscription_callback(move |hex_data| {
+            // Safety: This is safe because the callback is executed in the same thread
+            // where the UI is running, not in a separate thread
+            unsafe {
+                // Request password through the password dialog
+                (*self_ptr).password_dialog.request_password(move |password| {
+                    (*self_ptr).process_inscription(format!("{}:{}", password, hex_data));
+                });
+            }
+        });
+
+        // Check if we have a status update to apply
+        let mut should_clear_status = false;
+        if let Some(status_arc) = &self.inscription_status_arc {
+            if let Ok(status) = status_arc.lock() {
+                let status_str = status.clone();
+                self.inscription_panel.set_inscription_status(status_str.clone());
+                self.inscription_status = Some(status_str.clone());
+                
+                // Check if this is a final status
+                if status_str.starts_with("Success") || status_str.starts_with("Error") {
+                    should_clear_status = true;
+                }
+            }
+        }
+        
+        // Clear status if needed
+        if should_clear_status {
+            self.inscription_status = None;
+            self.inscription_status_arc = None;
+            self.pending_inscription_hex = None;
+        }
 
         // Set font styles
         let mut style = (*ctx.style()).clone();
@@ -534,6 +274,102 @@ impl MainScreen {
         // Show password dialog if needed
         self.password_dialog.show(ctx);
 
+        // Request a repaint to keep checking status
+        if self.inscription_status_arc.is_some() {
+            ctx.request_repaint();
+        }
+
         next_screen
+    }
+
+    // Process inscription with password and hex data
+    fn process_inscription(&mut self, password_and_hex: String) {
+        // Split the input string into password and hex data
+        let parts: Vec<&str> = password_and_hex.split(':').collect();
+        if parts.len() != 2 {
+            self.inscription_panel.set_inscription_status(
+                "Error: Invalid input format".to_string()
+            );
+            return;
+        }
+        
+        let password = parts[0].to_string();
+        let hex_data = parts[1].to_string();
+        
+        // Clone necessary data for the async task
+        let wallet = self.wallet.clone();
+        let hex_data_clone = hex_data.clone();
+        let password_clone = password.clone();
+        
+        // Create a shared status variable
+        let status = Arc::new(Mutex::new(String::from("Creating inscription...")));
+        let status_for_thread = Arc::clone(&status);
+        
+        // Set initial status
+        self.inscription_status = Some("Creating inscription...".to_string());
+        self.inscription_panel.set_inscription_status("Creating inscription...".to_string());
+        
+        // Store the status Arc for checking in render
+        self.pending_inscription_hex = Some(hex_data);
+        self.inscription_status_arc = Some(Arc::clone(&status));
+        
+        // Spawn a thread to execute the async task
+        std::thread::spawn(move || {
+            // Helper function to update status
+            let update_status = |msg: &str| {
+                if let Ok(mut status) = status_for_thread.lock() {
+                    *status = msg.to_string();
+                }
+            };
+            
+            // Create a tokio runtime for the async task
+            let rt = match tokio::runtime::Runtime::new() {
+                Ok(rt) => rt,
+                Err(e) => {
+                    update_status(&format!("Error: Failed to create runtime: {}", e));
+                    return;
+                }
+            };
+            
+            // Execute the async task
+            let result = rt.block_on(async {
+                // Get the keypair using the password
+                update_status("Getting keypair...");
+                let keypair = match wallet.get_keypair_with_password(&password_clone) {
+                    Ok(kp) => kp,
+                    Err(e) => {
+                        update_status(&format!("Error: Failed to get keypair: {}", e));
+                        return Err(format!("Failed to get keypair: {}", e));
+                    }
+                };
+                
+                // Create memo client
+                update_status("Creating memo client...");
+                let memo_client = match memo::create_memo_client(keypair) {
+                    Ok(client) => client,
+                    Err(e) => {
+                        update_status(&format!("Error: Failed to create memo client: {}", e));
+                        return Err(format!("Failed to create memo client: {}", e));
+                    }
+                };
+                
+                // Mint with memo
+                update_status("Minting inscription...");
+                match memo_client.mint_with_memo(hex_data_clone).await {
+                    Ok(signature) => Ok(signature),
+                    Err(e) => {
+                        update_status(&format!("Error: Failed to mint inscription: {}", e));
+                        Err(format!("Failed to mint inscription: {}", e))
+                    }
+                }
+            });
+            
+            // Update the final status
+            let status_message = match result {
+                Ok(signature) => format!("Success! Inscription created with signature: {}", signature),
+                Err(e) => format!("Error: {}", e),
+            };
+            update_status(&status_message);
+        });
     }
 } 

@@ -1,4 +1,4 @@
-use egui::{Context, Window, TextEdit, Button, RichText, Color32, Vec2};
+use egui::{Context, Window, TextEdit, RichText, Color32, Vec2};
 
 pub struct PasswordDialog {
     password: String,
@@ -35,6 +35,7 @@ impl PasswordDialog {
     }
 
     // Set error message
+    #[allow(dead_code)]
     pub fn set_error(&mut self, error: &str) {
         self.status = error.to_string();
     }
