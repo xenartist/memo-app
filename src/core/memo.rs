@@ -3,19 +3,13 @@ use solana_sdk::{
     pubkey::Pubkey,
     instruction::{Instruction, AccountMeta},
     system_program,
+    signature::{Keypair, Signer},
+    commitment_config::CommitmentConfig,
+    transaction::Transaction,
 };
-use anchor_client::{
-    solana_sdk::{
-        commitment_config::CommitmentConfig,
-        signature::{Keypair, Signer},
-    },
-    Client,
-};
-use anchor_spl::token::{spl_token, TokenAccount, Mint};
-use spl_associated_token_account::{
-    get_associated_token_address,
-    instruction::create_associated_token_account,
-};
+use solana_client::rpc_client::RpcClient;
+use sha2::{Sha256, Digest};
+use spl_associated_token_account::get_associated_token_address;
 
 // Constants
 const RPC_URL: &str = "https://rpc.testnet.x1.xyz";
@@ -24,7 +18,7 @@ const MINT_ADDRESS: &str = "EfVqRhubT8JETBdFtJsggSEnoR25MxrAoakswyir1uM4";
 
 pub struct MemoClient {
     // RPC client
-    client: Client,
+    client: RpcClient,
     // Program ID
     program_id: Pubkey,
     // Token mint address
@@ -42,10 +36,9 @@ impl MemoClient {
             .map_err(|e| format!("Invalid mint address: {}", e))?;
 
         // Create RPC client
-        let client = Client::new_with_options(
-            RPC_URL.parse().unwrap(),
-            &payer,
-            CommitmentConfig::confirmed()
+        let client = RpcClient::new_with_commitment(
+            RPC_URL.to_string(),
+            CommitmentConfig::confirmed(),
         );
 
         Ok(Self {
@@ -58,85 +51,132 @@ impl MemoClient {
 
     // Mint tokens with memo
     pub async fn mint_with_memo(&self, memo: String) -> Result<String, String> {
-        // Get program instance
-        let program = self.client.program(self.program_id)
-            .map_err(|e| format!("Failed to get program: {}", e))?;
-
-        // Find PDA for mint authority
+        // Calculate PDA for mint authority
         let (mint_authority_pda, _bump) = Pubkey::find_program_address(
             &[b"mint_authority"],
             &self.program_id,
         );
 
-        // Get user's associated token account
+        // Get user's token account
         let token_account = get_associated_token_address(
             &self.payer.pubkey(),
             &self.mint,
         );
 
-        let rpc = program.rpc();
-        let mut tx_builder = program.request();
-
         // Check if token account exists, if not create it
-        if rpc.get_account(&token_account).is_err() {
-            let create_token_account_ix = create_associated_token_account(
-                &self.payer.pubkey(),  // Payer
-                &self.payer.pubkey(),  // Wallet address
-                &self.mint,            // Mint
-                &spl_token::id(),      // Token program ID
-            );
-            tx_builder = tx_builder.instruction(create_token_account_ix);
+        let mut instructions = vec![];
+        
+        match self.client.get_account(&token_account) {
+            Ok(_) => {
+                println!("Token account already exists");
+            },
+            Err(_) => {
+                println!("Creating token account...");
+                // Create token account instruction
+                let create_token_account_ix = 
+                    spl_associated_token_account::instruction::create_associated_token_account(
+                        &self.payer.pubkey(),
+                        &self.payer.pubkey(),
+                        &self.mint,
+                        &spl_token::id(),
+                    );
+                instructions.push(create_token_account_ix);
+            }
         }
 
+        // Calculate Anchor instruction sighash
+        let mut hasher = Sha256::new();
+        hasher.update(b"global:process_transfer");
+        let result = hasher.finalize();
+        let instruction_data = result[..8].to_vec();
+
         // Create mint instruction
-        let accounts = vec![
-            AccountMeta::new(self.payer.pubkey(), true),
-            AccountMeta::new(self.mint, false),
-            AccountMeta::new(mint_authority_pda, false),
-            AccountMeta::new(token_account, false),
-            AccountMeta::new_readonly(spl_token::id(), false),
-            AccountMeta::new_readonly(system_program::id(), false),
-        ];
+        let mint_ix = Instruction::new_with_bytes(
+            self.program_id,
+            &instruction_data,
+            vec![
+                AccountMeta::new(self.payer.pubkey(), true),         // user
+                AccountMeta::new(self.mint, false),                  // mint
+                AccountMeta::new(mint_authority_pda, false),         // mint_authority (PDA)
+                AccountMeta::new(token_account, false),              // token_account
+                AccountMeta::new_readonly(spl_token::id(), false),   // token_program
+            ],
+        );
+        
+        instructions.push(mint_ix);
 
-        let data = {
-            let mut d = vec![0u8]; // Instruction discriminator
-            d.extend_from_slice(&(memo.len() as u32).to_le_bytes());
-            d.extend_from_slice(memo.as_bytes());
-            d
-        };
-
-        let mint_ix = Instruction {
-            program_id: self.program_id,
-            accounts,
-            data,
-        };
+        // Create memo instruction
+        let memo_ix = spl_memo::build_memo(
+            memo.as_bytes(),
+            &[&self.payer.pubkey()],
+        );
+        
+        instructions.push(memo_ix);
 
         // Build and send transaction
-        let signature = tx_builder
-            .instruction(mint_ix)
-            .send()
+        let recent_blockhash = self.client.get_latest_blockhash()
+            .map_err(|e| format!("Failed to get recent blockhash: {}", e))?;
+            
+        let transaction = Transaction::new_signed_with_payer(
+            &instructions,
+            Some(&self.payer.pubkey()),
+            &[&self.payer],
+            recent_blockhash,
+        );
+        
+        let signature = self.client.send_and_confirm_transaction(&transaction)
             .map_err(|e| format!("Failed to send transaction: {}", e))?;
+
+        // Print token balance
+        match self.client.get_token_account_balance(&token_account) {
+            Ok(balance) => {
+                println!("New token balance: {}", balance.ui_amount.unwrap_or(0.0));
+            }
+            Err(_) => {
+                println!("Failed to get token balance");
+            }
+        }
 
         Ok(signature.to_string())
     }
 
     // Get token account balance
-    pub async fn get_balance(&self) -> Result<u64, String> {
+    pub fn get_balance(&self) -> Result<f64, String> {
         let token_account = get_associated_token_address(
             &self.payer.pubkey(),
             &self.mint,
         );
 
-        let rpc = self.client.program(self.program_id).rpc();
-        
-        match rpc.get_account(&token_account) {
-            Ok(account) => {
-                let token_account = TokenAccount::try_deserialize(&mut &account.data[..])
-                    .map_err(|e| format!("Failed to deserialize token account: {}", e))?;
-                Ok(token_account.amount)
+        match self.client.get_token_account_balance(&token_account) {
+            Ok(balance) => {
+                Ok(balance.ui_amount.unwrap_or(0.0))
             }
-            Err(_) => Ok(0),
+            Err(e) => {
+                Err(format!("Failed to get token balance: {}", e))
+            }
         }
+    }
+
+    // Get account info for display
+    pub fn get_account_info(&self) -> String {
+        let token_account = get_associated_token_address(
+            &self.payer.pubkey(),
+            &self.mint,
+        );
+
+        let (mint_authority_pda, _) = Pubkey::find_program_address(
+            &[b"mint_authority"],
+            &self.program_id,
+        );
+
+        format!(
+            "Account Info:\nProgram ID: {}\nMint: {}\nMint Authority (PDA): {}\nWallet: {}\nToken Account: {}",
+            self.program_id,
+            self.mint,
+            mint_authority_pda,
+            self.payer.pubkey(),
+            token_account
+        )
     }
 }
 
