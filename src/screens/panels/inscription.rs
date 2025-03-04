@@ -1,5 +1,5 @@
 use egui::{Ui, Vec2, RichText, Window, Rect, Pos2, Color32, Stroke, CornerRadius};
-use crate::core::img2hex::{self, image_to_hex};
+use crate::core::img2hex::{self, image_to_hex, hex_to_binary, binary_to_hex};
 
 // Callback type for inscription creation
 pub type InscriptionCallback = Box<dyn Fn(String) + 'static>;
@@ -46,6 +46,23 @@ impl InscriptionPanel {
     pub fn set_inscription_status(&mut self, status: String) {
         self.inscription_status = status;
     }
+
+    // Toggle pixel at given position
+    fn toggle_pixel(&mut self, x: usize, y: usize) {
+        if let Some(binary) = &mut self.image_binary {
+            let index = y * 48 + x;
+            if index < binary.len() {
+                // Convert to chars for easier manipulation
+                let mut chars: Vec<char> = binary.chars().collect();
+                // Toggle the bit
+                chars[index] = if chars[index] == '1' { '0' } else { '1' };
+                // Convert back to string
+                *binary = chars.into_iter().collect();
+                // Update hex string
+                self.image_hex = Some(binary_to_hex(binary));
+            }
+        }
+    }
     
     // Show image import dialog
     fn show_image_dialog(&mut self, ui: &mut Ui) {
@@ -62,7 +79,7 @@ impl InscriptionPanel {
                             // Load and convert image
                             if let Ok(img) = image::open(&path) {
                                 let hex = image_to_hex(&img);
-                                self.image_binary = Some(img2hex::hex_to_binary(&hex));
+                                self.image_binary = Some(hex_to_binary(&hex));
                                 self.image_hex = Some(hex);
                                 self.inscription_status = String::new(); // Clear status when new image is loaded
                             }
@@ -81,7 +98,7 @@ impl InscriptionPanel {
                         // Create a frame for the pixel art
                         let (response, painter) = ui.allocate_painter(
                             Vec2::new(total_size, total_size),
-                            egui::Sense::hover()
+                            egui::Sense::click_and_drag()
                         );
                         
                         let rect = response.rect;
@@ -119,6 +136,17 @@ impl InscriptionPanel {
                                 [Pos2::new(rect.min.x, y), Pos2::new(rect.max.x, y)],
                                 Stroke::new(0.5, Color32::GRAY)
                             );
+                        }
+
+                        // Handle mouse clicks
+                        if response.clicked() || response.dragged() {
+                            if let Some(pos) = response.hover_pos() {
+                                let x = ((pos.x - rect.min.x) / pixel_size).floor() as usize;
+                                let y = ((pos.y - rect.min.y) / pixel_size).floor() as usize;
+                                if x < 48 && y < 48 {
+                                    self.toggle_pixel(x, y);
+                                }
+                            }
                         }
                         
                         ui.add_space(20.0);

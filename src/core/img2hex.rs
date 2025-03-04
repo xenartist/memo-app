@@ -25,7 +25,7 @@ pub fn image_to_hex(img: &DynamicImage) -> String {
 }
 
 // Convert binary string to hex string
-fn binary_to_hex(binary: &str) -> String {
+pub fn binary_to_hex(binary: &str) -> String {
     let mut hex = String::with_capacity(binary.len() / 4);
     let mut chars = binary.chars();
     
