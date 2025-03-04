@@ -410,14 +410,28 @@ impl MainScreen {
                             
                             ui.add_space(20.0);
                             
-                            // Create Inscription button
-                            let button_size = Vec2::new(200.0, 40.0);
-                            if ui.add_sized(button_size, egui::Button::new("Create Inscription")).clicked() {
+                            // Add the "Inscribe It!" button below the hex string
+                            let inscribe_button_size = Vec2::new(250.0, 50.0);
+                            let inscribe_button = egui::Button::new(
+                                RichText::new("Inscribe It!")
+                                    .size(24.0)
+                                    .strong()
+                                    .color(Color32::WHITE)
+                            )
+                            .fill(Color32::from_rgb(76, 175, 80)); // Green color
+                            
+                            // Clone hex for the closure
+                            let hex_clone = hex.clone();
+                            
+                            // Create a mutable reference to self for the callback
+                            // We need to do this before borrowing self.password_dialog
+                            let self_ptr = self as *mut MainScreen;
+                            
+                            if ui.add_sized(inscribe_button_size, inscribe_button).clicked() {
                                 // Store the hex data for later use
-                                self.pending_inscription_hex = Some(hex.clone());
+                                self.pending_inscription_hex = Some(hex_clone);
                                 
                                 // Request password from user
-                                let self_ptr = self as *mut MainScreen;
                                 self.password_dialog.request_password(move |password| {
                                     // Safety: We ensure that this pointer is valid
                                     // This is safe because the callback is executed in the same thread

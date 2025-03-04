@@ -1,4 +1,4 @@
-use egui::{Ui, Vec2, RichText, Window, Rect, Pos2, Color32, Stroke, Rounding, Button};
+use egui::{Ui, Vec2, RichText, Window, Rect, Pos2, Color32, Stroke, CornerRadius, Button};
 use crate::core::img2hex::{self, image_to_hex};
 
 pub struct InscriptionPanel {
@@ -75,7 +75,7 @@ impl InscriptionPanel {
                         let rect = response.rect;
                         
                         // Draw background
-                        painter.rect_filled(rect, Rounding::default(), Color32::WHITE);
+                        painter.rect_filled(rect, CornerRadius::default(), Color32::WHITE);
                         
                         // Draw pixels
                         for (i, bit) in binary.chars().enumerate() {
@@ -88,7 +88,7 @@ impl InscriptionPanel {
                                         Pos2::new(rect.min.x + x, rect.min.y + y),
                                         Vec2::new(pixel_size, pixel_size)
                                     ),
-                                    Rounding::default(),
+                                    CornerRadius::default(),
                                     Color32::BLACK
                                 );
                             }
@@ -116,6 +116,28 @@ impl InscriptionPanel {
                             ui.label("Hex representation:");
                             ui.add_space(5.0);
                             ui.label(RichText::new(hex).monospace());
+                            
+                            ui.add_space(20.0);
+                            
+                            // Add the "Inscribe It!" button below the hex string
+                            let inscribe_button_size = Vec2::new(250.0, 50.0);
+                            let inscribe_button = egui::Button::new(
+                                RichText::new("Inscribe It!")
+                                    .size(24.0)
+                                    .strong()
+                                    .color(Color32::WHITE)
+                            )
+                            .fill(Color32::from_rgb(76, 175, 80)); // Green color
+                            
+                            if ui.add_sized(inscribe_button_size, inscribe_button).clicked() {
+                                // Close the dialog
+                                self.show_image_dialog = false;
+                                
+                                // Here we would normally trigger the inscription process
+                                // But since this panel doesn't have direct access to the wallet,
+                                // we'll need to emit an event or use a callback
+                                // For now, we'll just close the dialog
+                            }
                         }
                     }
                 });
