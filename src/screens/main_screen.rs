@@ -8,6 +8,7 @@ use super::password_dialog::PasswordDialog;
 use crate::screens::panels::inscription::InscriptionPanel;
 use crate::screens::panels::panel_a::PanelA;
 use crate::screens::panels::panel_b::PanelB;
+use crate::screens::panels::settings_panel::SettingsPanel;
 use std::sync::{Arc, Mutex};
 
 // Menu items
@@ -16,6 +17,7 @@ enum MenuItem {
     Inscription,
     PanelA,
     PanelB,
+    Settings,
 }
 
 impl MenuItem {
@@ -24,6 +26,7 @@ impl MenuItem {
             MenuItem::Inscription => "Inscription",
             MenuItem::PanelA => "Panel A",
             MenuItem::PanelB => "Panel B",
+            MenuItem::Settings => "Settings",
         }
     }
 }
@@ -50,6 +53,7 @@ pub struct MainScreen {
     inscription_panel: InscriptionPanel,
     panel_a: PanelA,
     panel_b: PanelB,
+    settings_panel: SettingsPanel,
 }
 
 impl MainScreen {
@@ -76,6 +80,7 @@ impl MainScreen {
             inscription_panel: InscriptionPanel::new(),
             panel_a: PanelA::new(),
             panel_b: PanelB::new(),
+            settings_panel: SettingsPanel::new(),
         }
     }
     
@@ -97,6 +102,7 @@ impl MainScreen {
             inscription_panel: InscriptionPanel::new(),
             panel_a: PanelA::new(),
             panel_b: PanelB::new(),
+            settings_panel: SettingsPanel::new(),
         }
     }
     
@@ -169,7 +175,7 @@ impl MainScreen {
 
     // Show left menu panel
     fn show_menu_panel(&mut self, ui: &mut Ui) {
-        for menu_item in [MenuItem::Inscription, MenuItem::PanelA, MenuItem::PanelB].iter() {
+        for menu_item in [MenuItem::Inscription, MenuItem::PanelA, MenuItem::PanelB, MenuItem::Settings].iter() {
             let is_selected = &self.selected_menu == menu_item;
             let text = RichText::new(menu_item.label())
                 .size(22.0)
@@ -268,6 +274,7 @@ impl MainScreen {
                 MenuItem::Inscription => self.inscription_panel.show(ui),
                 MenuItem::PanelA => self.panel_a.show(ui),
                 MenuItem::PanelB => self.panel_b.show(ui),
+                MenuItem::Settings => self.settings_panel.show(ui),
             }
         });
 
