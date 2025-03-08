@@ -12,8 +12,8 @@ use spl_associated_token_account::get_associated_token_address;
 
 // Constants
 const RPC_URL: &str = "https://rpc.testnet.x1.xyz";
-const PROGRAM_ID: &str = "68ASgTRCbbwsfgvpkfp3LvdXbpn33QbxbV64jXVaW8Ap";
-const MINT_ADDRESS: &str = "EfVqRhubT8JETBdFtJsggSEnoR25MxrAoakswyir1uM4";
+const PROGRAM_ID: &str = "TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw";
+const MINT_ADDRESS: &str = "CrfhYtP7XtqFyHTWMyXp25CCzhjhzojngrPCZJ7RarUz";
 
 pub struct MemoClient {
     // RPC client
