@@ -5,6 +5,7 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     commitment_config::CommitmentConfig,
     transaction::Transaction,
+    compute_budget::ComputeBudgetInstruction,
 };
 use solana_client::rpc_client::RpcClient;
 use sha2::{Sha256, Digest};
@@ -48,6 +49,21 @@ impl MemoClient {
         })
     }
 
+    // Determine required compute units based on memo length
+    fn get_required_compute_units(&self, memo_length: usize) -> u32 {
+        // Based on the ranges in mint-test.rs
+        match memo_length {
+            0..=100 => 120_000,
+            101..=200 => 160_000,
+            201..=300 => 200_000,
+            301..=400 => 250_000,
+            401..=500 => 300_000,
+            501..=600 => 350_000,
+            601..=700 => 400_000,
+            _ => 450_000, // Default for larger memos
+        }
+    }
+
     // Mint tokens with memo
     pub async fn mint_with_memo(&self, memo: String) -> Result<String, String> {
         // Calculate PDA for mint authority
@@ -83,6 +99,21 @@ impl MemoClient {
             }
         }
 
+        // Calculate required compute units based on memo length
+        let compute_units = self.get_required_compute_units(memo.len());
+        println!("Setting compute units to {} for memo length {}", compute_units, memo.len());
+        
+        // Create compute budget instruction to request specific CU amount
+        let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(compute_units);
+        instructions.push(compute_budget_ix);
+
+        // Create memo instruction
+        let memo_ix = spl_memo::build_memo(
+            memo.as_bytes(),
+            &[&self.payer.pubkey()],
+        );
+        instructions.push(memo_ix);
+
         // Calculate Anchor instruction sighash
         let mut hasher = Sha256::new();
         hasher.update(b"global:process_transfer");
@@ -99,18 +130,10 @@ impl MemoClient {
                 AccountMeta::new(mint_authority_pda, false),         // mint_authority (PDA)
                 AccountMeta::new(token_account, false),              // token_account
                 AccountMeta::new_readonly(spl_token::id(), false),   // token_program
+                AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false), // instructions sysvar
             ],
         );
-        
         instructions.push(mint_ix);
-
-        // Create memo instruction
-        let memo_ix = spl_memo::build_memo(
-            memo.as_bytes(),
-            &[&self.payer.pubkey()],
-        );
-        
-        instructions.push(memo_ix);
 
         // Build and send transaction
         let recent_blockhash = self.client.get_latest_blockhash()

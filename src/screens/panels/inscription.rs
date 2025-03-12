@@ -70,6 +70,7 @@ impl InscriptionPanel {
             .default_size(Vec2::new(600.0, 700.0))
             .show(ui.ctx(), |ui| {
                 ui.vertical_centered(|ui| {
+                    ui.add_space(20.0);
                     // Import button
                     if ui.button("Choose Image").clicked() {
                         if let Some(path) = rfd::FileDialog::new()

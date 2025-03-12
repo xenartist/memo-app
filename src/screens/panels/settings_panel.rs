@@ -27,41 +27,39 @@ impl SettingsPanel {
             ui.add_space(10.0);
             
             // RPC URL selection
+            ui.label("RPC URL:");
+            ui.add_space(5.0);
+            
+            // X1 Networks row
             ui.horizontal(|ui| {
-                ui.label("RPC URL:");
+                ui.label(RichText::new("X1:").color(Color32::DARK_GREEN));
+                ui.add_space(5.0);
                 if ui.radio_value(&mut true, true, "Testnet").clicked() {
-                    // Handle testnet selection
+                    // Handle x1 testnet selection
                 }
                 if ui.radio_value(&mut false, true, "Mainnet").clicked() {
-                    // Handle mainnet selection
+                    // Handle x1 mainnet selection
                 }
             });
-            
+
             ui.add_space(20.0);
             
-            // Wallet settings section
-            ui.label(RichText::new("Wallet Settings").size(18.0).color(Color32::LIGHT_BLUE));
-            ui.add_space(10.0);
-            
-            // Auto-refresh balance toggle
-            ui.checkbox(&mut true, "Auto-refresh balance");
-            
-            ui.add_space(20.0);
-            
-            // Display settings section
-            ui.label(RichText::new("Display Settings").size(18.0).color(Color32::LIGHT_BLUE));
-            ui.add_space(10.0);
-            
-            // Theme selection
+            // Solana Networks row
             ui.horizontal(|ui| {
-                ui.label("Theme:");
-                if ui.radio_value(&mut true, true, "Light").clicked() {
-                    // Handle light theme selection
+                ui.label(RichText::new("Solana:").color(Color32::DARK_RED));
+                ui.add_space(5.0);
+                if ui.radio_value(&mut false, true, "Devnet").clicked() {
+                    // Handle solana devnet selection
                 }
-                if ui.radio_value(&mut false, true, "Dark").clicked() {
-                    // Handle dark theme selection
+                if ui.radio_value(&mut false, true, "Testnet").clicked() {
+                    // Handle solana testnet selection
+                }
+                if ui.radio_value(&mut false, true, "Mainnet").clicked() {
+                    // Handle solana mainnet selection
                 }
             });
+            
+            ui.add_space(20.0);
         });
     }
 } 
