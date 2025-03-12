@@ -200,9 +200,44 @@ impl MemoClient {
             token_account
         )
     }
+
+    pub fn get_balance_for_address(&self, wallet_address: &str) -> Result<f64, String> {
+        use solana_sdk::pubkey::Pubkey;
+        use std::str::FromStr;
+        
+        // get wallet pubkey
+        let wallet_pubkey = match Pubkey::from_str(wallet_address) {
+            Ok(pubkey) => pubkey,
+            Err(e) => return Err(format!("Invalid wallet address: {}", e)),
+        };
+        
+        // get associated token address
+        let token_account = get_associated_token_address(
+            &wallet_pubkey,
+            &self.mint,
+        );
+        
+        // query token account balance
+        match self.client.get_token_account_balance(&token_account) {
+            Ok(balance) => Ok(balance.ui_amount.unwrap_or(0.0)),
+            Err(e) => Err(format!("Failed to get token balance: {}", e)),
+        }
+    }
 }
 
 // Helper function to create new memo client
 pub fn create_memo_client(payer: Keypair) -> Result<MemoClient, String> {
     MemoClient::new(payer)
+}
+
+// helper function to get token balance for address
+pub fn get_token_balance_for_address(wallet_address: &str) -> Result<f64, String> {
+    // create a temporary keypair to initialize the client
+    let dummy_keypair = solana_sdk::signer::keypair::Keypair::new();
+    
+    // create memo client
+    let client = create_memo_client(dummy_keypair)?;
+    
+    // get token balance for address
+    client.get_balance_for_address(wallet_address)
 } 

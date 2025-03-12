@@ -36,8 +36,12 @@ pub struct MainScreen {
     wallet: Wallet,
     // Balance in SOL
     balance: f64,
+    // Token balance
+    token_balance: f64,
     // Last balance update time
     last_balance_update: Option<Instant>,
+    // Last token balance update time
+    last_token_balance_update: Option<Instant>,
     rpc_client: RpcClient,
     // Current selected menu item
     selected_menu: MenuItem,
@@ -70,7 +74,9 @@ impl MainScreen {
         Self {
             wallet,
             balance: 0.0,
+            token_balance: 0.0,
             last_balance_update: None,
+            last_token_balance_update: None,
             rpc_client: RpcClient::default_testnet(),
             selected_menu: MenuItem::Inscription,  // Default to Inscription
             inscription_status: None,
@@ -92,7 +98,9 @@ impl MainScreen {
         Self {
             wallet,
             balance: 0.0,
+            token_balance: 0.0,
             last_balance_update: None,
+            last_token_balance_update: None,
             rpc_client: RpcClient::default_testnet(),
             selected_menu: MenuItem::Inscription,  // Default to Inscription
             inscription_status: None,
@@ -114,6 +122,11 @@ impl MainScreen {
     // Query balance from RPC
     fn query_balance(&self) -> Result<f64, String> {
         self.rpc_client.get_balance(&self.wallet.address)
+    }
+    
+    // Query token balance
+    fn query_token_balance(&self) -> Result<f64, String> {
+        memo::get_token_balance_for_address(&self.wallet.address)
     }
 
     // Update balance if needed
@@ -140,10 +153,35 @@ impl MainScreen {
         }
     }
     
+    // Update token balance if needed
+    fn update_token_balance(&mut self) {
+        let should_update = match self.last_token_balance_update {
+            None => true,
+            Some(last_update) => last_update.elapsed() > Duration::from_secs(30), // Update every 30 seconds
+        };
+
+        if should_update {
+            match self.query_token_balance() {
+                Ok(balance) => {
+                    self.token_balance = balance;
+                    self.last_token_balance_update = Some(Instant::now());
+                }
+                Err(_) => {
+                    // If there's an error, we'll keep the old balance
+                    if self.last_token_balance_update.is_none() {
+                        self.token_balance = 0.0;
+                        self.last_token_balance_update = Some(Instant::now());
+                    }
+                }
+            }
+        }
+    }
+    
     // Show wallet address in the top panel
     fn show_wallet_address(&mut self, ui: &mut Ui) {
         // Update balance before displaying
         self.update_balance();
+        self.update_token_balance();
 
         ui.horizontal(|ui| {
             ui.label(RichText::new("Wallet Address: ").size(20.0));
@@ -163,10 +201,20 @@ impl MainScreen {
 
             ui.add_space(10.0);
             
-            // Display balance
+            // Display SOL balance
             ui.label(
                 RichText::new(format!("Balance: {:.9} SOL", self.balance))
                     .color(Color32::LIGHT_GREEN)
+                    .monospace()
+                    .size(20.0)
+            );
+            
+            ui.add_space(10.0);
+            
+            // Display token balance
+            ui.label(
+                RichText::new(format!("Tokens: {:.2}", self.token_balance))
+                    .color(Color32::GOLD)
                     .monospace()
                     .size(20.0)
             );
