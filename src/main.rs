@@ -1,10 +1,15 @@
-use dioxus::prelude::*;
+mod components;
 
-fn main() {
-    dioxus::launch(App);
-}
+use dioxus::prelude::*;
+use crate::components::login::*;
 
 #[component]
 fn App() -> Element {
-    rsx! { "HotDog!" }
+    rsx! {
+        LoginPage {}
+    }
+}
+
+fn main() {
+    dioxus::launch(App);
 }

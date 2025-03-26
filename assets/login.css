@@ -1,0 +1,42 @@
+.login-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    gap: 20px;
+}
+
+.login-title {
+    margin-bottom: 30px;
+    font-size: 2em;
+    color: #333;
+}
+
+.button-container {
+    display: flex;
+    gap: 20px;
+}
+
+.wallet-button {
+    padding: 12px 24px;
+    font-size: 16px;
+    cursor: pointer;
+    border-radius: 6px;
+    border: none;
+    color: white;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.wallet-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.new-wallet {
+    background-color: #4CAF50;
+}
+
+.import-wallet {
+    background-color: #2196F3;
+}

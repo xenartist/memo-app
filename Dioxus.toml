@@ -1,0 +1,15 @@
+[application]
+name = "Memo App"
+default_platform = "desktop"
+out_dir = "dist"
+asset_dir = "assets"
+
+[web.app]
+title = "Memo App"
+
+[web.watcher]
+reload_html = true
+watch_path = ["src", "assets"]
+
+[web.resource]
+style = ["assets/main.css", "assets/login.css"] 
