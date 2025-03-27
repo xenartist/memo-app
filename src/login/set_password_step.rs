@@ -18,13 +18,11 @@ pub fn SetPasswordStep(
     let on_submit = move |ev: web_sys::SubmitEvent| {
         ev.prevent_default();
         
-        // verify password
         if password_input.get() != password_confirm.get() {
             set_error_message.set("Passwords do not match".to_string());
             return;
         }
         
-        // if passphrase is enabled, verify passphrase
         if show_passphrase.get() {
             if passphrase.get() != passphrase_confirm.get() {
                 set_error_message.set("Passphrases do not match".to_string());
@@ -32,7 +30,6 @@ pub fn SetPasswordStep(
             }
         }
         
-        // set password and go to next step
         set_password.set(password_input.get());
         set_current_step.set(CreateWalletStep::Complete);
     };
@@ -58,9 +55,10 @@ pub fn SetPasswordStep(
             </div>
 
             <form on:submit=on_submit>
-                // BIP39 passphrase input box (conditional display)
+                // BIP39 passphrase (conditional display)
                 {move || show_passphrase.get().then(|| view! {
                     <div class="passphrase-section">
+                        <h3 class="section-title">"BIP39 Passphrase"</h3>
                         <div class="input-group">
                             <input
                                 type="password"
@@ -86,6 +84,7 @@ pub fn SetPasswordStep(
 
                 // normal password input box
                 <div class="password-section">
+                    <h3 class="section-title">"Wallet Password"</h3>
                     <div class="input-group">
                         <input
                             type="password"
