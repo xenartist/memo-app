@@ -1,5 +1,6 @@
 use leptos::*;
 use crate::CreateWalletStep;
+use crate::wallet::{generate_seed, store_encrypted_seed};
 
 #[component]
 pub fn SetPasswordStep(
@@ -29,9 +30,38 @@ pub fn SetPasswordStep(
                 return;
             }
         }
-        
-        set_password.set(password_input.get());
-        set_current_step.set(CreateWalletStep::Complete);
+
+        // Clone all values before moving into the async block
+        let mnemonic_owned = mnemonic.get().to_string();
+        let password_owned = password_input.get().to_string();
+        let show_passphrase_owned = show_passphrase.get();
+        let passphrase_owned = if show_passphrase_owned {
+            Some(passphrase.get().to_string())
+        } else {
+            None
+        };
+
+        spawn_local(async move {
+            // Now use the owned values inside the async block
+            let passphrase_ref = passphrase_owned.as_deref();
+            
+            match generate_seed(&mnemonic_owned, passphrase_ref) {
+                Ok(seed) => {
+                    match store_encrypted_seed(&seed, &password_owned).await {
+                        Ok(_) => {
+                            set_password.set(password_owned);
+                            set_current_step.set(CreateWalletStep::Complete);
+                        }
+                        Err(_) => {
+                            set_error_message.set("Failed to store encrypted seed".to_string());
+                        }
+                    }
+                }
+                Err(_) => {
+                    set_error_message.set("Failed to generate seed from mnemonic".to_string());
+                }
+            }
+        });
     };
 
     view! {
