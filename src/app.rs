@@ -43,8 +43,6 @@ pub fn App() -> impl IntoView {
                 CreateWalletStep::VerifyMnemonic(_) => view! {
                     <VerifyMnemonicStep
                         mnemonic=mnemonic
-                        verification_input=verification_input
-                        set_verification_input=set_verification_input
                         set_current_step=set_current_step
                     />
                 },
