@@ -144,6 +144,9 @@ h2 {
 }
 
 .word-button {
+  min-width: 100px;
+  min-height: 40px;
+  width: 100%;
   padding: 10px;
   border: 2px solid #4CAF50;
   border-radius: 4px;
