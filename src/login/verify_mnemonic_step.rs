@@ -7,6 +7,7 @@ use rand::thread_rng;
 struct WordState {
     word: String,
     index: usize,
+    selected: bool,
 }
 
 #[component]
@@ -17,12 +18,12 @@ pub fn VerifyMnemonicStep(
     let words: Vec<String> = mnemonic.get().split_whitespace().map(String::from).collect();
     let total_words = words.len();
     
-    // initialize word state
     let mut shuffled_words: Vec<WordState> = words.iter()
         .enumerate()
         .map(|(i, w)| WordState {
             word: w.clone(),
             index: i,
+            selected: false,
         })
         .collect();
     shuffled_words.shuffle(&mut thread_rng());
@@ -47,29 +48,24 @@ pub fn VerifyMnemonicStep(
             </div>
 
             <div class="word-grid">
-                <For
-                    each=move || word_states.get()
-                    key=|word| word.word.clone()
-                    children=move |word| {
-                        let word_for_display = word.clone();
+                {move || {
+                    word_states.get().into_iter().map(|word| {
                         let word_for_click = word.clone();
                         
                         let on_click = move |_| {
                             if word_for_click.index == current_index.get() {
-                                // correct order: remove this word
-                                let word_to_remove = word_for_click.word.clone();
                                 set_word_states.update(|states| {
-                                    states.retain(|w| w.word != word_to_remove);
+                                    if let Some(state) = states.iter_mut().find(|w| w.word == word_for_click.word) {
+                                        state.selected = true;
+                                    }
                                 });
                                 set_current_index.update(|i| *i += 1);
                                 set_error_message.set(String::new());
 
-                                // if all words are selected correctly, go to next step
                                 if current_index.get() == total_words {
                                     set_current_step.set(CreateWalletStep::SetPassword);
                                 }
                             } else {
-                                // wrong order: show error message
                                 set_error_message.set("Wrong word order. Try again!".to_string());
                             }
                         };
@@ -79,11 +75,11 @@ pub fn VerifyMnemonicStep(
                                 class="word-button"
                                 on:click=on_click
                             >
-                                {word_for_display.word}
+                                {if word.selected { String::new() } else { word.word }}
                             </button>
                         }
-                    }
-                />
+                    }).collect_view()
+                }}
             </div>
 
             <div class="progress-bar">
