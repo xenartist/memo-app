@@ -1,6 +1,6 @@
 use leptos::*;
 use wasm_bindgen::prelude::*;
-use crate::components::*;
+use crate::login::*;
 
 // create wallet step
 #[derive(Clone, Debug, PartialEq)]
@@ -32,13 +32,12 @@ pub fn App() -> impl IntoView {
                 CreateWalletStep::Initial => view! {
                     <InitialStep
                         set_current_step=set_current_step
-                        set_mnemonic=set_mnemonic
                     />
                 },
-                CreateWalletStep::ShowMnemonic(phrase) => view! {
+                CreateWalletStep::ShowMnemonic(_) => view! {
                     <ShowMnemonicStep
-                        phrase=phrase
                         set_current_step=set_current_step
+                        set_mnemonic=set_mnemonic
                     />
                 },
                 CreateWalletStep::VerifyMnemonic(_) => view! {

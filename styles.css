@@ -103,3 +103,32 @@ h2 {
   color: #333;
   margin-bottom: 1.5rem;
 }
+
+.word-count-selector {
+    margin: 1.5rem 0;
+    text-align: center;
+}
+
+.radio-group {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+.radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.radio-group input[type="radio"] {
+    cursor: pointer;
+}
+
+.word-count-hint {
+    color: #666;
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+}
