@@ -1,107 +1,90 @@
-use bip39::{Mnemonic, Language, MnemonicType};
+use bip39::{Mnemonic, Language};
 use serde::{Serialize, Deserialize};
-use wasm_bindgen::prelude::*;
 use web_sys::{window, Storage};
 use hmac::Hmac;
 use pbkdf2::pbkdf2;
 use sha2::Sha512;
-use ed25519_dalek::{SigningKey, VerifyingKey};
-use std::str::FromStr;
-use bip32::{XPrv, DerivationPath};
-use rand::{RngCore, rngs::OsRng};
-use bs58;
+use solana_sdk::{
+    derivation_path::DerivationPath,
+    signature::{Keypair, keypair_from_seed_and_derivation_path, Signer},
+};
 
-// 钱包配置
+// wallet config
 #[derive(Serialize, Deserialize)]
 pub struct WalletConfig {
-    encrypted_seed: String,  // 改为存储加密后的种子
+    encrypted_keypair: String,  // store encrypted main private key
 }
 
 #[derive(Debug)]
 pub enum WalletError {
     MnemonicGeneration,
-    SeedGeneration,
+    KeypairGeneration(String),
     Encryption(String),
     Storage(String),
-    KeyDerivation,
 }
 
-// Generate a new mnemonic phrase
+// generate mnemonic
 pub fn generate_mnemonic(word_count: u32) -> Result<String, WalletError> {
-    let mtype = match word_count {
-        12 => MnemonicType::Words12,
-        15 => MnemonicType::Words15,
-        18 => MnemonicType::Words18,
-        21 => MnemonicType::Words21,
-        24 => MnemonicType::Words24,
+    let entropy_bytes = match word_count {
+        12 => 16, // 128 bits
+        24 => 32, // 256 bits
         _ => return Err(WalletError::MnemonicGeneration),
     };
 
-    let mut entropy = vec![0u8; mtype.entropy_bits() / 8];
-    OsRng.fill_bytes(&mut entropy);
+    let mut entropy = vec![0u8; entropy_bytes];
+    getrandom::getrandom(&mut entropy).map_err(|_| WalletError::MnemonicGeneration)?;
     
-    let mnemonic = Mnemonic::from_entropy(&entropy, Language::English)
+    // 新版本 bip39 的用法
+    let mnemonic = Mnemonic::from_entropy_in(Language::English, &entropy)
         .map_err(|_| WalletError::MnemonicGeneration)?;
     
-    Ok(mnemonic.phrase().to_string())
+    Ok(mnemonic.to_string())
 }
 
-// 生成种子
-pub fn generate_seed(mnemonic: &str, passphrase: Option<&str>) -> Result<[u8; 64], WalletError> {
-    let mnemonic = Mnemonic::from_phrase(mnemonic, Language::English)
-        .map_err(|_| WalletError::SeedGeneration)?;
+// generate keypair from mnemonic
+pub fn generate_keypair_from_mnemonic(
+    mnemonic: &str, 
+    passphrase: Option<&str>
+) -> Result<(Keypair, String), WalletError> {
+    // 1. parse mnemonic
+    let mnemonic = Mnemonic::parse_in_normalized(Language::English, mnemonic)
+        .map_err(|_| WalletError::KeypairGeneration("Invalid mnemonic".to_string()))?;
     
+    // 2. generate seed
     let salt = format!("mnemonic{}", passphrase.unwrap_or(""));
     let mut seed = [0u8; 64];
-    
     pbkdf2::<Hmac<Sha512>>(
-        mnemonic.phrase().as_bytes(),
+        mnemonic.to_string().as_bytes(),
         salt.as_bytes(),
         2048,
-        &mut seed,
+        &mut seed
     );
+
+    // 3. generate keypair
+    let path = "m/44'/501'/0'/0'";
+    let derivation_path = DerivationPath::from_absolute_path_str(path)
+        .map_err(|_| WalletError::KeypairGeneration("Invalid derivation path".to_string()))?;
     
-    Ok(seed)
+    let keypair = keypair_from_seed_and_derivation_path(&seed, Some(derivation_path))
+        .map_err(|_| WalletError::KeypairGeneration("Failed to derive keypair".to_string()))?;
+    
+    // 4. get pubkey address
+    let pubkey = keypair.pubkey().to_string();
+
+    Ok((keypair, pubkey))
 }
 
-// Derive Solana address from seed
-pub fn derive_solana_address(seed: &[u8; 64]) -> Result<String, WalletError> {
-    // Solana's BIP44 path: m/44'/501'/0'/0'
-    let path = DerivationPath::from_str("m/44'/501'/0'/0'")
-        .map_err(|_| WalletError::KeyDerivation)?;
-    
-    let master_key = XPrv::new(seed)
-        .map_err(|_| WalletError::KeyDerivation)?;
-    
-    // Derive each child key in sequence
-    let mut derived_key = master_key;
-    for child_number in path.into_iter() {
-        derived_key = derived_key.derive_child(child_number)
-            .map_err(|_| WalletError::KeyDerivation)?;
-    }
-    
-    // Create signing key from the derived private key bytes
-    let key_bytes: [u8; 32] = derived_key.to_bytes()[..32]
-        .try_into()
-        .map_err(|_| WalletError::KeyDerivation)?;
-    
-    let signing_key = SigningKey::from_bytes(&key_bytes);
-    let verifying_key = signing_key.verifying_key();
-    
-    // Convert the verifying key to Base58 string format
-    Ok(bs58::encode(verifying_key.as_bytes()).into_string())
-}
-
-// 存储加密后的种子
-pub async fn store_encrypted_seed(
-    seed: &[u8; 64], 
+// store encrypted main private key
+pub async fn store_encrypted_keypair(
+    keypair: &Keypair, 
     password: &str,
 ) -> Result<(), WalletError> {
-    let encrypted = crate::encrypt::encrypt(&hex::encode(seed), password)
+    let keypair_bytes = keypair.to_bytes();
+    let encrypted = crate::encrypt::encrypt(&hex::encode(keypair_bytes), password)
         .map_err(|e| WalletError::Encryption(e.to_string()))?;
 
     let config = WalletConfig {
-        encrypted_seed: encrypted,
+        encrypted_keypair: encrypted,
     };
 
     if let Some(window) = window() {

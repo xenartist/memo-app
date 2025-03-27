@@ -1,6 +1,6 @@
 use leptos::*;
 use crate::CreateWalletStep;
-use crate::wallet::{generate_seed, store_encrypted_seed, derive_solana_address};
+use crate::wallet::{generate_keypair_from_mnemonic, store_encrypted_keypair};
 
 #[component]
 pub fn SetPasswordStep(
@@ -31,46 +31,37 @@ pub fn SetPasswordStep(
                 return;
             }
         }
-
-        // Clone all values before moving into the async block
+    
+        // Clone values
         let mnemonic_owned = mnemonic.get().to_string();
         let password_owned = password_input.get().to_string();
-        let show_passphrase_owned = show_passphrase.get();
-        let passphrase_owned = if show_passphrase_owned {
+        let passphrase_owned = if show_passphrase.get() {
             Some(passphrase.get().to_string())
         } else {
             None
         };
-
+    
         spawn_local(async move {
             let passphrase_ref = passphrase_owned.as_deref();
             
-            match generate_seed(&mnemonic_owned, passphrase_ref) {
-                Ok(seed) => {
-                    // 计算 Solana 地址
-                    match derive_solana_address(&seed) {
-                        Ok(address) => {
-                            // 保存地址以供后续显示
-                            set_wallet_address.set(address);
-                            
-                            // 继续处理种子的加密存储
-                            match store_encrypted_seed(&seed, &password_owned).await {
-                                Ok(_) => {
-                                    set_password.set(password_owned);
-                                    set_current_step.set(CreateWalletStep::Complete);
-                                }
-                                Err(_) => {
-                                    set_error_message.set("Failed to store encrypted seed".to_string());
-                                }
-                            }
+            match generate_keypair_from_mnemonic(&mnemonic_owned, passphrase_ref) {
+                Ok((keypair, address)) => {
+                    // save address for display
+                    set_wallet_address.set(address);
+                    
+                    // encrypt and store the main private key
+                    match store_encrypted_keypair(&keypair, &password_owned).await {
+                        Ok(_) => {
+                            set_password.set(password_owned);
+                            set_current_step.set(CreateWalletStep::Complete);
                         }
                         Err(_) => {
-                            set_error_message.set("Failed to derive Solana address".to_string());
+                            set_error_message.set("Failed to store encrypted keypair".to_string());
                         }
                     }
                 }
                 Err(_) => {
-                    set_error_message.set("Failed to generate seed from mnemonic".to_string());
+                    set_error_message.set("Failed to generate keypair from mnemonic".to_string());
                 }
             }
         });
