@@ -184,3 +184,53 @@ h2 {
   color: #666;
   font-size: 0.9rem;
 }
+
+.advanced-options {
+    margin-bottom: 20px;
+    text-align: left;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.warning-text {
+    margin-top: 8px;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.passphrase-section {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #fff3e0;
+    border-radius: 4px;
+}
+
+.password-section {
+    margin-bottom: 20px;
+}
+
+.input-group {
+    margin-bottom: 15px;
+}
+
+.input-group input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+.error-message {
+    color: #f44336;
+    margin: 10px 0;
+    min-height: 20px;
+}
