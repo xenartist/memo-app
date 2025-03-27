@@ -29,6 +29,8 @@
   border-radius: 8px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   text-align: center;
+  max-width: 600px;
+  width: 90%;
 }
 
 .app-title {
@@ -41,6 +43,7 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  margin-top: 1rem;
 }
 
 .wallet-btn {
@@ -50,26 +53,55 @@
   font-size: 1rem;
   cursor: pointer;
   transition: all 0.3s ease;
-}
-
-.new-wallet {
   background-color: #4CAF50;
   color: white;
 }
 
-.new-wallet:hover {
+.wallet-btn:hover {
   background-color: #45a049;
 }
 
-.import-wallet {
+.wallet-btn.import-wallet {
   background-color: #2196F3;
-  color: white;
 }
 
-.import-wallet:hover {
+.wallet-btn.import-wallet:hover {
   background-color: #1976D2;
 }
 
-h1 {
-  text-align: center;
+.mnemonic-display {
+  background-color: #f8f9fa;
+  padding: 1.5rem;
+  border-radius: 4px;
+  margin: 1.5rem 0;
+  word-wrap: break-word;
+  font-family: monospace;
+  font-size: 1.1rem;
+  line-height: 1.6;
+}
+
+textarea {
+  width: 100%;
+  min-height: 100px;
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 1rem;
+  resize: vertical;
+}
+
+input[type="password"] {
+  width: 100%;
+  padding: 0.8rem;
+  margin: 1rem 0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+h2 {
+  color: #333;
+  margin-bottom: 1.5rem;
 }

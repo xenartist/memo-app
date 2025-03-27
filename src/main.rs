@@ -1,7 +1,10 @@
 mod app;
+mod wallet;
+mod encrypt;
 
 use app::*;
-use leptos::prelude::*;
+use leptos::mount_to_body;
+use leptos::view;
 
 fn main() {
     console_error_panic_hook::set_once();
