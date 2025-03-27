@@ -133,60 +133,51 @@ h2 {
     margin-top: 0.5rem;
 }
 
-/* 单词网格样式 */
 .word-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 10px;
-    margin: 20px 0;
-    padding: 15px;
-    background-color: #f5f5f5;
-    border-radius: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 20px 0;
+  padding: 15px;
+  background-color: #f5f5f5;
+  border-radius: 8px;
 }
 
 .word-button {
-    padding: 10px;
-    border: 2px solid #4CAF50;
-    border-radius: 4px;
-    background-color: white;
-    cursor: pointer;
-    font-size: 14px;
-    transition: all 0.3s ease;
+  padding: 10px;
+  border: 2px solid #4CAF50;
+  border-radius: 4px;
+  background-color: white;
+  cursor: pointer;
+  font-size: 14px;
+  color: #333;
 }
 
-.word-button:hover:not(:disabled) {
-    background-color: #4CAF50;
-    color: white;
-}
-
-.word-button.used {
-    opacity: 0.5;
-    background-color: #e0e0e0;
-    border-color: #ccc;
-    cursor: not-allowed;
+.word-button:hover {
+  background-color: #e8f5e9;
 }
 
 .verify-instruction {
-    color: #666;
-    margin: 15px 0;
-    font-size: 1.1rem;
+  color: #666;
+  margin: 15px 0;
+  font-size: 1.1rem;
 }
 
 .current-word-index {
-    font-size: 1.2rem;
-    color: #2196F3;
-    margin: 15px 0;
-    font-weight: bold;
+  font-size: 1.2rem;
+  color: #2196F3;
+  margin: 15px 0;
+  font-weight: bold;
 }
 
 .error-message {
-    color: #f44336;
-    margin: 10px 0;
-    min-height: 20px;
+  color: #f44336;
+  margin: 10px 0;
+  min-height: 20px;
 }
 
 .progress-bar {
-    margin-top: 20px;
-    color: #666;
-    font-size: 0.9rem;
+  margin-top: 20px;
+  color: #666;
+  font-size: 0.9rem;
 }
