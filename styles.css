@@ -245,3 +245,53 @@ h2 {
     margin: 10px 0;
     min-height: 20px;
 }
+
+.wallet-info {
+  margin: 2rem 0;
+  padding: 1.5rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.address-container {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+.wallet-address {
+  font-family: monospace;
+  font-size: 1.1rem;
+  color: #1a73e8;
+}
+
+.info-text {
+  color: #666;
+  font-size: 0.9rem;
+  margin-top: 1rem;
+}
+
+.security-tips {
+  margin-top: 2rem;
+}
+
+.security-tips ul {
+  list-style-type: none;
+  padding-left: 0;
+}
+
+.security-tips li {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+  position: relative;
+}
+
+.security-tips li:before {
+  content: "•";
+  color: #1a73e8;
+  position: absolute;
+  left: 0;
+}

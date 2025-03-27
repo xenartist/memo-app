@@ -25,6 +25,7 @@ pub fn App() -> impl IntoView {
     let (mnemonic, set_mnemonic) = create_signal(String::new());
     let (verification_input, set_verification_input) = create_signal(String::new());
     let (password, set_password) = create_signal(String::new());
+    let (wallet_address, set_wallet_address) = create_signal(String::new());
 
     view! {
         <main class="container">
@@ -36,8 +37,8 @@ pub fn App() -> impl IntoView {
                 },
                 CreateWalletStep::ShowMnemonic(_) => view! {
                     <ShowMnemonicStep
-                        set_current_step=set_current_step
                         set_mnemonic=set_mnemonic
+                        set_current_step=set_current_step
                     />
                 },
                 CreateWalletStep::VerifyMnemonic(_) => view! {
@@ -52,10 +53,13 @@ pub fn App() -> impl IntoView {
                         password=password
                         set_password=set_password
                         set_current_step=set_current_step
+                        set_wallet_address=set_wallet_address
                     />
                 },
                 CreateWalletStep::Complete => view! {
-                    <CompleteStep/>
+                    <CompleteStep
+                        wallet_address=wallet_address
+                    />
                 }
             }}
         </main>

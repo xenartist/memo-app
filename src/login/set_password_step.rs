@@ -1,6 +1,6 @@
 use leptos::*;
 use crate::CreateWalletStep;
-use crate::wallet::{generate_seed, store_encrypted_seed};
+use crate::wallet::{generate_seed, store_encrypted_seed, derive_solana_address};
 
 #[component]
 pub fn SetPasswordStep(
@@ -8,6 +8,7 @@ pub fn SetPasswordStep(
     password: ReadSignal<String>,
     set_password: WriteSignal<String>,
     set_current_step: WriteSignal<CreateWalletStep>,
+    set_wallet_address: WriteSignal<String>,
 ) -> impl IntoView {
     let (show_passphrase, set_show_passphrase) = create_signal(false);
     let (passphrase, set_passphrase) = create_signal(String::new());
@@ -42,18 +43,29 @@ pub fn SetPasswordStep(
         };
 
         spawn_local(async move {
-            // Now use the owned values inside the async block
             let passphrase_ref = passphrase_owned.as_deref();
             
             match generate_seed(&mnemonic_owned, passphrase_ref) {
                 Ok(seed) => {
-                    match store_encrypted_seed(&seed, &password_owned).await {
-                        Ok(_) => {
-                            set_password.set(password_owned);
-                            set_current_step.set(CreateWalletStep::Complete);
+                    // 计算 Solana 地址
+                    match derive_solana_address(&seed) {
+                        Ok(address) => {
+                            // 保存地址以供后续显示
+                            set_wallet_address.set(address);
+                            
+                            // 继续处理种子的加密存储
+                            match store_encrypted_seed(&seed, &password_owned).await {
+                                Ok(_) => {
+                                    set_password.set(password_owned);
+                                    set_current_step.set(CreateWalletStep::Complete);
+                                }
+                                Err(_) => {
+                                    set_error_message.set("Failed to store encrypted seed".to_string());
+                                }
+                            }
                         }
                         Err(_) => {
-                            set_error_message.set("Failed to store encrypted seed".to_string());
+                            set_error_message.set("Failed to derive Solana address".to_string());
                         }
                     }
                 }
