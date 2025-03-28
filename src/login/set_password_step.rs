@@ -1,6 +1,11 @@
 use leptos::*;
 use crate::CreateWalletStep;
-use crate::wallet::{generate_keypair_from_mnemonic, store_encrypted_keypair};
+use crate::wallet::{
+    generate_seed_from_mnemonic,
+    store_encrypted_seed,
+    derive_keypair_from_seed,
+    get_default_derivation_path
+};
 
 #[component]
 pub fn SetPasswordStep(
@@ -32,7 +37,6 @@ pub fn SetPasswordStep(
             }
         }
     
-        // Clone values
         let mnemonic_owned = mnemonic.get().to_string();
         let password_owned = password_input.get().to_string();
         let passphrase_owned = if show_passphrase.get() {
@@ -44,24 +48,33 @@ pub fn SetPasswordStep(
         spawn_local(async move {
             let passphrase_ref = passphrase_owned.as_deref();
             
-            match generate_keypair_from_mnemonic(&mnemonic_owned, passphrase_ref) {
-                Ok((keypair, address)) => {
-                    // save address for display
-                    set_wallet_address.set(address);
-                    
-                    // encrypt and store the main private key
-                    match store_encrypted_keypair(&keypair, &password_owned).await {
-                        Ok(_) => {
-                            set_password.set(password_owned);
-                            set_current_step.set(CreateWalletStep::Complete);
+            // generate seed from mnemonic
+            match generate_seed_from_mnemonic(&mnemonic_owned, passphrase_ref) {
+                Ok(seed) => {
+                    // derive keypair from seed
+                    match derive_keypair_from_seed(&seed, get_default_derivation_path()) {
+                        Ok((_, address)) => {
+                            // save address for display
+                            set_wallet_address.set(address);
+                            
+                            // encrypt and store seed
+                            match store_encrypted_seed(&seed, &password_owned).await {
+                                Ok(_) => {
+                                    set_password.set(password_owned);
+                                    set_current_step.set(CreateWalletStep::Complete);
+                                }
+                                Err(_) => {
+                                    set_error_message.set("Failed to store encrypted seed".to_string());
+                                }
+                            }
                         }
                         Err(_) => {
-                            set_error_message.set("Failed to store encrypted keypair".to_string());
+                            set_error_message.set("Failed to derive keypair".to_string());
                         }
                     }
                 }
                 Err(_) => {
-                    set_error_message.set("Failed to generate keypair from mnemonic".to_string());
+                    set_error_message.set("Failed to generate seed from mnemonic".to_string());
                 }
             }
         });

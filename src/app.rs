@@ -23,7 +23,6 @@ extern "C" {
 pub fn App() -> impl IntoView {
     let (current_step, set_current_step) = create_signal(CreateWalletStep::Initial);
     let (mnemonic, set_mnemonic) = create_signal(String::new());
-    let (verification_input, set_verification_input) = create_signal(String::new());
     let (password, set_password) = create_signal(String::new());
     let (wallet_address, set_wallet_address) = create_signal(String::new());
 

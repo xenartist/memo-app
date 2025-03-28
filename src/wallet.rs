@@ -9,15 +9,15 @@ use solana_sdk::{
     signature::{Keypair, keypair_from_seed_and_derivation_path, Signer},
 };
 
-// wallet config
 #[derive(Serialize, Deserialize)]
 pub struct WalletConfig {
-    encrypted_keypair: String,  // store encrypted main private key
+    encrypted_seed: String,
 }
 
 #[derive(Debug)]
 pub enum WalletError {
     MnemonicGeneration,
+    SeedGeneration(String),
     KeypairGeneration(String),
     Encryption(String),
     Storage(String),
@@ -34,23 +34,20 @@ pub fn generate_mnemonic(word_count: u32) -> Result<String, WalletError> {
     let mut entropy = vec![0u8; entropy_bytes];
     getrandom::getrandom(&mut entropy).map_err(|_| WalletError::MnemonicGeneration)?;
     
-    // 新版本 bip39 的用法
     let mnemonic = Mnemonic::from_entropy_in(Language::English, &entropy)
         .map_err(|_| WalletError::MnemonicGeneration)?;
     
     Ok(mnemonic.to_string())
 }
 
-// generate keypair from mnemonic
-pub fn generate_keypair_from_mnemonic(
+// generate seed from mnemonic
+pub fn generate_seed_from_mnemonic(
     mnemonic: &str, 
     passphrase: Option<&str>
-) -> Result<(Keypair, String), WalletError> {
-    // 1. parse mnemonic
+) -> Result<[u8; 64], WalletError> {
     let mnemonic = Mnemonic::parse_in_normalized(Language::English, mnemonic)
-        .map_err(|_| WalletError::KeypairGeneration("Invalid mnemonic".to_string()))?;
+        .map_err(|_| WalletError::SeedGeneration("Invalid mnemonic".to_string()))?;
     
-    // 2. generate seed
     let salt = format!("mnemonic{}", passphrase.unwrap_or(""));
     let mut seed = [0u8; 64];
     pbkdf2::<Hmac<Sha512>>(
@@ -60,31 +57,35 @@ pub fn generate_keypair_from_mnemonic(
         &mut seed
     );
 
-    // 3. generate keypair
-    let path = "m/44'/501'/0'/0'";
+    Ok(seed)
+}
+
+// derive keypair from seed
+pub fn derive_keypair_from_seed(
+    seed: &[u8; 64],
+    path: &str,
+) -> Result<(Keypair, String), WalletError> {
     let derivation_path = DerivationPath::from_absolute_path_str(path)
         .map_err(|_| WalletError::KeypairGeneration("Invalid derivation path".to_string()))?;
     
-    let keypair = keypair_from_seed_and_derivation_path(&seed, Some(derivation_path))
+    let keypair = keypair_from_seed_and_derivation_path(seed, Some(derivation_path))
         .map_err(|_| WalletError::KeypairGeneration("Failed to derive keypair".to_string()))?;
     
-    // 4. get pubkey address
     let pubkey = keypair.pubkey().to_string();
 
     Ok((keypair, pubkey))
 }
 
-// store encrypted main private key
-pub async fn store_encrypted_keypair(
-    keypair: &Keypair, 
+// store encrypted seed
+pub async fn store_encrypted_seed(
+    seed: &[u8; 64], 
     password: &str,
 ) -> Result<(), WalletError> {
-    let keypair_bytes = keypair.to_bytes();
-    let encrypted = crate::encrypt::encrypt(&hex::encode(keypair_bytes), password)
+    let encrypted = crate::encrypt::encrypt(&hex::encode(seed), password)
         .map_err(|e| WalletError::Encryption(e.to_string()))?;
 
     let config = WalletConfig {
-        encrypted_keypair: encrypted,
+        encrypted_seed: encrypted,
     };
 
     if let Some(window) = window() {
@@ -101,4 +102,9 @@ pub async fn store_encrypted_keypair(
     }
 
     Ok(())
+}
+
+// get default solana derivation path
+pub fn get_default_derivation_path() -> &'static str {
+    "m/44'/501'/0'/0'"
 }
