@@ -60,6 +60,15 @@ pub fn generate_seed_from_mnemonic(
     Ok(seed)
 }
 
+// verify if a mnemonic phrase is valid
+pub fn verify_mnemonic(mnemonic: &str) -> bool {
+    // Try to parse the mnemonic using BIP39 English wordlist
+    match Mnemonic::parse_in_normalized(Language::English, mnemonic) {
+        Ok(_) => true,
+        Err(_) => false,
+    }
+}
+
 // derive keypair from seed
 pub fn derive_keypair_from_seed(
     seed: &[u8; 64],

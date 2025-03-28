@@ -15,7 +15,12 @@ pub fn InitialStep(
                 >
                     "New Wallet"
                 </button>
-                <button class="wallet-btn import-wallet">
+                <button
+                    class="wallet-btn import-wallet"
+                    on:click=move |_| {
+                        set_current_step.set(CreateWalletStep::ImportMnemonic);
+                    }
+                >
                     "Import Wallet"
                 </button>
             </div>

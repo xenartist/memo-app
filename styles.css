@@ -295,3 +295,25 @@ h2 {
   position: absolute;
   left: 0;
 }
+
+.mnemonic-textarea {
+  width: 100%;
+  min-height: 100px;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 1rem;
+  resize: vertical;
+  margin: 1rem 0;
+}
+
+.instruction-text {
+  color: #666;
+  margin-bottom: 1rem;
+  text-align: left;
+}
+
+.mnemonic-input-section {
+  margin: 1.5rem 0;
+}

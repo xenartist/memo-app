@@ -6,6 +6,7 @@ use crate::login::*;
 #[derive(Clone, Debug, PartialEq)]
 pub enum CreateWalletStep {
     Initial,
+    ImportMnemonic,
     ShowMnemonic(String),
     VerifyMnemonic(String),
     SetPassword,
@@ -32,6 +33,12 @@ pub fn App() -> impl IntoView {
                 CreateWalletStep::Initial => view! {
                     <InitialStep
                         set_current_step=set_current_step
+                    />
+                },
+                CreateWalletStep::ImportMnemonic => view! {
+                    <ImportMnemonicStep
+                        set_current_step=set_current_step
+                        set_mnemonic=set_mnemonic
                     />
                 },
                 CreateWalletStep::ShowMnemonic(_) => view! {
