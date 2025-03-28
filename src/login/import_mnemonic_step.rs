@@ -34,7 +34,15 @@ pub fn ImportMnemonicStep(
 
     view! {
         <div class="login-container">
-            <h2>"Import Wallet"</h2>
+            <div class="header-with-back">
+                <button 
+                    class="back-btn"
+                    on:click=move |_| set_current_step.set(CreateWalletStep::Initial)
+                >
+                    "← Back"
+                </button>
+                <h2>"Import Wallet"</h2>
+            </div>
             
             <form on:submit=on_submit>
                 <div class="mnemonic-input-section">

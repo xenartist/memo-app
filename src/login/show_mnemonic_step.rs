@@ -28,7 +28,15 @@ pub fn ShowMnemonicStep(
 
     view! {
         <div class="login-container">
-            <h2>"Create Your Mnemonic Phrase"</h2>
+            <div class="header-with-back">
+                <button 
+                    class="back-btn"
+                    on:click=move |_| set_current_step.set(CreateWalletStep::Initial)
+                >
+                    "← Back"
+                </button>
+                <h2>"Create Your Mnemonic Phrase"</h2>
+            </div>
             
             <div class="word-count-selector">
                 <div class="radio-group">

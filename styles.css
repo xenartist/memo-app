@@ -317,3 +317,32 @@ h2 {
 .mnemonic-input-section {
   margin: 1.5rem 0;
 }
+
+.header-with-back {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+  position: relative;
+}
+
+.back-btn {
+  position: absolute;
+  left: 0;
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: 14px;
+  transition: color 0.2s;
+}
+
+.back-btn:hover {
+  color: #333;
+}
+
+.header-with-back h2 {
+  width: 100%;
+  text-align: center;
+  margin: 0;
+}

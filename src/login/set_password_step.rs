@@ -82,7 +82,22 @@ pub fn SetPasswordStep(
 
     view! {
         <div class="login-container">
-            <h2>"Set Your Password"</h2>
+            <div class="header-with-back">
+                <button 
+                    class="back-btn"
+                    on:click=move |_| {
+                        // return different steps based on whether it's importing or creating a wallet
+                        if mnemonic.get().is_empty() {
+                            set_current_step.set(CreateWalletStep::ImportMnemonic)
+                        } else {
+                            set_current_step.set(CreateWalletStep::VerifyMnemonic(mnemonic.get()))
+                        }
+                    }
+                >
+                    "← Back"
+                </button>
+                <h2>"Set Password"</h2>
+            </div>
             
             <div class="advanced-options">
                 <label class="checkbox-label">

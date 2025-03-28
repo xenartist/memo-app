@@ -34,7 +34,15 @@ pub fn VerifyMnemonicStep(
 
     view! {
         <div class="login-container">
-            <h2>"Verify Your Mnemonic Phrase"</h2>
+            <div class="header-with-back">
+                <button 
+                    class="back-btn"
+                    on:click=move |_| set_current_step.set(CreateWalletStep::ShowMnemonic(mnemonic.get()))
+                >
+                    "← Back"
+                </button>
+                <h2>"Verify Your Mnemonic Phrase"</h2>
+            </div>
             <p class="verify-instruction">
                 "Click the words in the correct order to verify your backup"
             </p>
