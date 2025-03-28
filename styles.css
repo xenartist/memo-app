@@ -259,13 +259,15 @@ h2 {
   background: #fff;
   border: 1px solid #dee2e6;
   border-radius: 4px;
-  word-break: break-all;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
 }
 
 .wallet-address {
   font-family: monospace;
-  font-size: 1.1rem;
+  font-size: 1rem;
   color: #1a73e8;
+  user-select: all;
 }
 
 .info-text {
