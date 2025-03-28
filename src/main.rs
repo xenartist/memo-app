@@ -2,6 +2,7 @@ mod app;
 mod wallet;
 mod encrypt;
 mod login;
+mod pages;
 
 use app::*;
 use leptos::mount_to_body;

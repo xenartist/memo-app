@@ -1,22 +1,24 @@
 use leptos::*;
+use crate::CreateWalletStep;
 
 #[component]
 pub fn CompleteStep(
     wallet_address: ReadSignal<String>,
+    set_show_main_page: WriteSignal<bool>,
 ) -> impl IntoView {
     view! {
         <div class="login-container">
             <h2>"Wallet Created Successfully!"</h2>
             
             <div class="wallet-info">
-                <h3>"Your X1 Wallet Address"</h3>
+                <h3>"Your Wallet Address"</h3>
                 <div class="address-container">
                     <code class="wallet-address">
                         {move || wallet_address.get()}
                     </code>
                 </div>
                 <p class="info-text">
-                    "This is your X1 wallet address. You can use it to receive X1 and other tokens on the X1 network."
+                    "This is your wallet address. You can use it to receive tokens."
                 </p>
             </div>
 
@@ -28,6 +30,13 @@ pub fn CompleteStep(
                     <li>"Consider using a hardware wallet for large amounts"</li>
                 </ul>
             </div>
+
+            <button 
+                class="wallet-btn"
+                on:click=move |_| set_show_main_page.set(true)
+            >
+                "Let's GO!"
+            </button>
         </div>
     }
 } 
