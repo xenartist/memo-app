@@ -10,7 +10,7 @@ use solana_sdk::{
 };
 
 #[derive(Serialize, Deserialize)]
-pub struct WalletConfig {
+pub struct Wallet {
     encrypted_seed: String,
 }
 
@@ -93,7 +93,7 @@ pub async fn store_encrypted_seed(
     let encrypted = crate::encrypt::encrypt(&hex::encode(seed), password)
         .map_err(|e| WalletError::Encryption(e.to_string()))?;
 
-    let config = WalletConfig {
+    let config = Wallet {
         encrypted_seed: encrypted,
     };
 
@@ -106,7 +106,7 @@ pub async fn store_encrypted_seed(
         let json = serde_json::to_string(&config)
             .map_err(|e| WalletError::Storage(e.to_string()))?;
         
-        storage.set_item("wallet_config", &json)
+        storage.set_item("wallet", &json)
             .map_err(|_| WalletError::Storage("Failed to store data".to_string()))?;
     }
 
