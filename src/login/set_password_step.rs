@@ -1,6 +1,6 @@
 use leptos::*;
 use crate::CreateWalletStep;
-use crate::wallet::{
+use crate::core::wallet::{
     generate_seed_from_mnemonic,
     store_encrypted_seed,
     derive_keypair_from_seed,

@@ -90,7 +90,7 @@ pub async fn store_encrypted_seed(
     seed: &[u8; 64], 
     password: &str,
 ) -> Result<(), WalletError> {
-    let encrypted = crate::encrypt::encrypt(&hex::encode(seed), password)
+    let encrypted = crate::core::encrypt::encrypt(&hex::encode(seed), password)
         .map_err(|e| WalletError::Encryption(e.to_string()))?;
 
     let config = Wallet {

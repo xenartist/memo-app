@@ -11,7 +11,7 @@ pub fn ShowMnemonicStep(
 
     // generate mnemonic
     let generate_mnemonic = move || {
-        if let Ok(new_mnemonic) = crate::wallet::generate_mnemonic(word_count.get()) {
+        if let Ok(new_mnemonic) = crate::core::wallet::generate_mnemonic(word_count.get()) {
             set_mnemonic.set(new_mnemonic.clone());
             set_current_mnemonic.set(new_mnemonic);
         }

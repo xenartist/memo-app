@@ -1,6 +1,6 @@
 use leptos::*;
 use crate::CreateWalletStep;
-use crate::wallet::verify_mnemonic;
+use crate::core::wallet::verify_mnemonic;
 
 #[component]
 pub fn ImportMnemonicStep(

@@ -1,6 +1,5 @@
 mod app;
-mod wallet;
-mod encrypt;
+mod core;
 mod login;
 mod pages;
 
