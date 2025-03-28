@@ -6,6 +6,8 @@ use chacha20poly1305::{
     aead::{Aead, AeadCore, KeyInit, OsRng},
     ChaCha20Poly1305, Nonce,
 };
+use zeroize::{Zeroize, Zeroizing};
+use secrecy::{Secret, ExposeSecret};
 
 use std::fmt;
 
@@ -132,10 +134,19 @@ pub fn decrypt(encrypted_data: &str, password: &str) -> Result<String, EncryptEr
     Ok(result)
 }
 
-pub fn generate_random_key() -> String {
+pub fn generate_random_key() -> Secret<String> {
+    // create a buffer that can be securely cleared
     let mut key = [0u8; 32];
     getrandom::getrandom(&mut key).expect("Failed to generate random key");
-    hex::encode(key)
+    
+    // convert to hex string and ensure it will be cleared
+    let hex_string = Zeroizing::new(hex::encode(key));
+    
+    // clear original byte array
+    key.zeroize();
+    
+    // convert Zeroizing<String> to Secret<String>
+    Secret::new(hex_string.to_string())
 }
 
 #[cfg(test)]

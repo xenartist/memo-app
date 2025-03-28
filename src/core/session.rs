@@ -2,6 +2,8 @@ use serde::{Serialize, Deserialize};
 use std::time::{Duration, SystemTime};
 use crate::core::encrypt;
 use web_sys::js_sys::Date;
+use secrecy::{Secret, ExposeSecret};
+use zeroize::Zeroize;
 
 #[derive(Debug, Clone)]
 pub enum SessionError {
@@ -37,7 +39,7 @@ pub struct Session {
     // encrypted seed
     encrypted_seed: Option<String>,
     // session key
-    session_key: Option<String>,
+    session_key: Option<Secret<String>>,
 }
 
 impl Session {
@@ -60,7 +62,7 @@ impl Session {
         let session_key = encrypt::generate_random_key();
 
         // re-encrypt seed using session key
-        let session_encrypted_seed = encrypt::encrypt(&seed, &session_key)
+        let session_encrypted_seed = encrypt::encrypt(&seed, session_key.expose_secret())
             .map_err(|e| SessionError::Encryption(e.to_string()))?;
 
         // save session info
@@ -89,7 +91,7 @@ impl Session {
         let encrypted_seed = self.encrypted_seed.as_ref()
             .ok_or(SessionError::NotInitialized)?;
 
-        encrypt::decrypt(encrypted_seed, session_key)
+        encrypt::decrypt(encrypted_seed, session_key.expose_secret())
             .map_err(|e| SessionError::Encryption(e.to_string()))
     }
 
@@ -113,6 +115,9 @@ impl Session {
 
     // clear session data
     pub fn clear(&mut self) {
+        if let Some(encrypted_seed) = self.encrypted_seed.as_mut() {
+            encrypted_seed.zeroize();
+        }
         self.encrypted_seed = None;
         self.session_key = None;
     }

@@ -27,6 +27,8 @@ hmac = "0.12"
 sha2 = "0.10"
 bs58 = "0.5"
 solana-sdk = "2.2.1"
+zeroize = { version = "1.6", features = ["zeroize_derive"] }
+secrecy = "0.8"
 
 [workspace]
 members = ["src-tauri"]
