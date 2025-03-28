@@ -1,6 +1,7 @@
 use serde::{Serialize, Deserialize};
 use std::time::{Duration, SystemTime};
 use crate::core::encrypt;
+use web_sys::js_sys::Date;
 
 #[derive(Debug, Clone)]
 pub enum SessionError {
@@ -32,7 +33,7 @@ pub struct Session {
     // session config
     config: SessionConfig,
     // session start time
-    start_time: SystemTime,
+    start_time: f64,
     // encrypted seed
     encrypted_seed: Option<String>,
     // session key
@@ -43,7 +44,7 @@ impl Session {
     pub fn new(config: Option<SessionConfig>) -> Self {
         Self {
             config: config.unwrap_or_default(),
-            start_time: SystemTime::now(),
+            start_time: Date::now(),
             encrypted_seed: None,
             session_key: None,
         }
@@ -65,18 +66,16 @@ impl Session {
         // save session info
         self.session_key = Some(session_key);
         self.encrypted_seed = Some(session_encrypted_seed);
-        self.start_time = SystemTime::now();
+        self.start_time = Date::now();
 
         Ok(())
     }
 
     // check if session is expired
     pub fn is_expired(&self) -> bool {
-        if let Ok(elapsed) = self.start_time.elapsed() {
-            elapsed > Duration::from_secs(self.config.timeout_minutes as u64 * 60)
-        } else {
-            true
-        }
+        let current_time = Date::now();
+        let elapsed_minutes = (current_time - self.start_time) / (60.0 * 1000.0);
+        elapsed_minutes > self.config.timeout_minutes as f64
     }
 
     // get decrypted seed (if session is valid)
@@ -109,7 +108,7 @@ impl Session {
 
     // refresh session time
     pub fn refresh(&mut self) {
-        self.start_time = SystemTime::now();
+        self.start_time = Date::now();
     }
 
     // clear session data
