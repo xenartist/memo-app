@@ -1,11 +1,23 @@
 use leptos::*;
 use crate::CreateWalletStep;
+use crate::core::session::Session;
 
 #[component]
 pub fn CompleteStep(
     wallet_address: ReadSignal<String>,
     set_show_main_page: WriteSignal<bool>,
+    session: RwSignal<Session>,
+    encrypted_seed: String,
+    password: String,
 ) -> impl IntoView {
+    let handle_enter = move |_| {
+        let mut current_session = session.get();
+        if let Ok(()) = current_session.initialize(&encrypted_seed, &password) {
+            session.set(current_session);
+            set_show_main_page.set(true);
+        }
+    };
+
     view! {
         <div class="login-container">
             <h2>"Wallet Created Successfully!"</h2>
@@ -33,7 +45,7 @@ pub fn CompleteStep(
 
             <button 
                 class="wallet-btn"
-                on:click=move |_| set_show_main_page.set(true)
+                on:click=handle_enter
             >
                 "Let's GO!"
             </button>

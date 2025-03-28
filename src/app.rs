@@ -2,6 +2,7 @@ use leptos::*;
 use wasm_bindgen::prelude::*;
 use crate::login::*;
 use crate::pages::main_page::MainPage;
+use crate::core::session::Session;
 
 // create wallet step
 #[derive(Clone, Debug, PartialEq)]
@@ -28,6 +29,10 @@ pub fn App() -> impl IntoView {
     let (password, set_password) = create_signal(String::new());
     let (wallet_address, set_wallet_address) = create_signal(String::new());
     let (show_main_page, set_show_main_page) = create_signal(false);
+    let (encrypted_seed, set_encrypted_seed) = create_signal(String::new());
+    
+    // create session manager
+    let session = create_rw_signal(Session::new(None));
 
     view! {
         <main class="container">
@@ -66,12 +71,16 @@ pub fn App() -> impl IntoView {
                                 set_password=set_password
                                 set_current_step=set_current_step
                                 set_wallet_address=set_wallet_address
+                                set_encrypted_seed=set_encrypted_seed
                             />
                         },
                         CreateWalletStep::Complete => view! {
                             <CompleteStep
                                 wallet_address=wallet_address
                                 set_show_main_page=set_show_main_page
+                                session=session
+                                encrypted_seed=encrypted_seed.get()
+                                password=password.get()
                             />
                         }
                     }

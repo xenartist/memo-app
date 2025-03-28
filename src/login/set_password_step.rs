@@ -6,6 +6,8 @@ use crate::core::wallet::{
     derive_keypair_from_seed,
     get_default_derivation_path
 };
+use crate::core::encrypt;
+use hex;
 
 #[component]
 pub fn SetPasswordStep(
@@ -14,6 +16,7 @@ pub fn SetPasswordStep(
     set_password: WriteSignal<String>,
     set_current_step: WriteSignal<CreateWalletStep>,
     set_wallet_address: WriteSignal<String>,
+    set_encrypted_seed: WriteSignal<String>,
 ) -> impl IntoView {
     let (show_passphrase, set_show_passphrase) = create_signal(false);
     let (passphrase, set_passphrase) = create_signal(String::new());
@@ -48,24 +51,23 @@ pub fn SetPasswordStep(
         spawn_local(async move {
             let passphrase_ref = passphrase_owned.as_deref();
             
-            // generate seed from mnemonic
             match generate_seed_from_mnemonic(&mnemonic_owned, passphrase_ref) {
                 Ok(seed) => {
-                    // derive keypair from seed
                     match derive_keypair_from_seed(&seed, get_default_derivation_path()) {
                         Ok((_, address)) => {
-                            // save address for display
                             set_wallet_address.set(address);
                             
-                            // encrypt and store seed
-                            match store_encrypted_seed(&seed, &password_owned).await {
-                                Ok(_) => {
+                            if let Ok(encrypted) = encrypt::encrypt(&hex::encode(seed), &password_owned) {
+                                set_encrypted_seed.set(encrypted.clone());
+                                
+                                if let Ok(()) = store_encrypted_seed(&seed, &password_owned).await {
                                     set_password.set(password_owned);
                                     set_current_step.set(CreateWalletStep::Complete);
-                                }
-                                Err(_) => {
+                                } else {
                                     set_error_message.set("Failed to store encrypted seed".to_string());
                                 }
+                            } else {
+                                set_error_message.set("Failed to encrypt seed".to_string());
                             }
                         }
                         Err(_) => {

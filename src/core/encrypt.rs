@@ -132,6 +132,12 @@ pub fn decrypt(encrypted_data: &str, password: &str) -> Result<String, EncryptEr
     Ok(result)
 }
 
+pub fn generate_random_key() -> String {
+    let mut key = [0u8; 32];
+    getrandom::getrandom(&mut key).expect("Failed to generate random key");
+    hex::encode(key)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
