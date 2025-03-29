@@ -117,3 +117,35 @@ pub async fn store_encrypted_seed(
 pub fn get_default_derivation_path() -> &'static str {
     "m/44'/501'/0'/0'"
 }
+
+impl Wallet {
+    // get the encrypted seed
+    pub fn get_encrypted_seed(&self) -> &str {
+        &self.encrypted_seed
+    }
+
+    // check if wallet exists
+    pub async fn exists() -> bool {
+        if let Some(window) = window() {
+            if let Ok(Some(storage)) = window.local_storage() {
+                if let Ok(Some(_)) = storage.get_item("wallet") {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    // load wallet from storage
+    pub async fn load() -> Result<Self, WalletError> {
+        if let Some(window) = window() {
+            if let Ok(Some(storage)) = window.local_storage() {
+                if let Ok(Some(json)) = storage.get_item("wallet") {
+                    return serde_json::from_str(&json)
+                        .map_err(|e| WalletError::Storage(e.to_string()));
+                }
+            }
+        }
+        Err(WalletError::Storage("Wallet not found".to_string()))
+    }
+}

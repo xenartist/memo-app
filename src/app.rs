@@ -3,11 +3,13 @@ use wasm_bindgen::prelude::*;
 use crate::login::*;
 use crate::pages::main_page::MainPage;
 use crate::core::session::Session;
+use crate::core::wallet::Wallet;
 
 // create wallet step
 #[derive(Clone, Debug, PartialEq)]
 pub enum CreateWalletStep {
     Initial,
+    Login,
     ImportMnemonic,
     ShowMnemonic(String),
     VerifyMnemonic(String),
@@ -34,6 +36,13 @@ pub fn App() -> impl IntoView {
     // create session manager
     let session = create_rw_signal(Session::new(None));
 
+    // check if wallet exists when app starts
+    spawn_local(async move {
+        if Wallet::exists().await {
+            set_current_step.set(CreateWalletStep::Login);
+        }
+    });
+
     view! {
         <main class="container">
             {move || {
@@ -44,6 +53,13 @@ pub fn App() -> impl IntoView {
                         CreateWalletStep::Initial => view! {
                             <InitialStep
                                 set_current_step=set_current_step
+                            />
+                        },
+                        CreateWalletStep::Login => view! {
+                            <LoginStep
+                                set_current_step=set_current_step
+                                session=session
+                                set_show_main_page=set_show_main_page
                             />
                         },
                         CreateWalletStep::ImportMnemonic => view! {

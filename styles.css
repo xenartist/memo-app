@@ -348,3 +348,72 @@ h2 {
   text-align: center;
   margin: 0;
 }
+
+.reset-link {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.reset-link a {
+  color: #ff4444;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.reset-link a:hover {
+  text-decoration: underline;
+}
+
+.reset-confirm-dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.reset-confirm-content {
+  background: white;
+  padding: 24px;
+  border-radius: 8px;
+  max-width: 400px;
+  width: 90%;
+}
+
+.warning-text {
+  color: #ff4444;
+  margin: 16px 0;
+  line-height: 1.5;
+}
+
+.button-group {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.cancel-btn {
+  padding: 8px 16px;
+  border: 1px solid #ccc;
+  background: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.reset-btn {
+  padding: 8px 16px;
+  background: #ff4444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.reset-btn:hover {
+  background: #ff2222;
+}
