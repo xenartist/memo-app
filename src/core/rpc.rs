@@ -1,9 +1,14 @@
 use serde::{Serialize, Deserialize};
-use reqwest::Client;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::JsFuture;
+use web_sys::{Request, RequestInit, RequestMode, Response};
+use js_sys::Promise;
 use std::fmt;
+use serde_wasm_bindgen::from_value;
+use gloo_utils::format::JsValueSerdeExt;
 
 // error type
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub enum RpcError {
     ConnectionFailed(String),
     InvalidAddress(String),
@@ -31,7 +36,6 @@ struct RpcResponseError {
 }
 
 pub struct RpcConnection {
-    client: Client,
     endpoint: String,
 }
 
@@ -61,130 +65,77 @@ impl RpcConnection {
     }
 
     pub fn with_endpoint(endpoint: &str) -> Self {
-        let client = Client::new();
         Self {
-            client,
             endpoint: endpoint.to_string(),
         }
     }
 
-    // get the account balance
-    pub async fn get_balance(&self, pubkey: &str) -> Result<u64, RpcError> {
+    async fn send_request<T, R>(&self, method: &str, params: T) -> Result<R, RpcError>
+    where
+        T: Serialize,
+        R: for<'de> Deserialize<'de>,
+    {
         let request = RpcRequest {
             jsonrpc: "2.0".to_string(),
             id: 1,
-            method: "getBalance".to_string(),
-            params: vec![pubkey],
+            method: method.to_string(),
+            params,
         };
 
-        let response = self.client
-            .post(&self.endpoint)
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| RpcError::ConnectionFailed(e.to_string()))?;
+        let mut opts = RequestInit::new();
+        opts.method("POST");
+        opts.mode(RequestMode::Cors);
+        opts.body(Some(&JsValue::from_str(&serde_json::to_string(&request)
+            .map_err(|e| RpcError::Other(e.to_string()))?)));
 
-        let result: RpcResponse<serde_json::Value> = response
-            .json()
-            .await
-            .map_err(|e| RpcError::Other(e.to_string()))?;
+        let request = Request::new_with_str_and_init(&self.endpoint, &opts)
+            .map_err(|e| RpcError::ConnectionFailed(format!("Failed to create request: {:?}", e)))?;
 
-        if let Some(error) = result.error {
+        request.headers().set("Content-Type", "application/json")
+            .map_err(|e| RpcError::ConnectionFailed(format!("Failed to set headers: {:?}", e)))?;
+
+        let window = web_sys::window().unwrap();
+        let resp_value = JsFuture::from(window.fetch_with_request(&request))
+            .await
+            .map_err(|e| RpcError::ConnectionFailed(format!("Failed to send request: {:?}", e)))?;
+
+        let resp: Response = resp_value.dyn_into()
+            .map_err(|e| RpcError::Other(format!("Failed to convert response: {:?}", e)))?;
+
+        let json = JsFuture::from(resp.json().map_err(|e| RpcError::Other(format!("Failed to get JSON: {:?}", e)))?)
+            .await
+            .map_err(|e| RpcError::Other(format!("Failed to parse JSON: {:?}", e)))?;
+
+        let response: RpcResponse<R> = json.into_serde()
+            .map_err(|e| RpcError::Other(format!("Failed to deserialize response: {:?}", e)))?;
+
+        if let Some(error) = response.error {
             return Err(RpcError::Other(error.message));
         }
 
-        result.result
-            .as_u64()
-            .ok_or_else(|| RpcError::Other("Invalid balance format".to_string()))
+        Ok(response.result)
     }
 
-    // get the latest block hash
+    pub async fn get_balance(&self, pubkey: &str) -> Result<u64, RpcError> {
+        self.send_request("getBalance", vec![pubkey]).await
+    }
+
     pub async fn get_latest_blockhash(&self) -> Result<String, RpcError> {
-        let request = RpcRequest {
-            jsonrpc: "2.0".to_string(),
-            id: 1,
-            method: "getLatestBlockhash".to_string(),
-            params: Vec::<String>::new(),
-        };
-
-        let response = self.client
-            .post(&self.endpoint)
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| RpcError::ConnectionFailed(e.to_string()))?;
-
         #[derive(Deserialize)]
         struct BlockhashResult {
             blockhash: String,
         }
-
-        let result: RpcResponse<BlockhashResult> = response
-            .json()
-            .await
-            .map_err(|e| RpcError::Other(e.to_string()))?;
-
-        if let Some(error) = result.error {
-            return Err(RpcError::Other(error.message));
-        }
-
-        Ok(result.result.blockhash)
+        
+        let result: BlockhashResult = self.send_request("getLatestBlockhash", Vec::<String>::new()).await?;
+        Ok(result.blockhash)
     }
 
-    // send a signed transaction
     pub async fn send_transaction(&self, serialized_tx: &str) -> Result<String, RpcError> {
-        let request = RpcRequest {
-            jsonrpc: "2.0".to_string(),
-            id: 1,
-            method: "sendTransaction".to_string(),
-            params: vec![serialized_tx],
-        };
-
-        let response = self.client
-            .post(&self.endpoint)
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| RpcError::ConnectionFailed(e.to_string()))?;
-
-        let result: RpcResponse<String> = response
-            .json()
-            .await
-            .map_err(|e| RpcError::Other(e.to_string()))?;
-
-        if let Some(error) = result.error {
-            return Err(RpcError::TransactionFailed(error.message));
-        }
-
-        Ok(result.result)
+        self.send_request("sendTransaction", vec![serialized_tx]).await
     }
 
-    // get the transaction status
     pub async fn get_transaction_status(&self, signature: &str) -> Result<String, RpcError> {
-        let request = RpcRequest {
-            jsonrpc: "2.0".to_string(),
-            id: 1,
-            method: "getSignatureStatuses".to_string(),
-            params: vec![vec![signature]],
-        };
-
-        let response = self.client
-            .post(&self.endpoint)
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| RpcError::ConnectionFailed(e.to_string()))?;
-
-        let result: RpcResponse<serde_json::Value> = response
-            .json()
-            .await
-            .map_err(|e| RpcError::Other(e.to_string()))?;
-
-        if let Some(error) = result.error {
-            return Err(RpcError::Other(error.message));
-        }
-
-        Ok(result.result.to_string())
+        self.send_request("getSignatureStatuses", vec![vec![signature]]).await
     }
 }
 
@@ -193,4 +144,4 @@ impl Default for RpcConnection {
     fn default() -> Self {
         Self::new()
     }
-} 
+}
