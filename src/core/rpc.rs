@@ -116,18 +116,14 @@ impl RpcConnection {
         Ok(response.result)
     }
 
-    pub async fn get_balance(&self, pubkey: &str) -> Result<u64, RpcError> {
-        self.send_request("getBalance", vec![pubkey]).await
+    pub async fn get_balance(&self, pubkey: &str) -> Result<String, RpcError> {
+        let result: serde_json::Value = self.send_request("getBalance", vec![pubkey]).await?;
+        Ok(result.to_string())
     }
 
     pub async fn get_latest_blockhash(&self) -> Result<String, RpcError> {
-        #[derive(Deserialize)]
-        struct BlockhashResult {
-            blockhash: String,
-        }
-        
-        let result: BlockhashResult = self.send_request("getLatestBlockhash", Vec::<String>::new()).await?;
-        Ok(result.blockhash)
+        let result: serde_json::Value = self.send_request("getLatestBlockhash", Vec::<String>::new()).await?;
+        Ok(result.to_string())
     }
 
     pub async fn send_transaction(&self, serialized_tx: &str) -> Result<String, RpcError> {
@@ -135,7 +131,13 @@ impl RpcConnection {
     }
 
     pub async fn get_transaction_status(&self, signature: &str) -> Result<String, RpcError> {
-        self.send_request("getSignatureStatuses", vec![vec![signature]]).await
+        let result: serde_json::Value = self.send_request("getSignatureStatuses", vec![vec![signature]]).await?;
+        Ok(result.to_string())
+    }
+
+    pub async fn get_version(&self) -> Result<String, RpcError> {
+        let result: serde_json::Value = self.send_request("getVersion", Vec::<String>::new()).await?;
+        Ok(result.to_string())
     }
 }
 
