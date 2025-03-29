@@ -21,7 +21,6 @@ chacha20poly1305 = "0.10.1"
 rand = "0.8.5"
 getrandom = { version = "0.2", features = ["js"] }
 web-sys = { version = "0.3", features = ["Storage", "Window"] }
-bip32 = "0.5"
 pbkdf2 = "0.11"
 hmac = "0.12"
 sha2 = "0.10"
@@ -29,6 +28,7 @@ bs58 = "0.5"
 solana-sdk = "2.2.1"
 zeroize = { version = "1.6", features = ["zeroize_derive"] }
 secrecy = "0.8"
+reqwest = { version = "0.11", features = ["json"] }
 
 [workspace]
 members = ["src-tauri"]
