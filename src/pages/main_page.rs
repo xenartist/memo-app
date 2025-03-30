@@ -1,13 +1,21 @@
 use leptos::*;
 use crate::core::rpc::RpcConnection;
+use crate::core::session::Session;
 
 #[component]
-pub fn MainPage() -> impl IntoView {
+pub fn MainPage(
+    session: RwSignal<Session>
+) -> impl IntoView {
     let (version_status, set_version_status) = create_signal(String::from("Testing RPC connection..."));
     let (blockhash_status, set_blockhash_status) = create_signal(String::from("Getting latest blockhash..."));
     
-    // use a sample pubkey, we will get it from wallet state later
-    let pubkey = "7C4jsPZpht42Tw6MjXWF56Q5RQUocjBCAQS3DgXyLhyB";
+    // get wallet address from session
+    let wallet_address = move || {
+        match session.get().get_public_key() {
+            Ok(addr) => addr,
+            Err(_) => "Not initialized".to_string()
+        }
+    };
     
     // test rpc connection
     spawn_local(async move {
@@ -36,12 +44,14 @@ pub fn MainPage() -> impl IntoView {
 
     view! {
         <div class="main-page">
-            // top bar
             <div class="top-bar">
                 <div class="wallet-address">
                     <span class="address-label">"Wallet: "</span>
-                    <span class="address-value" title={pubkey}>
-                        {format!("{}...{}", &pubkey[..4], &pubkey[pubkey.len()-4..])}
+                    <span class="address-value" title={move || wallet_address()}>
+                        {move || {
+                            let addr = wallet_address();
+                            format!("{}...{}", &addr[..4], &addr[addr.len()-4..])
+                        }}
                     </span>
                 </div>
             </div>

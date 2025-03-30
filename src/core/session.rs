@@ -4,6 +4,7 @@ use crate::core::encrypt;
 use web_sys::js_sys::Date;
 use secrecy::{Secret, ExposeSecret};
 use zeroize::Zeroize;
+use hex;
 
 #[derive(Debug, Clone)]
 pub enum SessionError {
@@ -125,6 +126,23 @@ impl Session {
     // update config
     pub fn update_config(&mut self, config: SessionConfig) {
         self.config = config;
+    }
+
+    pub fn get_public_key(&self) -> Result<String, SessionError> {
+        let seed_hex = self.get_seed()?;
+        
+        let seed_bytes = hex::decode(&seed_hex)
+            .map_err(|e| SessionError::Encryption(e.to_string()))?;
+        
+        let seed: [u8; 64] = seed_bytes.try_into()
+            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
+
+        let (_, pubkey) = crate::core::wallet::derive_keypair_from_seed(
+            &seed,
+            crate::core::wallet::get_default_derivation_path()
+        ).map_err(|e| SessionError::Encryption("Failed to derive keypair".to_string()))?;
+
+        Ok(pubkey)
     }
 }
 

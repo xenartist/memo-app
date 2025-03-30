@@ -47,7 +47,7 @@ pub fn App() -> impl IntoView {
         <main class="container">
             {move || {
                 if show_main_page.get() {
-                    view! { <MainPage/> }
+                    view! { <MainPage session=session /> }
                 } else {
                     match current_step.get() {
                         CreateWalletStep::Initial => view! {
