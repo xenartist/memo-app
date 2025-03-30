@@ -4,6 +4,7 @@ use crate::core::session::Session;
 use wasm_bindgen::prelude::*;
 use web_sys::{window, Navigator, Clipboard};
 use std::time::Duration;
+use serde_json;
 
 #[component]
 pub fn MainPage(
@@ -13,6 +14,8 @@ pub fn MainPage(
     let (blockhash_status, set_blockhash_status) = create_signal(String::from("Getting latest blockhash..."));
     
     let (show_copied, set_show_copied) = create_signal(false);
+    
+    let (balance, set_balance) = create_signal(0f64);
     
     // get wallet address from session
     let wallet_address = move || {
@@ -25,6 +28,21 @@ pub fn MainPage(
     // test rpc connection
     spawn_local(async move {
         let rpc = RpcConnection::new();
+        let addr = wallet_address();
+        
+        // get balance
+        match rpc.get_balance(&addr).await {
+            Ok(balance_result) => {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&balance_result) {
+                    if let Some(lamports) = json.get("value").and_then(|v| v.as_u64()) {
+                        let sol = lamports as f64 / 1_000_000_000.0;
+                        set_balance.set(sol);
+                    }
+                }
+            }
+            Err(e) => {
+            }
+        }
         
         // test getVersion
         match rpc.get_version().await {
@@ -69,6 +87,7 @@ pub fn MainPage(
         <div class="main-page">
             <div class="top-bar">
                 <div class="wallet-address">
+                    <span class="balance">{move || format!("{:.4} SOL", balance.get())}</span>
                     <span class="address-label">"Wallet: "</span>
                     <span 
                         class="address-value" 

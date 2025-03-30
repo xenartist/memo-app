@@ -251,6 +251,9 @@ h2 {
   padding: 1.5rem;
   background: #f8f9fa;
   border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .address-container {
@@ -523,4 +526,14 @@ h2 {
     border-width: 4px;
     border-style: solid;
     border-color: rgba(0, 0, 0, 0.7) transparent transparent transparent;
+}
+
+.balance {
+    font-weight: 500;
+    color: #1a1a1a;
+}
+
+.pubkey {
+    color: #666;
+    font-family: monospace;
 }
