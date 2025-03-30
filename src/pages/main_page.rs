@@ -59,7 +59,11 @@ pub fn MainPage(
             <div class="top-bar">
                 <div class="wallet-address">
                     <span class="address-label">"Wallet: "</span>
-                    <span class="address-value" title={move || wallet_address()}>
+                    <span 
+                        class="address-value" 
+                        title={move || wallet_address()}
+                        on:mousedown=|e| e.prevent_default()
+                    >
                         {move || {
                             let addr = wallet_address();
                             format!("{}...{}", &addr[..4], &addr[addr.len()-4..])
@@ -68,6 +72,7 @@ pub fn MainPage(
                     <button
                         class="copy-button"
                         on:click=copy_address
+                        on:mousedown=|e| e.prevent_default()
                         title="Copy address to clipboard"
                     >
                         "📋"
