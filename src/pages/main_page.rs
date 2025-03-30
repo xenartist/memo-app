@@ -75,7 +75,7 @@ pub fn MainPage(
                         on:mousedown=|e| e.prevent_default()
                         title="Copy address to clipboard"
                     >
-                        "📋"
+                        <i class="fas fa-copy"></i>
                     </button>
                 </div>
             </div>
