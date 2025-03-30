@@ -41,6 +41,8 @@ pub struct Session {
     encrypted_seed: Option<String>,
     // session key
     session_key: Option<Secret<String>>,
+    // UI locked
+    ui_locked: bool,
 }
 
 impl Session {
@@ -50,6 +52,7 @@ impl Session {
             start_time: Date::now(),
             encrypted_seed: None,
             session_key: None,
+            ui_locked: false,
         }
     }
 
@@ -143,6 +146,27 @@ impl Session {
         ).map_err(|e| SessionError::Encryption("Failed to derive keypair".to_string()))?;
 
         Ok(pubkey)
+    }
+
+    // lock UI
+    pub fn lock_ui(&mut self) {
+        self.ui_locked = true;
+    }
+
+    pub fn unlock_ui(&mut self, password: &str, original_encrypted_seed: &str) -> Result<(), SessionError> {
+        match self.verify_password(password, original_encrypted_seed) {
+            Ok(true) => {
+                self.ui_locked = false;
+                Ok(())
+            },
+            Ok(false) => Err(SessionError::InvalidPassword),
+            Err(e) => Err(e),
+        }
+    }
+
+    // check if UI is locked
+    pub fn can_access_ui(&self) -> bool {
+        !self.ui_locked
     }
 }
 
