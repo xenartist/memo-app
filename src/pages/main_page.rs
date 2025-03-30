@@ -3,6 +3,7 @@ use crate::core::rpc::RpcConnection;
 use crate::core::session::Session;
 use wasm_bindgen::prelude::*;
 use web_sys::{window, Navigator, Clipboard};
+use std::time::Duration;
 
 #[component]
 pub fn MainPage(
@@ -10,6 +11,8 @@ pub fn MainPage(
 ) -> impl IntoView {
     let (version_status, set_version_status) = create_signal(String::from("Testing RPC connection..."));
     let (blockhash_status, set_blockhash_status) = create_signal(String::from("Getting latest blockhash..."));
+    
+    let (show_copied, set_show_copied) = create_signal(false);
     
     // get wallet address from session
     let wallet_address = move || {
@@ -44,13 +47,21 @@ pub fn MainPage(
         }
     });
 
-    // 添加复制功能
+    // copy address to clipboard
     let copy_address = move |_| {
         let addr = wallet_address();
         if let Some(window) = window() {
             let navigator = window.navigator();
             let clipboard = navigator.clipboard();
             let _ = clipboard.write_text(&addr);
+            
+            // show tooltip
+            set_show_copied.set(true);
+            
+            // hide tooltip after 1.5 seconds
+            set_timeout(move || {
+                set_show_copied.set(false);
+            }, Duration::from_millis(1500));
         }
     };
 
@@ -69,14 +80,22 @@ pub fn MainPage(
                             format!("{}...{}", &addr[..4], &addr[addr.len()-4..])
                         }}
                     </span>
-                    <button
-                        class="copy-button"
-                        on:click=copy_address
-                        on:mousedown=|e| e.prevent_default()
-                        title="Copy address to clipboard"
-                    >
-                        <i class="fas fa-copy"></i>
-                    </button>
+                    <div class="copy-container">
+                        <button
+                            class="copy-button"
+                            on:click=copy_address
+                            on:mousedown=|e| e.prevent_default()
+                            title="Copy address to clipboard"
+                        >
+                            <i class="fas fa-copy"></i>
+                        </button>
+                        <div 
+                            class="copy-tooltip"
+                            class:show=move || show_copied.get()
+                        >
+                            "Copied!"
+                        </div>
+                    </div>
                 </div>
             </div>
 
