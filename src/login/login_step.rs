@@ -24,17 +24,17 @@ pub fn LoginStep(
     let on_submit = move |ev: web_sys::SubmitEvent| {
         ev.prevent_default();
         
-        let password_value = password.get();
+        let password = password.clone();
+        let session = session.clone();
         
         spawn_local(async move {
+            let password_value = password.get_untracked();
+            
             match Wallet::load().await {
                 Ok(wallet) => {
-                    // try to decrypt the seed
                     match encrypt::decrypt(wallet.get_encrypted_seed(), &password_value) {
                         Ok(seed) => {
-                            // initialize the session
-                            let mut current_session = session.get();
-                            // use the public method to get the encrypted seed
+                            let mut current_session = session.get_untracked();
                             if let Ok(()) = current_session.initialize(wallet.get_encrypted_seed(), &password_value) {
                                 session.set(current_session);
                                 set_show_main_page.set(true);
