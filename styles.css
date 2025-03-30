@@ -463,7 +463,6 @@ h2 {
     color: #2196f3;
 }
 
-/* 调整原有的 RPC 状态显示，避免被顶部栏遮挡 */
 .rpc-status {
     margin-top: 80px;
     padding: 20px;
