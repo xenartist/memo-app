@@ -1,6 +1,8 @@
 use leptos::*;
 use crate::core::rpc::RpcConnection;
 use crate::core::session::Session;
+use wasm_bindgen::prelude::*;
+use web_sys::{window, Navigator, Clipboard};
 
 #[component]
 pub fn MainPage(
@@ -42,6 +44,16 @@ pub fn MainPage(
         }
     });
 
+    // 添加复制功能
+    let copy_address = move |_| {
+        let addr = wallet_address();
+        if let Some(window) = window() {
+            let navigator = window.navigator();
+            let clipboard = navigator.clipboard();
+            let _ = clipboard.write_text(&addr);
+        }
+    };
+
     view! {
         <div class="main-page">
             <div class="top-bar">
@@ -53,6 +65,13 @@ pub fn MainPage(
                             format!("{}...{}", &addr[..4], &addr[addr.len()-4..])
                         }}
                     </span>
+                    <button
+                        class="copy-button"
+                        on:click=copy_address
+                        title="Copy address to clipboard"
+                    >
+                        "📋"
+                    </button>
                 </div>
             </div>
 
