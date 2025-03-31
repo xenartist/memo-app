@@ -1,6 +1,9 @@
 use leptos::*;
 use crate::core::rpc::RpcConnection;
 use crate::core::session::Session;
+use crate::pages::dashboard_page::DashboardPage;
+use crate::pages::transfer_page::TransferPage;
+use crate::pages::settings_page::SettingsPage;
 use wasm_bindgen::prelude::*;
 use web_sys::{window, Navigator, Clipboard};
 use std::time::Duration;
@@ -160,9 +163,7 @@ pub fn MainPage(
                 </div>
             </div>
 
-            // main content
             <div class="main-content">
-                // sidebar
                 <div class="sidebar">
                     <div 
                         class="menu-item" 
@@ -190,30 +191,19 @@ pub fn MainPage(
                     </div>
                 </div>
 
-                // right content
                 <div class="content">
                     {move || match current_menu.get() {
                         MenuItem::Dashboard => view! {
-                            <div class="dashboard-page">
-                                <h2>"Dashboard"</h2>
-                                <div class="rpc-status">
-                                    <h3>"X1 RPC Status"</h3>
-                                    <p>{version_status}</p>
-                                    <p>{blockhash_status}</p>
-                                </div>
-                            </div>
+                            <DashboardPage
+                                version_status=version_status
+                                blockhash_status=blockhash_status
+                            />
                         },
                         MenuItem::Transfer => view! {
-                            <div class="transfer-page">
-                                <h2>"Transfer"</h2>
-                                // transfer page content
-                            </div>
+                            <TransferPage/>
                         },
                         MenuItem::Settings => view! {
-                            <div class="settings-page">
-                                <h2>"Settings"</h2>
-                                // settings page content
-                            </div>
+                            <SettingsPage/>
                         }
                     }}
                 </div>
