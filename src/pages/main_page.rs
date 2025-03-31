@@ -117,7 +117,7 @@ pub fn MainPage(
         <div class="main-page">
             <div class="top-bar">
                 <div class="wallet-address">
-                    <span class="token-balance">{move || format!("{:.2} TOKEN", token_balance.get())}</span>
+                    <span class="token-balance">{move || format!("{:.2} MEMO", token_balance.get())}</span>
                     <span class="balance">{move || format!("{:.4} SOL", balance.get())}</span>
                     <span class="address-label">"Wallet: "</span>
                     <span 
