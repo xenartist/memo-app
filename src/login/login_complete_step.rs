@@ -10,9 +10,9 @@ pub fn CompleteStep(
     encrypted_seed: String,
     password: String,
 ) -> impl IntoView {
-    let handle_enter = move |_| {
+    let handle_enter = move |_| async move {
         let mut current_session = session.get();
-        if let Ok(()) = current_session.initialize(&encrypted_seed, &password) {
+        if let Ok(()) = current_session.initialize(&encrypted_seed, &password).await {
             session.set(current_session);
             set_show_main_page.set(true);
         }
@@ -45,7 +45,12 @@ pub fn CompleteStep(
 
             <button 
                 class="wallet-btn"
-                on:click=handle_enter
+                on:click=move |e| {
+                    let handle = handle_enter.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        handle(e).await;
+                    });
+                }
             >
                 "Let's GO!"
             </button>

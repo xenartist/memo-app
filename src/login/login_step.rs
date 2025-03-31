@@ -35,7 +35,7 @@ pub fn LoginStep(
                     match encrypt::decrypt(wallet.get_encrypted_seed(), &password_value) {
                         Ok(seed) => {
                             let mut current_session = session.get_untracked();
-                            if let Ok(()) = current_session.initialize(wallet.get_encrypted_seed(), &password_value) {
+                            if let Ok(()) = current_session.initialize(wallet.get_encrypted_seed(), &password_value).await {
                                 session.set(current_session);
                                 set_show_main_page.set(true);
                             } else {

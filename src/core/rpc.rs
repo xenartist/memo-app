@@ -154,6 +154,20 @@ impl RpcConnection {
         let result: serde_json::Value = self.send_request("getTokenAccountsByOwner", params).await?;
         Ok(result.to_string())
     }
+
+    pub async fn get_user_profile(&self, pubkey: &str) -> Result<String, RpcError> {
+        // Program ID
+        const PROGRAM_ID: &str = "TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw";
+        
+        // calculate PDA
+        let seeds = format!("[{{\"pubkey\":\"{}\",\"seeds\":[\"user_profile\",\"{}\"]}}", PROGRAM_ID, pubkey);
+        let pda: serde_json::Value = self.send_request("getProgramDerivedAddress", seeds).await?;
+        
+        // get account info
+        let account_info: serde_json::Value = self.send_request("getAccountInfo", vec![pda.to_string()]).await?;
+        
+        Ok(account_info.to_string())
+    }
 }
 
 // implement the default trait

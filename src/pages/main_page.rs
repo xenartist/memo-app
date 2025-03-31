@@ -41,6 +41,14 @@ pub fn MainPage(
         }
     };
     
+    // get username from session
+    let username = move || {
+        match session.get().get_user_profile() {
+            Some(profile) => profile.username,
+            None => "N/A".to_string()
+        }
+    };
+    
     // test rpc connection
     spawn_local(async move {
         let rpc = RpcConnection::new();
@@ -130,6 +138,9 @@ pub fn MainPage(
     view! {
         <div class="main-page">
             <div class="top-bar">
+                <div class="user-info">
+                    <span class="username">{username}</span>
+                </div>
                 <div class="wallet-address">
                     <span class="token-balance">{move || format!("{:.2} MEMO", token_balance.get())}</span>
                     <span class="balance">{move || format!("{:.4} SOL", balance.get())}</span>
