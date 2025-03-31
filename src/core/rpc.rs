@@ -139,6 +139,21 @@ impl RpcConnection {
         let result: serde_json::Value = self.send_request("getVersion", Vec::<String>::new()).await?;
         Ok(result.to_string())
     }
+
+    pub async fn get_token_balance(&self, owner: &str, token_mint: &str) -> Result<String, RpcError> {
+        let params = serde_json::json!([
+            owner,
+            {
+                "mint": token_mint
+            },
+            {
+                "encoding": "jsonParsed"
+            }
+        ]);
+        
+        let result: serde_json::Value = self.send_request("getTokenAccountsByOwner", params).await?;
+        Ok(result.to_string())
+    }
 }
 
 // implement the default trait

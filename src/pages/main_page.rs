@@ -17,6 +17,11 @@ pub fn MainPage(
     
     let (balance, set_balance) = create_signal(0f64);
     
+    let (token_balance, set_token_balance) = create_signal(0f64);
+    
+    // token address
+    const TOKEN_MINT: &str = "CrfhYtP7XtqFyHTWMyXp25CCzhjhzojngrPCZJ7RarUz";
+    
     // get wallet address from session
     let wallet_address = move || {
         match session.get().get_public_key() {
@@ -29,6 +34,31 @@ pub fn MainPage(
     spawn_local(async move {
         let rpc = RpcConnection::new();
         let addr = wallet_address();
+        
+        // get token balance
+        match rpc.get_token_balance(&addr, TOKEN_MINT).await {
+            Ok(token_result) => {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&token_result) {
+                    // parse token account info
+                    if let Some(accounts) = json.get("value").and_then(|v| v.as_array()) {
+                        if let Some(first_account) = accounts.first() {
+                            if let Some(amount) = first_account
+                                .get("account")
+                                .and_then(|a| a.get("data"))
+                                .and_then(|d| d.get("parsed"))
+                                .and_then(|p| p.get("info"))
+                                .and_then(|i| i.get("tokenAmount"))
+                                .and_then(|t| t.get("uiAmount"))
+                                .and_then(|a| a.as_f64())
+                            {
+                                set_token_balance.set(amount);
+                            }
+                        }
+                    }
+                }
+            }
+            Err(_) => {}
+        }
         
         // get balance
         match rpc.get_balance(&addr).await {
@@ -87,6 +117,7 @@ pub fn MainPage(
         <div class="main-page">
             <div class="top-bar">
                 <div class="wallet-address">
+                    <span class="token-balance">{move || format!("{:.2} TOKEN", token_balance.get())}</span>
                     <span class="balance">{move || format!("{:.4} SOL", balance.get())}</span>
                     <span class="address-label">"Wallet: "</span>
                     <span 
