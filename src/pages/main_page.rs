@@ -6,7 +6,7 @@ use web_sys::{window, Navigator, Clipboard};
 use std::time::Duration;
 use serde_json;
 
-// 定义菜单项枚举
+// menu item enum
 #[derive(Clone, PartialEq)]
 enum MenuItem {
     Dashboard,
