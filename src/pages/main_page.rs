@@ -6,6 +6,14 @@ use web_sys::{window, Navigator, Clipboard};
 use std::time::Duration;
 use serde_json;
 
+// 定义菜单项枚举
+#[derive(Clone, PartialEq)]
+enum MenuItem {
+    Dashboard,
+    Transfer,
+    Settings,
+}
+
 #[component]
 pub fn MainPage(
     session: RwSignal<Session>
@@ -113,6 +121,9 @@ pub fn MainPage(
         }
     };
 
+    // current selected menu item
+    let (current_menu, set_current_menu) = create_signal(MenuItem::Dashboard);
+
     view! {
         <div class="main-page">
             <div class="top-bar">
@@ -149,11 +160,63 @@ pub fn MainPage(
                 </div>
             </div>
 
-            // rpc status
-            <div class="rpc-status">
-                <h3>"X1 RPC Status"</h3>
-                <p>{version_status}</p>
-                <p>{blockhash_status}</p>
+            // main content
+            <div class="main-content">
+                // sidebar
+                <div class="sidebar">
+                    <div 
+                        class="menu-item" 
+                        class:active=move || current_menu.get() == MenuItem::Dashboard
+                        on:click=move |_| set_current_menu.set(MenuItem::Dashboard)
+                    >
+                        <i class="fas fa-home"></i>
+                        <span>"Dashboard"</span>
+                    </div>
+                    <div 
+                        class="menu-item"
+                        class:active=move || current_menu.get() == MenuItem::Transfer
+                        on:click=move |_| set_current_menu.set(MenuItem::Transfer)
+                    >
+                        <i class="fas fa-exchange-alt"></i>
+                        <span>"Transfer"</span>
+                    </div>
+                    <div 
+                        class="menu-item"
+                        class:active=move || current_menu.get() == MenuItem::Settings
+                        on:click=move |_| set_current_menu.set(MenuItem::Settings)
+                    >
+                        <i class="fas fa-cog"></i>
+                        <span>"Settings"</span>
+                    </div>
+                </div>
+
+                // right content
+                <div class="content">
+                    {move || match current_menu.get() {
+                        MenuItem::Dashboard => view! {
+                            <div class="dashboard-page">
+                                <h2>"Dashboard"</h2>
+                                <div class="rpc-status">
+                                    <h3>"X1 RPC Status"</h3>
+                                    <p>{version_status}</p>
+                                    <p>{blockhash_status}</p>
+                                </div>
+                            </div>
+                        },
+                        MenuItem::Transfer => view! {
+                            <div class="transfer-page">
+                                <h2>"Transfer"</h2>
+                                // transfer page content
+                            </div>
+                        },
+                        MenuItem::Settings => view! {
+                            <div class="settings-page">
+                                <h2>"Settings"</h2>
+                                // settings page content
+                            </div>
+                        }
+                    }}
+                </div>
             </div>
         </div>
     }
