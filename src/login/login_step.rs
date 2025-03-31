@@ -70,7 +70,7 @@ pub fn LoginStep(
 
     view! {
         <div class="login-container">
-            <h2>"Login to Your Wallet"</h2>
+            <h2>"memo - everlasting memories on X1"</h2>
             
             <div>
                 {move || {
