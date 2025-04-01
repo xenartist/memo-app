@@ -2,8 +2,9 @@ use leptos::*;
 use crate::core::rpc::RpcConnection;
 use crate::core::session::Session;
 use crate::pages::dashboard_page::DashboardPage;
-use crate::pages::transfer_page::TransferPage;
+use crate::pages::profile_page::ProfilePage;
 use crate::pages::settings_page::SettingsPage;
+
 use wasm_bindgen::prelude::*;
 use web_sys::{window, Navigator, Clipboard};
 use std::time::Duration;
@@ -13,7 +14,7 @@ use serde_json;
 #[derive(Clone, PartialEq)]
 enum MenuItem {
     Dashboard,
-    Transfer,
+    Profile,
     Settings,
 }
 
@@ -186,16 +187,15 @@ pub fn MainPage(
                     </div>
                     <div 
                         class="menu-item"
-                        class:active=move || current_menu.get() == MenuItem::Transfer
-                        on:click=move |_| set_current_menu.set(MenuItem::Transfer)
+                        class:active=move || current_menu.get() == MenuItem::Profile
+                        on:click=move |_| set_current_menu.set(MenuItem::Profile)
                     >
-                        <i class="fas fa-exchange-alt"></i>
-                        <span>"Transfer"</span>
+                        <i class="fas fa-user"></i>
+                        <span>"Profile"</span>
                     </div>
                     <div 
                         class="menu-item"
                         class:active=move || current_menu.get() == MenuItem::Settings
-                        on:click=move |_| set_current_menu.set(MenuItem::Settings)
                     >
                         <i class="fas fa-cog"></i>
                         <span>"Settings"</span>
@@ -210,8 +210,8 @@ pub fn MainPage(
                                 blockhash_status=blockhash_status
                             />
                         },
-                        MenuItem::Transfer => view! {
-                            <TransferPage/>
+                        MenuItem::Profile => view! {
+                            <ProfilePage/>
                         },
                         MenuItem::Settings => view! {
                             <SettingsPage/>
