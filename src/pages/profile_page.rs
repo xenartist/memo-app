@@ -7,47 +7,47 @@ use crate::core::rpc::RpcConnection;
 pub fn ProfilePage(
     session: RwSignal<Session>
 ) -> impl IntoView {
-    let (loading, set_loading) = create_signal(false);  // default to not show loading state
     let (user_profile, set_user_profile) = create_signal::<Option<UserProfile>>(None);
 
-    // fetch profile information
-    spawn_local(async move {
-        // check if session has cached profile
-        if let Some(profile) = session.get().get_user_profile() {
-            set_user_profile.set(Some(profile));
-            return; // if there is cached data, return immediately without requesting network
+    // get cached profile from session (if there is any)
+    if let Some(profile) = session.get().get_user_profile() {
+        set_user_profile.set(Some(profile));
+    }
+
+    // after component mount, fetch data asynchronously
+    create_effect(move |_| {
+        // if there is cached data, don't need to request again
+        if user_profile.get().is_some() {
+            return;
         }
 
-        // if there is no cached data, show loading state
-        set_loading.set(true);
-        
-        let mut current_session = session.get();
-        if let Ok(pubkey) = current_session.get_public_key() {
-            log::info!("Fetching profile for pubkey: {}", pubkey);
-            
-            let rpc = RpcConnection::new();
-            match rpc.get_user_profile(&pubkey).await {
-                Ok(result) => {
-                    if let Ok(profile) = parse_user_profile(&result) {
-                        log::info!("Successfully fetched user profile");
-                        current_session.set_user_profile(Some(profile.clone()));
-                        session.set(current_session);
-                        set_user_profile.set(Some(profile));
+        spawn_local(async move {
+            let mut current_session = session.get();
+            if let Ok(pubkey) = current_session.get_public_key() {
+                log::info!("Fetching profile for pubkey: {}", pubkey);
+                
+                let rpc = RpcConnection::new();
+                match rpc.get_user_profile(&pubkey).await {
+                    Ok(result) => {
+                        if let Ok(profile) = parse_user_profile(&result) {
+                            log::info!("Successfully fetched user profile");
+                            current_session.set_user_profile(Some(profile.clone()));
+                            session.set(current_session);
+                            set_user_profile.set(Some(profile));
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to get user profile: {:?}", e);
                     }
                 }
-                Err(e) => {
-                    log::error!("Failed to get user profile: {:?}", e);
-                }
             }
-        }
-        set_loading.set(false);
+        });
     });
 
     view! {
         <div class="profile-page">
             <h2>"User Profile"</h2>
             
-            // main content area
             <div class="profile-content">
                 {move || match user_profile.get() {
                     Some(profile) => view! {
@@ -82,22 +82,10 @@ pub fn ProfilePage(
                     },
                     None => view! {
                         <div class="create-profile-form">
-                            {move || if loading.get() {
-                                view! {
-                                    <div class="loading-state">
-                                        <p>"Checking profile information..."</p>
-                                    </div>
-                                }
-                            } else {
-                                view! {
-                                    <div>
-                                        <p class="info-text">
-                                            "You haven't created a profile yet. Create one to start using all features."
-                                        </p>
-                                        // TODO: add profile creation form
-                                    </div>
-                                }
-                            }}
+                            <p class="info-text">
+                                "You haven't created a profile yet. Create one to start using all features."
+                            </p>
+                            // TODO: create profile form
                         </div>
                     }
                 }}

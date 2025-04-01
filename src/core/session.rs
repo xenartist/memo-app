@@ -76,6 +76,8 @@ pub struct Session {
     ui_locked: bool,
     // user profile
     user_profile: Option<UserProfile>,
+    // cached pubkey
+    cached_pubkey: Option<String>,
 }
 
 impl Session {
@@ -87,6 +89,7 @@ impl Session {
             session_key: None,
             ui_locked: false,
             user_profile: None,
+            cached_pubkey: None,
         }
     }
 
@@ -103,10 +106,23 @@ impl Session {
         let session_encrypted_seed = encrypt::encrypt(&seed, session_key.expose_secret())
             .map_err(|e| SessionError::Encryption(e.to_string()))?;
 
+        // 生成并缓存 pubkey
+        let seed_bytes = hex::decode(&seed)
+            .map_err(|e| SessionError::Encryption(e.to_string()))?;
+        
+        let seed: [u8; 64] = seed_bytes.try_into()
+            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
+
+        let (_, pubkey) = crate::core::wallet::derive_keypair_from_seed(
+            &seed,
+            crate::core::wallet::get_default_derivation_path()
+        ).map_err(|e| SessionError::Encryption("Failed to derive keypair".to_string()))?;
+
         // save session info
         self.session_key = Some(session_key);
         self.encrypted_seed = Some(session_encrypted_seed);
         self.start_time = Date::now();
+        self.cached_pubkey = Some(pubkey);
 
         Ok(())
     }
@@ -158,6 +174,7 @@ impl Session {
         }
         self.encrypted_seed = None;
         self.session_key = None;
+        self.cached_pubkey = None;
     }
 
     // update config
@@ -166,20 +183,12 @@ impl Session {
     }
 
     pub fn get_public_key(&self) -> Result<String, SessionError> {
-        let seed_hex = self.get_seed()?;
-        
-        let seed_bytes = hex::decode(&seed_hex)
-            .map_err(|e| SessionError::Encryption(e.to_string()))?;
-        
-        let seed: [u8; 64] = seed_bytes.try_into()
-            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
 
-        let (_, pubkey) = crate::core::wallet::derive_keypair_from_seed(
-            &seed,
-            crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::Encryption("Failed to derive keypair".to_string()))?;
-
-        Ok(pubkey)
+        self.cached_pubkey.clone()
+            .ok_or(SessionError::NotInitialized)
     }
 
     // lock UI
