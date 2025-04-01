@@ -212,7 +212,7 @@ pub fn MainPage(
                             />
                         },
                         MenuItem::Profile => view! {
-                            <ProfilePage/>
+                            <ProfilePage session=session/>
                         },
                         MenuItem::Settings => view! {
                             <SettingsPage/>

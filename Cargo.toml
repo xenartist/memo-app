@@ -40,6 +40,7 @@ zeroize = { version = "1.6", features = ["zeroize_derive"] }
 secrecy = "0.8"
 gloo-utils = "0.2"
 base64 = "0.13"
+log = "0.4"
 
 [workspace]
 members = ["src-tauri"]

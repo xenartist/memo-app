@@ -9,6 +9,7 @@ use hex;
 use solana_sdk::pubkey::Pubkey;
 use serde_json;
 use base64;
+use std::fmt;
 
 #[derive(Clone, Debug)]
 pub struct UserProfile {
@@ -30,6 +31,18 @@ pub enum SessionError {
     InvalidPassword,
     NotInitialized,
     InvalidData(String),
+}
+
+impl fmt::Display for SessionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SessionError::Encryption(msg) => write!(f, "Encryption error: {}", msg),
+            SessionError::Expired => write!(f, "Session expired"),
+            SessionError::InvalidPassword => write!(f, "Invalid password"),
+            SessionError::NotInitialized => write!(f, "Session not initialized"),
+            SessionError::InvalidData(msg) => write!(f, "Invalid data: {}", msg),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -94,16 +107,6 @@ impl Session {
         self.session_key = Some(session_key);
         self.encrypted_seed = Some(session_encrypted_seed);
         self.start_time = Date::now();
-
-        // get user profile
-        if let Ok(pubkey) = self.get_public_key() {
-            let rpc = RpcConnection::new();
-            if let Ok(result) = rpc.get_user_profile(&pubkey).await {
-                if let Ok(profile) = parse_user_profile(&result) {
-                    self.set_user_profile(Some(profile));
-                }
-            }
-        }
 
         Ok(())
     }
@@ -218,7 +221,7 @@ impl Drop for Session {
     }
 }
 
-fn parse_user_profile(account_data: &str) -> Result<UserProfile, SessionError> {
+pub fn parse_user_profile(account_data: &str) -> Result<UserProfile, SessionError> {
     let value: serde_json::Value = serde_json::from_str(account_data)
         .map_err(|e| SessionError::InvalidData(e.to_string()))?;
 
