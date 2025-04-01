@@ -106,7 +106,7 @@ impl Session {
         let session_encrypted_seed = encrypt::encrypt(&seed, session_key.expose_secret())
             .map_err(|e| SessionError::Encryption(e.to_string()))?;
 
-        // 生成并缓存 pubkey
+        // get pubkey
         let seed_bytes = hex::decode(&seed)
             .map_err(|e| SessionError::Encryption(e.to_string()))?;
         
@@ -220,6 +220,36 @@ impl Session {
     // set user profile
     pub fn set_user_profile(&mut self, profile: Option<UserProfile>) {
         self.user_profile = profile;
+    }
+
+    // initialize session with seed
+    pub async fn initialize_with_seed(&mut self, seed: &str) -> Result<(), SessionError> {
+        // generate new session key
+        let session_key = encrypt::generate_random_key();
+
+        // re-encrypt seed using session key
+        let session_encrypted_seed = encrypt::encrypt(seed, session_key.expose_secret())
+            .map_err(|e| SessionError::Encryption(e.to_string()))?;
+
+        // get pubkey
+        let seed_bytes = hex::decode(seed)
+            .map_err(|e| SessionError::Encryption(e.to_string()))?;
+        
+        let seed: [u8; 64] = seed_bytes.try_into()
+            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
+
+        let (_, pubkey) = crate::core::wallet::derive_keypair_from_seed(
+            &seed,
+            crate::core::wallet::get_default_derivation_path()
+        ).map_err(|e| SessionError::Encryption("Failed to derive keypair".to_string()))?;
+
+        // save session info
+        self.session_key = Some(session_key);
+        self.encrypted_seed = Some(session_encrypted_seed.to_string());
+        self.start_time = Date::now();
+        self.cached_pubkey = Some(pubkey);
+
+        Ok(())
     }
 }
 

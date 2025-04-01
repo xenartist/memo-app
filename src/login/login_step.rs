@@ -3,6 +3,7 @@ use crate::core::wallet::Wallet;
 use crate::core::encrypt;
 use crate::core::session::Session;
 use crate::CreateWalletStep;
+use wasm_bindgen::JsCast;
 
 #[derive(Clone, PartialEq)]
 enum ResetState {
@@ -27,28 +28,47 @@ pub fn LoginStep(
         let password = password.clone();
         let session = session.clone();
         
+        let button = ev.submitter()
+            .unwrap()
+            .dyn_into::<web_sys::HtmlButtonElement>()
+            .unwrap();
+        
+        button.set_disabled(true);
+        button.set_text_content(Some("Unlocking..."));
+        
         spawn_local(async move {
             let password_value = password.get_untracked();
             
             match Wallet::load().await {
                 Ok(wallet) => {
-                    match encrypt::decrypt(wallet.get_encrypted_seed(), &password_value) {
-                        Ok(seed) => {
-                            let mut current_session = session.get_untracked();
-                            if let Ok(()) = current_session.initialize(wallet.get_encrypted_seed(), &password_value).await {
-                                session.set(current_session);
-                                set_show_main_page.set(true);
-                            } else {
-                                set_error_message.set("Failed to initialize session".to_string());
+                    spawn_local(async move {
+                        match encrypt::decrypt(wallet.get_encrypted_seed(), &password_value) {
+                            Ok(seed) => {
+                                let mut current_session = session.get_untracked();
+                                match current_session.initialize_with_seed(&seed).await {
+                                    Ok(()) => {
+                                        session.set(current_session);
+                                        set_show_main_page.set(true);
+                                    }
+                                    Err(_) => {
+                                        set_error_message.set("Failed to initialize session".to_string());
+                                        button.set_disabled(false);
+                                        button.set_text_content(Some("Login"));
+                                    }
+                                }
+                            }
+                            Err(_) => {
+                                set_error_message.set("Invalid password".to_string());
+                                button.set_disabled(false);
+                                button.set_text_content(Some("Login"));
                             }
                         }
-                        Err(_) => {
-                            set_error_message.set("Invalid password".to_string());
-                        }
-                    }
+                    });
                 }
                 Err(_) => {
                     set_error_message.set("Failed to load wallet".to_string());
+                    button.set_disabled(false);
+                    button.set_text_content(Some("Login"));
                 }
             }
         });
@@ -136,7 +156,11 @@ pub fn LoginStep(
                                         {move || error_message.get()}
                                     </div>
 
-                                    <button type="submit" class="wallet-btn">
+                                    <button 
+                                        type="submit" 
+                                        class="wallet-btn"
+                                        id="login-button"
+                                    >
                                         "Login"
                                     </button>
 
