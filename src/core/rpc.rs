@@ -6,6 +6,7 @@ use js_sys::Promise;
 use std::fmt;
 use serde_wasm_bindgen::from_value;
 use gloo_utils::format::JsValueSerdeExt;
+use base64;
 
 // error type
 #[derive(Debug, Deserialize)]
@@ -167,6 +168,80 @@ impl RpcConnection {
         let account_info: serde_json::Value = self.send_request("getAccountInfo", vec![pda.to_string()]).await?;
         
         Ok(account_info.to_string())
+    }
+
+    pub async fn initialize_user_profile(
+        &self, 
+        pubkey: &str,
+        username: &str, 
+        profile_image: &str
+    ) -> Result<String, RpcError> {
+        // Program ID
+        const PROGRAM_ID: &str = "TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw";
+        
+        // Validate inputs
+        if username.len() > 32 {
+            return Err(RpcError::Other("Username too long. Maximum length is 32 characters.".to_string()));
+        }
+        if profile_image.len() > 256 {
+            return Err(RpcError::Other("Profile image too long. Maximum length is 256 characters.".to_string()));
+        }
+        if !profile_image.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(RpcError::Other("Profile image must be a valid hexadecimal string.".to_string()));
+        }
+
+        // Get latest blockhash
+        let blockhash: serde_json::Value = self.send_request(
+            "getLatestBlockhash",
+            serde_json::json!([{"commitment": "processed"}])
+        ).await?;
+
+        // Construct the instruction data
+        let mut instruction_data = Vec::new();
+        
+        // Add discriminator [192, 144, 204, 140, 113, 25, 59, 102]
+        instruction_data.extend_from_slice(&[192, 144, 204, 140, 113, 25, 59, 102]);
+        
+        // Add username length and bytes
+        instruction_data.extend_from_slice(&(username.len() as u32).to_le_bytes());
+        instruction_data.extend_from_slice(username.as_bytes());
+        
+        // Add profile_image length and bytes
+        instruction_data.extend_from_slice(&(profile_image.len() as u32).to_le_bytes());
+        instruction_data.extend_from_slice(profile_image.as_bytes());
+
+        // Construct the transaction
+        let params = serde_json::json!({
+            "programId": PROGRAM_ID,
+            "data": base64::encode(&instruction_data),
+            "recentBlockhash": blockhash["value"]["blockhash"],
+            "instructions": [{
+                "programId": PROGRAM_ID,
+                "accounts": [
+                    {
+                        "pubkey": pubkey,  // user (signer)
+                        "isSigner": true,
+                        "isWritable": true
+                    },
+                    {
+                        "pubkey": format!("user_profile_{}", pubkey),  // PDA
+                        "isSigner": false,
+                        "isWritable": true
+                    },
+                    {
+                        "pubkey": "11111111111111111111111111111111",  // System Program
+                        "isSigner": false,
+                        "isWritable": false
+                    }
+                ],
+                "data": base64::encode(&instruction_data)
+            }]
+        });
+
+        // Send transaction
+        let result: serde_json::Value = self.send_request("sendTransaction", params).await?;
+        
+        Ok(result["result"].to_string())
     }
 }
 

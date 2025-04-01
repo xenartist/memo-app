@@ -41,6 +41,8 @@ secrecy = "0.8"
 gloo-utils = "0.2"
 base64 = "0.13"
 log = "0.4"
+image = { version = "0.24", default-features = false, features = ["png", "jpeg"] }
+tauri-plugin-fs = "2"
 
 [workspace]
 members = ["src-tauri"]
