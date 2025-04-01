@@ -750,3 +750,88 @@ h2 {
     color: #666;
     margin-bottom: 20px;
 }
+
+.create-profile-form {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.pixel-art-editor {
+    margin-top: 20px;
+}
+
+.pixel-grid {
+    width: 320px; /* 32 * 10px */
+    height: 320px;
+    margin: 20px auto;
+    border: 1px solid #ddd;
+    background: white;
+}
+
+.pixel-row {
+    display: flex;
+    height: 10px; /* pixel size */
+}
+
+.pixel {
+    width: 10px;
+    height: 10px;
+    border: 1px solid #eee;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.pixel:hover {
+    background-color: #f0f0f0;
+}
+
+.pixel.black {
+    background-color: black;
+}
+
+.pixel.black:hover {
+    background-color: #333;
+}
+
+.import-btn {
+    margin-top: 10px;
+    padding: 8px 16px;
+    background-color: #f0f0f0;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.submit-btn {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    margin-top: 20px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.submit-btn:hover {
+    background-color: #0056b3;
+}
