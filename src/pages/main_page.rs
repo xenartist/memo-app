@@ -196,6 +196,7 @@ pub fn MainPage(
                     <div 
                         class="menu-item"
                         class:active=move || current_menu.get() == MenuItem::Settings
+                        on:click=move |_| set_current_menu.set(MenuItem::Settings)
                     >
                         <i class="fas fa-cog"></i>
                         <span>"Settings"</span>
