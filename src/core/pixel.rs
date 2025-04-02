@@ -1,3 +1,9 @@
+use flate2::Compression;
+use flate2::write::DeflateEncoder;
+use flate2::read::DeflateDecoder;
+use base64::{encode, decode};
+use std::io::prelude::*;
+
 #[derive(Clone)]
 pub struct Pixel {
     pixels: Vec<Vec<bool>>, // true represents black, false represents white
@@ -25,48 +31,42 @@ impl Pixel {
         self.pixels[row][col] = !self.pixels[row][col];
     }
 
+    // Helper function to map 6 bits to a safe ASCII character
+    fn map_to_safe_char(bits: u8) -> char {
+        // Start from ASCII 35 (after space, !, ", #)
+        // Skip 58 (:) and 92 (\)
+        // This gives us exactly 90 usable characters (35-126, excluding 58 and 92)
+        let base = 35;
+        let mut code = base + bits;
+        
+        if code >= 58 { code += 1; }  // Skip :
+        if code >= 92 { code += 1; }  // Skip \
+        
+        code as char
+    }
+
     // Convert pixel art to safe string for profile storage
     pub fn to_safe_string(&self) -> String {
-        let mut result = String::with_capacity(171); // ⌈1024/6⌉ = 171
+        let mut result = String::with_capacity(171);
         let mut current_bits = 0u8;
         let mut bit_count = 0;
 
-        // Iterate through all pixels
         for row in &self.pixels {
             for &pixel in row {
-                // Add pixel value to current bit group
                 current_bits = (current_bits << 1) | (pixel as u8);
                 bit_count += 1;
 
-                // When 6 bits are collected, convert to character
                 if bit_count == 6 {
-                    // Convert 6 bits to 0-63 and map to available ASCII range (32-126, excluding 34 and 92)
-                    let char_code = match current_bits {
-                        0..=33 => current_bits + 32,        // 32-65
-                        34 => 35,                           // Skip double quotes (34)
-                        35..=91 => current_bits + 33,       // 66-124
-                        92 => 93,                           // Skip backslash (92)
-                        _ => current_bits + 34              // 125-126
-                    };
-                    result.push(char_code as char);
+                    result.push(Self::map_to_safe_char(current_bits));
                     current_bits = 0;
                     bit_count = 0;
                 }
             }
         }
 
-        // Process remaining bits (if any)
         if bit_count > 0 {
-            // Shift to align to 6 bits
             current_bits <<= (6 - bit_count);
-            let char_code = match current_bits {
-                0..=33 => current_bits + 32,
-                34 => 35,
-                35..=91 => current_bits + 33,
-                92 => 93,
-                _ => current_bits + 34
-            };
-            result.push(char_code as char);
+            result.push(Self::map_to_safe_char(current_bits));
         }
 
         result
@@ -74,25 +74,28 @@ impl Pixel {
 
     // Restore pixel art from string
     pub fn from_safe_string(s: &str) -> Option<Self> {
-        if s.len() > 171 { return None; }  // Validate length
+        if s.len() > 171 { return None; }
 
         let mut pixels = vec![vec![false; 32]; 32];
         let mut pixel_index = 0;
 
         for c in s.chars() {
-            // Validate character range
-            if !c.is_ascii() || c == '"' || c == '\\' { return None; }
+            // First verify character is valid
+            if !c.is_ascii() || c == '"' || c == '\\' || c == ':' { 
+                return None; 
+            }
             
-            // Convert character back to 6-bit binary
+            // Reverse the mapping
             let char_code = c as u8;
             let bits = match char_code {
-                32..=34 => char_code - 32,        // 32-34 -> 0-2
-                35..=92 => char_code - 33,        // 35-92 -> 2-59
-                93..=126 => char_code - 34,       // 93-126 -> 59-92
+                32..=33 => char_code - 32,        // 0-1
+                35..=57 => char_code - 33,        // 2-24
+                60..=91 => char_code - 33,        // 27-58
+                94..=126 => char_code - 34,       // 60-92
                 _ => return None
             };
 
-            // Parse 6 bits
+            // Process the 6 bits
             for bit_position in (0..6).rev() {
                 if pixel_index >= 1024 { break; }
                 let row = pixel_index / 32;
@@ -145,6 +148,68 @@ impl Pixel {
     pub fn set_pixels_from_image(&mut self, x: usize, y: usize, is_black: bool) {
         self.pixels[y][x] = is_black;
     }
+
+    // convert to optimal string
+    pub fn to_optimal_string(&self) -> String {
+        let normal_string = self.to_safe_string();
+        
+        match self.compress_with_deflate(&normal_string) {
+            Ok(compressed_str) => {
+                if compressed_str.len() + 2 < normal_string.len() {
+                    return format!("c:{}", compressed_str)
+                }
+            }
+            Err(_) => {}
+        }
+        
+        format!("n:{}", normal_string)
+    }
+
+    // restore from optimal string
+    pub fn from_optimal_string(s: &str) -> Option<Self> {
+        if s.len() < 2 {
+            return None;
+        }
+
+        let (prefix, data) = s.split_once(':')?;
+        
+        match prefix {
+            "c" => {
+                match Self::decompress_with_deflate(data) {
+                    Ok(decompressed) => Self::from_safe_string(&decompressed),
+                    Err(_) => None
+                }
+            }
+            "n" => Self::from_safe_string(data),
+            _ => None
+        }
+    }
+
+    // compress string
+    fn compress_with_deflate(&self, input: &str) -> Result<String, String> {
+        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::best());
+        encoder.write_all(input.as_bytes())
+            .map_err(|e| format!("Compression error: {}", e))?;
+        
+        let compressed = encoder.finish()
+            .map_err(|e| format!("Compression finish error: {}", e))?;
+            
+        Ok(encode(compressed))
+    }
+
+    // decompress string
+    fn decompress_with_deflate(input: &str) -> Result<String, String> {
+        let bytes = decode(input)
+            .map_err(|e| format!("Base64 decode error: {}", e))?;
+            
+        let mut decoder = DeflateDecoder::new(&bytes[..]);
+        let mut decompressed = String::new();
+        
+        decoder.read_to_string(&mut decompressed)
+            .map_err(|e| format!("Decompression error: {}", e))?;
+            
+        Ok(decompressed)
+    }
 }
 
 // Add default implementation
@@ -182,5 +247,113 @@ mod tests {
         // Validate can be correctly restored
         let decoded = Pixel::from_safe_string(&encoded).unwrap();
         assert_eq!(pixel.pixels, decoded.pixels);
+    }
+
+    #[test]
+    fn test_pixel_compression() {
+        // Test 1: All black pattern
+        let mut pixel = Pixel::new();
+        for i in 0..32 {
+            for j in 0..32 {
+                pixel.set_pixel(i, j, true);
+            }
+        }
+        
+        let encoded = pixel.to_optimal_string();
+        println!("All black - Original string length: {}", pixel.to_safe_string().len());
+        println!("All black - Compressed length: {}", encoded.len());
+        println!("All black - Compression type: {}", if encoded.starts_with("c:") { "compressed" } else { "uncompressed" });
+        
+        let decoded = Pixel::from_optimal_string(&encoded).unwrap();
+        assert_eq!(pixel.pixels, decoded.pixels, "All black pattern test failed");
+
+        // Test 2: Checkerboard pattern
+        let mut pixel = Pixel::new();
+        for i in 0..32 {
+            for j in 0..32 {
+                pixel.set_pixel(i, j, (i + j) % 2 == 0);
+            }
+        }
+        
+        let encoded = pixel.to_optimal_string();
+        println!("\nCheckerboard - Original string length: {}", pixel.to_safe_string().len());
+        println!("Checkerboard - Compressed length: {}", encoded.len());
+        println!("Checkerboard - Compression type: {}", if encoded.starts_with("c:") { "compressed" } else { "uncompressed" });
+        
+        let decoded = Pixel::from_optimal_string(&encoded).unwrap();
+        assert_eq!(pixel.pixels, decoded.pixels, "Checkerboard pattern test failed");
+
+        // Test 3: Empty (all white) pattern
+        let pixel = Pixel::new();
+        let encoded = pixel.to_optimal_string();
+        println!("\nEmpty pattern - Original string length: {}", pixel.to_safe_string().len());
+        println!("Empty pattern - Compressed length: {}", encoded.len());
+        println!("Empty pattern - Compression type: {}", if encoded.starts_with("c:") { "compressed" } else { "uncompressed" });
+        
+        let decoded = Pixel::from_optimal_string(&encoded).unwrap();
+        assert_eq!(pixel.pixels, decoded.pixels, "Empty pattern test failed");
+    }
+
+    #[test]
+    fn test_invalid_input() {
+        // Test invalid prefix
+        let result = Pixel::from_optimal_string("x:invalid");
+        assert!(result.is_none(), "Should reject invalid prefix");
+
+        // Test empty string
+        let result = Pixel::from_optimal_string("");
+        assert!(result.is_none(), "Should reject empty string");
+
+        // Test invalid compressed data
+        let result = Pixel::from_optimal_string("c:invalid_base64");
+        assert!(result.is_none(), "Should reject invalid compressed data");
+
+        // Test invalid uncompressed data (contains ':')
+        let result = Pixel::from_optimal_string("n:test:colon");
+        assert!(result.is_none(), "Should reject string containing colon");
+    }
+
+    #[test]
+    fn test_compression_efficiency() {
+        // Create a highly compressible pattern (all black)
+        let mut pixel = Pixel::new();
+        for i in 0..32 {
+            for j in 0..32 {
+                pixel.set_pixel(i, j, true);
+            }
+        }
+        
+        let normal_string = pixel.to_safe_string();
+        let optimal_string = pixel.to_optimal_string();
+        
+        println!("Compression efficiency test:");
+        println!("Original size: {}", normal_string.len());
+        println!("Optimal size: {}", optimal_string.len());
+        println!("Compression ratio: {:.2}%", 
+            (optimal_string.len() as f64 / normal_string.len() as f64) * 100.0);
+        
+        // Verify the compressed version is actually smaller
+        assert!(optimal_string.starts_with("c:"), 
+            "Highly repetitive pattern should use compression");
+        assert!(optimal_string.len() < normal_string.len(), 
+            "Compressed version should be smaller than original");
+    }
+
+    #[test]
+    fn print_pixel_to_ascii_mapping() {
+        println!("Bits | Dec | ASCII | Code");
+        println!("--------------------|-----");
+        
+        // Test all 64 possible 6-bit values
+        for i in 0..64 {
+            let c = Pixel::map_to_safe_char(i);
+            println!("{:06b} | {:3} | {} | {}", i, i, c, c as u8);
+            
+            // Verify the character is valid
+            assert!(c as u8 >= 35, "Character code too low");
+            assert!(c as u8 <= 126, "Character code too high");
+            assert_ne!(c as u8, 58, "Found colon");
+            assert_ne!(c as u8, 92, "Found backslash");
+        }
     }
 } 

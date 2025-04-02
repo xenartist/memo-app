@@ -49,6 +49,7 @@ gloo-utils = "0.2"
 base64 = "0.13"
 log = "0.4"
 image = { version = "0.24", default-features = false, features = ["png", "jpeg"] }
+flate2 = "1.0"
 
 [workspace]
 members = ["src-tauri"]
