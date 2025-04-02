@@ -6,29 +6,53 @@ use std::io::prelude::*;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Pixel {
-    pixels: Vec<Vec<bool>>, // true represents black, false represents white
+    width: usize,
+    height: usize,
+    data: Vec<bool>,
 }
 
 impl Pixel {
+    // default create 32x32 pixel art
     pub fn new() -> Self {
+        Self::with_size(32, 32)
+    }
+
+    // original new method renamed to with_size
+    pub fn with_size(width: usize, height: usize) -> Self {
         Self {
-            pixels: vec![vec![false; 32]; 32]
+            width,
+            height,
+            data: vec![false; width * height],
+        }
+    }
+
+    pub fn set(&mut self, x: usize, y: usize, value: bool) {
+        if x < self.width && y < self.height {
+            self.data[y * self.width + x] = value;
+        }
+    }
+
+    pub fn get(&self, x: usize, y: usize) -> bool {
+        if x < self.width && y < self.height {
+            self.data[y * self.width + x]
+        } else {
+            false
         }
     }
 
     // Get pixel state
     pub fn get_pixel(&self, row: usize, col: usize) -> bool {
-        self.pixels[row][col]
+        self.data[row * self.width + col]
     }
 
     // Set pixel state
     pub fn set_pixel(&mut self, row: usize, col: usize, value: bool) {
-        self.pixels[row][col] = value;
+        self.data[row * self.width + col] = value;
     }
 
     // Toggle pixel state
     pub fn toggle_pixel(&mut self, row: usize, col: usize) {
-        self.pixels[row][col] = !self.pixels[row][col];
+        self.data[row * self.width + col] = !self.data[row * self.width + col];
     }
 
     // Helper function to map 6 bits to a safe ASCII character
@@ -73,16 +97,14 @@ impl Pixel {
         let mut current_bits = 0u8;
         let mut bit_count = 0;
 
-        for row in &self.pixels {
-            for &pixel in row {
-                current_bits = (current_bits << 1) | (pixel as u8);
-                bit_count += 1;
+        for &pixel in &self.data {
+            current_bits = (current_bits << 1) | (pixel as u8);
+            bit_count += 1;
 
-                if bit_count == 6 {
-                    result.push(Self::map_to_safe_char(current_bits));
-                    current_bits = 0;
-                    bit_count = 0;
-                }
+            if bit_count == 6 {
+                result.push(Self::map_to_safe_char(current_bits));
+                current_bits = 0;
+                bit_count = 0;
             }
         }
 
@@ -96,23 +118,40 @@ impl Pixel {
 
     // Restore pixel art from string
     pub fn from_safe_string(s: &str) -> Option<Self> {
-        if s.len() != (32 * 32 + 5) / 6 {
-            return None;
-        }
+        // try to determine size first
+        let total_bits = s.len() * 6;
+        println!("Input string length: {}, total_bits: {}", s.len(), total_bits);
         
-        let mut pixel = Self::new();
+        let size = match total_bits {
+            1026..=1029 => (32, 32),  // 32x32: 171 * 6 = 1026
+            4092..=4098 => (64, 64),  // 64x64: 683 * 6 = 4098
+            _ => {
+                println!("Unexpected total bits: {}", total_bits);
+                return None
+            }
+        };
+        
+        println!("Detected size: {}x{}", size.0, size.1);
+        
+        let mut pixel = Self::with_size(size.0, size.1);
         let mut bit_pos = 0;
         
         for c in s.chars() {
-            let value = Self::map_from_safe_char(c)?;
+            let value = match Self::map_from_safe_char(c) {
+                Some(v) => v,
+                None => {
+                    println!("Failed to map char: '{}'", c);
+                    return None;
+                }
+            };
             
             for i in (0..6).rev() {
                 let bit = (value & (1 << i)) != 0;
-                let x = bit_pos % 32;
-                let y = bit_pos / 32;
+                let x = bit_pos % size.0;
+                let y = bit_pos / size.0;
                 
-                if y < 32 {
-                    pixel.set_pixel(x, y, bit);
+                if y < size.1 {
+                    pixel.set(x, y, bit);
                 }
                 bit_pos += 1;
             }
@@ -138,7 +177,7 @@ impl Pixel {
         let mut pixel_art = Self::new();
         
         for (x, y, pixel) in gray.enumerate_pixels() {
-            pixel_art.pixels[y as usize][x as usize] = pixel[0] < threshold;
+            pixel_art.data[y as usize * 32 + x as usize] = pixel[0] < threshold;
         }
         
         Ok(pixel_art)
@@ -146,20 +185,18 @@ impl Pixel {
 
     // Get dimensions
     pub fn dimensions(&self) -> (usize, usize) {
-        (32, 32)
+        (self.width, self.height)
     }
 
     // Clear all pixels
     pub fn clear(&mut self) {
-        for row in self.pixels.iter_mut() {
-            for pixel in row.iter_mut() {
-                *pixel = false;
-            }
+        for pixel in self.data.iter_mut() {
+            *pixel = false;
         }
     }
 
     pub fn set_pixels_from_image(&mut self, x: usize, y: usize, is_black: bool) {
-        self.pixels[y][x] = is_black;
+        self.data[y * self.width + x] = is_black;
     }
 
     // convert to optimal string
@@ -190,13 +227,20 @@ impl Pixel {
         
         match prefix {
             "c" => {
+                // process compressed data
                 match Self::decompress_with_deflate(data) {
-                    Ok(decompressed) => Self::from_safe_string(&decompressed),
+                    Ok(decompressed) => {
+                        // print debug information
+                        println!("Decompressed length: {}", decompressed.len());
+                        println!("Decompressed data: {}", decompressed);
+                        Self::from_safe_string(&decompressed)
+                    },
                     Err(e) => {
+                        println!("Decompression error: {}", e);
                         None
                     }
                 }
-            }
+            },
             "n" => Self::from_safe_string(data),
             _ => None
         }
@@ -230,10 +274,15 @@ impl Pixel {
         decoder.read_to_end(&mut decompressed)
             .map_err(|e| format!("Decompression error: {}", e))?;
             
+        // convert bytes to string, keep original ASCII values
         let result: String = decompressed.into_iter()
             .map(|b| b as char)
             .collect();
             
+        // print debug information
+        println!("Decoded base64 length: {}", bytes.len());
+        println!("Decompressed bytes length: {}", result.len());
+        
         Ok(result)
     }
 }
@@ -256,7 +305,7 @@ mod tests {
         // Create a test pattern
         for i in 0..32 {
             for j in 0..32 {
-                pixel.set_pixel(i, j, (i + j) % 2 == 0);
+                pixel.set(i, j, (i + j) % 2 == 0);
             }
         }
 
@@ -271,7 +320,7 @@ mod tests {
 
         // Validate can be correctly restored
         let decoded = Pixel::from_safe_string(&encoded).unwrap();
-        assert_eq!(pixel.pixels, decoded.pixels);
+        assert_eq!(pixel.data, decoded.data);
     }
 
     #[test]
@@ -280,34 +329,34 @@ mod tests {
         let mut pixel = Pixel::new();
         for i in 0..32 {
             for j in 0..32 {
-                pixel.set_pixel(i, j, true);
+                pixel.set(i, j, true);
             }
         }
         
         let encoded = pixel.to_optimal_string();
         
         let decoded = Pixel::from_optimal_string(&encoded).unwrap();
-        assert_eq!(pixel.pixels, decoded.pixels, "All black pattern test failed");
+        assert_eq!(pixel.data, decoded.data, "All black pattern test failed");
 
         // Test 2: Checkerboard pattern
         let mut pixel = Pixel::new();
         for i in 0..32 {
             for j in 0..32 {
-                pixel.set_pixel(i, j, (i + j) % 2 == 0);
+                pixel.set(i, j, (i + j) % 2 == 0);
             }
         }
         
         let encoded = pixel.to_optimal_string();
         
         let decoded = Pixel::from_optimal_string(&encoded).unwrap();
-        assert_eq!(pixel.pixels, decoded.pixels, "Checkerboard pattern test failed");
+        assert_eq!(pixel.data, decoded.data, "Checkerboard pattern test failed");
 
         // Test 3: Empty (all white) pattern
         let pixel = Pixel::new();
         let encoded = pixel.to_optimal_string();
         
         let decoded = Pixel::from_optimal_string(&encoded).unwrap();
-        assert_eq!(pixel.pixels, decoded.pixels, "Empty pattern test failed");
+        assert_eq!(pixel.data, decoded.data, "Empty pattern test failed");
     }
 
     #[test]
@@ -335,7 +384,7 @@ mod tests {
         let mut best_case = Pixel::new();
         for x in 0..32 {
             for y in 0..32 {
-                best_case.set_pixel(x, y, true);
+                best_case.set(x, y, true);
             }
         }
         
@@ -349,7 +398,7 @@ mod tests {
         
         // verify correctness
         let decoded_best = Pixel::from_optimal_string(&compressed_str).unwrap();
-        assert_eq!(best_case, decoded_best, "Compression/decompression failed");
+        assert_eq!(best_case.data, decoded_best.data, "Compression/decompression failed");
         
         // calculate compression ratio
         if compressed_str.starts_with("c:") {
@@ -421,6 +470,81 @@ mod tests {
             let result = Pixel::map_from_safe_char(c);
             assert!(result.is_none(), 
                 "Special character '{}' should not be mapped", c);
+        }
+    }
+
+    #[test]
+    fn test_compression_patterns() {
+        // test two sizes
+        let sizes = vec![(32, 32, "32x32"), (64, 64, "64x64")];
+        
+        for &(width, height, size_name) in &sizes {
+            println!("\n\n=== Testing {} patterns ===", size_name);
+            
+            // 1. best compression case: all black image
+            let mut best_case = Pixel::with_size(width, height);
+            for x in 0..width {
+                for y in 0..height {
+                    best_case.set(x, y, true);
+                }
+            }
+            
+            // 2. checkerboard pattern
+            let mut checkerboard = Pixel::with_size(width, height);
+            for x in 0..width {
+                for y in 0..height {
+                    checkerboard.set(x, y, (x + y) % 2 == 0);
+                }
+            }
+            
+            // 3. random noise pattern
+            let mut random_pattern = Pixel::with_size(width, height);
+            for x in 0..width {
+                for y in 0..height {
+                    random_pattern.set(x, y, (x ^ y) % 3 == 0);
+                }
+            }
+
+            let test_cases = vec![
+                ("Best case (all black)", best_case),
+                ("Checkerboard pattern", checkerboard),
+                ("Random noise pattern", random_pattern),
+            ];
+
+            for (pattern_name, pixel) in test_cases {
+                println!("\n=== {} - {} ===", size_name, pattern_name);
+                
+                // 1. original uncompressed string
+                let uncompressed = pixel.to_safe_string();
+                println!("\nOriginal uncompressed string (len={}):\n{}", 
+                    uncompressed.len(), uncompressed);
+                
+                // 2. optimal (possibly compressed) string
+                let optimal = pixel.to_optimal_string();
+                println!("\nOptimal string (len={}):\n{}", 
+                    optimal.len(), optimal);
+                
+                // 3. decompressed string
+                let decoded = Pixel::from_optimal_string(&optimal).unwrap();
+                let decompressed = decoded.to_safe_string();
+                println!("\nDecompressed string (len={}):\n{}", 
+                    decompressed.len(), decompressed);
+                
+                // verify strings are identical
+                assert_eq!(uncompressed, decompressed, 
+                    "Decompressed string doesn't match original for {} - {}", 
+                    size_name, pattern_name);
+                
+                // show compression information
+                if optimal.starts_with("c:") {
+                    let ratio = (optimal.len() as f64 / uncompressed.len() as f64) * 100.0;
+                    println!("\nUsing compression, ratio: {:.2}%", ratio);
+                } else {
+                    println!("\nNo compression used (would increase size)");
+                }
+                
+                println!("\n{}", "=".repeat(50));
+            }
         }
     }
 } 
