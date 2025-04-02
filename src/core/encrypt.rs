@@ -153,6 +153,7 @@ pub fn generate_random_key() -> Secret<String> {
 mod tests {
     use super::*;
 
+    // Existing tests
     #[test]
     fn test_encrypt_decrypt() {
         let data = "this is a test";
@@ -174,5 +175,118 @@ mod tests {
         let result = decrypt(&encrypted, wrong_password);
 
         assert!(result.is_err());
+    }
+
+    // 1. Input validation tests
+    #[test]
+    fn test_input_validation() {
+        let password = "password123";
+
+        // Test empty string
+        let empty = "";
+        let encrypted_empty = encrypt(empty, password).unwrap();
+        let decrypted_empty = decrypt(&encrypted_empty, password).unwrap();
+        assert_eq!(empty, decrypted_empty);
+
+        // Test long string
+        let long_string = "a".repeat(10000);
+        let encrypted_long = encrypt(&long_string, password).unwrap();
+        let decrypted_long = decrypt(&encrypted_long, password).unwrap();
+        assert_eq!(long_string, decrypted_long);
+
+        // Test special characters
+        let special_chars = "!@#$%^&*()_+-=[]{}|;:'\",.<>?`~";
+        let encrypted_special = encrypt(special_chars, password).unwrap();
+        let decrypted_special = decrypt(&encrypted_special, password).unwrap();
+        assert_eq!(special_chars, decrypted_special);
+
+        // Test Unicode characters
+        let unicode = "Hello, 世界! 🌍";
+        let encrypted_unicode = encrypt(unicode, password).unwrap();
+        let decrypted_unicode = decrypt(&encrypted_unicode, password).unwrap();
+        assert_eq!(unicode, decrypted_unicode);
+    }
+
+    // 2. Password validation tests
+    #[test]
+    fn test_password_validation() {
+        let data = "test data";
+
+        // Test empty password
+        let empty_pass = "";
+        let encrypted_empty = encrypt(data, empty_pass).unwrap();
+        let decrypted_empty = decrypt(&encrypted_empty, empty_pass).unwrap();
+        assert_eq!(data, decrypted_empty);
+
+        // Test long password
+        let long_pass = "a".repeat(1000);
+        let encrypted_long = encrypt(data, &long_pass).unwrap();
+        let decrypted_long = decrypt(&encrypted_long, &long_pass).unwrap();
+        assert_eq!(data, decrypted_long);
+
+        // Test password with special characters
+        let special_pass = "!@#$%^&*()_+-=[]{}|;:'\",.<>?`~";
+        let encrypted_special = encrypt(data, special_pass).unwrap();
+        let decrypted_special = decrypt(&encrypted_special, special_pass).unwrap();
+        assert_eq!(data, decrypted_special);
+    }
+
+    // 3. Error handling tests
+    #[test]
+    fn test_error_handling() {
+        let password = "password123";
+
+        // Test invalid encrypted data format
+        assert!(matches!(
+            decrypt("invalid_data", password),
+            Err(EncryptError::InvalidData)
+        ));
+
+        // Test missing separators
+        assert!(matches!(
+            decrypt("abc123", password),
+            Err(EncryptError::InvalidData)
+        ));
+
+        // Test invalid hex encoding
+        assert!(matches!(
+            decrypt("ZZ:11:22", password),
+            Err(EncryptError::InvalidData)
+        ));
+
+        // Test wrong number of parts
+        assert!(matches!(
+            decrypt("11:22", password),
+            Err(EncryptError::InvalidData)
+        ));
+    }
+
+    // 4. Random key generation tests
+    #[test]
+    fn test_random_key_generation() {
+        // Test key length
+        let key = generate_random_key();
+        assert_eq!(key.expose_secret().len(), 64); // 32 bytes = 64 hex chars
+
+        // Test hex format
+        assert!(key.expose_secret().chars().all(|c| c.is_ascii_hexdigit()));
+
+        // Test uniqueness
+        let key2 = generate_random_key();
+        assert_ne!(key.expose_secret(), key2.expose_secret());
+    }
+
+    // 5. Edge cases tests
+    #[test]
+    fn test_edge_cases() {
+        let password = "password123";
+        
+        // Test various input lengths around block boundaries
+        for len in [1, 15, 16, 17, 31, 32, 33, 63, 64, 65] {
+            let data = "a".repeat(len);
+            let encrypted = encrypt(&data, password).unwrap();
+            let decrypted = decrypt(&encrypted, password).unwrap();
+            assert_eq!(data, decrypted);
+        }
     }
 } 
