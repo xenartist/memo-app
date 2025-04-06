@@ -8,6 +8,10 @@ use serde_wasm_bindgen::from_value;
 use gloo_utils::format::JsValueSerdeExt;
 use base64;
 use bs58;
+use solana_sdk::pubkey::Pubkey;
+use std::str::FromStr;
+use flate2::read::DeflateDecoder;
+use std::io::Read;
 
 // error type
 #[derive(Debug, Deserialize)]
@@ -159,16 +163,28 @@ impl RpcConnection {
 
     pub async fn get_user_profile(&self, pubkey: &str) -> Result<String, RpcError> {
         // Program ID
-        const PROGRAM_ID: &str = "TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw";
+        let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
+            .map_err(|e| RpcError::Other(format!("Invalid program ID: {}", e)))?;
         
-        // calculate PDA
-        let seeds = format!("[{{\"pubkey\":\"{}\",\"seeds\":[\"user_profile\",\"{}\"]}}", PROGRAM_ID, pubkey);
-        let pda: serde_json::Value = self.send_request("getProgramDerivedAddress", seeds).await?;
-        
-        // get account info
-        let account_info: serde_json::Value = self.send_request("getAccountInfo", vec![pda.to_string()]).await?;
-        
-        Ok(account_info.to_string())
+        let target_pubkey = Pubkey::from_str(pubkey)
+            .map_err(|e| RpcError::Other(format!("Invalid public key: {}", e)))?;
+
+        // Calculate user profile PDA
+        let (user_profile_pda, _) = Pubkey::find_program_address(
+            &[b"user_profile", target_pubkey.as_ref()],
+            &program_id
+        );
+
+        // get account info, using base64 encoding
+        let params = serde_json::json!([
+            user_profile_pda.to_string(),
+            {"encoding": "base64"}
+        ]);
+
+        // get raw account data and return directly
+        let account_info: serde_json::Value = self.send_request("getAccountInfo", params).await?;
+        serde_json::to_string(&account_info)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize response: {}", e)))
     }
 
     pub async fn initialize_user_profile(
@@ -372,5 +388,243 @@ mod tests {
                 panic!("Failed to load wallet");
             }
         }
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_get_user_profile() {
+        print_separator();
+        log_info("Starting user profile test");
+
+        // using load_test_wallet to get test wallet pubkey
+        match load_test_wallet() {
+            Ok(pubkey) => {
+                log_info(&format!("Test wallet public key: {}", pubkey));
+
+                let rpc = RpcConnection::new();
+                log_info(&format!("Using RPC endpoint: {}", RpcConnection::DEFAULT_RPC_ENDPOINT));
+
+                match rpc.get_user_profile(&pubkey).await {
+                    Ok(account_info_str) => {
+                        print_separator();
+                        log_info("Raw account info received:");
+                        log_info(&account_info_str);
+
+                        // parse account info JSON
+                        let account_info: serde_json::Value = serde_json::from_str(&account_info_str)
+                            .expect("Failed to parse account info JSON");
+
+                        // get base64 encoded data
+                        if let Some(data) = account_info["value"]["data"].get(0).and_then(|v| v.as_str()) {
+                            // decode base64 data
+                            let decoded = base64::decode(data)
+                                .expect("Failed to decode base64 data");
+
+                            // start parsing data structure (simulate UI behavior)
+                            let mut data = &decoded[8..]; // Skip discriminator
+
+                            // Read pubkey
+                            let mut pubkey_bytes = [0u8; 32];
+                            pubkey_bytes.copy_from_slice(&data[..32]);
+                            let account_pubkey = Pubkey::new_from_array(pubkey_bytes);
+                            data = &data[32..];
+
+                            // Read username
+                            let username_len = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
+                            data = &data[4..];
+                            let username = String::from_utf8(data[..username_len].to_vec())
+                                .expect("Invalid username encoding");
+                            data = &data[username_len..];
+
+                            // Read stats
+                            let total_minted = u64::from_le_bytes([
+                                data[0], data[1], data[2], data[3], 
+                                data[4], data[5], data[6], data[7]
+                            ]);
+                            data = &data[8..];
+
+                            let total_burned = u64::from_le_bytes([
+                                data[0], data[1], data[2], data[3], 
+                                data[4], data[5], data[6], data[7]
+                            ]);
+                            data = &data[8..];
+
+                            let mint_count = u64::from_le_bytes([
+                                data[0], data[1], data[2], data[3], 
+                                data[4], data[5], data[6], data[7]
+                            ]);
+                            data = &data[8..];
+
+                            let burn_count = u64::from_le_bytes([
+                                data[0], data[1], data[2], data[3], 
+                                data[4], data[5], data[6], data[7]
+                            ]);
+                            data = &data[8..];
+
+                            // Read profile image
+                            let profile_image_len = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
+                            data = &data[4..];
+                            let profile_image = String::from_utf8(data[..profile_image_len].to_vec())
+                                .expect("Invalid profile image encoding");
+                            data = &data[profile_image_len..];
+
+                            // Read timestamps
+                            let created_at = i64::from_le_bytes([
+                                data[0], data[1], data[2], data[3], 
+                                data[4], data[5], data[6], data[7]
+                            ]);
+                            data = &data[8..];
+
+                            let last_updated = i64::from_le_bytes([
+                                data[0], data[1], data[2], data[3], 
+                                data[4], data[5], data[6], data[7]
+                            ]);
+
+                            // display parsed user info
+                            print_separator();
+                            log_info("==== USER PROFILE ====");
+                            log_info(&format!("Username: {}", username));
+                            log_info(&format!("Profile Image: {}", 
+                                if profile_image.is_empty() { "None" } else { &profile_image }));
+                            
+                            log_info("\n==== TOKEN STATISTICS ====");
+                            log_info(&format!("Total Minted: {} tokens", total_minted));
+                            log_info(&format!("Total Burned: {} tokens", total_burned));
+                            log_info(&format!("Net Balance: {} tokens", 
+                                (total_minted as i64 - total_burned as i64)));
+                            log_info(&format!("Mint Operations: {}", mint_count));
+                            log_info(&format!("Burn Operations: {}", burn_count));
+                            
+                            log_info("\n==== ACCOUNT INFO ====");
+                            log_info(&format!("Owner: {}", account_pubkey));
+                            log_info(&format!("Created: {}", format_timestamp(created_at)));
+                            log_info(&format!("Last Updated: {}", format_timestamp(last_updated)));
+
+                            if !profile_image.is_empty() {
+                                log_info("\n==== PIXEL ART ====");
+                                display_pixel_art(&profile_image);
+                            }
+                        } else {
+                            log_error("No account data found");
+                        }
+
+                        print_separator();
+                        log_success("User profile test completed successfully");
+                    },
+                    Err(e) => {
+                        print_separator();
+                        log_error(&format!("Failed to get user profile: {}", e));
+                        log_error("Error occurred during RPC call");
+                        panic!("User profile test failed");
+                    }
+                }
+            },
+            Err(e) => {
+                print_separator();
+                log_error(&format!("Failed to load test wallet: {}", e));
+                panic!("Failed to load wallet");
+            }
+        }
+    }
+
+    // Helper functions for the test
+    fn format_timestamp(timestamp: i64) -> String {
+        let secs = timestamp as u64;
+        let days = secs / 86400;
+        let hours = (secs % 86400) / 3600;
+        let minutes = (secs % 3600) / 60;
+        let seconds = secs % 60;
+        
+        format!(
+            "{:04}-{:02}-{:02} {:02}:{:02}:{:02} UTC",
+            1970 + (days / 365),
+            ((days % 365) / 30) + 1,
+            ((days % 365) % 30) + 1,
+            hours,
+            minutes,
+            seconds
+        )
+    }
+
+    fn display_pixel_art(profile_image: &str) {
+        if profile_image.is_empty() {
+            return;
+        }
+
+        // parse prefix and data
+        let (prefix, data) = match profile_image.split_once(':') {
+            Some(("c", compressed)) => {
+                // handle compressed data
+                match decompress_with_deflate(compressed) {
+                    Ok(decompressed) => ("n", decompressed),
+                    Err(e) => {
+                        log_error(&format!("Error decompressing profile image: {}", e));
+                        return;
+                    }
+                }
+            },
+            Some(("n", uncompressed)) => ("n", uncompressed.to_string()),
+            _ => {
+                log_error("Invalid profile image format");
+                return;
+            }
+        };
+
+        // display pixel art
+        log_info("\nPixel Art Representation:");
+        let mut bit_count = 0;
+
+        for c in data.chars() {
+            if let Some(value) = map_from_safe_char(c) {
+                for i in (0..6).rev() {
+                    let bit = (value & (1 << i)) != 0;
+                    console_log!("{}", if bit { "⬛" } else { "⬜" });
+                    bit_count += 1;
+                    
+                    if bit_count % 32 == 0 {
+                        console_log!("\n");
+                    }
+                }
+            }
+        }
+        console_log!("\n");
+    }
+
+    fn map_from_safe_char(c: char) -> Option<u8> {
+        let ascii = c as u8;
+        
+        if c == ':' || c == '\\' || c == '"' {
+            return None;
+        }
+        
+        if ascii < 35 || ascii > 126 {
+            return None;
+        }
+        
+        let mut value = ascii - 35;
+        if ascii > 92 { value -= 1; }  // adjust '\'
+        if ascii > 58 { value -= 1; }  // adjust ':'
+        
+        if value >= 64 {
+            return None;
+        }
+        
+        Some(value)
+    }
+
+    fn decompress_with_deflate(input: &str) -> Result<String, String> {
+        let bytes = base64::decode(input)
+            .map_err(|e| format!("Base64 decode error: {}", e))?;
+            
+        let mut decoder = DeflateDecoder::new(&bytes[..]);
+        let mut decompressed = Vec::new();
+        
+        decoder.read_to_end(&mut decompressed)
+            .map_err(|e| format!("Decompression error: {}", e))?;
+            
+        let result: String = decompressed.into_iter()
+            .map(|b| b as char)
+            .collect();
+            
+        Ok(result)
     }
 }
