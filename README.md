@@ -13,11 +13,19 @@ This template should help get you started developing with Tauri and Leptos.
 cargo test
 ```
 
-* RPC Unit Test
+* RPC Specific Unit Test
+
+Headless Mode in Bash
 ```
-wasm-pack test --chrome --headless
+set RUST_LOG=error,tiny_http=off && wasm-pack test --chrome --headless
 ```
-or
+
+Headless Mode in Powershell
+```
+$env:RUST_LOG="error,tiny_http=off"; wasm-pack test --chrome --headless
+```
+
+Interactive Mode in Browser
 ```
 wasm-pack test --chrome
 ```
