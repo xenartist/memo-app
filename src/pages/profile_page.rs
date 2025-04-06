@@ -9,6 +9,7 @@ use web_sys::{
     Window,
     Document,
     ProgressEvent,
+    SubmitEvent,
 };
 use crate::core::session::{Session, UserProfile, parse_user_profile};
 use crate::core::rpc::RpcConnection;
@@ -97,7 +98,7 @@ pub fn ProfilePage(
                     },
                     None => view! {
                         <div class="profile-form">
-                            <CreateProfileForm />
+                            <CreateProfileForm session=session/>
                         </div>
                     }
                 }}
@@ -107,10 +108,13 @@ pub fn ProfilePage(
 }
 
 #[component]
-fn CreateProfileForm() -> impl IntoView {
+fn CreateProfileForm(
+    session: RwSignal<Session>
+) -> impl IntoView {
     let (username, set_username) = create_signal(String::new());
     let (pixel_art, set_pixel_art) = create_signal(Pixel::new());
     let (error_message, set_error_message) = create_signal(String::new());
+    let (is_submitting, set_is_submitting) = create_signal(false);
     
     // Handle pixel click
     let handle_pixel_click = move |row: usize, col: usize| {
@@ -173,8 +177,76 @@ fn CreateProfileForm() -> impl IntoView {
         input.click();
     };
 
+    // Handle form submission
+    let handle_submit = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        
+        // Validate inputs
+        if username.get().is_empty() {
+            set_error_message.set("Username is required".to_string());
+            return;
+        }
+        if username.get().len() > 32 {
+            set_error_message.set("Username too long. Maximum length is 32 characters".to_string());
+            return;
+        }
+
+        // Get pixel art string representation
+        let profile_image = pixel_art.get().to_optimal_string();
+
+        // Validate profile image length
+        if profile_image.len() > 256 {
+            set_error_message.set("Profile image too long. Maximum length is 256 characters".to_string());
+            return;
+        }
+
+        // Clear any previous error
+        set_error_message.set(String::new());
+        set_is_submitting.set(true);
+
+        // Create RPC connection
+        let rpc = RpcConnection::new();
+        let username_clone = username.get().clone();
+        let profile_image_clone = profile_image.clone();
+        
+        spawn_local(async move {
+            // Get pubkey from session
+            match session.get().get_public_key() {
+                Ok(pubkey) => {
+                    log::info!("Creating profile for pubkey: {}", pubkey);
+                    match rpc.initialize_user_profile(
+                        &pubkey,
+                        &username_clone,
+                        &profile_image_clone
+                    ).await {
+                        Ok(signature) => {
+                            log::info!("Profile created successfully! Signature: {}", signature);
+                            set_error_message.set("Profile created successfully!".to_string());
+                            
+                            // Refresh the page after successful creation
+                            if let Some(window) = web_sys::window() {
+                                if let Err(e) = window.location().reload() {
+                                    log::error!("Failed to reload page: {:?}", e);
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            log::error!("Failed to create profile: {:?}", e);
+                            set_error_message.set(format!("Failed to create profile: {}", e));
+                        }
+                    }
+                },
+                Err(e) => {
+                    log::error!("Failed to get public key: {:?}", e);
+                    set_error_message.set("Failed to get public key from session".to_string());
+                }
+            }
+            set_is_submitting.set(false);
+        });
+    };
+
     view! {
-        <div class="create-profile-form">
+        <form class="create-profile-form" on:submit=handle_submit>
             <h3>"Create Your Profile"</h3>
             
             <div class="form-group">
@@ -189,6 +261,7 @@ fn CreateProfileForm() -> impl IntoView {
                         set_username.set(input.value());
                     }
                     prop:value=username
+                    prop:disabled=is_submitting
                 />
             </div>
 
@@ -221,19 +294,24 @@ fn CreateProfileForm() -> impl IntoView {
                     type="button"
                     class="import-btn"
                     on:click=handle_import
+                    prop:disabled=is_submitting
                 >
                     "Import Image"
                 </button>
             </div>
 
-            <div class="error-message">
+            <div class="error-message" class:success=move || error_message.get().contains("success")>
                 {move || error_message.get()}
             </div>
 
-            <button type="submit" class="submit-btn">
-                "Create Profile"
+            <button 
+                type="submit" 
+                class="submit-btn"
+                prop:disabled=is_submitting
+            >
+                {move || if is_submitting.get() { "Creating Profile..." } else { "Create Profile" }}
             </button>
-        </div>
+        </form>
     }
 }
 

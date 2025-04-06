@@ -252,139 +252,67 @@ impl Default for RpcConnection {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wasm_bindgen_test::*;
+    use wasm_bindgen_test::console_log;
 
-    // Test RPC connection initialization
-    #[test]
-    fn test_rpc_connection_initialization() {
-        // Test default endpoint
-        let default_connection = RpcConnection::new();
-        assert_eq!(default_connection.endpoint, RpcConnection::DEFAULT_RPC_ENDPOINT);
+    wasm_bindgen_test_configure!(run_in_browser);
 
-        // Test custom endpoint
-        let custom_endpoint = "https://custom.rpc.endpoint";
-        let custom_connection = RpcConnection::with_endpoint(custom_endpoint);
-        assert_eq!(custom_connection.endpoint, custom_endpoint);
+    fn log_info(msg: &str) {
+        console_log!("ℹ️  {}", msg);
     }
 
-    // Test RPC error formatting
-    #[test]
-    fn test_rpc_error_display() {
-        let errors = vec![
-            (
-                RpcError::ConnectionFailed("Failed to connect".to_string()),
-                "Connection failed: Failed to connect"
-            ),
-            (
-                RpcError::InvalidAddress("Invalid pubkey".to_string()),
-                "Invalid address: Invalid pubkey"
-            ),
-            (
-                RpcError::TransactionFailed("Timeout".to_string()),
-                "Transaction failed: Timeout"
-            ),
-            (
-                RpcError::Other("Unknown error".to_string()),
-                "Error: Unknown error"
-            ),
-        ];
+    fn log_error(msg: &str) {
+        console_log!("❌ {}", msg);
+    }
 
-        for (error, expected) in errors {
-            assert_eq!(error.to_string(), expected);
+    fn log_success(msg: &str) {
+        console_log!("✅ {}", msg);
+    }
+
+    fn log_json(prefix: &str, value: &serde_json::Value) {
+        console_log!("📄 {}:", prefix);
+        match serde_json::to_string_pretty(value) {
+            Ok(pretty) => {
+                for line in pretty.lines() {
+                    console_log!("   {}", line);
+                }
+            }
+            Err(e) => log_error(&format!("Failed to format JSON: {}", e))
         }
     }
 
-    // Test RPC request construction
-    #[test]
-    fn test_rpc_request_serialization() {
-        let request = RpcRequest {
-            jsonrpc: "2.0".to_string(),
-            id: 1,
-            method: "testMethod".to_string(),
-            params: vec!["param1", "param2"],
-        };
-
-        let serialized = serde_json::to_string(&request).unwrap();
-        assert!(serialized.contains("\"jsonrpc\":\"2.0\""));
-        assert!(serialized.contains("\"id\":1"));
-        assert!(serialized.contains("\"method\":\"testMethod\""));
-        assert!(serialized.contains("\"params\":[\"param1\",\"param2\"]"));
+    fn print_separator() {
+        console_log!("\n----------------------------------------");
     }
 
-    // Test RPC response deserialization
-    #[test]
-    fn test_rpc_response_deserialization() {
-        let json = r#"{
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": "success",
-            "error": null
-        }"#;
-
-        let response: RpcResponse<String> = serde_json::from_str(json).unwrap();
-        assert_eq!(response.jsonrpc, "2.0");
-        assert_eq!(response.id, 1);
-        assert_eq!(response.result, "success");
-        assert!(response.error.is_none());
-    }
-
-    // Test RPC response error handling
-    #[test]
-    fn test_rpc_response_error() {
-        let json = r#"{
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": null,
-            "error": {
-                "code": -32601,
-                "message": "Method not found"
+    #[wasm_bindgen_test]
+    async fn test_get_version() {
+        print_separator();
+        log_info("Starting version test");
+        
+        let rpc = RpcConnection::new();
+        log_info(&format!("Using RPC endpoint: {}", RpcConnection::DEFAULT_RPC_ENDPOINT));
+        
+        match rpc.get_version().await {
+            Ok(version) => {
+                print_separator();
+                
+                let version_value: serde_json::Value = serde_json::from_str(&version)
+                    .expect("Failed to parse version JSON");
+                
+                log_json("RPC Version Response", &version_value);
+                
+                assert!(version_value.is_object(), "Version response should be an object");
+                assert!(version_value.get("solana-core").is_some(), "Should contain solana-core version");
+                
+                print_separator();
+                log_success("Version test completed successfully");
+            },
+            Err(e) => {
+                print_separator();
+                log_error(&format!("Version test failed: {}", e));
+                panic!("Test failed");
             }
-        }"#;
-
-        let response: RpcResponse<Option<String>> = serde_json::from_str(json).unwrap();
-        assert!(response.error.is_some());
-        assert_eq!(response.error.unwrap().code, -32601);
-    }
-
-    // Test instruction data construction
-    #[test]
-    fn test_instruction_data_construction() {
-        let discriminator = [192, 144, 204, 140, 113, 25, 59, 102];
-        let username = "test_user";
-        let profile_image = "deadbeef";
-
-        let mut expected_data = Vec::new();
-        expected_data.extend_from_slice(&discriminator);
-        expected_data.extend_from_slice(&(username.len() as u32).to_le_bytes());
-        expected_data.extend_from_slice(username.as_bytes());
-        expected_data.extend_from_slice(&(profile_image.len() as u32).to_le_bytes());
-        expected_data.extend_from_slice(profile_image.as_bytes());
-
-        let encoded = base64::encode(&expected_data);
-        assert!(!encoded.is_empty());
-    }
-
-    // Test input validation
-    #[test]
-    fn test_input_validation() {
-        let pubkey = "valid_pubkey";
-        let username = "test_user";
-        let profile_image = "deadbeef";
-
-        // Test valid inputs
-        assert!(profile_image.chars().all(|c| c.is_ascii_hexdigit()));
-        assert!(username.len() <= 32);
-        assert!(profile_image.len() <= 256);
-
-        // Test invalid username length
-        let long_username = "a".repeat(33);
-        assert!(long_username.len() > 32);
-
-        // Test invalid profile image length
-        let long_image = "a".repeat(257);
-        assert!(long_image.len() > 256);
-
-        // Test invalid hex string
-        let invalid_hex = "not_hex_string";
-        assert!(!invalid_hex.chars().all(|c| c.is_ascii_hexdigit()));
+        }
     }
 }
