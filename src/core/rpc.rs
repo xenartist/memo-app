@@ -7,6 +7,7 @@ use std::fmt;
 use serde_wasm_bindgen::from_value;
 use gloo_utils::format::JsValueSerdeExt;
 use base64;
+use bs58;
 
 // error type
 #[derive(Debug, Deserialize)]
@@ -285,6 +286,17 @@ mod tests {
         console_log!("\n----------------------------------------");
     }
 
+    fn load_test_wallet() -> Result<String, RpcError> {
+        let keypair_json = include_str!("../../test-keypair/memo-test-keypair.json");
+        
+        let keypair_bytes: Vec<u8> = serde_json::from_str(keypair_json)
+            .map_err(|e| RpcError::Other(format!("Failed to parse keypair JSON: {}", e)))?;
+        
+        let pubkey = bs58::encode(&keypair_bytes[32..64]).into_string();
+        log_info(&format!("Successfully loaded wallet from embedded keypair file"));
+        Ok(pubkey)
+    }
+
     #[wasm_bindgen_test]
     async fn test_get_version() {
         print_separator();
@@ -312,6 +324,52 @@ mod tests {
                 print_separator();
                 log_error(&format!("Version test failed: {}", e));
                 panic!("Test failed");
+            }
+        }
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_get_balance() {
+        print_separator();
+        log_info("Starting balance test");
+
+        match load_test_wallet() {
+            Ok(pubkey) => {
+                log_info(&format!("Test wallet public key: {}", pubkey));
+
+                let rpc = RpcConnection::new();
+                log_info(&format!("Using RPC endpoint: {}", RpcConnection::DEFAULT_RPC_ENDPOINT));
+
+                match rpc.get_balance(&pubkey).await {
+                    Ok(balance_response) => {
+                        print_separator();
+                        
+                        let balance_value: serde_json::Value = serde_json::from_str(&balance_response)
+                            .expect("Failed to parse balance JSON");
+                        
+                        log_json("Balance Response", &balance_value);
+
+                        assert!(balance_value.get("value").is_some(), "Response should contain 'value' field");
+
+                        if let Some(lamports) = balance_value.get("value").and_then(|v| v.as_u64()) {
+                            let sol = lamports as f64 / 1_000_000_000.0;
+                            log_info(&format!("\nWallet balance: {} SOL ({} lamports)", sol, lamports));
+                        }
+
+                        print_separator();
+                        log_success("Balance test completed successfully");
+                    },
+                    Err(e) => {
+                        print_separator();
+                        log_error(&format!("Failed to get balance: {}", e));
+                        panic!("Balance test failed");
+                    }
+                }
+            },
+            Err(e) => {
+                print_separator();
+                log_error(&format!("Failed to load test wallet: {}", e));
+                panic!("Failed to load wallet");
             }
         }
     }
