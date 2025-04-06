@@ -527,9 +527,9 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
-    async fn test_get_user_profile() {
+    async fn test_2_get_user_profile() {
         print_separator();
-        log_info("Starting user profile test");
+        log_info("Starting user profile test sequence (2/3): Get Profile");
 
         // using load_test_wallet to get test wallet pubkey
         match load_test_wallet() {
@@ -663,9 +663,9 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
-    async fn test_close_user_profile() {
+    async fn test_3_close_user_profile() {
         print_separator();
-        log_info("Starting close user profile test");
+        log_info("Starting user profile test sequence (3/3): Close Profile");
 
         match load_test_wallet() {
             Ok((pubkey, keypair_bytes)) => {
@@ -761,9 +761,9 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
-    async fn test_initialize_user_profile() {
+    async fn test_1_initialize_user_profile() {
         print_separator();
-        log_info("Starting initialize user profile test");
+        log_info("Starting user profile test sequence (1/3): Initialize Profile");
 
         match load_test_wallet() {
             Ok((pubkey, keypair_bytes)) => {
