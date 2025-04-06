@@ -207,11 +207,23 @@ impl RpcConnection {
         &self, 
         pubkey: &str,
         username: &str, 
-        profile_image: &str
+        profile_image: &str,
+        keypair_bytes: &[u8]
     ) -> Result<String, RpcError> {
+        use solana_sdk::{
+            signature::{Keypair, Signer},
+            instruction::{AccountMeta, Instruction},
+            transaction::Transaction,
+            message::Message,
+        };
+
         // Program ID
-        const PROGRAM_ID: &str = "TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw";
+        let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
+            .map_err(|e| RpcError::Other(format!("Invalid program ID: {}", e)))?;
         
+        let target_pubkey = Pubkey::from_str(pubkey)
+            .map_err(|e| RpcError::Other(format!("Invalid public key: {}", e)))?;
+
         // Validate inputs
         if username.len() > 32 {
             return Err(RpcError::Other("Username too long. Maximum length is 32 characters.".to_string()));
@@ -220,11 +232,28 @@ impl RpcConnection {
             return Err(RpcError::Other("Profile image too long. Maximum length is 256 characters.".to_string()));
         }
 
-        // Get latest blockhash
+        // Create keypair from bytes
+        let keypair = Keypair::from_bytes(keypair_bytes)
+            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
+
+        // Calculate user profile PDA
+        let (user_profile_pda, _) = Pubkey::find_program_address(
+            &[b"user_profile", target_pubkey.as_ref()],
+            &program_id
+        );
+
+        // Get latest blockhash with specific commitment
         let blockhash: serde_json::Value = self.send_request(
             "getLatestBlockhash",
-            serde_json::json!([{"commitment": "processed"}])
+            serde_json::json!([{
+                "commitment": "finalized",
+                "minContextSlot": 0
+            }])
         ).await?;
+
+        let recent_blockhash = blockhash["value"]["blockhash"]
+            .as_str()
+            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
 
         // Construct the instruction data
         let mut instruction_data = Vec::new();
@@ -240,38 +269,46 @@ impl RpcConnection {
         instruction_data.extend_from_slice(&(profile_image.len() as u32).to_le_bytes());
         instruction_data.extend_from_slice(profile_image.as_bytes());
 
-        // Construct the transaction
-        let params = serde_json::json!({
-            "programId": PROGRAM_ID,
-            "data": base64::encode(&instruction_data),
-            "recentBlockhash": blockhash["value"]["blockhash"],
-            "instructions": [{
-                "programId": PROGRAM_ID,
-                "accounts": [
-                    {
-                        "pubkey": pubkey,  // user (signer)
-                        "isSigner": true,
-                        "isWritable": true
-                    },
-                    {
-                        "pubkey": format!("user_profile_{}", pubkey),  // PDA
-                        "isSigner": false,
-                        "isWritable": true
-                    },
-                    {
-                        "pubkey": "11111111111111111111111111111111",  // System Program
-                        "isSigner": false,
-                        "isWritable": false
-                    }
-                ],
-                "data": base64::encode(&instruction_data)
-            }]
-        });
+        // Create the instruction
+        let instruction = Instruction::new_with_bytes(
+            program_id,
+            &instruction_data,
+            vec![
+                AccountMeta::new(target_pubkey, true),     // user (signer)
+                AccountMeta::new(user_profile_pda, false), // user_profile PDA
+                AccountMeta::new_readonly(solana_sdk::system_program::id(), false), // System Program
+            ],
+        );
 
-        // Send transaction
+        // Create the message
+        let message = Message::new(
+            &[instruction],
+            Some(&target_pubkey), // fee payer
+        );
+
+        // Create and sign transaction
+        let mut transaction = Transaction::new_unsigned(message);
+        transaction.message.recent_blockhash = solana_sdk::hash::Hash::from_str(recent_blockhash)
+            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
+        transaction.sign(&[&keypair], transaction.message.recent_blockhash);
+
+        // Serialize the transaction to base64
+        let serialized_tx = base64::encode(bincode::serialize(&transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?);
+
+        // Send transaction with preflight checks and specific commitment
+        let params = serde_json::json!([
+            serialized_tx,
+            {
+                "encoding": "base64",
+                "preflightCommitment": "finalized",
+                "skipPreflight": false,
+                "maxRetries": 3
+            }
+        ]);
+
         let result: serde_json::Value = self.send_request("sendTransaction", params).await?;
-        
-        Ok(result["result"].to_string())
+        Ok(result.to_string())
     }
 
     pub async fn close_user_profile(&self, pubkey: &str, keypair_bytes: &[u8]) -> Result<String, RpcError> {
@@ -706,6 +743,107 @@ mod tests {
                             Err(e) => {
                                 log_error(&format!("Failed to close user profile: {}", e));
                                 panic!("Close operation failed");
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        log_error(&format!("Failed to check user profile: {}", e));
+                        panic!("Failed to check user profile existence");
+                    }
+                }
+            },
+            Err(e) => {
+                print_separator();  
+                log_error(&format!("Failed to load test wallet: {}", e));
+                panic!("Failed to load wallet");
+            }
+        }
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_initialize_user_profile() {
+        print_separator();
+        log_info("Starting initialize user profile test");
+
+        match load_test_wallet() {
+            Ok((pubkey, keypair_bytes)) => {
+                log_info(&format!("Test wallet public key: {}", pubkey));
+
+                let rpc = RpcConnection::new();
+                log_info(&format!("Using RPC endpoint: {}", RpcConnection::DEFAULT_RPC_ENDPOINT));
+
+                // First check if user profile already exists
+                match rpc.get_user_profile(&pubkey).await {
+                    Ok(account_info_str) => {
+                        let account_info: serde_json::Value = serde_json::from_str(&account_info_str)
+                            .expect("Failed to parse account info JSON");
+
+                        if !account_info["value"].is_null() {
+                            log_info("User profile already exists, skipping initialization");
+                            return;
+                        }
+
+                        // If account doesn't exist, proceed with initialization
+                        log_info("No existing user profile found, proceeding with initialization...");
+                        
+                        // Generate a simple profile image
+                        let profile_image = "n:3UZcHVQ0*UD`75D)/9W9[@$E#F#+ddL^$7+a/AVJ7R7SKW?0$V@<3DaVT'(V?VHKB=N-%K3bJ^BH-cdGP33]cB9I`&KH*D)X#XF#V$S[VH%CI_=P--_]*T&]^`?>N?.aNJ)V8.W8Z&V/DZ9I+0?0BbD^VV]/0aGa=,G6d456c`#";
+                        
+                        match rpc.initialize_user_profile(&pubkey, "TestUser", profile_image, &keypair_bytes).await {
+                            Ok(response) => {
+                                // Print raw response
+                                print_separator();
+                                log_info("Raw Initialize Profile Response:");
+                                log_info(&response);
+                                print_separator();
+
+                                // Try to parse response as JSON (but don't let parsing fail affect test flow)
+                                match serde_json::from_str::<serde_json::Value>(&response) {
+                                    Ok(json_response) => {
+                                        log_json("Parsed Initialize Profile Response", &json_response);
+                                    }
+                                    Err(e) => {
+                                        log_error(&format!("Failed to parse response as JSON: {}", e));
+                                    }
+                                }
+
+                                // Wait for transaction confirmation
+                                log_info("Waiting for transaction confirmation...");
+                                
+                                // Try 10 times, 10 seconds interval
+                                for i in 1..=10 {
+                                    // Use gloo_timers future version for delay
+                                    gloo_timers::future::TimeoutFuture::new(10_000).await;
+                                    
+                                    log_info(&format!("Checking account status (attempt {}/10)...", i));
+                                    
+                                    match rpc.get_user_profile(&pubkey).await {
+                                        Ok(verify_info_str) => {
+                                            let verify_info: serde_json::Value = serde_json::from_str(&verify_info_str)
+                                                .expect("Failed to parse verification info JSON");
+
+                                            if !verify_info["value"].is_null() {
+                                                log_success("User profile successfully initialized");
+                                                print_separator();
+                                                log_success("Initialize user profile test completed");
+                                                return;
+                                            } else {
+                                                log_info("Profile not yet created, waiting for confirmation...");
+                                            }
+                                        },
+                                        Err(e) => {
+                                            log_error(&format!("Failed to verify account creation: {}", e));
+                                        }
+                                    }
+                                }
+
+                                // If all attempts fail
+                                log_error("Profile not created after maximum retries");
+                                panic!("Initialize operation failed - account not created after timeout");
+                            },
+                            Err(e) => {
+                                log_error(&format!("Failed to initialize user profile: {}", e));
+                                panic!("Initialize operation failed");
                             }
                         }
                     },
