@@ -186,9 +186,6 @@ impl RpcConnection {
         if profile_image.len() > 256 {
             return Err(RpcError::Other("Profile image too long. Maximum length is 256 characters.".to_string()));
         }
-        if !profile_image.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Err(RpcError::Other("Profile image must be a valid hexadecimal string.".to_string()));
-        }
 
         // Get latest blockhash
         let blockhash: serde_json::Value = self.send_request(
