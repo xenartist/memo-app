@@ -18,6 +18,10 @@ use wasm_bindgen_futures::JsFuture;
 use image::{ImageBuffer, Luma};
 use crate::core::pixel::Pixel;
 use js_sys::Uint8Array;
+use solana_sdk::signature::Keypair;
+use hex;
+use crate::core::wallet::{derive_keypair_from_seed, get_default_derivation_path};
+use gloo_timers;
 
 #[component]
 pub fn ProfilePage(
@@ -213,26 +217,83 @@ fn CreateProfileForm(
             // Get pubkey from session
             match session.get().get_public_key() {
                 Ok(pubkey) => {
-                    log::info!("Creating profile for pubkey: {}", pubkey);
-                    match rpc.initialize_user_profile(
-                        &pubkey,
-                        &username_clone,
-                        &profile_image_clone
-                    ).await {
-                        Ok(signature) => {
-                            log::info!("Profile created successfully! Signature: {}", signature);
-                            set_error_message.set("Profile created successfully!".to_string());
-                            
-                            // Refresh the page after successful creation
-                            if let Some(window) = web_sys::window() {
-                                if let Err(e) = window.location().reload() {
-                                    log::error!("Failed to reload page: {:?}", e);
+                    // get seed from session
+                    match session.get().get_seed() {
+                        Ok(seed) => {
+                            // try to decode seed from hex
+                            match hex::decode(&seed) {
+                                Ok(seed_bytes) => {
+                                    // convert to fixed length array
+                                    match seed_bytes.try_into() as Result<[u8; 64], _> {
+                                        Ok(seed_array) => {
+                                            log::info!("Creating profile for pubkey: {}", pubkey);
+                                            
+                                            // use derive_keypair_from_seed instead of directly creating Keypair
+                                            match derive_keypair_from_seed(&seed_array, get_default_derivation_path()) {
+                                                Ok((keypair, _)) => {
+                                                    // call RPC method
+                                                    match rpc.initialize_user_profile(
+                                                        &pubkey,
+                                                        &username_clone,
+                                                        &profile_image_clone,
+                                                        &keypair.to_bytes()
+                                                    ).await {
+                                                        Ok(signature) => {
+                                                            log::info!("Profile created successfully! Signature: {}", signature);
+                                                            
+                                                            // wait for transaction confirmation
+                                                            gloo_timers::future::TimeoutFuture::new(2000).await;
+                                                            
+                                                            // get latest profile data
+                                                            match rpc.get_user_profile(&pubkey).await {
+                                                                Ok(result) => {
+                                                                    if let Ok(profile) = parse_user_profile(&result) {
+                                                                        log::info!("Successfully fetched new user profile");
+                                                                        // update profile in session
+                                                                        let mut current_session = session.get();
+                                                                        current_session.set_user_profile(Some(profile));
+                                                                        session.set(current_session);
+                                                                        
+                                                                        // set success message
+                                                                        set_error_message.set("Profile created successfully!".to_string());
+                                                                        
+                                                                        // no need to manually refresh page, Leptos's reactive system will automatically update UI
+                                                                        // because we updated the session signal, ProfilePage component will be re-rendered
+                                                                    }
+                                                                }
+                                                                Err(e) => {
+                                                                    log::error!("Failed to fetch updated profile: {:?}", e);
+                                                                    set_error_message.set("Profile created, but failed to fetch updated data".to_string());
+                                                                }
+                                                            }
+                                                        },
+                                                        Err(e) => {
+                                                            log::error!("Failed to create profile: {:?}", e);
+                                                            set_error_message.set(format!("Failed to create profile: {}", e));
+                                                        }
+                                                    }
+                                                },
+                                                Err(e) => {
+                                                    log::error!("Invalid seed length: {:?}", e);
+                                                    set_error_message.set("Invalid wallet seed format".to_string());
+                                                }
+                                            }
+                                        },
+                                        Err(e) => {
+                                            log::error!("Failed to decode seed hex: {:?}", e);
+                                            set_error_message.set("Invalid wallet seed format".to_string());
+                                        }
+                                    }
+                                },
+                                Err(e) => {
+                                    log::error!("Failed to decode seed hex: {:?}", e);
+                                    set_error_message.set("Invalid wallet seed format".to_string());
                                 }
                             }
                         },
                         Err(e) => {
-                            log::error!("Failed to create profile: {:?}", e);
-                            set_error_message.set(format!("Failed to create profile: {}", e));
+                            log::error!("Failed to get seed from session: {:?}", e);
+                            set_error_message.set(format!("Failed to get wallet seed: {}", e));
                         }
                     }
                 },
