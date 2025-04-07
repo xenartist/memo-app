@@ -317,6 +317,7 @@ fn CreateProfileForm(
                     id="username"
                     maxlength="32"
                     placeholder="Enter your username (max 32 characters)"
+                    autocomplete="off"
                     on:input=move |ev| {
                         let input = event_target::<HtmlInputElement>(&ev);
                         set_username.set(input.value());
