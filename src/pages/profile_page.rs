@@ -200,8 +200,100 @@ fn ProfileForm(
         input.click();
     };
 
+    // 在 ProfileForm 组件中修改更新逻辑
+    let handle_submit = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        
+        if !matches!(form_state.get(), ProfileFormState::Edit) {
+            return;
+        }
+
+        let current_username = username.get();
+        let current_pixel_art = pixel_art.get();
+
+        set_is_submitting.set(true);
+        set_error_message.set(String::new());
+
+        let session_clone = session;
+        let set_error_clone = set_error_message;
+        let set_submitting_clone = set_is_submitting;
+        let form_state_clone = form_state;
+        let existing_profile_clone = existing_profile.clone();
+        // 克隆 username，这样就可以在多处使用
+        let username_for_update = current_username.clone();
+
+        spawn_local(async move {
+            let mut current_session = session_clone.get();
+            
+            match current_session.get_public_key() {
+                Ok(pubkey) => {
+                    match current_session.get_seed() {
+                        Ok(seed) => {
+                            match hex::decode(&seed) {
+                                Ok(seed_bytes) => {
+                                    match seed_bytes.try_into() as Result<[u8; 64], Vec<u8>> {
+                                        Ok(seed_array) => {
+                                            match derive_keypair_from_seed(
+                                                &seed_array,
+                                                get_default_derivation_path()
+                                            ) {
+                                                Ok((keypair, _)) => {
+                                                    let rpc = RpcConnection::new();
+                                                    
+                                                    match rpc.update_user_profile(
+                                                        &pubkey,
+                                                        Some(username_for_update),
+                                                        Some(current_pixel_art.to_optimal_string()),
+                                                        &keypair.to_bytes()
+                                                    ).await {
+                                                        Ok(_) => {
+                                                            if let Some(mut updated_profile) = existing_profile_clone {
+                                                                updated_profile.username = current_username;
+                                                                updated_profile.profile_image = current_pixel_art.to_optimal_string();
+
+                                                                current_session.set_user_profile(Some(updated_profile));
+                                                                session_clone.set(current_session);
+
+                                                                set_error_clone.set("Profile updated successfully!".to_string());
+                                                                form_state_clone.set(ProfileFormState::View);
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            set_error_clone.set(format!("Failed to update profile: {}", e));
+                                                        }
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    set_error_clone.set(format!("Failed to derive keypair: {:?}", e));
+                                                }
+                                            }
+                                        }
+                                        Err(original_vec) => {
+                                            set_error_clone.set(format!("Invalid seed length: {} (expected 64)", original_vec.len()));
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    set_error_clone.set(format!("Failed to decode seed: {}", e));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            set_error_clone.set(format!("Failed to get seed: {}", e));
+                        }
+                    }
+                }
+                Err(e) => {
+                    set_error_clone.set(format!("Failed to get public key: {}", e));
+                }
+            }
+
+            set_submitting_clone.set(false);
+        });
+    };
+
     view! {
-        <form class="profile-form">
+        <form class="profile-form" on:submit=handle_submit>
             <h3>
                 {move || match form_state.get() {
                     ProfileFormState::Create => "Create Your Profile",
