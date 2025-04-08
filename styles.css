@@ -46,10 +46,11 @@
 
 .button-group {
   display: flex;
-  gap: 24px;
-  justify-content: space-between;
+  justify-content: center;
+  position: relative;
+  width: 100%;
   margin-top: 32px;
-  padding: 0 16px;
+  padding: 0;
 }
 
 .wallet-btn {
@@ -73,6 +74,14 @@
 
 .wallet-btn.import-wallet:hover {
   background-color: #1976D2;
+}
+
+.wallet-btn.edit-mode {
+  background-color: #6c757d;
+}
+
+.wallet-btn.edit-mode:hover {
+  background-color: #5a6268;
 }
 
 .mnemonic-display {
@@ -803,13 +812,22 @@ h2 {
 }
 
 .import-btn {
-    background-color: #6c757d;
+    background-color: #007bff;
     color: white;
     padding: 8px 16px;
     border-radius: 4px;
     font-size: 14px;
     height: fit-content;
     margin: 0;
+    transition: all 0.2s ease;
+}
+
+.import-btn:hover:not(:disabled) {
+    background-color: #0056b3;
+}
+
+.import-btn.hidden {
+    display: none;
 }
 
 .pixel-grid {
@@ -853,7 +871,8 @@ h2 {
     opacity: 0.8;
 }
 
-.button-group button {
+.button-group button,
+.import-btn {
     padding: 12px 24px;
     border: none;
     border-radius: 6px;
@@ -868,14 +887,25 @@ h2 {
     cursor: not-allowed;
 }
 
-.submit-btn, .update-btn {
+.update-btn,
+.import-btn {
     background-color: #007bff;
     color: white;
 }
 
-.submit-btn:hover:not(:disabled), 
-.update-btn:hover:not(:disabled) {
+.update-btn:hover:not(:disabled),
+.import-btn:hover:not(:disabled) {
     background-color: #0056b3;
+}
+
+.update-btn:disabled,
+.import-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.import-btn.hidden {
+    display: none;
 }
 
 .edit-btn {
@@ -907,8 +937,28 @@ h2 {
     background-color: #f8f9fa;
     color: #333;
     border: 1px solid #ddd;
+    padding: 10px 20px;
+    font-size: 13px;
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
 }
 
 .cancel-btn:hover:not(:disabled) {
     background-color: #e2e6ea;
+}
+
+.button-group.edit-mode {
+    display: flex;
+    justify-content: center;
+    position: relative;
+}
+
+.update-btn {
+    background-color: #007bff;
+    color: white;
+    min-width: 120px;
+    position: relative;
+    z-index: 1;
 }

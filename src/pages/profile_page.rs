@@ -235,10 +235,9 @@ fn ProfileForm(
                     <button 
                         type="button"
                         class="import-btn"
+                        class:hidden=move || !matches!(form_state.get(), ProfileFormState::Create | ProfileFormState::Edit)
                         on:click=handle_import
-                        prop:disabled=move || {
-                            is_submitting.get() || !matches!(form_state.get(), ProfileFormState::Create | ProfileFormState::Edit)
-                        }
+                        prop:disabled=is_submitting
                     >
                         "Import Image"
                     </button>
@@ -313,7 +312,7 @@ fn ProfileForm(
                         </div>
                     },
                     ProfileFormState::Edit => view! {
-                        <div>
+                        <div class="button-group edit-mode">
                             <button 
                                 type="submit" 
                                 class="update-btn"
