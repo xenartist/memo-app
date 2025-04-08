@@ -198,9 +198,8 @@ impl RpcConnection {
         ]);
 
         // get raw account data and return directly
-        let account_info: serde_json::Value = self.send_request("getAccountInfo", params).await?;
-        serde_json::to_string(&account_info)
-            .map_err(|e| RpcError::Other(format!("Failed to serialize response: {}", e)))
+        let result: serde_json::Value = self.send_request("getAccountInfo", params).await?;
+        Ok(result.to_string())
     }
 
     pub async fn initialize_user_profile(
