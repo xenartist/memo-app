@@ -728,6 +728,7 @@ h2 {
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     max-width: 600px;
+    min-height: 400px;
     margin: 0 auto;
 }
 
@@ -951,14 +952,19 @@ h2 {
     display: flex;
     justify-content: center;
     position: relative;
+    width: 100%;
+    margin-top: 20px;
 }
 
-.update-btn {
-    background-color: #007bff;
-    color: white;
+.button-group.edit-mode .update-btn {
     min-width: 120px;
     position: relative;
     z-index: 1;
+}
+
+.button-group.edit-mode .cancel-btn {
+    position: absolute;
+    right: 24px;
 }
 
 .confirm-modal-overlay {
@@ -1039,12 +1045,10 @@ h2 {
     background-color: #c82333;
 }
 
-/* 防止模态框下的内容滚动 */
 body.modal-open {
     overflow: hidden;
 }
 
-/* 统一按钮组样式 */
 .button-group {
     display: flex;
     justify-content: flex-end;
@@ -1052,7 +1056,6 @@ body.modal-open {
     margin-top: 20px;
 }
 
-/* 统一所有操作按钮的基础样式 */
 .create-btn,
 .edit-btn,
 .update-btn,
@@ -1068,7 +1071,6 @@ body.modal-open {
     transition: all 0.2s ease;
 }
 
-/* 主要操作按钮样式（创建、更新、导入） */
 .create-btn,
 .update-btn,
 .import-btn {
@@ -1082,7 +1084,6 @@ body.modal-open {
     background-color: #0056b3;
 }
 
-/* 编辑按钮样式 */
 .edit-btn {
     background-color: #28a745;
     color: white;
@@ -1092,7 +1093,6 @@ body.modal-open {
     background-color: #218838;
 }
 
-/* 取消按钮样式 */
 .cancel-btn {
     background-color: #6c757d;
     color: white;
@@ -1102,7 +1102,6 @@ body.modal-open {
     background-color: #5a6268;
 }
 
-/* 删除按钮样式 */
 .delete-btn {
     background-color: #dc3545;
     color: white;
@@ -1112,7 +1111,6 @@ body.modal-open {
     background-color: #c82333;
 }
 
-/* 禁用状态样式 */
 .create-btn:disabled,
 .edit-btn:disabled,
 .update-btn:disabled,
@@ -1124,7 +1122,6 @@ body.modal-open {
     opacity: 0.7;
 }
 
-/* 确保 create-mode 下的按钮组样式与其他模式一致 */
 .button-group.create-mode {
     justify-content: flex-end;
 }
