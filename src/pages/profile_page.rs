@@ -130,6 +130,7 @@ fn ProfileForm(
 
     let (error_message, set_error_message) = create_signal(String::new());
     let (is_submitting, set_is_submitting) = create_signal(false);
+    let (show_confirm_dialog, set_show_confirm_dialog) = create_signal(false);
 
     // Handle pixel click
     let handle_pixel_click = move |row: usize, col: usize| {
@@ -200,7 +201,7 @@ fn ProfileForm(
         input.click();
     };
 
-    // 在 ProfileForm 组件中修改更新逻辑
+    // update profile
     let handle_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
         
@@ -219,7 +220,6 @@ fn ProfileForm(
         let set_submitting_clone = set_is_submitting;
         let form_state_clone = form_state;
         let existing_profile_clone = existing_profile.clone();
-        // 克隆 username，这样就可以在多处使用
         let username_for_update = current_username.clone();
 
         spawn_local(async move {
@@ -290,6 +290,106 @@ fn ProfileForm(
 
             set_submitting_clone.set(false);
         });
+    };
+
+    // delete profile
+    let handle_delete = move |ev: MouseEvent| {
+        ev.prevent_default();
+        
+        if !matches!(form_state.get(), ProfileFormState::View) {
+            return;
+        }
+
+        // show confirm dialog
+        set_show_confirm_dialog.set(true);
+    };
+
+    // confirm delete
+    let handle_confirm_delete = move || {
+        set_show_confirm_dialog.set(false);
+        set_is_submitting.set(true);
+        set_error_message.set(String::new());
+
+        let session_clone = session;
+        let set_error_clone = set_error_message;
+        let set_submitting_clone = set_is_submitting;
+        let form_state_clone = form_state;
+        let set_username_clone = set_username;
+        let set_pixel_art_clone = set_pixel_art;
+
+        spawn_local(async move {
+            let mut current_session = session_clone.get();
+            
+            match current_session.get_public_key() {
+                Ok(pubkey) => {
+                    match current_session.get_seed() {
+                        Ok(seed) => {
+                            match hex::decode(&seed) {
+                                Ok(seed_bytes) => {
+                                    match seed_bytes.try_into() as Result<[u8; 64], Vec<u8>> {
+                                        Ok(seed_array) => {
+                                            match derive_keypair_from_seed(
+                                                &seed_array,
+                                                get_default_derivation_path()
+                                            ) {
+                                                Ok((keypair, _)) => {
+                                                    let rpc = RpcConnection::new();
+                                                    
+                                                    match rpc.close_user_profile(
+                                                        &pubkey,
+                                                        &keypair.to_bytes()
+                                                    ).await {
+                                                        Ok(_) => {
+                                                            // clear user profile in session
+                                                            current_session.set_user_profile(None);
+                                                            session_clone.set(current_session);
+
+                                                            // reset form state
+                                                            form_state_clone.set(ProfileFormState::Create);
+                                                            // clear username
+                                                            set_username_clone.set(String::new());
+                                                            // reset pixel art to new blank canvas
+                                                            set_pixel_art_clone.set(Pixel::new());
+                                                            
+                                                            set_error_clone.set("Profile deleted successfully!".to_string());
+                                                        }
+                                                        Err(e) => {
+                                                            set_error_clone.set(format!("Failed to delete profile: {}", e));
+                                                        }
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    set_error_clone.set(format!("Failed to derive keypair: {:?}", e));
+                                                }
+                                            }
+                                        }
+                                        Err(original_vec) => {
+                                            set_error_clone.set(format!("Invalid seed length: {} (expected 64)", original_vec.len()));
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    set_error_clone.set(format!("Failed to decode seed: {}", e));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            set_error_clone.set(format!("Failed to get seed: {}", e));
+                        }
+                    }
+                }
+                Err(e) => {
+                    set_error_clone.set(format!("Failed to get public key: {}", e));
+                }
+            }
+
+            set_submitting_clone.set(false);
+        });
+    };
+
+    // cancel delete
+    let handle_cancel_delete = move || {
+        set_show_confirm_dialog.set(false);
     };
 
     view! {
@@ -374,10 +474,10 @@ fn ProfileForm(
             <div class="button-group">
                 {move || match form_state.get() {
                     ProfileFormState::Create => view! {
-                        <div>
+                        <div class="button-group create-mode">
                             <button 
                                 type="submit" 
-                                class="submit-btn"
+                                class="create-btn"
                                 prop:disabled=is_submitting
                             >
                                 {move || if is_submitting.get() { "Creating Profile..." } else { "Create Profile" }}
@@ -397,9 +497,10 @@ fn ProfileForm(
                             <button 
                                 type="button"
                                 class="delete-btn"
+                                on:click=handle_delete
                                 prop:disabled=is_submitting
                             >
-                                "Delete Profile"
+                                {move || if is_submitting.get() { "Deleting Profile..." } else { "Delete Profile" }}
                             </button>
                         </div>
                     },
@@ -424,6 +525,40 @@ fn ProfileForm(
                     }
                 }}
             </div>
+
+            // confirm dialog
+            {move || if show_confirm_dialog.get() {
+                view! {
+                    <div class="confirm-modal-overlay">
+                        <div class="confirm-modal-content">
+                            <div class="confirm-modal-header">
+                                <h4>"Delete Profile"</h4>
+                            </div>
+                            <div class="confirm-modal-body">
+                                <p>"Are you sure you want to delete your profile? This action cannot be undone and you will need to create a new profile."</p>
+                            </div>
+                            <div class="confirm-modal-footer">
+                                <button
+                                    type="button"
+                                    class="confirm-modal-btn cancel"
+                                    on:click=move |_| handle_cancel_delete()
+                                >
+                                    "Cancel"
+                                </button>
+                                <button
+                                    type="button"
+                                    class="confirm-modal-btn delete"
+                                    on:click=move |_| handle_confirm_delete()
+                                >
+                                    "Delete"
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            } else {
+                view! { <div></div> }
+            }}
         </form>
     }
 }

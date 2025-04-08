@@ -46,11 +46,9 @@
 
 .button-group {
   display: flex;
-  justify-content: center;
-  position: relative;
-  width: 100%;
-  margin-top: 32px;
-  padding: 0;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
 }
 
 .wallet-btn {
@@ -961,4 +959,172 @@ h2 {
     min-width: 120px;
     position: relative;
     z-index: 1;
+}
+
+.confirm-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.confirm-modal-content {
+    background-color: white;
+    border-radius: 8px;
+    width: 400px;
+    max-width: 90%;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.confirm-modal-header {
+    padding: 16px 24px;
+    border-bottom: 1px solid #eee;
+}
+
+.confirm-modal-header h4 {
+    margin: 0;
+    font-size: 18px;
+    color: #333;
+}
+
+.confirm-modal-body {
+    padding: 24px;
+}
+
+.confirm-modal-body p {
+    margin: 0;
+    color: #666;
+    line-height: 1.5;
+}
+
+.confirm-modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid #eee;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.confirm-modal-btn {
+    padding: 8px 16px;
+    border-radius: 4px;
+    border: none;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.confirm-modal-btn.cancel {
+    background-color: #e0e0e0;
+    color: #333;
+}
+
+.confirm-modal-btn.cancel:hover {
+    background-color: #d0d0d0;
+}
+
+.confirm-modal-btn.delete {
+    background-color: #dc3545;
+    color: white;
+}
+
+.confirm-modal-btn.delete:hover {
+    background-color: #c82333;
+}
+
+/* 防止模态框下的内容滚动 */
+body.modal-open {
+    overflow: hidden;
+}
+
+/* 统一按钮组样式 */
+.button-group {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+/* 统一所有操作按钮的基础样式 */
+.create-btn,
+.edit-btn,
+.update-btn,
+.cancel-btn,
+.delete-btn,
+.import-btn {
+    padding: 8px 16px;
+    border-radius: 4px;
+    border: none;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+/* 主要操作按钮样式（创建、更新、导入） */
+.create-btn,
+.update-btn,
+.import-btn {
+    background-color: #007bff;
+    color: white;
+}
+
+.create-btn:hover,
+.update-btn:hover,
+.import-btn:hover {
+    background-color: #0056b3;
+}
+
+/* 编辑按钮样式 */
+.edit-btn {
+    background-color: #28a745;
+    color: white;
+}
+
+.edit-btn:hover {
+    background-color: #218838;
+}
+
+/* 取消按钮样式 */
+.cancel-btn {
+    background-color: #6c757d;
+    color: white;
+}
+
+.cancel-btn:hover {
+    background-color: #5a6268;
+}
+
+/* 删除按钮样式 */
+.delete-btn {
+    background-color: #dc3545;
+    color: white;
+}
+
+.delete-btn:hover {
+    background-color: #c82333;
+}
+
+/* 禁用状态样式 */
+.create-btn:disabled,
+.edit-btn:disabled,
+.update-btn:disabled,
+.cancel-btn:disabled,
+.delete-btn:disabled,
+.import-btn:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+/* 确保 create-mode 下的按钮组样式与其他模式一致 */
+.button-group.create-mode {
+    justify-content: flex-end;
 }
