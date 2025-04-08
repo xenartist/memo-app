@@ -205,91 +205,193 @@ fn ProfileForm(
     let handle_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
         
-        if !matches!(form_state.get(), ProfileFormState::Edit) {
-            return;
-        }
+        // process different form states
+        match form_state.get() {
+            ProfileFormState::Create => {
+                let current_username = username.get();
+                let current_pixel_art = pixel_art.get();
 
-        let current_username = username.get();
-        let current_pixel_art = pixel_art.get();
+                // validate username cannot be empty
+                if current_username.trim().is_empty() {
+                    set_error_message.set("Username cannot be empty".to_string());
+                    return;
+                }
 
-        set_is_submitting.set(true);
-        set_error_message.set(String::new());
+                set_is_submitting.set(true);
+                set_error_message.set(String::new());
 
-        let session_clone = session;
-        let set_error_clone = set_error_message;
-        let set_submitting_clone = set_is_submitting;
-        let form_state_clone = form_state;
-        let existing_profile_clone = existing_profile.clone();
-        let username_for_update = current_username.clone();
+                let session_clone = session;
+                let set_error_clone = set_error_message;
+                let set_submitting_clone = set_is_submitting;
+                let form_state_clone = form_state;
 
-        spawn_local(async move {
-            let mut current_session = session_clone.get();
-            
-            match current_session.get_public_key() {
-                Ok(pubkey) => {
-                    match current_session.get_seed() {
-                        Ok(seed) => {
-                            match hex::decode(&seed) {
-                                Ok(seed_bytes) => {
-                                    match seed_bytes.try_into() as Result<[u8; 64], Vec<u8>> {
-                                        Ok(seed_array) => {
-                                            match derive_keypair_from_seed(
-                                                &seed_array,
-                                                get_default_derivation_path()
-                                            ) {
-                                                Ok((keypair, _)) => {
-                                                    let rpc = RpcConnection::new();
-                                                    
-                                                    match rpc.update_user_profile(
-                                                        &pubkey,
-                                                        Some(username_for_update),
-                                                        Some(current_pixel_art.to_optimal_string()),
-                                                        &keypair.to_bytes()
-                                                    ).await {
-                                                        Ok(_) => {
-                                                            if let Some(mut updated_profile) = existing_profile_clone {
-                                                                updated_profile.username = current_username;
-                                                                updated_profile.profile_image = current_pixel_art.to_optimal_string();
+                spawn_local(async move {
+                    let mut current_session = session_clone.get();
+                    
+                    match current_session.get_public_key() {
+                        Ok(pubkey) => {
+                            match current_session.get_seed() {
+                                Ok(seed) => {
+                                    match hex::decode(&seed) {
+                                        Ok(seed_bytes) => {
+                                            match seed_bytes.try_into() as Result<[u8; 64], Vec<u8>> {
+                                                Ok(seed_array) => {
+                                                    match derive_keypair_from_seed(
+                                                        &seed_array,
+                                                        get_default_derivation_path()
+                                                    ) {
+                                                        Ok((keypair, _)) => {
+                                                            let rpc = RpcConnection::new();
+                                                            
+                                                            match rpc.initialize_user_profile(
+                                                                &pubkey,
+                                                                &current_username,
+                                                                &current_pixel_art.to_optimal_string(),
+                                                                &keypair.to_bytes()
+                                                            ).await {
+                                                                Ok(_) => {
+                                                                    // create new user profile object
+                                                                    let new_profile = UserProfile {
+                                                                        pubkey: pubkey.clone(),
+                                                                        username: current_username,
+                                                                        total_minted: 0,
+                                                                        total_burned: 0,
+                                                                        mint_count: 0,
+                                                                        burn_count: 0,
+                                                                        profile_image: current_pixel_art.to_optimal_string(),
+                                                                        created_at: js_sys::Date::now() as i64,
+                                                                        last_updated: js_sys::Date::now() as i64,
+                                                                    };
 
-                                                                current_session.set_user_profile(Some(updated_profile));
-                                                                session_clone.set(current_session);
+                                                                    // update user profile in session
+                                                                    current_session.set_user_profile(Some(new_profile));
+                                                                    session_clone.set(current_session);
 
-                                                                set_error_clone.set("Profile updated successfully!".to_string());
-                                                                form_state_clone.set(ProfileFormState::View);
+                                                                    // update form state
+                                                                    form_state_clone.set(ProfileFormState::View);
+                                                                    set_error_clone.set("Profile created successfully!".to_string());
+                                                                }
+                                                                Err(e) => {
+                                                                    set_error_clone.set(format!("Failed to create profile: {}", e));
+                                                                }
                                                             }
                                                         }
                                                         Err(e) => {
-                                                            set_error_clone.set(format!("Failed to update profile: {}", e));
+                                                            set_error_clone.set(format!("Failed to derive keypair: {:?}", e));
                                                         }
                                                     }
                                                 }
-                                                Err(e) => {
-                                                    set_error_clone.set(format!("Failed to derive keypair: {:?}", e));
+                                                Err(original_vec) => {
+                                                    set_error_clone.set(format!("Invalid seed length: {} (expected 64)", original_vec.len()));
                                                 }
                                             }
                                         }
-                                        Err(original_vec) => {
-                                            set_error_clone.set(format!("Invalid seed length: {} (expected 64)", original_vec.len()));
+                                        Err(e) => {
+                                            set_error_clone.set(format!("Failed to decode seed: {}", e));
                                         }
                                     }
                                 }
                                 Err(e) => {
-                                    set_error_clone.set(format!("Failed to decode seed: {}", e));
+                                    set_error_clone.set(format!("Failed to get seed: {}", e));
                                 }
                             }
                         }
                         Err(e) => {
-                            set_error_clone.set(format!("Failed to get seed: {}", e));
+                            set_error_clone.set(format!("Failed to get public key: {}", e));
                         }
                     }
-                }
-                Err(e) => {
-                    set_error_clone.set(format!("Failed to get public key: {}", e));
-                }
-            }
 
-            set_submitting_clone.set(false);
-        });
+                    set_submitting_clone.set(false);
+                });
+            }
+            ProfileFormState::Edit => {
+                let current_username = username.get();
+                let current_pixel_art = pixel_art.get();
+
+                set_is_submitting.set(true);
+                set_error_message.set(String::new());
+
+                let session_clone = session;
+                let set_error_clone = set_error_message;
+                let set_submitting_clone = set_is_submitting;
+                let form_state_clone = form_state;
+                let existing_profile_clone = existing_profile.clone();
+                let username_for_update = current_username.clone();
+
+                spawn_local(async move {
+                    let mut current_session = session_clone.get();
+                    
+                    match current_session.get_public_key() {
+                        Ok(pubkey) => {
+                            match current_session.get_seed() {
+                                Ok(seed) => {
+                                    match hex::decode(&seed) {
+                                        Ok(seed_bytes) => {
+                                            match seed_bytes.try_into() as Result<[u8; 64], Vec<u8>> {
+                                                Ok(seed_array) => {
+                                                    match derive_keypair_from_seed(
+                                                        &seed_array,
+                                                        get_default_derivation_path()
+                                                    ) {
+                                                        Ok((keypair, _)) => {
+                                                            let rpc = RpcConnection::new();
+                                                            
+                                                            match rpc.update_user_profile(
+                                                                &pubkey,
+                                                                Some(username_for_update),
+                                                                Some(current_pixel_art.to_optimal_string()),
+                                                                &keypair.to_bytes()
+                                                            ).await {
+                                                                Ok(_) => {
+                                                                    if let Some(mut updated_profile) = existing_profile_clone {
+                                                                        updated_profile.username = current_username;
+                                                                        updated_profile.profile_image = current_pixel_art.to_optimal_string();
+
+                                                                        current_session.set_user_profile(Some(updated_profile));
+                                                                        session_clone.set(current_session);
+
+                                                                        set_error_clone.set("Profile updated successfully!".to_string());
+                                                                        form_state_clone.set(ProfileFormState::View);
+                                                                    }
+                                                                }
+                                                                Err(e) => {
+                                                                    set_error_clone.set(format!("Failed to update profile: {}", e));
+                                                                }
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            set_error_clone.set(format!("Failed to derive keypair: {:?}", e));
+                                                        }
+                                                    }
+                                                }
+                                                Err(original_vec) => {
+                                                    set_error_clone.set(format!("Invalid seed length: {} (expected 64)", original_vec.len()));
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            set_error_clone.set(format!("Failed to decode seed: {}", e));
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    set_error_clone.set(format!("Failed to get seed: {}", e));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            set_error_clone.set(format!("Failed to get public key: {}", e));
+                        }
+                    }
+
+                    set_submitting_clone.set(false);
+                });
+            }
+            ProfileFormState::View => {
+                // View state does not handle submission
+                return;
+            }
+        }
     };
 
     // delete profile
