@@ -199,6 +199,7 @@ impl RpcConnection {
 
         // get raw account data and return directly
         let result: serde_json::Value = self.send_request("getAccountInfo", params).await?;
+        log::info!("get user profile result: {}", result.to_string());
         Ok(result.to_string())
     }
 

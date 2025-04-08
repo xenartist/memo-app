@@ -28,15 +28,17 @@ pub fn ProfilePage(
     session: RwSignal<Session>
 ) -> impl IntoView {
     let (user_profile, set_user_profile) = create_signal::<Option<UserProfile>>(None);
+    let (is_loading, set_is_loading) = create_signal(true);
 
     // get cached profile from session (if there is any)
     if let Some(profile) = session.get().get_user_profile() {
         set_user_profile.set(Some(profile));
+        set_is_loading.set(false);  // if there is cached data, set loading state to false
     }
 
-    // after component mount, fetch data asynchronously
+    // fetch profile from RPC
     create_effect(move |_| {
-        // if there is cached data, don't need to request again
+        // if there is already data, no need to request
         if user_profile.get().is_some() {
             return;
         }
@@ -49,11 +51,17 @@ pub fn ProfilePage(
                 let rpc = RpcConnection::new();
                 match rpc.get_user_profile(&pubkey).await {
                     Ok(result) => {
-                        if let Ok(profile) = parse_user_profile(&result) {
-                            log::info!("Successfully fetched user profile");
-                            current_session.set_user_profile(Some(profile.clone()));
-                            session.set(current_session);
-                            set_user_profile.set(Some(profile));
+                        log::info!("Raw profile result: {}", result);
+                        match parse_user_profile(&result) {
+                            Ok(profile) => {
+                                log::info!("Successfully parsed profile: {:?}", profile);
+                                current_session.set_user_profile(Some(profile.clone()));
+                                session.set(current_session);
+                                set_user_profile.set(Some(profile));
+                            }
+                            Err(e) => {
+                                log::error!("Failed to parse profile: {:?}", e);
+                            }
                         }
                     }
                     Err(e) => {
@@ -61,6 +69,7 @@ pub fn ProfilePage(
                     }
                 }
             }
+            set_is_loading.set(false);  // set loading state to false after request
         });
     });
 
@@ -69,45 +78,326 @@ pub fn ProfilePage(
             <h2>"User Profile"</h2>
             
             <div class="profile-content">
-                {move || match user_profile.get() {
-                    Some(profile) => view! {
-                        <div class="profile-form">
-                            <div class="form-group">
-                                <label>"Username"</label>
-                                <p class="profile-value">{profile.username}</p>
+                {move || {
+                    if is_loading.get() {
+                        view! { 
+                            <div class="profile-content-inner">
+                                <div class="loading">"Loading..."</div>
                             </div>
-                            <div class="form-group">
-                                <label>"Public Key"</label>
-                                <p class="profile-value pubkey">{profile.pubkey}</p>
+                        }
+                    } else {
+                        view! {
+                            <div class="profile-content-inner">
+                                {match user_profile.get() {
+                                    Some(profile) => view! {
+                                        <ExistingProfileForm 
+                                            session=session
+                                            profile=profile
+                                        />
+                                    },
+                                    None => view! {
+                                        <CreateProfileForm session=session/>
+                                    }
+                                }}
                             </div>
-                            <div class="profile-stats">
-                                <div class="stat-item">
-                                    <label>"Total Minted"</label>
-                                    <p class="stat-value">{profile.total_minted}</p>
-                                </div>
-                                <div class="stat-item">
-                                    <label>"Total Burned"</label>
-                                    <p class="stat-value">{profile.total_burned}</p>
-                                </div>
-                                <div class="stat-item">
-                                    <label>"Mint Count"</label>
-                                    <p class="stat-value">{profile.mint_count}</p>
-                                </div>
-                                <div class="stat-item">
-                                    <label>"Burn Count"</label>
-                                    <p class="stat-value">{profile.burn_count}</p>
-                                </div>
-                            </div>
-                        </div>
-                    },
-                    None => view! {
-                        <div class="profile-form">
-                            <CreateProfileForm session=session/>
-                        </div>
+                        }
                     }
                 }}
             </div>
         </div>
+    }
+}
+
+#[component]
+fn ExistingProfileForm(
+    session: RwSignal<Session>,
+    profile: UserProfile,
+) -> impl IntoView {
+    let (username, set_username) = create_signal(profile.username.clone());
+    let (pixel_art, set_pixel_art) = create_signal(
+        Pixel::from_optimal_string(&profile.profile_image)
+            .unwrap_or(Pixel::new())
+    );
+    let (error_message, set_error_message) = create_signal(String::new());
+    let (is_submitting, set_is_submitting) = create_signal(false);
+
+    // Handle pixel click
+    let handle_pixel_click = move |row: usize, col: usize| {
+        let mut new_art = pixel_art.get();
+        new_art.toggle_pixel(row, col);
+        set_pixel_art.set(new_art);
+    };
+
+    // Handle image import
+    let handle_import = move |ev: MouseEvent| {
+        ev.prevent_default();
+        
+        let window = web_sys::window().unwrap();
+        let document = window.document().unwrap();
+        let input: HtmlInputElement = document
+            .create_element("input")
+            .unwrap()
+            .dyn_into()
+            .unwrap();
+        
+        input.set_type("file");
+        input.set_accept("image/*");
+        
+        let pixel_art_write = set_pixel_art;
+        let error_signal = set_error_message;
+        
+        let onchange = Closure::wrap(Box::new(move |event: Event| {
+            let input: HtmlInputElement = event.target().unwrap().dyn_into().unwrap();
+            if let Some(file) = input.files().unwrap().get(0) {
+                let reader = FileReader::new().unwrap();
+                let reader_clone = reader.clone();
+                
+                let onload = Closure::wrap(Box::new(move |e: ProgressEvent| {
+                    if let Ok(buffer) = reader_clone.result() {
+                        let array = Uint8Array::new(&buffer);
+                        let data = array.to_vec();
+                        
+                        match Pixel::from_image_data(&data) {
+                            Ok(new_art) => {
+                                pixel_art_write.set(new_art);
+                                error_signal.set(String::new());
+                            }
+                            Err(e) => {
+                                error_signal.set(format!("Failed to process image: {}", e));
+                            }
+                        }
+                    }
+                }) as Box<dyn FnMut(ProgressEvent)>);
+                
+                reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+                onload.forget();
+                
+                reader.read_as_array_buffer(&file).unwrap();
+            }
+        }) as Box<dyn FnMut(_)>);
+        
+        input.set_onchange(Some(onchange.as_ref().unchecked_ref()));
+        onchange.forget();
+        
+        input.click();
+    };
+
+    // Handle form submission
+    let handle_submit = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        
+        // Validate inputs
+        if username.get().is_empty() {
+            set_error_message.set("Username is required".to_string());
+            return;
+        }
+        if username.get().len() > 32 {
+            set_error_message.set("Username too long. Maximum length is 32 characters".to_string());
+            return;
+        }
+
+        // Get pixel art string representation
+        let profile_image = pixel_art.get().to_optimal_string();
+
+        // Validate profile image length
+        if profile_image.len() > 256 {
+            set_error_message.set("Profile image too long. Maximum length is 256 characters".to_string());
+            return;
+        }
+
+        // Clear any previous error
+        set_error_message.set(String::new());
+        set_is_submitting.set(true);
+
+        // Create RPC connection
+        let rpc = RpcConnection::new();
+        let username_clone = username.get().clone();
+        let profile_image_clone = profile_image.clone();
+        
+        spawn_local(async move {
+            // Get pubkey from session
+            match session.get().get_public_key() {
+                Ok(pubkey) => {
+                    // get seed from session
+                    match session.get().get_seed() {
+                        Ok(seed) => {
+                            // try to decode seed from hex
+                            match hex::decode(&seed) {
+                                Ok(seed_bytes) => {
+                                    // convert to fixed length array
+                                    match seed_bytes.try_into() as Result<[u8; 64], _> {
+                                        Ok(seed_array) => {
+                                            log::info!("Creating profile for pubkey: {}", pubkey);
+                                            
+                                            // use derive_keypair_from_seed instead of directly creating Keypair
+                                            match derive_keypair_from_seed(&seed_array, get_default_derivation_path()) {
+                                                Ok((keypair, _)) => {
+                                                    // call RPC method
+                                                    match rpc.initialize_user_profile(
+                                                        &pubkey,
+                                                        &username_clone,
+                                                        &profile_image_clone,
+                                                        &keypair.to_bytes()
+                                                    ).await {
+                                                        Ok(signature) => {
+                                                            log::info!("Profile created successfully! Signature: {}", signature);
+                                                            
+                                                            // wait for transaction confirmation
+                                                            gloo_timers::future::TimeoutFuture::new(2000).await;
+                                                            
+                                                            // get latest profile data
+                                                            match rpc.get_user_profile(&pubkey).await {
+                                                                Ok(result) => {
+                                                                    if let Ok(profile) = parse_user_profile(&result) {
+                                                                        log::info!("Successfully fetched new user profile");
+                                                                        // update profile in session
+                                                                        let mut current_session = session.get();
+                                                                        current_session.set_user_profile(Some(profile));
+                                                                        session.set(current_session);
+                                                                        
+                                                                        // set success message
+                                                                        set_error_message.set("Profile created successfully!".to_string());
+                                                                        
+                                                                        // no need to manually refresh page, Leptos's reactive system will automatically update UI
+                                                                        // because we updated the session signal, ProfilePage component will be re-rendered
+                                                                    }
+                                                                }
+                                                                Err(e) => {
+                                                                    log::error!("Failed to fetch updated profile: {:?}", e);
+                                                                    set_error_message.set("Profile created, but failed to fetch updated data".to_string());
+                                                                }
+                                                            }
+                                                        },
+                                                        Err(e) => {
+                                                            log::error!("Failed to create profile: {:?}", e);
+                                                            set_error_message.set(format!("Failed to create profile: {}", e));
+                                                        }
+                                                    }
+                                                },
+                                                Err(e) => {
+                                                    log::error!("Invalid seed length: {:?}", e);
+                                                    set_error_message.set("Invalid wallet seed format".to_string());
+                                                }
+                                            }
+                                        },
+                                        Err(e) => {
+                                            log::error!("Failed to decode seed hex: {:?}", e);
+                                            set_error_message.set("Invalid wallet seed format".to_string());
+                                        }
+                                    }
+                                },
+                                Err(e) => {
+                                    log::error!("Failed to decode seed hex: {:?}", e);
+                                    set_error_message.set("Invalid wallet seed format".to_string());
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            log::error!("Failed to get seed from session: {:?}", e);
+                            set_error_message.set(format!("Failed to get wallet seed: {}", e));
+                        }
+                    }
+                },
+                Err(e) => {
+                    log::error!("Failed to get public key: {:?}", e);
+                    set_error_message.set("Failed to get public key from session".to_string());
+                }
+            }
+            set_is_submitting.set(false);
+        });
+    };
+
+    // Handle form submission
+    let handle_update = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        // TODO: implement update logic
+    };
+
+    // Handle form submission
+    let handle_delete = move |ev: MouseEvent| {
+        ev.prevent_default();
+        // TODO: implement delete logic
+    };
+
+    view! {
+        <form class="profile-form" on:submit=handle_update>
+            <h3>"Edit Your Profile"</h3>
+            
+            <div class="form-group">
+                <label for="username">"Username"</label>
+                <input 
+                    type="text"
+                    id="username"
+                    maxlength="32"
+                    placeholder="Enter your username (max 32 characters)"
+                    autocomplete="off"
+                    on:input=move |ev| {
+                        let input = event_target::<HtmlInputElement>(&ev);
+                        set_username.set(input.value());
+                    }
+                    prop:value=username
+                    prop:disabled=is_submitting
+                />
+            </div>
+
+            <div class="pixel-art-editor">
+                <label>"Profile Image (32x32 Pixel Art)"</label>
+                <div class="pixel-grid">
+                    {move || {
+                        let art = pixel_art.get();
+                        let (rows, cols) = art.dimensions();
+                        (0..rows).map(|row| {
+                            view! {
+                                <div class="pixel-row">
+                                    {(0..cols).map(|col| {
+                                        let is_black = art.get_pixel(row, col);
+                                        view! {
+                                            <div 
+                                                class="pixel"
+                                                class:black=is_black
+                                                on:click=move |_| handle_pixel_click(row, col)
+                                            />
+                                        }
+                                    }).collect_view()}
+                                </div>
+                            }
+                        }).collect_view()
+                    }}
+                </div>
+
+                <button 
+                    type="button"
+                    class="import-btn"
+                    on:click=handle_import
+                    prop:disabled=is_submitting
+                >
+                    "Import Image"
+                </button>
+            </div>
+
+            <div class="error-message" class:success=move || error_message.get().contains("success")>
+                {move || error_message.get()}
+            </div>
+
+            <div class="button-group">
+                <button 
+                    type="submit" 
+                    class="update-btn"
+                    prop:disabled=is_submitting
+                >
+                    {move || if is_submitting.get() { "Updating Profile..." } else { "Update Profile" }}
+                </button>
+                
+                <button 
+                    type="button"
+                    class="delete-btn"
+                    on:click=handle_delete
+                    prop:disabled=is_submitting
+                >
+                    "Delete Profile"
+                </button>
+            </div>
+        </form>
     }
 }
 

@@ -10,6 +10,7 @@ use solana_sdk::pubkey::Pubkey;
 use serde_json;
 use base64;
 use std::fmt;
+use log;
 
 #[derive(Clone, Debug)]
 pub struct UserProfile {
@@ -261,18 +262,31 @@ impl Drop for Session {
 }
 
 pub fn parse_user_profile(account_data: &str) -> Result<UserProfile, SessionError> {
+    log::info!("Starting to parse user profile from account data");
+    
     let value: serde_json::Value = serde_json::from_str(account_data)
-        .map_err(|e| SessionError::InvalidData(e.to_string()))?;
+        .map_err(|e| {
+            log::error!("Failed to parse account data as JSON: {}", e);
+            SessionError::InvalidData(e.to_string())
+        })?;
 
     // get data from JSON
     if let Some(data) = value.get("value").and_then(|v| v.get("data")) {
-        if let Some(data_str) = data.as_str() {
+        if let Some(data_str) = data.get(0).and_then(|v| v.as_str()) {
+            log::info!("Found base64 encoded data");
+            
             // decode base64 data to bytes
             let data_bytes = base64::decode(data_str)
-                .map_err(|e| SessionError::InvalidData(format!("Failed to decode base64: {}", e)))?;
+                .map_err(|e| {
+                    log::error!("Failed to decode base64: {}", e);
+                    SessionError::InvalidData(format!("Failed to decode base64: {}", e))
+                })?;
+            
+            log::info!("Successfully decoded base64 data, length: {}", data_bytes.len());
             
             // ensure data length is enough
             if data_bytes.len() < 8 {
+                log::error!("Data too short: {}", data_bytes.len());
                 return Err(SessionError::InvalidData("Data too short".to_string()));
             }
             
@@ -281,13 +295,16 @@ pub fn parse_user_profile(account_data: &str) -> Result<UserProfile, SessionErro
             
             // read pubkey
             if data.len() < 32 {
+                log::error!("Invalid pubkey length: {}", data.len());
                 return Err(SessionError::InvalidData("Invalid pubkey length".to_string()));
             }
             let pubkey = Pubkey::new_from_array(data[..32].try_into().unwrap()).to_string();
+            log::info!("Parsed pubkey: {}", pubkey);
             data = &data[32..];
             
             // read username length
             if data.len() < 4 {
+                log::error!("Invalid username length field");
                 return Err(SessionError::InvalidData("Invalid username length field".to_string()));
             }
             let username_len = u32::from_le_bytes(data[..4].try_into().unwrap()) as usize;
@@ -295,24 +312,33 @@ pub fn parse_user_profile(account_data: &str) -> Result<UserProfile, SessionErro
             
             // read username
             if data.len() < username_len {
+                log::error!("Invalid username data length");
                 return Err(SessionError::InvalidData("Invalid username data".to_string()));
             }
             let username = String::from_utf8(data[..username_len].to_vec())
-                .map_err(|e| SessionError::InvalidData(format!("Invalid username UTF-8: {}", e)))?;
+                .map_err(|e| {
+                    log::error!("Invalid username UTF-8: {}", e);
+                    SessionError::InvalidData(format!("Invalid username UTF-8: {}", e))
+                })?;
+            log::info!("Parsed username: {}", username);
             data = &data[username_len..];
             
             // read stats data
-            if data.len() < 32 {  // 4 u64, each 8 bytes
+            if data.len() < 32 {
+                log::error!("Invalid stats data length");
                 return Err(SessionError::InvalidData("Invalid stats data".to_string()));
             }
             let total_minted = u64::from_le_bytes(data[..8].try_into().unwrap());
             let total_burned = u64::from_le_bytes(data[8..16].try_into().unwrap());
             let mint_count = u64::from_le_bytes(data[16..24].try_into().unwrap());
             let burn_count = u64::from_le_bytes(data[24..32].try_into().unwrap());
+            log::info!("Parsed stats - minted: {}, burned: {}, mint_count: {}, burn_count: {}", 
+                total_minted, total_burned, mint_count, burn_count);
             data = &data[32..];
             
             // read profile_image length
             if data.len() < 4 {
+                log::error!("Invalid profile image length field");
                 return Err(SessionError::InvalidData("Invalid profile image length field".to_string()));
             }
             let profile_image_len = u32::from_le_bytes(data[..4].try_into().unwrap()) as usize;
@@ -320,20 +346,27 @@ pub fn parse_user_profile(account_data: &str) -> Result<UserProfile, SessionErro
             
             // read profile_image
             if data.len() < profile_image_len {
+                log::error!("Invalid profile image data length");
                 return Err(SessionError::InvalidData("Invalid profile image data".to_string()));
             }
             let profile_image = String::from_utf8(data[..profile_image_len].to_vec())
-                .map_err(|e| SessionError::InvalidData(format!("Invalid profile image UTF-8: {}", e)))?;
+                .map_err(|e| {
+                    log::error!("Invalid profile image UTF-8: {}", e);
+                    SessionError::InvalidData(format!("Invalid profile image UTF-8: {}", e))
+                })?;
+            log::info!("Parsed profile image: {}", profile_image);
             data = &data[profile_image_len..];
             
             // read timestamp
-            if data.len() < 16 {  // 2 i64, each 8 bytes
+            if data.len() < 16 {
+                log::error!("Invalid timestamp data length");
                 return Err(SessionError::InvalidData("Invalid timestamp data".to_string()));
             }
             let created_at = i64::from_le_bytes(data[..8].try_into().unwrap());
             let last_updated = i64::from_le_bytes(data[8..16].try_into().unwrap());
+            log::info!("Parsed timestamps - created: {}, updated: {}", created_at, last_updated);
 
-            Ok(UserProfile {
+            let profile = UserProfile {
                 pubkey,
                 username,
                 total_minted,
@@ -343,11 +376,16 @@ pub fn parse_user_profile(account_data: &str) -> Result<UserProfile, SessionErro
                 profile_image,
                 created_at,
                 last_updated,
-            })
+            };
+            
+            log::info!("Successfully parsed user profile");
+            Ok(profile)
         } else {
+            log::error!("Data field is not a string");
             Err(SessionError::InvalidData("Data field is not a string".to_string()))
         }
     } else {
+        log::error!("Invalid account data format");
         Err(SessionError::InvalidData("Invalid account data format".to_string()))
     }
 } 
