@@ -27,6 +27,8 @@ pub enum RpcError {
     InvalidAddress(String),
     TransactionFailed(String),
     Other(String),
+    InvalidParameter(String),
+    SolanaRpcError(String),
 }
 
 // implement the display for the rpc error
@@ -37,6 +39,8 @@ impl fmt::Display for RpcError {
             RpcError::InvalidAddress(msg) => write!(f, "Invalid address: {}", msg),
             RpcError::TransactionFailed(msg) => write!(f, "Transaction failed: {}", msg),
             RpcError::Other(msg) => write!(f, "Error: {}", msg),
+            RpcError::InvalidParameter(msg) => write!(f, "Invalid parameter: {}", msg),
+            RpcError::SolanaRpcError(msg) => write!(f, "Solana RPC error: {}", msg),
         }
     }
 }
@@ -516,6 +520,27 @@ impl RpcConnection {
         ]);
 
         let result: serde_json::Value = self.send_request("sendTransaction", params).await?;
+        Ok(result.to_string())
+    }
+
+    pub async fn get_latest_burn_shard(&self) -> Result<String, RpcError> {
+        // program ID
+        let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
+            .map_err(|e| RpcError::InvalidParameter(format!("Invalid program ID: {}", e)))?;
+
+        // calculate PDA
+        let (latest_burn_shard_pda, _) = Pubkey::find_program_address(
+            &[b"latest_burn_shard"],
+            &program_id,
+        );
+
+        let params = serde_json::json!([
+            latest_burn_shard_pda.to_string(),
+            {"encoding": "base64"}
+        ]);
+
+        // get raw account data and return directly
+        let result: serde_json::Value = self.send_request("getAccountInfo", params).await?;
         Ok(result.to_string())
     }
 }
@@ -1202,5 +1227,106 @@ mod tests {
             .collect();
             
         Ok(result)
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_get_latest_burn_shard() {
+        print_separator();
+        log_info("Starting latest burn shard test");
+
+        match load_test_wallet() {
+            Ok((pubkey, _)) => {
+                log_info(&format!("Test wallet public key: {}", pubkey));
+
+                let rpc = RpcConnection::new();
+                log_info(&format!("Using RPC endpoint: {}", RpcConnection::DEFAULT_RPC_ENDPOINT));
+
+                match rpc.get_latest_burn_shard().await {
+                    Ok(account_info_str) => {
+                        print_separator();
+                        log_info("Raw burn shard info received:");
+                        log_info(&account_info_str);
+
+                        // parse account info JSON
+                        let account_info: serde_json::Value = serde_json::from_str(&account_info_str)
+                            .expect("Failed to parse account info JSON");
+
+                        // get base64 encoded data
+                        if let Some(data) = account_info["value"]["data"].get(0).and_then(|v| v.as_str()) {
+                            // decode base64 data
+                            let decoded = base64::decode(data)
+                                .expect("Failed to decode base64 data");
+
+                            // start parsing data structure (simulate UI behavior)
+                            let mut data = &decoded[8..]; // Skip discriminator
+
+                            // parse current_index (1 byte)
+                            let current_index = data[0];
+                            data = &data[1..];
+                            
+                            // parse records vector length
+                            let vec_len = u32::from_le_bytes(data[..4].try_into().unwrap()) as usize;
+                            data = &data[4..];
+
+                            // display parsed info
+                            print_separator();
+                            log_info("==== BURN SHARD INFO ====");
+                            log_info(&format!("Current Index: {}", current_index));
+                            log_info(&format!("Number of Records: {}", vec_len));
+
+                            // parse and display each record
+                            for i in 0..vec_len {
+                                // parse pubkey (32 bytes)
+                                let mut pubkey_bytes = [0u8; 32];
+                                pubkey_bytes.copy_from_slice(&data[..32]);
+                                let record_pubkey = Pubkey::new_from_array(pubkey_bytes);
+                                data = &data[32..];
+                                
+                                // parse signature string
+                                let sig_len = u32::from_le_bytes(data[..4].try_into().unwrap()) as usize;
+                                data = &data[4..];
+                                let signature = String::from_utf8(data[..sig_len].to_vec())
+                                    .expect("Invalid signature encoding");
+                                data = &data[sig_len..];
+                                
+                                // parse slot (8 bytes)
+                                let slot = u64::from_le_bytes(data[..8].try_into().unwrap());
+                                data = &data[8..];
+                                
+                                // parse blocktime (8 bytes)
+                                let blocktime = i64::from_le_bytes(data[..8].try_into().unwrap());
+                                data = &data[8..];
+                                
+                                // parse amount (8 bytes)
+                                let amount = u64::from_le_bytes(data[..8].try_into().unwrap());
+                                data = &data[8..];
+
+                                log_info(&format!("\nRecord #{}", i + 1));
+                                log_info(&format!("  Burner: {}", record_pubkey));
+                                log_info(&format!("  Signature: {}", signature));
+                                log_info(&format!("  Slot: {}", slot));
+                                log_info(&format!("  Blocktime: {}", format_timestamp(blocktime)));
+                                log_info(&format!("  Amount: {} tokens", amount as f64 / 1_000_000_000.0));
+                            }
+
+                            print_separator();
+                            log_success("Latest burn shard test completed successfully");
+                        } else {
+                            log_error("No account data found");
+                        }
+                    },
+                    Err(e) => {
+                        print_separator();
+                        log_error(&format!("Failed to get latest burn shard: {}", e));
+                        panic!("Latest burn shard test failed");
+                    }
+                }
+            },
+            Err(e) => {
+                print_separator();
+                log_error(&format!("Failed to load test wallet: {}", e));
+                panic!("Failed to load wallet");
+            }
+        }
     }
 }
