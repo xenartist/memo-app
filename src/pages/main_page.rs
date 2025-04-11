@@ -1,7 +1,7 @@
 use leptos::*;
 use crate::core::rpc::RpcConnection;
 use crate::core::session::Session;
-use crate::pages::dashboard_page::DashboardPage;
+use crate::pages::home_page::HomePage;
 use crate::pages::profile_page::ProfilePage;
 use crate::pages::settings_page::SettingsPage;
 
@@ -13,7 +13,7 @@ use serde_json;
 // menu item enum
 #[derive(Clone, PartialEq)]
 enum MenuItem {
-    Dashboard,
+    Home,
     Profile,
     Settings,
 }
@@ -134,7 +134,7 @@ pub fn MainPage(
     };
 
     // current selected menu item
-    let (current_menu, set_current_menu) = create_signal(MenuItem::Dashboard);
+    let (current_menu, set_current_menu) = create_signal(MenuItem::Home);
 
     view! {
         <div class="main-page">
@@ -179,11 +179,11 @@ pub fn MainPage(
                 <div class="sidebar">
                     <div 
                         class="menu-item" 
-                        class:active=move || current_menu.get() == MenuItem::Dashboard
-                        on:click=move |_| set_current_menu.set(MenuItem::Dashboard)
+                        class:active=move || current_menu.get() == MenuItem::Home
+                        on:click=move |_| set_current_menu.set(MenuItem::Home)
                     >
                         <i class="fas fa-home"></i>
-                        <span>"Dashboard"</span>
+                        <span>"Home"</span>
                     </div>
                     <div 
                         class="menu-item"
@@ -205,11 +205,8 @@ pub fn MainPage(
 
                 <div class="content">
                     {move || match current_menu.get() {
-                        MenuItem::Dashboard => view! {
-                            <DashboardPage
-                                version_status=version_status
-                                blockhash_status=blockhash_status
-                            />
+                        MenuItem::Home => view! {
+                            <HomePage/>
                         },
                         MenuItem::Profile => view! {
                             <ProfilePage session=session/>
