@@ -1,5 +1,6 @@
 use leptos::*;
 use crate::core::rpc::RpcConnection;
+use crate::pages::memo_card::MemoCard;
 
 #[component]
 pub fn HomePage() -> impl IntoView {
@@ -21,7 +22,18 @@ pub fn HomePage() -> impl IntoView {
     view! {
         <div class="home-page">
             <h2>"Home"</h2>
-            <div>
+            
+            <div class="memo-cards">
+                <MemoCard
+                    image="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string()
+                    signature="5KN1ng2dSqZ3LBPgqyJVgBxnxwwBWAzm6wH7GNvQyAL4m5EUrNUCMz2hpC1w8mxDp1rof7rHyqX1KyqtZULmPmw".to_string()
+                    pubkey="DuRBUwWoqMHwHiZVvQwz5FdZA4fKYxDBxqicdDVxpEZx".to_string()
+                    blocktime=1709668246
+                    amount=1.5
+                />
+            </div>
+
+            <div class="burn-shard-section">
                 <h3>"Latest Burn Shard Data:"</h3>
                 <pre>{burn_shard_data}</pre>
             </div>
