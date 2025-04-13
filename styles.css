@@ -1127,12 +1127,16 @@ body.modal-open {
 }
 
 .memo-card {
+    width: 100%;
+    max-width: 380px;
+    min-width: 280px;
+    margin: 16px;
     border: 1px solid #ddd;
     border-radius: 8px;
     padding: 16px;
-    margin: 16px;
     background: white;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-sizing: border-box;
 }
 
 .pixel-art-container {
@@ -1175,7 +1179,34 @@ body.modal-open {
 }
 
 .memo-cards {
-    margin: 20px 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 16px;
+    padding: 16px;
+    width: 100%;
+}
+
+@media (max-width: 480px) {
+    .memo-card {
+        margin: 16px auto;
+        width: calc(100% - 32px);
+    }
+    
+    .memo-cards {
+        padding: 0;
+    }
+}
+
+@media (min-width: 481px) {
+    .memo-cards {
+        justify-content: flex-start;
+    }
+    
+    .memo-card {
+        width: 380px;
+        flex-grow: 0;
+    }
 }
 
 .burn-shard-section {
