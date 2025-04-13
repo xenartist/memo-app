@@ -4,6 +4,7 @@ use crate::core::session::Session;
 use crate::pages::home_page::HomePage;
 use crate::pages::profile_page::ProfilePage;
 use crate::pages::settings_page::SettingsPage;
+use crate::pages::miner_page::MinerPage;
 
 use wasm_bindgen::prelude::*;
 use web_sys::{window, Navigator, Clipboard};
@@ -14,6 +15,7 @@ use serde_json;
 #[derive(Clone, PartialEq)]
 enum MenuItem {
     Home,
+    Miner,
     Profile,
     Settings,
 }
@@ -187,6 +189,14 @@ pub fn MainPage(
                     </div>
                     <div 
                         class="menu-item"
+                        class:active=move || current_menu.get() == MenuItem::Miner
+                        on:click=move |_| set_current_menu.set(MenuItem::Miner)
+                    >
+                        <i class="fas fa-hammer"></i>
+                        <span>"Miner"</span>
+                    </div>
+                    <div 
+                        class="menu-item"
                         class:active=move || current_menu.get() == MenuItem::Profile
                         on:click=move |_| set_current_menu.set(MenuItem::Profile)
                     >
@@ -207,6 +217,9 @@ pub fn MainPage(
                     {move || match current_menu.get() {
                         MenuItem::Home => view! {
                             <HomePage/>
+                        },
+                        MenuItem::Miner => view! {
+                            <MinerPage session=session/>
                         },
                         MenuItem::Profile => view! {
                             <ProfilePage session=session/>
