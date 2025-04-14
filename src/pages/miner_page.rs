@@ -16,6 +16,12 @@ enum MiningMode {
     Auto,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum GridSize {
+    Size64,
+    Size96,
+}
+
 #[component]
 pub fn MinerPage(
     session: RwSignal<Session>
@@ -29,10 +35,20 @@ pub fn MinerPage(
 
     let (mining_mode, set_mining_mode) = create_signal(MiningMode::Manual);
     let (auto_count, set_auto_count) = create_signal(0); // 0 means infinite
+    let (grid_size, set_grid_size) = create_signal(GridSize::Size64);
     let (pixel_art, set_pixel_art) = create_signal(Pixel::new_with_size(64));
     let (is_mining, set_is_mining) = create_signal(false);
     let (error_message, set_error_message) = create_signal(String::new());
     let (show_copied, set_show_copied) = create_signal(false);
+
+    // when the size changes, recreate the pixel art
+    create_effect(move |_| {
+        let size = match grid_size.get() {
+            GridSize::Size64 => 64,
+            GridSize::Size96 => 96,
+        };
+        set_pixel_art.set(Pixel::new_with_size(size));
+    });
 
     // handle image import
     let handle_import = move |ev: web_sys::MouseEvent| {
@@ -51,6 +67,7 @@ pub fn MinerPage(
         
         let pixel_art_write = set_pixel_art;
         let error_signal = set_error_message;
+        let current_grid_size = grid_size.get();  // get the current selected size
         
         let onchange = Closure::wrap(Box::new(move |event: Event| {
             let input: HtmlInputElement = event.target().unwrap().dyn_into().unwrap();
@@ -63,7 +80,12 @@ pub fn MinerPage(
                         let array = Uint8Array::new(&buffer);
                         let data = array.to_vec();
                         
-                        match Pixel::from_image_data_with_size(&data, 64) {
+                        let size = match current_grid_size {
+                            GridSize::Size64 => 64,
+                            GridSize::Size96 => 96,
+                        };
+                        
+                        match Pixel::from_image_data_with_size(&data, size) {
                             Ok(new_art) => {
                                 pixel_art_write.set(new_art);
                                 error_signal.set(String::new());
@@ -198,9 +220,42 @@ pub fn MinerPage(
                     }
                 }}
 
+                // add size selection
+                <div class="form-group">
+                    <label>"Grid Size"</label>
+                    <div class="grid-size-group">
+                        <label class="radio-label">
+                            <input 
+                                type="radio"
+                                name="grid-size"
+                                checked=move || grid_size.get() == GridSize::Size64
+                                on:change=move |_| set_grid_size.set(GridSize::Size64)
+                            />
+                            <span class="radio-text">"64x64"</span>
+                        </label>
+                        <label class="radio-label">
+                            <input 
+                                type="radio"
+                                name="grid-size"
+                                checked=move || grid_size.get() == GridSize::Size96
+                                on:change=move |_| set_grid_size.set(GridSize::Size96)
+                            />
+                            <span class="radio-text">"96x96"</span>
+                        </label>
+                    </div>
+                </div>
+
                 <div class="pixel-art-editor">
                     <div class="pixel-art-header">
-                        <label>"Mining Image (64x64 Pixel Art)"</label>
+                        <label>
+                            {move || {
+                                let size = match grid_size.get() {
+                                    GridSize::Size64 => "64x64",
+                                    GridSize::Size96 => "96x96",
+                                };
+                                format!("Mining Image ({} Pixel Art)", size)
+                            }}
+                        </label>
                         <button 
                             type="button"
                             class="import-btn"
@@ -218,10 +273,15 @@ pub fn MinerPage(
                             set_pixel_art.set(new_art);
                         });
                         
+                        let display_size = match grid_size.get() {
+                            GridSize::Size64 => 512,
+                            GridSize::Size96 => 768,  // larger display size to fit more pixels
+                        };
+                        
                         view! {
                             <PixelView
                                 art=art_string
-                                size=512
+                                size=display_size
                                 editable=true
                                 on_click=click_handler
                             />

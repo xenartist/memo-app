@@ -550,7 +550,6 @@ fn ProfileForm(
                         <PixelView
                             art=art_string
                             size=256
-                            grid_size=32
                             editable=is_editable
                             on_click=click_handler
                         />

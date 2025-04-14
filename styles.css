@@ -1374,3 +1374,9 @@ body.modal-open {
     border-style: solid;
     border-color: rgba(0, 0, 0, 0.7) transparent transparent transparent;
 }
+
+.grid-size-group {
+    display: flex;
+    gap: 24px;
+    margin-top: 8px;
+}
