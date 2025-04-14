@@ -2,9 +2,13 @@ use leptos::*;
 use crate::core::session::Session;
 use crate::core::pixel::Pixel;
 use crate::pages::pixel_view::PixelView;
-use web_sys::{HtmlInputElement, File, FileReader, Event, ProgressEvent};
+use web_sys::{HtmlInputElement, File, FileReader, Event, ProgressEvent, window, Clipboard};
 use wasm_bindgen::{JsCast, closure::Closure};
 use js_sys::Uint8Array;
+use gloo_utils::format::JsValueSerdeExt;
+use std::time::Duration;
+use wasm_bindgen_futures::spawn_local;
+use gloo_timers::future::TimeoutFuture;
 
 #[derive(Clone, Copy, PartialEq)]
 enum MiningMode {
@@ -28,6 +32,7 @@ pub fn MinerPage(
     let (pixel_art, set_pixel_art) = create_signal(Pixel::new_with_size(64));
     let (is_mining, set_is_mining) = create_signal(false);
     let (error_message, set_error_message) = create_signal(String::new());
+    let (show_copied, set_show_copied) = create_signal(false);
 
     // handle image import
     let handle_import = move |ev: web_sys::MouseEvent| {
@@ -88,7 +93,34 @@ pub fn MinerPage(
         ev.prevent_default();
         set_is_mining.set(true);
         
-        // TODO: 实现挖矿逻辑
+        // TODO: mining logic
+    };
+
+    // handle copy string
+    let copy_string = move |ev: web_sys::MouseEvent| {
+        ev.prevent_default();  // prevent default behavior
+        ev.stop_propagation();  // prevent event propagation
+        
+        let art_string = pixel_art.get().to_optimal_string();
+        if let Some(window) = window() {
+            let clipboard = window.navigator().clipboard();
+            let _ = clipboard.write_text(&art_string);
+            set_show_copied.set(true);
+            
+            spawn_local(async move {
+                TimeoutFuture::new(3000).await;
+                set_show_copied.set(false);
+            });
+        }
+    };
+
+    // format display string
+    let format_display_string = |s: &str| {
+        if s.len() <= 20 {
+            s.to_string()
+        } else {
+            format!("{}....{}", &s[..10], &s[s.len()-10..])
+        }
     };
 
     view! {
@@ -195,6 +227,38 @@ pub fn MinerPage(
                             />
                         }
                     }}
+
+                    // add string information display
+                    <div class="pixel-string-info">
+                        <div class="string-display">
+                            <span class="label">"Encoded String: "</span>
+                            <span class="value">
+                                {move || format_display_string(&pixel_art.get().to_optimal_string())}
+                            </span>
+                            <div class="copy-container">
+                                <button
+                                    type="button"
+                                    class="copy-button"
+                                    on:click=copy_string
+                                    title="Copy encoded string to clipboard"
+                                >
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                                <div 
+                                    class="copy-tooltip"
+                                    class:show=move || show_copied.get()
+                                >
+                                    "Copied!"
+                                </div>
+                            </div>
+                        </div>
+                        <div class="string-length">
+                            <span class="label">"Length: "</span>
+                            <span class="value">
+                                {move || format!("{} bytes", pixel_art.get().to_optimal_string().len())}
+                            </span>
+                        </div>
+                    </div>
                 </div>
 
                 {move || {
