@@ -869,6 +869,19 @@ h2 {
     background: #333;
 }
 
+.memo-card .pixel-grid {
+    border: none;
+    padding: 0;
+}
+
+.memo-card .pixel {
+    border: none;
+}
+
+.memo-card .pixel.black {
+    border: none;
+}
+
 .button-group button,
 .import-btn {
     padding: 12px 24px;
