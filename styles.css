@@ -800,13 +800,16 @@ h2 {
 }
 
 .pixel-art-editor {
-    margin: 32px 0;
+    margin: 20px 0;
+    padding: 16px;
+    background: #f8f8f8;
+    border-radius: 8px;
 }
 
 .pixel-art-header {
     display: flex;
-    align-items: center;
     justify-content: space-between;
+    align-items: center;
     margin-bottom: 16px;
 }
 
@@ -830,44 +833,40 @@ h2 {
 }
 
 .pixel-grid {
-    width: 320px;
-    height: 320px;
-    margin: 0 auto;
-    border: 2px solid #eee;
-    border-radius: 8px;
-    overflow: hidden;
-    background: #fff;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #ccc;
+    background: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .pixel-row {
     display: flex;
-    height: 10px; /* pixel size */
+    flex: 1;
 }
 
 .pixel {
-    width: 10px;
-    height: 10px;
-    border: 1px solid #f0f0f0;
+    flex: 1;
+    background: white;
+    border: 1px solid #eee;
+    transition: background-color 0.1s ease;
     cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.pixel:hover:not(.disabled) {
-    background-color: rgba(0, 0, 0, 0.1);
 }
 
 .pixel.black {
-    background-color: #000;
-}
-
-.pixel.black:hover:not(.disabled) {
-    background-color: #333;
+    background: black;
 }
 
 .pixel.disabled {
-    cursor: not-allowed;
-    opacity: 0.8;
+    cursor: default;
+}
+
+.pixel:not(.disabled):hover {
+    background: #f0f0f0;
+}
+
+.pixel.black:not(.disabled):hover {
+    background: #333;
 }
 
 .button-group button,

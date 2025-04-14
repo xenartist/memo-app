@@ -22,6 +22,7 @@ use solana_sdk::signature::Keypair;
 use hex;
 use crate::core::wallet::{derive_keypair_from_seed, get_default_derivation_path};
 use gloo_timers;
+use crate::pages::pixel_view::PixelView;
 
 #[derive(Clone, Copy, PartialEq)]
 enum ProfileFormState {
@@ -536,29 +537,24 @@ fn ProfileForm(
                         "Import Image"
                     </button>
                 </div>
-                <div class="pixel-grid">
-                    {move || {
-                        let art = pixel_art.get();
-                        let (rows, cols) = art.dimensions();
-                        (0..rows).map(|row| {
-                            view! {
-                                <div class="pixel-row">
-                                    {(0..cols).map(|col| {
-                                        let is_black = art.get_pixel(row, col);
-                                        view! {
-                                            <div 
-                                                class="pixel"
-                                                class:black=is_black
-                                                class:disabled=move || !matches!(form_state.get(), ProfileFormState::Create | ProfileFormState::Edit)
-                                                on:click=move |_| handle_pixel_click(row, col)
-                                            />
-                                        }
-                                    }).collect_view()}
-                                </div>
-                            }
-                        }).collect_view()
-                    }}
-                </div>
+                {move || {
+                    let art_string = pixel_art.get().to_optimal_string();
+                    let is_editable = matches!(form_state.get(), ProfileFormState::Create | ProfileFormState::Edit);
+                    let click_handler = Box::new(move |row, col| {
+                        let mut new_art = pixel_art.get();
+                        new_art.toggle_pixel(row, col);
+                        set_pixel_art.set(new_art);
+                    });
+                    
+                    view! {
+                        <PixelView
+                            art=art_string
+                            size=256
+                            editable=is_editable
+                            on_click=click_handler
+                        />
+                    }
+                }}
             </div>
 
             {move || {
