@@ -24,8 +24,8 @@ pub fn MinerPage(
     };
 
     let (mining_mode, set_mining_mode) = create_signal(MiningMode::Manual);
-    let (auto_count, set_auto_count) = create_signal(0); // 0 表示无穷
-    let (pixel_art, set_pixel_art) = create_signal(Pixel::new());
+    let (auto_count, set_auto_count) = create_signal(0); // 0 means infinite
+    let (pixel_art, set_pixel_art) = create_signal(Pixel::new_with_size(64));
     let (is_mining, set_is_mining) = create_signal(false);
     let (error_message, set_error_message) = create_signal(String::new());
 
@@ -58,7 +58,7 @@ pub fn MinerPage(
                         let array = Uint8Array::new(&buffer);
                         let data = array.to_vec();
                         
-                        match Pixel::from_image_data(&data) {
+                        match Pixel::from_image_data_with_size(&data, 64) {
                             Ok(new_art) => {
                                 pixel_art_write.set(new_art);
                                 error_signal.set(String::new());
