@@ -22,6 +22,10 @@ rustup target add wasm32-unknown-unknown
 ```
 cargo test
 ```
+or
+```
+cargo test SOME_UNIT_TEST_FUNCTION -- --nocapture
+```
 
 * RPC Specific Unit Test
 

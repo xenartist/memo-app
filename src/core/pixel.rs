@@ -3,6 +3,7 @@ use flate2::write::DeflateEncoder;
 use flate2::read::DeflateDecoder;
 use base64::{encode, decode};
 use std::io::prelude::*;
+use rand::Rng;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Pixel {
@@ -489,76 +490,181 @@ mod tests {
 
     #[test]
     fn test_compression_patterns() {
-        // test two sizes
-        let sizes = vec![(32, 32, "32x32"), (64, 64, "64x64")];
-        
-        for &(width, height, size_name) in &sizes {
-            println!("\n\n=== Testing {} patterns ===", size_name);
-            
-            // 1. best compression case: all black image
-            let mut best_case = Pixel::with_size(width, height);
-            for x in 0..width {
-                for y in 0..height {
-                    best_case.set(x, y, true);
-                }
-            }
-            
-            // 2. checkerboard pattern
-            let mut checkerboard = Pixel::with_size(width, height);
-            for x in 0..width {
-                for y in 0..height {
-                    checkerboard.set(x, y, (x + y) % 2 == 0);
-                }
-            }
-            
-            // 3. random noise pattern
-            let mut random_pattern = Pixel::with_size(width, height);
-            for x in 0..width {
-                for y in 0..height {
-                    random_pattern.set(x, y, (x ^ y) % 3 == 0);
-                }
-            }
+        // test different size patterns
+        let blank_32 = Pixel::new_with_size(32);
+        let blank_64 = Pixel::new_with_size(64);
+        let blank_128 = Pixel::new_with_size(128);
 
-            let test_cases = vec![
-                ("Best case (all black)", best_case),
-                ("Checkerboard pattern", checkerboard),
-                ("Random noise pattern", random_pattern),
-            ];
+        println!("32x32 blank optimal: {}", blank_32.to_optimal_string());
+        println!("64x64 blank optimal: {}", blank_64.to_optimal_string());
+        println!("128x128 blank optimal: {}", blank_128.to_optimal_string());
 
-            for (pattern_name, pixel) in test_cases {
-                println!("\n=== {} - {} ===", size_name, pattern_name);
-                
-                // 1. original uncompressed string
-                let uncompressed = pixel.to_safe_string();
-                println!("\nOriginal uncompressed string (len={}):\n{}", 
-                    uncompressed.len(), uncompressed);
-                
-                // 2. optimal (possibly compressed) string
-                let optimal = pixel.to_optimal_string();
-                println!("\nOptimal string (len={}):\n{}", 
-                    optimal.len(), optimal);
-                
-                // 3. decompressed string
-                let decoded = Pixel::from_optimal_string(&optimal).unwrap();
-                let decompressed = decoded.to_safe_string();
-                println!("\nDecompressed string (len={}):\n{}", 
-                    decompressed.len(), decompressed);
-                
-                // verify strings are identical
-                assert_eq!(uncompressed, decompressed, 
-                    "Decompressed string doesn't match original for {} - {}", 
-                    size_name, pattern_name);
-                
-                // show compression information
-                if optimal.starts_with("c:") {
-                    let ratio = (optimal.len() as f64 / uncompressed.len() as f64) * 100.0;
-                    println!("\nUsing compression, ratio: {:.2}%", ratio);
-                } else {
-                    println!("\nNo compression used (would increase size)");
-                }
-                
-                println!("\n{}", "=".repeat(50));
+        // test different size black pixel art
+        let mut black_32 = Pixel::new_with_size(32);
+        let mut black_64 = Pixel::new_with_size(64);
+        let mut black_128 = Pixel::new_with_size(128);
+
+        for i in 0..(32*32) {
+            black_32.data[i] = true;
+        }
+        for i in 0..(64*64) {
+            black_64.data[i] = true;
+        }
+        for i in 0..(128*128) {
+            black_128.data[i] = true;
+        }
+
+        println!("32x32 black optimal: {}", black_32.to_optimal_string());
+        println!("64x64 black optimal: {}", black_64.to_optimal_string());
+        println!("128x128 black optimal: {}", black_128.to_optimal_string());
+
+        // test different size checkerboard pattern
+        let mut checker_32 = Pixel::new_with_size(32);
+        let mut checker_64 = Pixel::new_with_size(64);
+        let mut checker_128 = Pixel::new_with_size(128);
+
+        for y in 0..32 {
+            for x in 0..32 {
+                checker_32.set_pixel(x, y, (x + y) % 2 == 0);
             }
         }
+        for y in 0..64 {
+            for x in 0..64 {
+                checker_64.set_pixel(x, y, (x + y) % 2 == 0);
+            }
+        }
+        for y in 0..128 {
+            for x in 0..128 {
+                checker_128.set_pixel(x, y, (x + y) % 2 == 0);
+            }
+        }
+
+        println!("32x32 checker optimal: {}", checker_32.to_optimal_string());
+        println!("64x64 checker optimal: {}", checker_64.to_optimal_string());
+        println!("128x128 checker optimal: {}", checker_128.to_optimal_string());
+
+        // test different size diagonal pattern
+        let mut diagonal_32 = Pixel::new_with_size(32);
+        let mut diagonal_64 = Pixel::new_with_size(64);
+        let mut diagonal_128 = Pixel::new_with_size(128);
+
+        for i in 0..32 {
+            diagonal_32.set_pixel(i, i, true);
+        }
+        for i in 0..64 {
+            diagonal_64.set_pixel(i, i, true);
+        }
+        for i in 0..128 {
+            diagonal_128.set_pixel(i, i, true);
+        }
+
+        println!("32x32 diagonal optimal: {}", diagonal_32.to_optimal_string());
+        println!("64x64 diagonal optimal: {}", diagonal_64.to_optimal_string());
+        println!("128x128 diagonal optimal: {}", diagonal_128.to_optimal_string());
+
+        // test different size border pattern
+        let mut border_32 = Pixel::new_with_size(32);
+        let mut border_64 = Pixel::new_with_size(64);
+        let mut border_128 = Pixel::new_with_size(128);
+
+        // 32x32 border
+        for i in 0..32 {
+            border_32.set_pixel(0, i, true);
+            border_32.set_pixel(31, i, true);
+            border_32.set_pixel(i, 0, true);
+            border_32.set_pixel(i, 31, true);
+        }
+
+        // 64x64 border
+        for i in 0..64 {
+            border_64.set_pixel(0, i, true);
+            border_64.set_pixel(63, i, true);
+            border_64.set_pixel(i, 0, true);
+            border_64.set_pixel(i, 63, true);
+        }
+
+        // 128x128 border
+        for i in 0..128 {
+            border_128.set_pixel(0, i, true);
+            border_128.set_pixel(127, i, true);
+            border_128.set_pixel(i, 0, true);
+            border_128.set_pixel(i, 127, true);
+        }
+
+        println!("32x32 border optimal: {}", border_32.to_optimal_string());
+        println!("64x64 border optimal: {}", border_64.to_optimal_string());
+        println!("128x128 border optimal: {}", border_128.to_optimal_string());
+
+        // print compression ratio of each pattern
+        let print_compression_ratio = |name: &str, pixel: &Pixel| {
+            let normal = pixel.to_safe_string();
+            let optimal = pixel.to_optimal_string();
+            println!("{} size: {}x{}", name, pixel.width, pixel.height);
+            println!("Normal length: {}", normal.len());
+            println!("Optimal length: {}", optimal.len());
+            println!("Compression ratio: {:.2}%", 
+                (1.0 - optimal.len() as f64 / normal.len() as f64) * 100.0);
+            println!("---");
+        };
+
+        print_compression_ratio("32x32 Blank", &blank_32);
+        print_compression_ratio("64x64 Blank", &blank_64);
+        print_compression_ratio("128x128 Blank", &blank_128);
+
+        print_compression_ratio("32x32 Black", &black_32);
+        print_compression_ratio("64x64 Black", &black_64);
+        print_compression_ratio("128x128 Black", &black_128);
+
+        print_compression_ratio("32x32 Checker", &checker_32);
+        print_compression_ratio("64x64 Checker", &checker_64);
+        print_compression_ratio("128x128 Checker", &checker_128);
+
+        print_compression_ratio("32x32 Diagonal", &diagonal_32);
+        print_compression_ratio("64x64 Diagonal", &diagonal_64);
+        print_compression_ratio("128x128 Diagonal", &diagonal_128);
+
+        print_compression_ratio("32x32 Border", &border_32);
+        print_compression_ratio("64x64 Border", &border_64);
+        print_compression_ratio("128x128 Border", &border_128);
+
+        // test different size random pattern
+        let mut rng = rand::thread_rng();
+        let mut random_32 = Pixel::new_with_size(32);
+        let mut random_64 = Pixel::new_with_size(64);
+        let mut random_128 = Pixel::new_with_size(128);
+
+        // 32x32 random fill
+        for i in 0..(32*32) {
+            random_32.data[i] = rng.gen_bool(0.5);  // 50% 的概率为黑色
+        }
+
+        // 64x64 random fill
+        for i in 0..(64*64) {
+            random_64.data[i] = rng.gen_bool(0.5);
+        }
+
+        // 128x128 random fill
+        for i in 0..(128*128) {
+            random_128.data[i] = rng.gen_bool(0.5);
+        }
+
+        println!("\n=== Random Pattern Results ===");
+        println!("32x32 random optimal: {}", random_32.to_optimal_string());
+        println!("64x64 random optimal: {}", random_64.to_optimal_string());
+        println!("128x128 random optimal: {}", random_128.to_optimal_string());
+
+        print_compression_ratio("32x32 Random", &random_32);
+        print_compression_ratio("64x64 Random", &random_64);
+        print_compression_ratio("128x128 Random", &random_128);
+
+        // print black pixel ratio of random pattern
+        let count_black_pixels = |pixel: &Pixel| {
+            pixel.data.iter().filter(|&&x| x).count() as f64 / pixel.data.len() as f64 * 100.0
+        };
+
+        println!("\n=== Random Pattern Black Pixel Ratios ===");
+        println!("32x32 Black pixel ratio: {:.2}%", count_black_pixels(&random_32));
+        println!("64x64 Black pixel ratio: {:.2}%", count_black_pixels(&random_64));
+        println!("128x128 Black pixel ratio: {:.2}%", count_black_pixels(&random_128));
     }
 } 
