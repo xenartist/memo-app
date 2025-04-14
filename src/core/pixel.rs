@@ -13,8 +13,13 @@ pub struct Pixel {
 
 impl Pixel {
     // default create 32x32 pixel art
+    pub fn new_with_size(size: usize) -> Self {
+        Self::with_size(size, size)
+    }
+
+    // default create 32x32 pixel art
     pub fn new() -> Self {
-        Self::with_size(32, 32)
+        Self::new_with_size(32)  // default create 32x32 pixel art
     }
 
     // original new method renamed to with_size
@@ -160,27 +165,36 @@ impl Pixel {
         Some(pixel)
     }
 
-    // Process image data into pixel art
-    pub fn from_image_data(data: &[u8]) -> Result<Self, String> {
+    // modify the image import method, support specified size
+    pub fn from_image_data_with_size(data: &[u8], size: usize) -> Result<Self, String> {
+        if size > 64 {
+            return Err("Maximum supported size is 64x64".to_string());
+        }
+
         // Load image from bytes
         let img = image::load_from_memory(data)
             .map_err(|e| format!("Failed to load image: {}", e))?;
         
-        // Resize to 32x32
-        let resized = img.resize_exact(32, 32, image::imageops::FilterType::Lanczos3);
+        // Resize to specified size
+        let resized = img.resize_exact(size as u32, size as u32, image::imageops::FilterType::Lanczos3);
         
         // Convert to grayscale
         let gray = resized.into_luma8();
         
         // Convert to black and white using threshold
         let threshold = 128u8;
-        let mut pixel_art = Self::new();
+        let mut pixel_art = Self::new_with_size(size);
         
         for (x, y, pixel) in gray.enumerate_pixels() {
-            pixel_art.data[y as usize * 32 + x as usize] = pixel[0] < threshold;
+            pixel_art.data[y as usize * size + x as usize] = pixel[0] < threshold;
         }
         
         Ok(pixel_art)
+    }
+
+    // keep the original method as backward compatibility
+    pub fn from_image_data(data: &[u8]) -> Result<Self, String> {
+        Self::from_image_data_with_size(data, 32)
     }
 
     // Get dimensions

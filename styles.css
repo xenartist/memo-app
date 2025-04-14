@@ -1218,3 +1218,56 @@ body.modal-open {
 .burn-shard-section {
     margin-top: 30px;
 }
+
+/* Miner Page Styles */
+.miner-page {
+    padding: 24px;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.miner-form {
+    background: white;
+    padding: 32px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.radio-group {
+    display: flex;
+    gap: 24px;
+    margin-top: 8px;
+}
+
+.radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.radio-group input[type="radio"] {
+    cursor: pointer;
+}
+
+.start-mining-btn {
+    background-color: #28a745;
+    color: white;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 120px;
+}
+
+.start-mining-btn:hover:not(:disabled) {
+    background-color: #218838;
+}
+
+.start-mining-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
