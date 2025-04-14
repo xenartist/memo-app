@@ -800,7 +800,7 @@ h2 {
 }
 
 .pixel-art-editor {
-    margin: 20px 0;
+    margin: 32px 0;
     padding: 16px;
     background: #f8f8f8;
     border-radius: 8px;
@@ -1142,28 +1142,6 @@ body.modal-open {
     background: #f5f5f5;
     border-radius: 4px;
     padding: 8px;
-}
-
-/* 继承 PixelView 的样式 */
-.pixel-grid {
-    display: flex;
-    flex-direction: column;
-    background: white;
-}
-
-.pixel-row {
-    display: flex;
-}
-
-.pixel {
-    width: 4px;  /* 可以调整像素大小 */
-    height: 4px;
-    background: white;
-    border: none;
-}
-
-.pixel.black {
-    background: black;
 }
 
 .memo-info {
