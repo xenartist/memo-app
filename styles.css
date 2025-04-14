@@ -1233,21 +1233,27 @@ body.modal-open {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.radio-group {
+.mining-mode-group {
     display: flex;
     gap: 24px;
     margin-top: 8px;
 }
 
-.radio-group label {
+.radio-label {
     display: flex;
     align-items: center;
     gap: 8px;
     cursor: pointer;
 }
 
-.radio-group input[type="radio"] {
+.radio-label input[type="radio"] {
+    margin: 0;
     cursor: pointer;
+}
+
+.radio-text {
+    font-size: 14px;
+    color: #333;
 }
 
 .start-mining-btn {

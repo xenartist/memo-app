@@ -118,24 +118,24 @@ pub fn MinerPage(
             <form class="miner-form" on:submit=handle_start_mining>
                 <div class="form-group">
                     <label>"Mining Mode"</label>
-                    <div class="radio-group">
-                        <label>
+                    <div class="mining-mode-group">
+                        <label class="radio-label">
                             <input 
                                 type="radio"
                                 name="mining-mode"
                                 checked=move || mining_mode.get() == MiningMode::Manual
                                 on:change=move |_| set_mining_mode.set(MiningMode::Manual)
                             />
-                            "Manual"
+                            <span class="radio-text">"Manual"</span>
                         </label>
-                        <label>
+                        <label class="radio-label">
                             <input 
                                 type="radio"
                                 name="mining-mode"
                                 checked=move || mining_mode.get() == MiningMode::Auto
                                 on:change=move |_| set_mining_mode.set(MiningMode::Auto)
                             />
-                            "Auto"
+                            <span class="radio-text">"Auto"</span>
                         </label>
                     </div>
                 </div>
