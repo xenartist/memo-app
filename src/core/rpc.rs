@@ -214,7 +214,6 @@ impl RpcConnection {
 
     pub async fn initialize_user_profile(
         &self, 
-        pubkey: &str,
         username: &str, 
         profile_image: &str,
         keypair_bytes: &[u8]
@@ -230,8 +229,10 @@ impl RpcConnection {
         let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
             .map_err(|e| RpcError::Other(format!("Invalid program ID: {}", e)))?;
         
-        let target_pubkey = Pubkey::from_str(pubkey)
-            .map_err(|e| RpcError::Other(format!("Invalid public key: {}", e)))?;
+        // Create keypair from bytes
+        let keypair = Keypair::from_bytes(keypair_bytes)
+            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
+        let target_pubkey = keypair.pubkey();
 
         // Validate inputs
         if username.len() > 32 {
@@ -240,10 +241,6 @@ impl RpcConnection {
         if profile_image.len() > 256 {
             return Err(RpcError::Other("Profile image too long. Maximum length is 256 characters.".to_string()));
         }
-
-        // Create keypair from bytes
-        let keypair = Keypair::from_bytes(keypair_bytes)
-            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
 
         // Calculate user profile PDA
         let (user_profile_pda, _) = Pubkey::find_program_address(
@@ -320,7 +317,10 @@ impl RpcConnection {
         Ok(result.to_string())
     }
 
-    pub async fn close_user_profile(&self, pubkey: &str, keypair_bytes: &[u8]) -> Result<String, RpcError> {
+    pub async fn close_user_profile(
+        &self,
+        keypair_bytes: &[u8]
+    ) -> Result<String, RpcError> {
         use solana_sdk::{
             signature::{Keypair, Signer},
             instruction::{AccountMeta, Instruction},
@@ -332,12 +332,10 @@ impl RpcConnection {
         let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
             .map_err(|e| RpcError::Other(format!("Invalid program ID: {}", e)))?;
         
-        let target_pubkey = Pubkey::from_str(pubkey)
-            .map_err(|e| RpcError::Other(format!("Invalid public key: {}", e)))?;
-
         // Create keypair from bytes
         let keypair = Keypair::from_bytes(keypair_bytes)
             .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
+        let target_pubkey = keypair.pubkey();
 
         // Calculate user profile PDA
         let (user_profile_pda, _) = Pubkey::find_program_address(
@@ -405,7 +403,6 @@ impl RpcConnection {
 
     pub async fn update_user_profile(
         &self,
-        pubkey: &str,
         username: Option<String>,
         profile_image: Option<String>,
         keypair_bytes: &[u8]
@@ -421,8 +418,10 @@ impl RpcConnection {
         let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
             .map_err(|e| RpcError::Other(format!("Invalid program ID: {}", e)))?;
         
-        let target_pubkey = Pubkey::from_str(pubkey)
-            .map_err(|e| RpcError::Other(format!("Invalid public key: {}", e)))?;
+        // Create keypair from bytes
+        let keypair = Keypair::from_bytes(keypair_bytes)
+            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
+        let target_pubkey = keypair.pubkey();
 
         // Validate inputs
         if let Some(ref username) = username {
@@ -438,10 +437,6 @@ impl RpcConnection {
                 return Err(RpcError::Other("Profile image must start with 'n:' or 'c:' prefix.".to_string()));
             }
         }
-
-        // Create keypair from bytes
-        let keypair = Keypair::from_bytes(keypair_bytes)
-            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
 
         // Calculate user profile PDA
         let (user_profile_pda, _) = Pubkey::find_program_address(
@@ -1036,7 +1031,7 @@ mod tests {
                         // if account exists, attempt to close it
                         log_info("Found existing user profile, attempting to close...");
                         
-                        match rpc.close_user_profile(&pubkey, &keypair_bytes).await {
+                        match rpc.close_user_profile(&keypair_bytes).await {
                             Ok(response) => {
                                 // print raw response
                                 print_separator();
@@ -1137,7 +1132,7 @@ mod tests {
                         // Generate a simple profile image
                         let profile_image = "n:3UZcHVQ0*UD`75D)/9W9[@$E#F#+ddL^$7+a/AVJ7R7SKW?0$V@<3DaVT'(V?VHKB=N-%K3bJ^BH-cdGP33]cB9I`&KH*D)X#XF#V$S[VH%CI_=P--_]*T&]^`?>N?.aNJ)V8.W8Z&V/DZ9I+0?0BbD^VV]/0aGa=,G6d456c`#";
                         
-                        match rpc.initialize_user_profile(&pubkey, "TestUser", profile_image, &keypair_bytes).await {
+                        match rpc.initialize_user_profile("TestUser", profile_image, &keypair_bytes).await {
                             Ok(response) => {
                                 // Print raw response
                                 print_separator();
@@ -1239,7 +1234,7 @@ mod tests {
                         let new_username = Some("UpdatedUser".to_string());
                         let profile_image = None;
                         
-                        match rpc.update_user_profile(&pubkey, new_username, profile_image, &keypair_bytes).await {
+                        match rpc.update_user_profile(new_username, profile_image, &keypair_bytes).await {
                             Ok(response) => {
                                 // Print raw response
                                 print_separator();

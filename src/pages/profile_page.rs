@@ -245,7 +245,6 @@ fn ProfileForm(
                                                             let rpc = RpcConnection::new();
                                                             
                                                             match rpc.initialize_user_profile(
-                                                                &pubkey,
                                                                 &current_username,
                                                                 &current_pixel_art.to_optimal_string(),
                                                                 &keypair.to_bytes()
@@ -338,7 +337,6 @@ fn ProfileForm(
                                                             let rpc = RpcConnection::new();
                                                             
                                                             match rpc.update_user_profile(
-                                                                &pubkey,
                                                                 Some(username_for_update),
                                                                 Some(current_pixel_art.to_optimal_string()),
                                                                 &keypair.to_bytes()
@@ -439,7 +437,6 @@ fn ProfileForm(
                                                     let rpc = RpcConnection::new();
                                                     
                                                     match rpc.close_user_profile(
-                                                        &pubkey,
                                                         &keypair.to_bytes()
                                                     ).await {
                                                         Ok(_) => {
