@@ -19,6 +19,12 @@ use solana_sdk::{
 };
 use bincode;
 use gloo_timers;
+use sha2::Digest;
+use spl_associated_token_account;
+use spl_memo;
+use serde_json::json;
+use rand;
+use chrono;
 
 // error type
 #[derive(Debug, Deserialize)]
@@ -543,6 +549,161 @@ impl RpcConnection {
         let result: serde_json::Value = self.send_request("getAccountInfo", params).await?;
         Ok(result.to_string())
     }
+
+    pub async fn mint(
+        &self,
+        memo: &str,
+        keypair_bytes: &[u8],
+    ) -> Result<String, RpcError> {
+        use solana_sdk::{
+            signature::{Keypair, Signer},
+            instruction::{AccountMeta, Instruction},
+            transaction::Transaction,
+            message::Message,
+            compute_budget::ComputeBudgetInstruction,
+        };
+
+        // Program and mint addresses
+        let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
+            .map_err(|e| RpcError::Other(format!("Invalid program ID: {}", e)))?;
+        let mint = Pubkey::from_str("CrfhYtP7XtqFyHTWMyXp25CCzhjhzojngrPCZJ7RarUz")
+            .map_err(|e| RpcError::Other(format!("Invalid mint address: {}", e)))?;
+
+        // Create keypair from bytes and get pubkey
+        let keypair = Keypair::from_bytes(keypair_bytes)
+            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
+        let target_pubkey = keypair.pubkey();
+
+        // Calculate PDAs
+        let (mint_authority_pda, _) = Pubkey::find_program_address(
+            &[b"mint_authority"],
+            &program_id,
+        );
+
+        // Calculate user profile PDA
+        let (user_profile_pda, _) = Pubkey::find_program_address(
+            &[b"user_profile", target_pubkey.as_ref()],
+            &program_id,
+        );
+
+        // Calculate token account (ATA)
+        let token_account = spl_associated_token_account::get_associated_token_address(
+            &target_pubkey,
+            &mint,
+        );
+
+        // Check if token account exists
+        let token_account_info: serde_json::Value = self.send_request(
+            "getAccountInfo",
+            serde_json::json!([token_account.to_string(), {"encoding": "base64"}])
+        ).await?;
+
+        let mut instructions = vec![];
+
+        // Add compute budget instruction
+        let memo_length = memo.len() as u32;
+        let compute_units = {
+            let base_units = 400_000u32;
+            if memo_length > 100 {
+                base_units + ((memo_length - 100) / 100 + 1) * 100_000
+            } else {
+                base_units
+            }
+        };
+        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(compute_units));
+
+        // Add memo instruction
+        instructions.push(spl_memo::build_memo(
+            memo.as_bytes(),
+            &[&target_pubkey],
+        ));
+
+        // If token account doesn't exist, add create ATA instruction
+        if token_account_info["value"].is_null() {
+            log::info!("Token account does not exist, creating it...");
+            instructions.push(
+                spl_associated_token_account::instruction::create_associated_token_account(
+                    &target_pubkey,  // Funding account (fee payer)
+                    &target_pubkey,  // Wallet address
+                    &mint,           // Mint address
+                    &spl_token::id() // Token program
+                )
+            );
+        }
+
+        // Calculate Anchor instruction sighash for mint
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(b"global:process_transfer");
+        let result = hasher.finalize();
+        let instruction_data = result[..8].to_vec();
+
+        // Create mint instruction accounts
+        let mut accounts = vec![
+            AccountMeta::new(target_pubkey, true),         // user
+            AccountMeta::new(mint, false),                 // mint
+            AccountMeta::new(mint_authority_pda, false),   // mint_authority
+            AccountMeta::new(token_account, false),        // token_account
+            AccountMeta::new_readonly(spl_token::id(), false), // token_program
+            AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false), // instructions sysvar
+        ];
+
+        // Check if user profile exists
+        let profile_info: serde_json::Value = self.send_request(
+            "getAccountInfo",
+            serde_json::json!([user_profile_pda.to_string(), {"encoding": "base64"}])
+        ).await?;
+
+        if !profile_info["value"].is_null() {
+            accounts.push(AccountMeta::new(user_profile_pda, false));
+        }
+
+        // Add mint instruction
+        instructions.push(Instruction::new_with_bytes(
+            program_id,
+            &instruction_data,
+            accounts,
+        ));
+
+        // Get latest blockhash
+        let blockhash: serde_json::Value = self.send_request(
+            "getLatestBlockhash",
+            serde_json::json!([{
+                "commitment": "finalized",
+                "minContextSlot": 0
+            }])
+        ).await?;
+
+        let recent_blockhash = blockhash["value"]["blockhash"]
+            .as_str()
+            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
+
+        // Create and sign transaction
+        let message = Message::new(
+            &instructions,
+            Some(&target_pubkey),
+        );
+
+        let mut transaction = Transaction::new_unsigned(message);
+        transaction.message.recent_blockhash = solana_sdk::hash::Hash::from_str(recent_blockhash)
+            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
+        transaction.sign(&[&keypair], transaction.message.recent_blockhash);
+
+        // Serialize and send transaction
+        let serialized_tx = base64::encode(bincode::serialize(&transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?);
+
+        let params = serde_json::json!([
+            serialized_tx,
+            {
+                "encoding": "base64",
+                "preflightCommitment": "finalized",
+                "skipPreflight": false,
+                "maxRetries": 3
+            }
+        ]);
+
+        self.send_request("sendTransaction", params).await
+    }
 }
 
 // implement the default trait
@@ -678,6 +839,10 @@ mod tests {
 
     #[wasm_bindgen_test]
     async fn test_user_profile_sequence() {
+
+        // 0. Close profile
+        test_a4_close_user_profile().await;
+
         // 1. Initialize profile
         test_a1_initialize_user_profile().await;
         
@@ -686,8 +851,11 @@ mod tests {
         
         // 3. Get profile
         test_a3_get_user_profile().await;
+
+        // 4. Test mint with various memo lengths
+        test_mint_with_various_memo_lengths().await;
         
-        // 4. Close profile
+        // 5. Close profile
         test_a4_close_user_profile().await;
     }
 
@@ -1173,19 +1341,25 @@ mod tests {
         // display pixel art
         log_info("\nPixel Art Representation:");
         let mut bit_count = 0;
+        let mut current_row = String::with_capacity(32);
 
         for c in data.chars() {
             if let Some(value) = map_from_safe_char(c) {
                 for i in (0..6).rev() {
                     let bit = (value & (1 << i)) != 0;
-                    console_log!("{}", if bit { "⬛" } else { "⬜" });
+                    current_row.push_str(if bit { "⬛" } else { "⬜" });
                     bit_count += 1;
                     
                     if bit_count % 32 == 0 {
-                        console_log!("\n");
+                        console_log!("{}\n", current_row);
+                        current_row.clear();
                     }
                 }
             }
+        }
+
+        if !current_row.is_empty() {
+            console_log!("{}\n", current_row);
         }
         console_log!("\n");
     }
@@ -1321,6 +1495,98 @@ mod tests {
                         panic!("Latest burn shard test failed");
                     }
                 }
+            },
+            Err(e) => {
+                print_separator();
+                log_error(&format!("Failed to load test wallet: {}", e));
+                panic!("Failed to load wallet");
+            }
+        }
+    }
+
+    // helper function to create test memo
+    fn create_test_memo(min_length: usize) -> String {
+        // create base JSON structure
+        let memo_json = serde_json::json!({
+            "message": "Test memo message",
+            "signature": "2ZaXvNKVY8DbqZitNHAYRmqvqD6cBupCJmYY6rDnP5XzY7FPPpyVzKGdNhfXUWnz2J2zU6SK8J2WZPTdJA5eSNoK"
+        });
+        
+        // convert to string
+        let memo = serde_json::to_string(&memo_json).unwrap();
+        
+        // validate length is in allowed range
+        let length = memo.len();
+        assert!(length >= min_length && length <= 700,
+            "Generated memo length {} is not in valid range ({}-700)", 
+            length, min_length);
+        
+        memo
+    }
+
+    async fn test_mint_with_various_memo_lengths() {
+        print_separator();
+        log_info("Starting mint test");
+
+        match load_test_wallet() {
+            Ok((pubkey, keypair_bytes)) => {
+                log_info(&format!("Test wallet public key: {}", pubkey));
+
+                let rpc = RpcConnection::new();
+                log_info(&format!("Using RPC endpoint: {}", RpcConnection::DEFAULT_RPC_ENDPOINT));
+
+                // create test memo
+                let memo = create_test_memo(69);
+                log_info(&format!("Generated memo length: {}", memo.len()));
+                log_info(&format!("Memo content: {}", memo));
+
+                // send mint transaction
+                match rpc.mint(&memo, &keypair_bytes).await {
+                    Ok(response) => {
+                        log_info(&format!("Raw response: {}", response));
+                        
+                        // use signature from response
+                        let signature = response.trim_matches('"'); // remove possible quotes
+                        log_success(&format!("Transaction signature: {}", signature));
+                        
+                        // wait for transaction confirmation
+                        log_info("Waiting for transaction confirmation...");
+                        
+                        // try 5 times, 10 seconds interval
+                        for i in 1..=5 {
+                            gloo_timers::future::TimeoutFuture::new(10_000).await;
+                            
+                            match rpc.get_transaction_status(signature).await {
+                                Ok(status_response) => {
+                                    let status: serde_json::Value = serde_json::from_str(&status_response)
+                                        .expect("Failed to parse status response");
+                                    
+                                    if let Some(value) = status["value"].get(0) {
+                                        if value["confirmationStatus"].as_str() == Some("finalized") {
+                                            log_success("Transaction confirmed");
+                                            break;
+                                        }
+                                    }
+                                    
+                                    if i == 5 {
+                                        log_error("Transaction not confirmed after maximum attempts");
+                                    } else {
+                                        log_info(&format!("Checking confirmation status (attempt {}/5)...", i));
+                                    }
+                                },
+                                Err(e) => {
+                                    log_error(&format!("Failed to check transaction status: {}", e));
+                                }
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        log_error(&format!("Failed to mint: {}", e));
+                    }
+                }
+
+                print_separator();
+                log_success("Mint test completed");
             },
             Err(e) => {
                 print_separator();

@@ -13,6 +13,8 @@ cargo install tauri-cli
 
 cargo install trunk
 
+cargo install wasm-pack
+
 rustup target add wasm32-unknown-unknown
 ```
 
