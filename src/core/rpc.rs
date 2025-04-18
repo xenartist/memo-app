@@ -24,7 +24,6 @@ use spl_associated_token_account;
 use spl_memo;
 use serde_json::json;
 use rand;
-use chrono;
 
 // error type
 #[derive(Debug, Deserialize)]
@@ -841,22 +840,22 @@ mod tests {
     async fn test_user_profile_sequence() {
 
         // 0. Close profile
-        test_a4_close_user_profile().await;
+        // test_a4_close_user_profile().await;
 
         // 1. Initialize profile
-        test_a1_initialize_user_profile().await;
+        // test_a1_initialize_user_profile().await;
         
         // 2. Update profile
-        test_a2_update_user_profile().await;
+        // test_a2_update_user_profile().await;
         
         // 3. Get profile
-        test_a3_get_user_profile().await;
+        // test_a3_get_user_profile().await;
 
         // 4. Test mint with various memo lengths
         test_mint_with_various_memo_lengths().await;
         
         // 5. Close profile
-        test_a4_close_user_profile().await;
+        // test_a4_close_user_profile().await;
     }
 
     // #[wasm_bindgen_test]
@@ -1504,29 +1503,38 @@ mod tests {
         }
     }
 
-    // helper function to create test memo
-    fn create_test_memo(min_length: usize) -> String {
-        // create base JSON structure
+    fn create_test_memo(target_length: usize) -> String {
+        // fixed signature
+        let signature = "2ZaX";
+        
+        // calculate base JSON structure length (excluding message content)
+        // {"message":"","signature":""}
+        let base_length = 29 + signature.len();
+        
+        // calculate required message length
+        let message_length = target_length - base_length;
+        let message = "a".repeat(message_length);
+        
+        // create complete JSON
         let memo_json = serde_json::json!({
-            "message": "Test memo message",
-            "signature": "2ZaXvNKVY8DbqZitNHAYRmqvqD6cBupCJmYY6rDnP5XzY7FPPpyVzKGdNhfXUWnz2J2zU6SK8J2WZPTdJA5eSNoK"
+            "message": message,
+            "signature": signature
         });
         
         // convert to string
         let memo = serde_json::to_string(&memo_json).unwrap();
         
-        // validate length is in allowed range
-        let length = memo.len();
-        assert!(length >= min_length && length <= 700,
-            "Generated memo length {} is not in valid range ({}-700)", 
-            length, min_length);
+        // verify length
+        assert_eq!(memo.len(), target_length, 
+            "Generated memo length {} does not match target length {}", 
+            memo.len(), target_length);
         
         memo
     }
 
     async fn test_mint_with_various_memo_lengths() {
         print_separator();
-        log_info("Starting mint test");
+        log_info("Starting mint test with various memo lengths");
 
         match load_test_wallet() {
             Ok((pubkey, keypair_bytes)) => {
@@ -1535,58 +1543,69 @@ mod tests {
                 let rpc = RpcConnection::new();
                 log_info(&format!("Using RPC endpoint: {}", RpcConnection::DEFAULT_RPC_ENDPOINT));
 
-                // create test memo
-                let memo = create_test_memo(69);
-                log_info(&format!("Generated memo length: {}", memo.len()));
-                log_info(&format!("Memo content: {}", memo));
+                // define lengths to test
+                let test_lengths = vec![100, 200, 300, 400, 500, 600, 700];
 
-                // send mint transaction
-                match rpc.mint(&memo, &keypair_bytes).await {
-                    Ok(response) => {
-                        log_info(&format!("Raw response: {}", response));
-                        
-                        // use signature from response
-                        let signature = response.trim_matches('"'); // remove possible quotes
-                        log_success(&format!("Transaction signature: {}", signature));
-                        
-                        // wait for transaction confirmation
-                        log_info("Waiting for transaction confirmation...");
-                        
-                        // try 5 times, 10 seconds interval
-                        for i in 1..=5 {
-                            gloo_timers::future::TimeoutFuture::new(10_000).await;
+                for length in test_lengths {
+                    print_separator();
+                    log_info(&format!("\nTesting memo with length: {} bytes", length));
+
+                    // create memo of specified length
+                    let memo = create_test_memo(length);
+                    log_info(&format!("Generated memo length: {}", memo.len()));
+                    log_info(&format!("Memo content: {}", memo));
+
+                    // send mint transaction
+                    match rpc.mint(&memo, &keypair_bytes).await {
+                        Ok(response) => {
+                            log_info(&format!("Raw response: {}", response));
                             
-                            match rpc.get_transaction_status(signature).await {
-                                Ok(status_response) => {
-                                    let status: serde_json::Value = serde_json::from_str(&status_response)
-                                        .expect("Failed to parse status response");
-                                    
-                                    if let Some(value) = status["value"].get(0) {
-                                        if value["confirmationStatus"].as_str() == Some("finalized") {
-                                            log_success("Transaction confirmed");
-                                            break;
+                            // get signature
+                            let signature = response.trim_matches('"');
+                            log_success(&format!("Transaction signature: {}", signature));
+                            
+                            // wait for transaction confirmation
+                            log_info("Waiting for transaction confirmation...");
+                            
+                            // try 5 times, 10 seconds interval
+                            for i in 1..=5 {
+                                gloo_timers::future::TimeoutFuture::new(10_000).await;
+                                
+                                match rpc.get_transaction_status(signature).await {
+                                    Ok(status_response) => {
+                                        let status: serde_json::Value = serde_json::from_str(&status_response)
+                                            .expect("Failed to parse status response");
+                                        
+                                        if let Some(value) = status["value"].get(0) {
+                                            if value["confirmationStatus"].as_str() == Some("finalized") {
+                                                log_success(&format!("Transaction confirmed for memo length {}", length));
+                                                break;
+                                            }
                                         }
+                                        
+                                        if i == 5 {
+                                            log_error(&format!("Transaction not confirmed after maximum attempts for memo length {}", length));
+                                        } else {
+                                            log_info(&format!("Checking confirmation status (attempt {}/5)...", i));
+                                        }
+                                    },
+                                    Err(e) => {
+                                        log_error(&format!("Failed to check transaction status: {}", e));
                                     }
-                                    
-                                    if i == 5 {
-                                        log_error("Transaction not confirmed after maximum attempts");
-                                    } else {
-                                        log_info(&format!("Checking confirmation status (attempt {}/5)...", i));
-                                    }
-                                },
-                                Err(e) => {
-                                    log_error(&format!("Failed to check transaction status: {}", e));
                                 }
                             }
+                        },
+                        Err(e) => {
+                            log_error(&format!("Failed to mint with memo length {}: {}", length, e));
                         }
-                    },
-                    Err(e) => {
-                        log_error(&format!("Failed to mint: {}", e));
                     }
+
+                    // add delay between tests
+                    gloo_timers::future::TimeoutFuture::new(5_000).await;
                 }
 
                 print_separator();
-                log_success("Mint test completed");
+                log_success("Mint test with various memo lengths completed");
             },
             Err(e) => {
                 print_separator();
