@@ -856,22 +856,22 @@ mod tests {
     async fn test_user_profile_sequence() {
 
         // 0. Close profile
-        // test_a4_close_user_profile().await;
+        test_a4_close_user_profile().await;
 
         // 1. Initialize profile
-        // test_a1_initialize_user_profile().await;
+        test_a1_initialize_user_profile().await;
         
         // 2. Update profile
-        // test_a2_update_user_profile().await;
+        test_a2_update_user_profile().await;
         
         // 3. Get profile
-        // test_a3_get_user_profile().await;
+        test_a3_get_user_profile().await;
 
         // 4. Test mint with various memo lengths
         test_mint_with_various_memo_lengths().await;
         
         // 5. Close profile
-        // test_a4_close_user_profile().await;
+        test_a4_close_user_profile().await;
     }
 
     // #[wasm_bindgen_test]
