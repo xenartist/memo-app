@@ -7,7 +7,7 @@ use chacha20poly1305::{
     ChaCha20Poly1305,
 };
 use zeroize::{Zeroize, Zeroizing};
-use secrecy::{Secret, ExposeSecret};
+use secrecy::Secret;
 use rand::{rngs::OsRng, RngCore};
 
 use std::fmt;
