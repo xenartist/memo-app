@@ -716,7 +716,8 @@ impl RpcConnection {
             }
         ]);
 
-        self.send_request("sendTransaction", params).await
+        let result: serde_json::Value = self.send_request("sendTransaction", params).await?;
+        Ok(result.to_string())
     }
 }
 
@@ -1573,10 +1574,14 @@ mod tests {
                     // send mint transaction
                     match rpc.mint(&memo, &keypair_bytes).await {
                         Ok(response) => {
-                            log_info(&format!("Raw response: {}", response));
+                            // parse complete JSON response
+                            let json_response: serde_json::Value = serde_json::from_str(&response)
+                                .expect("Failed to parse response");
                             
                             // get signature
-                            let signature = response.trim_matches('"');
+                            let signature = json_response.as_str()
+                                .expect("Failed to get signature from response");
+                            
                             log_success(&format!("Transaction signature: {}", signature));
                             
                             // wait for transaction confirmation
