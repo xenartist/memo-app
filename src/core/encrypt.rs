@@ -3,11 +3,12 @@ use argon2::{
     Argon2, Params, Version,
 };
 use chacha20poly1305::{
-    aead::{Aead, AeadCore, KeyInit, OsRng},
-    ChaCha20Poly1305, Nonce,
+    aead::{Aead, NewAead, generic_array::GenericArray},
+    ChaCha20Poly1305,
 };
 use zeroize::{Zeroize, Zeroizing};
 use secrecy::{Secret, ExposeSecret};
+use rand::{rngs::OsRng, RngCore};
 
 use std::fmt;
 
@@ -73,20 +74,23 @@ fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], EncryptError> {
 // Encrypt data
 pub fn encrypt(data: &str, password: &str) -> Result<String, EncryptError> {
     // Generate random salt
-    let salt = ChaCha20Poly1305::generate_nonce(&mut OsRng);
+    let mut salt = [0u8; 12];
+    OsRng.fill_bytes(&mut salt);
 
     // Derive key from password
-    let key = derive_key(password, salt.as_slice())?;
+    let key = derive_key(password, &salt)?;
 
     // Create ChaCha20Poly1305 instance
-    let cipher = ChaCha20Poly1305::new(&key.into());
+    let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(&key));
 
     // Generate random nonce
-    let nonce = ChaCha20Poly1305::generate_nonce(&mut OsRng);
+    let mut nonce = [0u8; 12];
+    OsRng.fill_bytes(&mut nonce);
+    let nonce = GenericArray::from_slice(&nonce);
 
     // Encrypt data
     let ciphertext = cipher
-        .encrypt(&nonce, data.as_bytes())
+        .encrypt(nonce, data.as_bytes())
         .map_err(|e| EncryptError::ChaChaError(e.to_string()))?;
 
     // Combine salt, nonce, and ciphertext into a string
@@ -118,10 +122,10 @@ pub fn decrypt(encrypted_data: &str, password: &str) -> Result<String, EncryptEr
     let key = derive_key(password, &salt)?;
 
     // Create ChaCha20Poly1305 instance
-    let cipher = ChaCha20Poly1305::new(&key.into());
+    let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(&key));
 
     // Create nonce
-    let nonce = Nonce::from_slice(&nonce_bytes);
+    let nonce = GenericArray::from_slice(&nonce_bytes);
 
     // Decrypt data
     let plaintext = cipher
