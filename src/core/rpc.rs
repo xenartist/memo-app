@@ -600,15 +600,30 @@ impl RpcConnection {
         let mut instructions = vec![];
 
         // Add compute budget instruction
-        let memo_length = memo.len() as u32;
         let compute_units = {
-            let base_units = 400_000u32;
-            if memo_length > 100 {
-                base_units + ((memo_length - 100) / 100 + 1) * 100_000
-            } else {
-                base_units
+            let memo_length = memo.len();
+            
+            // first verify memo length is within valid range
+            if memo_length < 69 {
+                return Err(RpcError::Other("Memo length must be at least 69 bytes".to_string()));
+            }
+            if memo_length > 700 {
+                return Err(RpcError::Other("Memo length cannot exceed 700 bytes".to_string()));
+            }
+
+            // then set CU based on length range
+            match memo_length {
+                69..=100 => 100_000,
+                101..=200 => 150_000,
+                201..=300 => 200_000,
+                301..=400 => 250_000,
+                401..=500 => 300_000,
+                501..=600 => 350_000,
+                601..=700 => 400_000,
+                _ => unreachable!() // since we have already verified the range, this case is impossible
             }
         };
+
         instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(compute_units));
 
         // Add memo instruction
