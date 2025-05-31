@@ -592,37 +592,20 @@ impl RpcConnection {
             serde_json::json!([token_account.to_string(), {"encoding": "base64"}])
         ).await?;
 
-        let mut instructions = vec![];
+        // Verify memo length
+        let memo_length = memo.len();
+        if memo_length < 69 {
+            return Err(RpcError::Other("Memo length must be at least 69 bytes".to_string()));
+        }
+        if memo_length > 700 {
+            return Err(RpcError::Other("Memo length cannot exceed 700 bytes".to_string()));
+        }
 
-        // Add compute budget instruction
-        let compute_units = {
-            let memo_length = memo.len();
-            
-            // first verify memo length is within valid range
-            if memo_length < 69 {
-                return Err(RpcError::Other("Memo length must be at least 69 bytes".to_string()));
-            }
-            if memo_length > 700 {
-                return Err(RpcError::Other("Memo length cannot exceed 700 bytes".to_string()));
-            }
-
-            // then set CU based on length range
-            match memo_length {
-                69..=100 => 100_000,
-                101..=200 => 150_000,
-                201..=300 => 200_000,
-                301..=400 => 250_000,
-                401..=500 => 300_000,
-                501..=600 => 350_000,
-                601..=700 => 400_000,
-                _ => unreachable!() // since we have already verified the range, this case is impossible
-            }
-        };
-
-        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(compute_units));
+        // Build instructions without compute budget first (for simulation)
+        let mut base_instructions = vec![];
 
         // Add memo instruction
-        instructions.push(spl_memo::build_memo(
+        base_instructions.push(spl_memo::build_memo(
             memo.as_bytes(),
             &[&target_pubkey],
         ));
@@ -630,7 +613,7 @@ impl RpcConnection {
         // If token account doesn't exist, add create ATA instruction
         if token_account_info["value"].is_null() {
             log::info!("Token account does not exist, creating it...");
-            instructions.push(
+            base_instructions.push(
                 spl_associated_token_account::instruction::create_associated_token_account(
                     &target_pubkey,  // Funding account (fee payer)
                     &target_pubkey,  // Wallet address
@@ -667,7 +650,7 @@ impl RpcConnection {
         }
 
         // Add mint instruction
-        instructions.push(Instruction::new_with_bytes(
+        base_instructions.push(Instruction::new_with_bytes(
             program_id,
             &instruction_data,
             accounts,
@@ -686,23 +669,84 @@ impl RpcConnection {
             .as_str()
             .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
 
-        // Create and sign transaction
-        let message = Message::new(
-            &instructions,
+        // Create simulation transaction (without compute budget instruction)
+        let sim_message = Message::new(
+            &base_instructions,
             Some(&target_pubkey),
         );
 
-        let mut transaction = Transaction::new_unsigned(message);
-        transaction.message.recent_blockhash = solana_sdk::hash::Hash::from_str(recent_blockhash)
+        let mut sim_transaction = Transaction::new_unsigned(sim_message);
+        sim_transaction.message.recent_blockhash = solana_sdk::hash::Hash::from_str(recent_blockhash)
             .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
-        transaction.sign(&[&keypair], transaction.message.recent_blockhash);
+        sim_transaction.sign(&[&keypair], sim_transaction.message.recent_blockhash);
 
-        // Serialize and send transaction
-        let serialized_tx = base64::encode(bincode::serialize(&transaction)
-            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?);
+        // Serialize simulation transaction
+        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
+
+        // Simulate transaction to get compute units consumption
+        let sim_params = serde_json::json!([
+            sim_serialized_tx,
+            {
+                "encoding": "base64",
+                "commitment": "finalized",
+                "replaceRecentBlockhash": true,
+                "sigVerify": false
+            }
+        ]);
+
+        let sim_result: serde_json::Value = self.send_request("simulateTransaction", sim_params).await?;
+        
+        // Parse simulation result to extract compute units consumed
+        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            log::info!("Simulation consumed {} compute units", units_consumed);
+            // Add 10% buffer to the simulated consumption
+            let with_buffer = (units_consumed as f64 * 1.1) as u64;
+            // Ensure minimum of 1000 CU
+            std::cmp::max(with_buffer, 1000)
+        } else {
+            log::info!("Failed to get compute units from simulation, using fallback");
+            // Fallback to original calculation if simulation fails
+            match memo_length {
+                69..=100 => 100_000,
+                101..=200 => 150_000,
+                201..=300 => 200_000,
+                301..=400 => 250_000,
+                401..=500 => 300_000,
+                501..=600 => 350_000,
+                601..=700 => 400_000,
+                _ => 400_000
+            }
+        };
+
+        log::info!("Using {} compute units (with 10% buffer)", computed_units);
+
+        // Now build the final transaction with the calculated compute units
+        let mut final_instructions = vec![];
+
+        // Add compute budget instruction first
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+
+        // Add all the base instructions
+        final_instructions.extend(base_instructions);
+
+        // Create and sign final transaction
+        let final_message = Message::new(
+            &final_instructions,
+            Some(&target_pubkey),
+        );
+
+        let mut final_transaction = Transaction::new_unsigned(final_message);
+        final_transaction.message.recent_blockhash = solana_sdk::hash::Hash::from_str(recent_blockhash)
+            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
+        final_transaction.sign(&[&keypair], final_transaction.message.recent_blockhash);
+
+        // Serialize and send final transaction
+        let final_serialized_tx = base64::encode(bincode::serialize(&final_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize final transaction: {}", e)))?);
 
         let params = serde_json::json!([
-            serialized_tx,
+            final_serialized_tx,
             {
                 "encoding": "base64",
                 "preflightCommitment": "finalized",
