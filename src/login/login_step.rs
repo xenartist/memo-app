@@ -90,7 +90,7 @@ pub fn LoginStep(
 
     view! {
         <div class="login-container">
-            <h2>"memo - everlasting memories on X1"</h2>
+            <h2>"MEMO Engraves Memories Onchain"</h2>
             
             <div>
                 {move || {
