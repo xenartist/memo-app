@@ -42,7 +42,7 @@ pub fn LoginStep(
             match Wallet::load().await {
                 Ok(wallet) => {
                     spawn_local(async move {
-                        match encrypt::decrypt(wallet.get_encrypted_seed(), &password_value) {
+                        match encrypt::decrypt_async(&wallet.get_encrypted_seed(), &password_value).await {
                             Ok(seed) => {
                                 let mut current_session = session.get_untracked();
                                 match current_session.initialize_with_seed(&seed).await {

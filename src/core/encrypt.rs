@@ -138,6 +138,48 @@ pub fn decrypt(encrypted_data: &str, password: &str) -> Result<String, EncryptEr
     Ok(result)
 }
 
+// Add this new async version
+pub async fn decrypt_async(encrypted_data: &str, password: &str) -> Result<String, EncryptError> {
+    use gloo_timers::future::sleep;
+    use std::time::Duration;
+    
+    // Parse encrypted data
+    let parts: Vec<&str> = encrypted_data.split(':').collect();
+    if parts.len() != 3 {
+        return Err(EncryptError::InvalidData);
+    }
+
+    // Parse salt, nonce, and ciphertext
+    let salt = hex::decode(parts[0]).map_err(|_| EncryptError::InvalidData)?;
+    let nonce_bytes = hex::decode(parts[1]).map_err(|_| EncryptError::InvalidData)?;
+    let ciphertext = hex::decode(parts[2]).map_err(|_| EncryptError::InvalidData)?;
+
+    // Give UI a chance to update before CPU-intensive operation
+    sleep(Duration::from_millis(10)).await;
+
+    // Derive key from password (this is the CPU-intensive part)
+    let key = derive_key(password, &salt)?;
+
+    // Give UI another chance to update
+    sleep(Duration::from_millis(10)).await;
+
+    // Create ChaCha20Poly1305 instance
+    let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(&key));
+
+    // Create nonce
+    let nonce = GenericArray::from_slice(&nonce_bytes);
+
+    // Decrypt data
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext.as_ref())
+        .map_err(|e| EncryptError::ChaChaError(e.to_string()))?;
+
+    // Convert plaintext to string
+    let result = String::from_utf8(plaintext).map_err(|_| EncryptError::InvalidData)?;
+
+    Ok(result)
+}
+
 pub fn generate_random_key() -> Secret<String> {
     // create a buffer that can be securely cleared
     let mut key = [0u8; 32];
