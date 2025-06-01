@@ -129,27 +129,24 @@ mod tests {
     #[wasm_bindgen_test]
     async fn test_user_profile_sequence() {
         // 0. Close profile
-        test_a4_close_user_profile().await;
+        test_a3_close_user_profile().await;
 
         // 1. Initialize profile
         test_a1_initialize_user_profile().await;
         
-        // 2. Update profile
-        test_a2_update_user_profile().await;
-        
-        // 3. Get profile
-        test_a3_get_user_profile().await;
+        // 2. Get profile
+        test_a2_get_user_profile().await;
 
-        // 4. Test mint with various memo lengths
+        // 3. Test mint with various memo lengths
         test_mint_with_various_memo_lengths().await;
         
-        // 5. Close profile
-        test_a4_close_user_profile().await;
+        // 4. Close profile
+        test_a3_close_user_profile().await;
     }
 
-    async fn test_a3_get_user_profile() {
+    async fn test_a2_get_user_profile() {
         print_separator();
-        log_info("Starting user profile test sequence (3/4): Get Profile");
+        log_info("Starting user profile test sequence (2/3): Get Profile");
 
         // using load_test_wallet to get test wallet pubkey
         match load_test_wallet() {
@@ -175,7 +172,7 @@ mod tests {
                             let decoded = base64::decode(data)
                                 .expect("Failed to decode base64 data");
 
-                            // start parsing data structure (simulate UI behavior)
+                            // start parsing data structure (simulate UI behavior) - updated for new UserProfile
                             let mut data = &decoded[8..]; // Skip discriminator
 
                             // Read pubkey
@@ -184,14 +181,7 @@ mod tests {
                             let account_pubkey = Pubkey::new_from_array(pubkey_bytes);
                             data = &data[32..];
 
-                            // Read username
-                            let username_len = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
-                            data = &data[4..];
-                            let username = String::from_utf8(data[..username_len].to_vec())
-                                .expect("Invalid username encoding");
-                            data = &data[username_len..];
-
-                            // Read stats
+                            // Read stats (mint/burn data only)
                             let total_minted = u64::from_le_bytes([
                                 data[0], data[1], data[2], data[3], 
                                 data[4], data[5], data[6], data[7]
@@ -216,13 +206,6 @@ mod tests {
                             ]);
                             data = &data[8..];
 
-                            // Read profile image
-                            let profile_image_len = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
-                            data = &data[4..];
-                            let profile_image = String::from_utf8(data[..profile_image_len].to_vec())
-                                .expect("Invalid profile image encoding");
-                            data = &data[profile_image_len..];
-
                             // Read timestamps
                             let created_at = i64::from_le_bytes([
                                 data[0], data[1], data[2], data[3], 
@@ -235,12 +218,10 @@ mod tests {
                                 data[4], data[5], data[6], data[7]
                             ]);
 
-                            // display parsed user info
+                            // display parsed user info (no username/image)
                             print_separator();
                             log_info("==== USER PROFILE ====");
-                            log_info(&format!("Username: {}", username));
-                            log_info(&format!("Profile Image: {}", 
-                                if profile_image.is_empty() { "None" } else { &profile_image }));
+                            log_info("Note: Username and profile image now handled by separate contract");
                             
                             log_info("\n==== TOKEN STATISTICS ====");
                             log_info(&format!("Total Minted: {} tokens", total_minted));
@@ -254,11 +235,6 @@ mod tests {
                             log_info(&format!("Owner: {}", account_pubkey));
                             log_info(&format!("Created: {}", format_timestamp(created_at)));
                             log_info(&format!("Last Updated: {}", format_timestamp(last_updated)));
-
-                            if !profile_image.is_empty() {
-                                log_info("\n==== PIXEL ART ====");
-                                display_pixel_art(&profile_image);
-                            }
                         } else {
                             log_error("No account data found");
                         }
@@ -282,9 +258,9 @@ mod tests {
         }
     }
 
-    async fn test_a4_close_user_profile() {
+    async fn test_a3_close_user_profile() {
         print_separator();
-        log_info("Starting user profile test sequence (4/4): Close Profile");
+        log_info("Starting user profile test sequence (3/3): Close Profile");
 
         match load_test_wallet() {
             Ok((pubkey, keypair_bytes)) => {
@@ -381,7 +357,7 @@ mod tests {
 
     async fn test_a1_initialize_user_profile() {
         print_separator();
-        log_info("Starting user profile test sequence (1/4): Initialize Profile");
+        log_info("Starting user profile test sequence (1/3): Initialize Profile");
 
         match load_test_wallet() {
             Ok((pubkey, keypair_bytes)) => {
@@ -401,13 +377,10 @@ mod tests {
                             return;
                         }
 
-                        // If account doesn't exist, proceed with initialization
+                        // If account doesn't exist, proceed with initialization (no username/image)
                         log_info("No existing user profile found, proceeding with initialization...");
                         
-                        // Generate a simple profile image
-                        let profile_image = "n:3UZcHVQ0*UD`75D)/9W9[@$E#F#+ddL^$7+a/AVJ7R7SKW?0$V@<3DaVT'(V?VHKB=N-%K3bJ^BH-cdGP33]cB9I`&KH*D)X#XF#V$S[VH%CI_=P--_]*T&]^`?>N?.aNJ)V8.W8Z&V/DZ9I+0?0BbD^VV]/0aGa=,G6d456c`#";
-                        
-                        match rpc.initialize_user_profile("TestUser", profile_image, &keypair_bytes).await {
+                        match rpc.initialize_user_profile(&keypair_bytes).await {
                             Ok(response) => {
                                 // Print raw response
                                 print_separator();
@@ -415,7 +388,7 @@ mod tests {
                                 log_info(&response);
                                 print_separator();
 
-                                // Try to parse response as JSON (but don't let parsing fail affect test flow)
+                                // Try to parse response as JSON
                                 match serde_json::from_str::<serde_json::Value>(&response) {
                                     Ok(json_response) => {
                                         log_json("Parsed Initialize Profile Response", &json_response);
@@ -430,7 +403,6 @@ mod tests {
                                 
                                 // Try 10 times, 10 seconds interval
                                 for i in 1..=10 {
-                                    // Use gloo_timers future version for delay
                                     gloo_timers::future::TimeoutFuture::new(10_000).await;
                                     
                                     log_info(&format!("Checking account status (attempt {}/10)...", i));
@@ -441,7 +413,7 @@ mod tests {
                                                 .expect("Failed to parse verification info JSON");
 
                                             if !verify_info["value"].is_null() {
-                                                log_success("User profile successfully initialized");
+                                                log_success("User profile successfully initialized (mint/burn tracking only)");
                                                 print_separator();
                                                 log_success("Initialize user profile test completed");
                                                 return;
@@ -462,106 +434,6 @@ mod tests {
                             Err(e) => {
                                 log_error(&format!("Failed to initialize user profile: {}", e));
                                 panic!("Initialize operation failed");
-                            }
-                        }
-                    },
-                    Err(e) => {
-                        log_error(&format!("Failed to check user profile: {}", e));
-                        panic!("Failed to check user profile existence");
-                    }
-                }
-            },
-            Err(e) => {
-                print_separator();  
-                log_error(&format!("Failed to load test wallet: {}", e));
-                panic!("Failed to load wallet");
-            }
-        }
-    }
-
-    async fn test_a2_update_user_profile() {
-        print_separator();
-        log_info("Starting user profile test sequence (2/4): Update Profile");
-
-        match load_test_wallet() {
-            Ok((pubkey, keypair_bytes)) => {
-                log_info(&format!("Test wallet public key: {}", pubkey));
-
-                let rpc = RpcConnection::new();
-                log_info(&format!("Using RPC endpoint: {}", "https://rpc.testnet.x1.xyz"));
-
-                // First check if user profile exists
-                match rpc.get_user_profile(&pubkey).await {
-                    Ok(account_info_str) => {
-                        let account_info: serde_json::Value = serde_json::from_str(&account_info_str)
-                            .expect("Failed to parse account info JSON");
-
-                        if account_info["value"].is_null() {
-                            log_info("No user profile found to update");
-                            return;
-                        }
-
-                        // If account exists, proceed with update
-                        log_info("Found existing user profile, attempting to update...");
-                        
-                        // Update username only
-                        let new_username = Some("UpdatedUser".to_string());
-                        let profile_image = None;
-                        
-                        match rpc.update_user_profile(new_username, profile_image, &keypair_bytes).await {
-                            Ok(response) => {
-                                // Print raw response
-                                print_separator();
-                                log_info("Raw Update Profile Response:");
-                                log_info(&response);
-                                print_separator();
-
-                                // Try to parse response as JSON
-                                match serde_json::from_str::<serde_json::Value>(&response) {
-                                    Ok(json_response) => {
-                                        log_json("Parsed Update Profile Response", &json_response);
-                                    }
-                                    Err(e) => {
-                                        log_error(&format!("Failed to parse response as JSON: {}", e));
-                                    }
-                                }
-
-                                // Wait for transaction confirmation
-                                log_info("Waiting for transaction confirmation...");
-                                
-                                // Try 10 times, 10 seconds interval
-                                for i in 1..=10 {
-                                    gloo_timers::future::TimeoutFuture::new(10_000).await;
-                                    
-                                    log_info(&format!("Checking account status (attempt {}/10)...", i));
-                                    
-                                    match rpc.get_user_profile(&pubkey).await {
-                                        Ok(verify_info_str) => {
-                                            let verify_info: serde_json::Value = serde_json::from_str(&verify_info_str)
-                                                .expect("Failed to parse verification info JSON");
-
-                                            if !verify_info["value"].is_null() {
-                                                log_success("User profile successfully updated");
-                                                print_separator();
-                                                log_success("Update user profile test completed");
-                                                return;
-                                            } else {
-                                                log_info("Profile update not yet confirmed, waiting...");
-                                            }
-                                        },
-                                        Err(e) => {
-                                            log_error(&format!("Failed to verify account update: {}", e));
-                                        }
-                                    }
-                                }
-
-                                // If all attempts fail
-                                log_error("Profile update not confirmed after maximum retries");
-                                panic!("Update operation failed - changes not confirmed after timeout");
-                            },
-                            Err(e) => {
-                                log_error(&format!("Failed to update user profile: {}", e));
-                                panic!("Update operation failed");
                             }
                         }
                     },

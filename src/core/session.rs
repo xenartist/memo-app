@@ -15,12 +15,10 @@ use log;
 #[derive(Clone, Debug)]
 pub struct UserProfile {
     pub pubkey: String,           // pubkey
-    pub username: String,         // username
     pub total_minted: u64,        // total minted
     pub total_burned: u64,        // total burned
     pub mint_count: u64,          // mint count
     pub burn_count: u64,          // burn count
-    pub profile_image: String,    // profile image
     pub created_at: i64,          // created at
     pub last_updated: i64,        // last updated
 }
@@ -302,28 +300,7 @@ pub fn parse_user_profile(account_data: &str) -> Result<UserProfile, SessionErro
             log::info!("Parsed pubkey: {}", pubkey);
             data = &data[32..];
             
-            // read username length
-            if data.len() < 4 {
-                log::error!("Invalid username length field");
-                return Err(SessionError::InvalidData("Invalid username length field".to_string()));
-            }
-            let username_len = u32::from_le_bytes(data[..4].try_into().unwrap()) as usize;
-            data = &data[4..];
-            
-            // read username
-            if data.len() < username_len {
-                log::error!("Invalid username data length");
-                return Err(SessionError::InvalidData("Invalid username data".to_string()));
-            }
-            let username = String::from_utf8(data[..username_len].to_vec())
-                .map_err(|e| {
-                    log::error!("Invalid username UTF-8: {}", e);
-                    SessionError::InvalidData(format!("Invalid username UTF-8: {}", e))
-                })?;
-            log::info!("Parsed username: {}", username);
-            data = &data[username_len..];
-            
-            // read stats data
+            // read stats data (mint/burn data only)
             if data.len() < 32 {
                 log::error!("Invalid stats data length");
                 return Err(SessionError::InvalidData("Invalid stats data".to_string()));
@@ -336,27 +313,6 @@ pub fn parse_user_profile(account_data: &str) -> Result<UserProfile, SessionErro
                 total_minted, total_burned, mint_count, burn_count);
             data = &data[32..];
             
-            // read profile_image length
-            if data.len() < 4 {
-                log::error!("Invalid profile image length field");
-                return Err(SessionError::InvalidData("Invalid profile image length field".to_string()));
-            }
-            let profile_image_len = u32::from_le_bytes(data[..4].try_into().unwrap()) as usize;
-            data = &data[4..];
-            
-            // read profile_image
-            if data.len() < profile_image_len {
-                log::error!("Invalid profile image data length");
-                return Err(SessionError::InvalidData("Invalid profile image data".to_string()));
-            }
-            let profile_image = String::from_utf8(data[..profile_image_len].to_vec())
-                .map_err(|e| {
-                    log::error!("Invalid profile image UTF-8: {}", e);
-                    SessionError::InvalidData(format!("Invalid profile image UTF-8: {}", e))
-                })?;
-            log::info!("Parsed profile image: {}", profile_image);
-            data = &data[profile_image_len..];
-            
             // read timestamp
             if data.len() < 16 {
                 log::error!("Invalid timestamp data length");
@@ -368,12 +324,10 @@ pub fn parse_user_profile(account_data: &str) -> Result<UserProfile, SessionErro
 
             let profile = UserProfile {
                 pubkey,
-                username,
                 total_minted,
                 total_burned,
                 mint_count,
                 burn_count,
-                profile_image,
                 created_at,
                 last_updated,
             };

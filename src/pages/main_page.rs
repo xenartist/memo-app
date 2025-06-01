@@ -34,7 +34,7 @@ pub fn MainPage(
     let (token_balance, set_token_balance) = create_signal(0f64);
     
     // token address
-    const TOKEN_MINT: &str = "CrfhYtP7XtqFyHTWMyXp25CCzhjhzojngrPCZJ7RarUz";
+    const TOKEN_MINT: &str = "MEM69mjnKAMxgqwosg5apfYNk2rMuV26FR9THDfT3Q7";
     
     // get wallet address from session
     let wallet_address = move || {
@@ -45,10 +45,14 @@ pub fn MainPage(
     };
     
     // get username from session
-    let username = move || {
+    let profile_status = move || {
         match session.get().get_user_profile() {
-            Some(profile) => profile.username,
-            None => "N/A".to_string()
+            Some(profile) => {
+                // Display profile creation status and basic stats
+                format!("Profile Active (Minted: {}, Burned: {})", 
+                    profile.total_minted, profile.total_burned)
+            },
+            None => "No Profile".to_string()
         }
     };
     
@@ -142,7 +146,7 @@ pub fn MainPage(
         <div class="main-page">
             <div class="top-bar">
                 <div class="user-info">
-                    <span class="username">{username}</span>
+                    <span class="profile-status">{profile_status}</span>
                 </div>
                 <div class="wallet-address">
                     <span class="token-balance">{move || format!("{:.2} MEMO", token_balance.get())}</span>

@@ -120,23 +120,15 @@ fn ProfileForm(
     existing_profile: Option<UserProfile>,
     form_state: RwSignal<ProfileFormState>,
 ) -> impl IntoView {
-    let (username, set_username) = create_signal(
-        existing_profile.as_ref().map(|p| p.username.clone()).unwrap_or_default()
-    );
+    let (username, set_username) = create_signal(String::new());
     
-    let (pixel_art, set_pixel_art) = create_signal(
-        existing_profile.as_ref()
-            .and_then(|p| Pixel::from_optimal_string(&p.profile_image))
-            .unwrap_or_else(Pixel::new)
-    );
+    let (pixel_art, set_pixel_art) = create_signal(Pixel::new());
 
     let (error_message, set_error_message) = create_signal(String::new());
     let (is_submitting, set_is_submitting) = create_signal(false);
     let (show_confirm_dialog, set_show_confirm_dialog) = create_signal(false);
 
-    // Handle pixel click
     let handle_pixel_click = move |row: usize, col: usize| {
-        // only allow editing in Create or Edit state
         if matches!(form_state.get(), ProfileFormState::Create | ProfileFormState::Edit) {
             let mut new_art = pixel_art.get();
             new_art.toggle_pixel(row, col);
@@ -144,9 +136,7 @@ fn ProfileForm(
         }
     };
 
-    // Handle image import
     let handle_import = move |ev: MouseEvent| {
-        // only allow import in Create or Edit state
         if !matches!(form_state.get(), ProfileFormState::Create | ProfileFormState::Edit) {
             return;
         }
@@ -203,17 +193,14 @@ fn ProfileForm(
         input.click();
     };
 
-    // update profile
     let handle_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
         
-        // process different form states
         match form_state.get() {
             ProfileFormState::Create => {
                 let current_username = username.get();
                 let current_pixel_art = pixel_art.get();
 
-                // validate username cannot be empty
                 if current_username.trim().is_empty() {
                     set_error_message.set("Username cannot be empty".to_string());
                     return;
@@ -245,32 +232,23 @@ fn ProfileForm(
                                                         Ok((keypair, _)) => {
                                                             let rpc = RpcConnection::new();
                                                             
-                                                            match rpc.initialize_user_profile(
-                                                                &current_username,
-                                                                &current_pixel_art.to_optimal_string(),
-                                                                &keypair.to_bytes()
-                                                            ).await {
+                                                            match rpc.initialize_user_profile(&keypair.to_bytes()).await {
                                                                 Ok(_) => {
-                                                                    // create new user profile object
                                                                     let new_profile = UserProfile {
                                                                         pubkey: pubkey.clone(),
-                                                                        username: current_username,
                                                                         total_minted: 0,
                                                                         total_burned: 0,
                                                                         mint_count: 0,
                                                                         burn_count: 0,
-                                                                        profile_image: current_pixel_art.to_optimal_string(),
-                                                                        created_at: js_sys::Date::now() as i64,
-                                                                        last_updated: js_sys::Date::now() as i64,
+                                                                        created_at: js_sys::Date::now() as i64 / 1000,
+                                                                        last_updated: js_sys::Date::now() as i64 / 1000,
                                                                     };
 
-                                                                    // update user profile in session
                                                                     current_session.set_user_profile(Some(new_profile));
                                                                     session_clone.set(current_session);
 
-                                                                    // update form state
                                                                     form_state_clone.set(ProfileFormState::View);
-                                                                    set_error_clone.set("Profile created successfully!".to_string());
+                                                                    set_error_clone.set("Profile created successfully! (Note: Username and image are for display only and not saved to blockchain)".to_string());
                                                                 }
                                                                 Err(e) => {
                                                                     set_error_clone.set(format!("Failed to create profile: {}", e));
@@ -306,95 +284,15 @@ fn ProfileForm(
                 });
             }
             ProfileFormState::Edit => {
-                let current_username = username.get();
-                let current_pixel_art = pixel_art.get();
-
-                set_is_submitting.set(true);
-                set_error_message.set(String::new());
-
-                let session_clone = session;
-                let set_error_clone = set_error_message;
-                let set_submitting_clone = set_is_submitting;
-                let form_state_clone = form_state;
-                let existing_profile_clone = existing_profile.clone();
-                let username_for_update = current_username.clone();
-
-                spawn_local(async move {
-                    let mut current_session = session_clone.get();
-                    
-                    match current_session.get_public_key() {
-                        Ok(pubkey) => {
-                            match current_session.get_seed() {
-                                Ok(seed) => {
-                                    match hex::decode(&seed) {
-                                        Ok(seed_bytes) => {
-                                            match seed_bytes.try_into() as Result<[u8; 64], Vec<u8>> {
-                                                Ok(seed_array) => {
-                                                    match derive_keypair_from_seed(
-                                                        &seed_array,
-                                                        get_default_derivation_path()
-                                                    ) {
-                                                        Ok((keypair, _)) => {
-                                                            let rpc = RpcConnection::new();
-                                                            
-                                                            match rpc.update_user_profile(
-                                                                Some(username_for_update),
-                                                                Some(current_pixel_art.to_optimal_string()),
-                                                                &keypair.to_bytes()
-                                                            ).await {
-                                                                Ok(_) => {
-                                                                    if let Some(mut updated_profile) = existing_profile_clone {
-                                                                        updated_profile.username = current_username;
-                                                                        updated_profile.profile_image = current_pixel_art.to_optimal_string();
-
-                                                                        current_session.set_user_profile(Some(updated_profile));
-                                                                        session_clone.set(current_session);
-
-                                                                        set_error_clone.set("Profile updated successfully!".to_string());
-                                                                        form_state_clone.set(ProfileFormState::View);
-                                                                    }
-                                                                }
-                                                                Err(e) => {
-                                                                    set_error_clone.set(format!("Failed to update profile: {}", e));
-                                                                }
-                                                            }
-                                                        }
-                                                        Err(e) => {
-                                                            set_error_clone.set(format!("Failed to derive keypair: {:?}", e));
-                                                        }
-                                                    }
-                                                }
-                                                Err(original_vec) => {
-                                                    set_error_clone.set(format!("Invalid seed length: {} (expected 64)", original_vec.len()));
-                                                }
-                                            }
-                                        }
-                                        Err(e) => {
-                                            set_error_clone.set(format!("Failed to decode seed: {}", e));
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    set_error_clone.set(format!("Failed to get seed: {}", e));
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            set_error_clone.set(format!("Failed to get public key: {}", e));
-                        }
-                    }
-
-                    set_submitting_clone.set(false);
-                });
+                set_error_message.set("Edit functionality is temporarily disabled. Username and image will be available through a separate contract soon.".to_string());
+                form_state.set(ProfileFormState::View);
             }
             ProfileFormState::View => {
-                // View state does not handle submission
                 return;
             }
         }
     };
 
-    // delete profile
     let handle_delete = move |ev: MouseEvent| {
         ev.prevent_default();
         
@@ -402,11 +300,9 @@ fn ProfileForm(
             return;
         }
 
-        // show confirm dialog
         set_show_confirm_dialog.set(true);
     };
 
-    // confirm delete
     let handle_confirm_delete = move || {
         set_show_confirm_dialog.set(false);
         set_is_submitting.set(true);
@@ -441,15 +337,11 @@ fn ProfileForm(
                                                         &keypair.to_bytes()
                                                     ).await {
                                                         Ok(_) => {
-                                                            // clear user profile in session
                                                             current_session.set_user_profile(None);
                                                             session_clone.set(current_session);
 
-                                                            // reset form state
                                                             form_state_clone.set(ProfileFormState::Create);
-                                                            // clear username
                                                             set_username_clone.set(String::new());
-                                                            // reset pixel art to new blank canvas
                                                             set_pixel_art_clone.set(Pixel::new());
                                                             
                                                             set_error_clone.set("Profile deleted successfully!".to_string());
@@ -488,7 +380,6 @@ fn ProfileForm(
         });
     };
 
-    // cancel delete
     let handle_cancel_delete = move || {
         set_show_confirm_dialog.set(false);
     };
@@ -520,6 +411,13 @@ fn ProfileForm(
                         is_submitting.get() || !matches!(form_state.get(), ProfileFormState::Create | ProfileFormState::Edit)
                     }
                 />
+                {move || if matches!(form_state.get(), ProfileFormState::Create) {
+                    view! {
+                        <small class="form-note">"Note: Username will be functional when the separate contract is deployed."</small>
+                    }.into_view()
+                } else {
+                    view! { <small></small> }.into_view()
+                }}
             </div>
 
             <div class="pixel-art-editor">
@@ -553,7 +451,55 @@ fn ProfileForm(
                         />
                     }
                 }}
+                {move || if matches!(form_state.get(), ProfileFormState::Create | ProfileFormState::Edit) {
+                    view! {
+                        <small class="form-note">"Note: Profile image will be functional when the separate contract is deployed."</small>
+                    }.into_view()
+                } else {
+                    view! { <small></small> }.into_view()
+                }}
             </div>
+
+            {move || {
+                let profile = existing_profile.clone();
+                if let Some(profile) = profile {
+                    if matches!(form_state.get(), ProfileFormState::View) {
+                        view! {
+                            <div class="profile-stats">
+                                <h4>"Mint/Burn Statistics"</h4>
+                                <div class="stats-grid">
+                                    <div class="stat-item">
+                                        <label>"Total Minted:"</label>
+                                        <span>{format!("{} tokens", profile.total_minted)}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <label>"Total Burned:"</label>
+                                        <span>{format!("{} tokens", profile.total_burned)}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <label>"Net Balance:"</label>
+                                        <span class={if profile.total_minted >= profile.total_burned { "positive" } else { "negative" }}>
+                                            {format!("{} tokens", (profile.total_minted as i64 - profile.total_burned as i64))}
+                                        </span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <label>"Mint Operations:"</label>
+                                        <span>{format!("{}", profile.mint_count)}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <label>"Burn Operations:"</label>
+                                        <span>{format!("{}", profile.burn_count)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        }.into_view()
+                    } else {
+                        view! { <div></div> }.into_view()
+                    }
+                } else {
+                    view! { <div></div> }.into_view()
+                }
+            }}
 
             {move || {
                 let message = error_message.get();
@@ -622,7 +568,6 @@ fn ProfileForm(
                 }}
             </div>
 
-            // confirm dialog
             {move || if show_confirm_dialog.get() {
                 view! {
                     <div class="confirm-modal-overlay">
@@ -659,7 +604,6 @@ fn ProfileForm(
     }
 }
 
-// Helper function to process imported image
 async fn process_image(data: &[u8]) -> Result<Pixel, String> {
     let img = image::load_from_memory(data)
         .map_err(|e| format!("Failed to load image: {}", e))?;

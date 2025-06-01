@@ -30,15 +30,12 @@ impl ProgramConfig {
     pub const MINT_AUTHORITY_SEED: &'static [u8] = b"mint_authority";
     pub const LATEST_BURN_SHARD_SEED: &'static [u8] = b"latest_burn_shard";
     
-    // instruction discriminators
+    // instruction discriminators - updated for new contract structure
     pub const INITIALIZE_USER_PROFILE_DISCRIMINATOR: [u8; 8] = [192, 144, 204, 140, 113, 25, 59, 102];
-    pub const UPDATE_USER_PROFILE_DISCRIMINATOR: [u8; 8] = [79, 75, 114, 130, 68, 123, 180, 11];
     pub const CLOSE_USER_PROFILE_DISCRIMINATOR: [u8; 8] = [242, 80, 248, 79, 81, 251, 65, 113];
     pub const PROCESS_TRANSFER_DISCRIMINATOR: &'static str = "global:process_transfer";
     
-    // validation limits
-    pub const MAX_USERNAME_LENGTH: usize = 32;
-    pub const MAX_PROFILE_IMAGE_LENGTH: usize = 256;
+    // validation limits - keep for memo validation
     pub const MIN_MEMO_LENGTH: usize = 69;
     pub const MAX_MEMO_LENGTH: usize = 700;
     
@@ -104,31 +101,6 @@ impl ProgramConfig {
         Self::DEFAULT_COMPUTE_UNITS
     }
     
-    pub fn validate_username(username: &str) -> Result<(), RpcError> {
-        if username.len() > Self::MAX_USERNAME_LENGTH {
-            return Err(RpcError::Other(format!(
-                "Username too long. Maximum length is {} characters.", 
-                Self::MAX_USERNAME_LENGTH
-            )));
-        }
-        Ok(())
-    }
-    
-    pub fn validate_profile_image(profile_image: &str) -> Result<(), RpcError> {
-        if profile_image.len() > Self::MAX_PROFILE_IMAGE_LENGTH {
-            return Err(RpcError::Other(format!(
-                "Profile image too long. Maximum length is {} characters.", 
-                Self::MAX_PROFILE_IMAGE_LENGTH
-            )));
-        }
-        if !profile_image.starts_with("n:") && !profile_image.starts_with("c:") {
-            return Err(RpcError::Other(
-                "Profile image must start with 'n:' or 'c:' prefix.".to_string()
-            ));
-        }
-        Ok(())
-    }
-    
     pub fn validate_memo_length(memo: &str) -> Result<(), RpcError> {
         let memo_length = memo.len();
         if memo_length < Self::MIN_MEMO_LENGTH {
@@ -161,16 +133,8 @@ impl RpcConnection {
 
     pub async fn initialize_user_profile(
         &self, 
-        username: &str, 
-        profile_image: &str,
         keypair_bytes: &[u8]
     ) -> Result<String, RpcError> {
-        // Validate inputs using config
-        ProgramConfig::validate_username(username)?;
-        if !profile_image.is_empty() {
-            ProgramConfig::validate_profile_image(profile_image)?;
-        }
-        
         let program_id = ProgramConfig::get_program_id()?;
         
         // Create keypair from bytes
@@ -194,19 +158,8 @@ impl RpcConnection {
             .as_str()
             .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
 
-        // Construct the instruction data using config
-        let mut instruction_data = Vec::new();
-        
-        // Add discriminator from config
-        instruction_data.extend_from_slice(&ProgramConfig::INITIALIZE_USER_PROFILE_DISCRIMINATOR);
-        
-        // Add username length and bytes
-        instruction_data.extend_from_slice(&(username.len() as u32).to_le_bytes());
-        instruction_data.extend_from_slice(username.as_bytes());
-        
-        // Add profile_image length and bytes
-        instruction_data.extend_from_slice(&(profile_image.len() as u32).to_le_bytes());
-        instruction_data.extend_from_slice(profile_image.as_bytes());
+        // Simplified instruction data - only discriminator, no username/image
+        let instruction_data = ProgramConfig::INITIALIZE_USER_PROFILE_DISCRIMINATOR.to_vec();
 
         // Create the instruction
         let instruction = Instruction::new_with_bytes(
@@ -278,108 +231,6 @@ impl RpcConnection {
 
         // Create instruction data with discriminator from config
         let instruction_data = ProgramConfig::CLOSE_USER_PROFILE_DISCRIMINATOR.to_vec();
-
-        // Create the instruction
-        let instruction = Instruction::new_with_bytes(
-            program_id,
-            &instruction_data,
-            vec![
-                AccountMeta::new(target_pubkey, true),     // user (signer)
-                AccountMeta::new(user_profile_pda, false), // user_profile PDA
-                AccountMeta::new_readonly(solana_sdk::system_program::id(), false), // System Program
-            ],
-        );
-
-        // Create the message
-        let message = Message::new(
-            &[instruction],
-            Some(&target_pubkey), // fee payer
-        );
-
-        // Create and sign transaction
-        let mut transaction = Transaction::new_unsigned(message);
-        transaction.message.recent_blockhash = solana_sdk::hash::Hash::from_str(recent_blockhash)
-            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
-        transaction.sign(&[&keypair], transaction.message.recent_blockhash);
-
-        // Serialize the transaction to base64
-        let serialized_tx = base64::encode(bincode::serialize(&transaction)
-            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?);
-
-        // Send transaction with preflight checks and specific commitment
-        let params = serde_json::json!([
-            serialized_tx,
-            {
-                "encoding": "base64",
-                "preflightCommitment": "finalized",
-                "skipPreflight": false,
-                "maxRetries": 3
-            }
-        ]);
-
-        self.send_request("sendTransaction", params).await
-    }
-
-    pub async fn update_user_profile(
-        &self,
-        username: Option<String>,
-        profile_image: Option<String>,
-        keypair_bytes: &[u8]
-    ) -> Result<String, RpcError> {
-        let program_id = ProgramConfig::get_program_id()?;
-        
-        // Create keypair from bytes
-        let keypair = Keypair::from_bytes(keypair_bytes)
-            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
-        let target_pubkey = keypair.pubkey();
-
-        // Validate inputs using config
-        if let Some(ref username) = username {
-            ProgramConfig::validate_username(username)?;
-        }
-        if let Some(ref profile_image) = profile_image {
-            ProgramConfig::validate_profile_image(profile_image)?;
-        }
-
-        // Calculate user profile PDA using config
-        let (user_profile_pda, _) = ProgramConfig::get_user_profile_pda(&target_pubkey)?;
-
-        // Get latest blockhash with specific commitment
-        let blockhash: serde_json::Value = self.send_request(
-            "getLatestBlockhash",
-            serde_json::json!([{
-                "commitment": "finalized",
-                "minContextSlot": 0
-            }])
-        ).await?;
-
-        let recent_blockhash = blockhash["value"]["blockhash"]
-            .as_str()
-            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
-
-        // Construct the instruction data using config
-        let mut instruction_data = Vec::new();
-        
-        // Add discriminator from config
-        instruction_data.extend_from_slice(&ProgramConfig::UPDATE_USER_PROFILE_DISCRIMINATOR);
-        
-        // Add username option
-        if let Some(username) = username {
-            instruction_data.push(1); // Some variant
-            instruction_data.extend_from_slice(&(username.len() as u32).to_le_bytes());
-            instruction_data.extend_from_slice(username.as_bytes());
-        } else {
-            instruction_data.push(0); // None variant
-        }
-        
-        // Add profile_image option
-        if let Some(profile_image) = profile_image {
-            instruction_data.push(1); // Some variant
-            instruction_data.extend_from_slice(&(profile_image.len() as u32).to_le_bytes());
-            instruction_data.extend_from_slice(profile_image.as_bytes());
-        } else {
-            instruction_data.push(0); // None variant
-        }
 
         // Create the instruction
         let instruction = Instruction::new_with_bytes(
