@@ -12,7 +12,8 @@ use web_sys::{
     SubmitEvent,
 };
 use crate::core::session::{Session, UserProfile, parse_user_profile};
-use crate::core::rpc::RpcConnection;
+use crate::core::base_rpc::RpcConnection;
+use crate::core::token_rpc;  // Import token RPC functionality
 use wasm_bindgen::{JsCast, closure::Closure};
 use wasm_bindgen_futures::JsFuture;
 use image::{ImageBuffer, Luma};

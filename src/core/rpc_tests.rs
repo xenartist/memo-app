@@ -1,777 +1,12 @@
-use serde::{Serialize, Deserialize};
-use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::JsFuture;
-use web_sys::{Request, RequestInit, RequestMode, Response};
-use js_sys::Promise;
-use std::fmt;
-use serde_wasm_bindgen::from_value;
-use gloo_utils::format::JsValueSerdeExt;
-use base64;
-use bs58;
-use solana_sdk::pubkey::Pubkey;
-use std::str::FromStr;
-use flate2::read::DeflateDecoder;
-use std::io::Read;
-use solana_sdk::{
-    instruction::{AccountMeta, Instruction},
-    transaction::Transaction,
-    message::Message,
-};
-use bincode;
-use gloo_timers;
-use sha2::Digest;
-use spl_associated_token_account;
-use spl_memo;
-use serde_json::json;
-use rand;
-
-// error type
-#[derive(Debug, Deserialize)]
-pub enum RpcError {
-    ConnectionFailed(String),
-    InvalidAddress(String),
-    TransactionFailed(String),
-    Other(String),
-    InvalidParameter(String),
-    SolanaRpcError(String),
-}
-
-// implement the display for the rpc error
-impl fmt::Display for RpcError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            RpcError::ConnectionFailed(msg) => write!(f, "Connection failed: {}", msg),
-            RpcError::InvalidAddress(msg) => write!(f, "Invalid address: {}", msg),
-            RpcError::TransactionFailed(msg) => write!(f, "Transaction failed: {}", msg),
-            RpcError::Other(msg) => write!(f, "Error: {}", msg),
-            RpcError::InvalidParameter(msg) => write!(f, "Invalid parameter: {}", msg),
-            RpcError::SolanaRpcError(msg) => write!(f, "Solana RPC error: {}", msg),
-        }
-    }
-}
-
-// define the rpc response error structure
-#[derive(Deserialize, Debug)]
-struct RpcResponseError {
-    code: i64,
-    message: String,
-}
-
-pub struct RpcConnection {
-    endpoint: String,
-}
-
-#[derive(Serialize)]
-struct RpcRequest<T> {
-    jsonrpc: String,
-    id: u64,
-    method: String,
-    params: T,
-}
-
-#[derive(Deserialize)]
-struct RpcResponse<T> {
-    jsonrpc: String,
-    id: u64,
-    result: T,
-    #[serde(default)]
-    error: Option<RpcResponseError>,
-}
-
-impl RpcConnection {
-    // X1 testnet RPC endpoint
-    const DEFAULT_RPC_ENDPOINT: &'static str = "https://rpc.testnet.x1.xyz";
-    
-    pub fn new() -> Self {
-        Self::with_endpoint(Self::DEFAULT_RPC_ENDPOINT)
-    }
-
-    pub fn with_endpoint(endpoint: &str) -> Self {
-        Self {
-            endpoint: endpoint.to_string(),
-        }
-    }
-
-    async fn send_request<T, R>(&self, method: &str, params: T) -> Result<R, RpcError>
-    where
-        T: Serialize,
-        R: for<'de> Deserialize<'de>,
-    {
-        let request = RpcRequest {
-            jsonrpc: "2.0".to_string(),
-            id: 1,
-            method: method.to_string(),
-            params,
-        };
-
-        let mut opts = RequestInit::new();
-        opts.set_method("POST");
-        opts.set_mode(RequestMode::Cors);
-        opts.set_body(&JsValue::from_str(&serde_json::to_string(&request)
-            .map_err(|e| RpcError::Other(e.to_string()))?));
-
-        let request = Request::new_with_str_and_init(&self.endpoint, &opts)
-            .map_err(|e| RpcError::ConnectionFailed(format!("Failed to create request: {:?}", e)))?;
-
-        request.headers().set("Content-Type", "application/json")
-            .map_err(|e| RpcError::ConnectionFailed(format!("Failed to set headers: {:?}", e)))?;
-
-        let window = web_sys::window().unwrap();
-        let resp_value = JsFuture::from(window.fetch_with_request(&request))
-            .await
-            .map_err(|e| RpcError::ConnectionFailed(format!("Failed to send request: {:?}", e)))?;
-
-        let resp: Response = resp_value.dyn_into()
-            .map_err(|e| RpcError::Other(format!("Failed to convert response: {:?}", e)))?;
-
-        let json = JsFuture::from(resp.json().map_err(|e| RpcError::Other(format!("Failed to get JSON: {:?}", e)))?)
-            .await
-            .map_err(|e| RpcError::Other(format!("Failed to parse JSON: {:?}", e)))?;
-
-        // first try to parse as Value, so we can check for errors
-        let value: serde_json::Value = json.into_serde()
-            .map_err(|e| RpcError::Other(format!("Failed to parse response as JSON: {:?}", e)))?;
-
-        // check if there is an error
-        if let Some(error) = value.get("error") {
-            return Err(RpcError::Other(error.to_string()));
-        }
-
-        // if there is no error, try to get the result
-        if let Some(result) = value.get("result") {
-            // convert result to target type
-            serde_json::from_value(result.clone())
-                .map_err(|e| RpcError::Other(format!("Failed to deserialize result: {:?}", e)))
-        } else {
-            Err(RpcError::Other("Response missing result field".to_string()))
-        }
-    }
-
-    pub async fn get_balance(&self, pubkey: &str) -> Result<String, RpcError> {
-        let result: serde_json::Value = self.send_request("getBalance", vec![pubkey]).await?;
-        Ok(result.to_string())
-    }
-
-    pub async fn get_latest_blockhash(&self) -> Result<String, RpcError> {
-        let result: serde_json::Value = self.send_request("getLatestBlockhash", Vec::<String>::new()).await?;
-        Ok(result.to_string())
-    }
-
-    pub async fn send_transaction(&self, serialized_tx: &str) -> Result<String, RpcError> {
-        self.send_request("sendTransaction", vec![serialized_tx]).await
-    }
-
-    pub async fn get_transaction_status(&self, signature: &str) -> Result<String, RpcError> {
-        let result: serde_json::Value = self.send_request("getSignatureStatuses", vec![vec![signature]]).await?;
-        Ok(result.to_string())
-    }
-
-    pub async fn get_version(&self) -> Result<String, RpcError> {
-        let result: serde_json::Value = self.send_request("getVersion", Vec::<String>::new()).await?;
-        Ok(result.to_string())
-    }
-
-    pub async fn get_token_balance(&self, owner: &str, token_mint: &str) -> Result<String, RpcError> {
-        let params = serde_json::json!([
-            owner,
-            {
-                "mint": token_mint
-            },
-            {
-                "encoding": "jsonParsed"
-            }
-        ]);
-        
-        let result: serde_json::Value = self.send_request("getTokenAccountsByOwner", params).await?;
-        Ok(result.to_string())
-    }
-
-    pub async fn get_user_profile(&self, pubkey: &str) -> Result<String, RpcError> {
-        // Program ID
-        let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
-            .map_err(|e| RpcError::Other(format!("Invalid program ID: {}", e)))?;
-        
-        let target_pubkey = Pubkey::from_str(pubkey)
-            .map_err(|e| RpcError::Other(format!("Invalid public key: {}", e)))?;
-
-        // Calculate user profile PDA
-        let (user_profile_pda, _) = Pubkey::find_program_address(
-            &[b"user_profile", target_pubkey.as_ref()],
-            &program_id
-        );
-
-        // get account info, using base64 encoding
-        let params = serde_json::json!([
-            user_profile_pda.to_string(),
-            {"encoding": "base64"}
-        ]);
-
-        // get raw account data and return directly
-        let result: serde_json::Value = self.send_request("getAccountInfo", params).await?;
-        log::info!("get user profile result: {}", result.to_string());
-        Ok(result.to_string())
-    }
-
-    pub async fn initialize_user_profile(
-        &self, 
-        username: &str, 
-        profile_image: &str,
-        keypair_bytes: &[u8]
-    ) -> Result<String, RpcError> {
-        use solana_sdk::{
-            signature::{Keypair, Signer},
-            instruction::{AccountMeta, Instruction},
-            transaction::Transaction,
-            message::Message,
-        };
-
-        // Program ID
-        let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
-            .map_err(|e| RpcError::Other(format!("Invalid program ID: {}", e)))?;
-        
-        // Create keypair from bytes
-        let keypair = Keypair::from_bytes(keypair_bytes)
-            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
-        let target_pubkey = keypair.pubkey();
-
-        // Validate inputs
-        if username.len() > 32 {
-            return Err(RpcError::Other("Username too long. Maximum length is 32 characters.".to_string()));
-        }
-        if profile_image.len() > 256 {
-            return Err(RpcError::Other("Profile image too long. Maximum length is 256 characters.".to_string()));
-        }
-
-        // Calculate user profile PDA
-        let (user_profile_pda, _) = Pubkey::find_program_address(
-            &[b"user_profile", target_pubkey.as_ref()],
-            &program_id
-        );
-
-        // Get latest blockhash with specific commitment
-        let blockhash: serde_json::Value = self.send_request(
-            "getLatestBlockhash",
-            serde_json::json!([{
-                "commitment": "finalized",
-                "minContextSlot": 0
-            }])
-        ).await?;
-
-        let recent_blockhash = blockhash["value"]["blockhash"]
-            .as_str()
-            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
-
-        // Construct the instruction data
-        let mut instruction_data = Vec::new();
-        
-        // Add discriminator [192, 144, 204, 140, 113, 25, 59, 102]
-        instruction_data.extend_from_slice(&[192, 144, 204, 140, 113, 25, 59, 102]);
-        
-        // Add username length and bytes
-        instruction_data.extend_from_slice(&(username.len() as u32).to_le_bytes());
-        instruction_data.extend_from_slice(username.as_bytes());
-        
-        // Add profile_image length and bytes
-        instruction_data.extend_from_slice(&(profile_image.len() as u32).to_le_bytes());
-        instruction_data.extend_from_slice(profile_image.as_bytes());
-
-        // Create the instruction
-        let instruction = Instruction::new_with_bytes(
-            program_id,
-            &instruction_data,
-            vec![
-                AccountMeta::new(target_pubkey, true),     // user (signer)
-                AccountMeta::new(user_profile_pda, false), // user_profile PDA
-                AccountMeta::new_readonly(solana_sdk::system_program::id(), false), // System Program
-            ],
-        );
-
-        // Create the message
-        let message = Message::new(
-            &[instruction],
-            Some(&target_pubkey), // fee payer
-        );
-
-        // Create and sign transaction
-        let mut transaction = Transaction::new_unsigned(message);
-        transaction.message.recent_blockhash = solana_sdk::hash::Hash::from_str(recent_blockhash)
-            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
-        transaction.sign(&[&keypair], transaction.message.recent_blockhash);
-
-        // Serialize the transaction to base64
-        let serialized_tx = base64::encode(bincode::serialize(&transaction)
-            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?);
-
-        // Send transaction with preflight checks and specific commitment
-        let params = serde_json::json!([
-            serialized_tx,
-            {
-                "encoding": "base64",
-                "preflightCommitment": "finalized",
-                "skipPreflight": false,
-                "maxRetries": 3
-            }
-        ]);
-
-        let result: serde_json::Value = self.send_request("sendTransaction", params).await?;
-        Ok(result.to_string())
-    }
-
-    pub async fn close_user_profile(
-        &self,
-        keypair_bytes: &[u8]
-    ) -> Result<String, RpcError> {
-        use solana_sdk::{
-            signature::{Keypair, Signer},
-            instruction::{AccountMeta, Instruction},
-            transaction::Transaction,
-            message::Message,
-        };
-
-        // Program ID
-        let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
-            .map_err(|e| RpcError::Other(format!("Invalid program ID: {}", e)))?;
-        
-        // Create keypair from bytes
-        let keypair = Keypair::from_bytes(keypair_bytes)
-            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
-        let target_pubkey = keypair.pubkey();
-
-        // Calculate user profile PDA
-        let (user_profile_pda, _) = Pubkey::find_program_address(
-            &[b"user_profile", target_pubkey.as_ref()],
-            &program_id
-        );
-
-        // Get latest blockhash with specific commitment
-        let blockhash: serde_json::Value = self.send_request(
-            "getLatestBlockhash",
-            serde_json::json!([{
-                "commitment": "finalized",
-                "minContextSlot": 0
-            }])
-        ).await?;
-
-        let recent_blockhash = blockhash["value"]["blockhash"]
-            .as_str()
-            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
-
-        // Create instruction data with discriminator
-        let instruction_data = vec![242, 80, 248, 79, 81, 251, 65, 113]; // close_user_profile discriminator
-
-        // Create the instruction
-        let instruction = Instruction::new_with_bytes(
-            program_id,
-            &instruction_data,
-            vec![
-                AccountMeta::new(target_pubkey, true),     // user (signer)
-                AccountMeta::new(user_profile_pda, false), // user_profile PDA
-                AccountMeta::new_readonly(solana_sdk::system_program::id(), false), // System Program
-            ],
-        );
-
-        // Create the message
-        let message = Message::new(
-            &[instruction],
-            Some(&target_pubkey), // fee payer
-        );
-
-        // Create and sign transaction
-        let mut transaction = Transaction::new_unsigned(message);
-        transaction.message.recent_blockhash = solana_sdk::hash::Hash::from_str(recent_blockhash)
-            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
-        transaction.sign(&[&keypair], transaction.message.recent_blockhash);
-
-        // Serialize the transaction to base64
-        let serialized_tx = base64::encode(bincode::serialize(&transaction)
-            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?);
-
-        // Send transaction with preflight checks and specific commitment
-        let params = serde_json::json!([
-            serialized_tx,
-            {
-                "encoding": "base64",
-                "preflightCommitment": "finalized",
-                "skipPreflight": false,
-                "maxRetries": 3
-            }
-        ]);
-
-        let result: serde_json::Value = self.send_request("sendTransaction", params).await?;
-        Ok(result.to_string())
-    }
-
-    pub async fn update_user_profile(
-        &self,
-        username: Option<String>,
-        profile_image: Option<String>,
-        keypair_bytes: &[u8]
-    ) -> Result<String, RpcError> {
-        use solana_sdk::{
-            signature::{Keypair, Signer},
-            instruction::{AccountMeta, Instruction},
-            transaction::Transaction,
-            message::Message,
-        };
-
-        // Program ID
-        let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
-            .map_err(|e| RpcError::Other(format!("Invalid program ID: {}", e)))?;
-        
-        // Create keypair from bytes
-        let keypair = Keypair::from_bytes(keypair_bytes)
-            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
-        let target_pubkey = keypair.pubkey();
-
-        // Validate inputs
-        if let Some(ref username) = username {
-            if username.len() > 32 {
-                return Err(RpcError::Other("Username too long. Maximum length is 32 characters.".to_string()));
-            }
-        }
-        if let Some(ref profile_image) = profile_image {
-            if profile_image.len() > 256 {
-                return Err(RpcError::Other("Profile image too long. Maximum length is 256 characters.".to_string()));
-            }
-            if !profile_image.starts_with("n:") && !profile_image.starts_with("c:") {
-                return Err(RpcError::Other("Profile image must start with 'n:' or 'c:' prefix.".to_string()));
-            }
-        }
-
-        // Calculate user profile PDA
-        let (user_profile_pda, _) = Pubkey::find_program_address(
-            &[b"user_profile", target_pubkey.as_ref()],
-            &program_id
-        );
-
-        // Get latest blockhash with specific commitment
-        let blockhash: serde_json::Value = self.send_request(
-            "getLatestBlockhash",
-            serde_json::json!([{
-                "commitment": "finalized",
-                "minContextSlot": 0
-            }])
-        ).await?;
-
-        let recent_blockhash = blockhash["value"]["blockhash"]
-            .as_str()
-            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
-
-        // Construct the instruction data
-        let mut instruction_data = Vec::new();
-        
-        // Add discriminator [79, 75, 114, 130, 68, 123, 180, 11]
-        instruction_data.extend_from_slice(&[79, 75, 114, 130, 68, 123, 180, 11]);
-        
-        // Add username option
-        if let Some(username) = username {
-            instruction_data.push(1); // Some variant
-            instruction_data.extend_from_slice(&(username.len() as u32).to_le_bytes());
-            instruction_data.extend_from_slice(username.as_bytes());
-        } else {
-            instruction_data.push(0); // None variant
-        }
-        
-        // Add profile_image option
-        if let Some(profile_image) = profile_image {
-            instruction_data.push(1); // Some variant
-            instruction_data.extend_from_slice(&(profile_image.len() as u32).to_le_bytes());
-            instruction_data.extend_from_slice(profile_image.as_bytes());
-        } else {
-            instruction_data.push(0); // None variant
-        }
-
-        // Create the instruction
-        let instruction = Instruction::new_with_bytes(
-            program_id,
-            &instruction_data,
-            vec![
-                AccountMeta::new(target_pubkey, true),     // user (signer)
-                AccountMeta::new(user_profile_pda, false), // user_profile PDA
-                AccountMeta::new_readonly(solana_sdk::system_program::id(), false), // System Program
-            ],
-        );
-
-        // Create the message
-        let message = Message::new(
-            &[instruction],
-            Some(&target_pubkey), // fee payer
-        );
-
-        // Create and sign transaction
-        let mut transaction = Transaction::new_unsigned(message);
-        transaction.message.recent_blockhash = solana_sdk::hash::Hash::from_str(recent_blockhash)
-            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
-        transaction.sign(&[&keypair], transaction.message.recent_blockhash);
-
-        // Serialize the transaction to base64
-        let serialized_tx = base64::encode(bincode::serialize(&transaction)
-            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?);
-
-        // Send transaction with preflight checks and specific commitment
-        let params = serde_json::json!([
-            serialized_tx,
-            {
-                "encoding": "base64",
-                "preflightCommitment": "finalized",
-                "skipPreflight": false,
-                "maxRetries": 3
-            }
-        ]);
-
-        let result: serde_json::Value = self.send_request("sendTransaction", params).await?;
-        Ok(result.to_string())
-    }
-
-    pub async fn get_latest_burn_shard(&self) -> Result<String, RpcError> {
-        // program ID
-        let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
-            .map_err(|e| RpcError::InvalidParameter(format!("Invalid program ID: {}", e)))?;
-
-        // calculate PDA
-        let (latest_burn_shard_pda, _) = Pubkey::find_program_address(
-            &[b"latest_burn_shard"],
-            &program_id,
-        );
-
-        let params = serde_json::json!([
-            latest_burn_shard_pda.to_string(),
-            {"encoding": "base64"}
-        ]);
-
-        // get raw account data and return directly
-        let result: serde_json::Value = self.send_request("getAccountInfo", params).await?;
-        Ok(result.to_string())
-    }
-
-    pub async fn mint(
-        &self,
-        memo: &str,
-        keypair_bytes: &[u8],
-    ) -> Result<String, RpcError> {
-        use solana_sdk::{
-            signature::{Keypair, Signer},
-            instruction::{AccountMeta, Instruction},
-            transaction::Transaction,
-            message::Message,
-            compute_budget::ComputeBudgetInstruction,
-        };
-
-        // Program and mint addresses
-        let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
-            .map_err(|e| RpcError::Other(format!("Invalid program ID: {}", e)))?;
-        let mint = Pubkey::from_str("CrfhYtP7XtqFyHTWMyXp25CCzhjhzojngrPCZJ7RarUz")
-            .map_err(|e| RpcError::Other(format!("Invalid mint address: {}", e)))?;
-
-        // Create keypair from bytes and get pubkey
-        let keypair = Keypair::from_bytes(keypair_bytes)
-            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
-        let target_pubkey = keypair.pubkey();
-
-        // Calculate PDAs
-        let (mint_authority_pda, _) = Pubkey::find_program_address(
-            &[b"mint_authority"],
-            &program_id,
-        );
-
-        // Calculate user profile PDA
-        let (user_profile_pda, _) = Pubkey::find_program_address(
-            &[b"user_profile", target_pubkey.as_ref()],
-            &program_id,
-        );
-
-        // Calculate token account (ATA)
-        let token_account = spl_associated_token_account::get_associated_token_address(
-            &target_pubkey,
-            &mint,
-        );
-
-        // Check if token account exists
-        let token_account_info: serde_json::Value = self.send_request(
-            "getAccountInfo",
-            serde_json::json!([token_account.to_string(), {"encoding": "base64"}])
-        ).await?;
-
-        // Verify memo length
-        let memo_length = memo.len();
-        if memo_length < 69 {
-            return Err(RpcError::Other("Memo length must be at least 69 bytes".to_string()));
-        }
-        if memo_length > 700 {
-            return Err(RpcError::Other("Memo length cannot exceed 700 bytes".to_string()));
-        }
-
-        // Build instructions without compute budget first (for simulation)
-        let mut base_instructions = vec![];
-
-        // Add memo instruction
-        base_instructions.push(spl_memo::build_memo(
-            memo.as_bytes(),
-            &[&target_pubkey],
-        ));
-
-        // If token account doesn't exist, add create ATA instruction
-        if token_account_info["value"].is_null() {
-            log::info!("Token account does not exist, creating it...");
-            base_instructions.push(
-                spl_associated_token_account::instruction::create_associated_token_account(
-                    &target_pubkey,  // Funding account (fee payer)
-                    &target_pubkey,  // Wallet address
-                    &mint,           // Mint address
-                    &spl_token::id() // Token program
-                )
-            );
-        }
-
-        // Calculate Anchor instruction sighash for mint
-        let mut hasher = sha2::Sha256::new();
-        hasher.update(b"global:process_transfer");
-        let result = hasher.finalize();
-        let instruction_data = result[..8].to_vec();
-
-        // Create mint instruction accounts
-        let mut accounts = vec![
-            AccountMeta::new(target_pubkey, true),         // user
-            AccountMeta::new(mint, false),                 // mint
-            AccountMeta::new(mint_authority_pda, false),   // mint_authority
-            AccountMeta::new(token_account, false),        // token_account
-            AccountMeta::new_readonly(spl_token::id(), false), // token_program
-            AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false), // instructions sysvar
-        ];
-
-        // Check if user profile exists
-        let profile_info: serde_json::Value = self.send_request(
-            "getAccountInfo",
-            serde_json::json!([user_profile_pda.to_string(), {"encoding": "base64"}])
-        ).await?;
-
-        if !profile_info["value"].is_null() {
-            accounts.push(AccountMeta::new(user_profile_pda, false));
-        }
-
-        // Add mint instruction
-        base_instructions.push(Instruction::new_with_bytes(
-            program_id,
-            &instruction_data,
-            accounts,
-        ));
-
-        // Get latest blockhash
-        let blockhash: serde_json::Value = self.send_request(
-            "getLatestBlockhash",
-            serde_json::json!([{
-                "commitment": "finalized",
-                "minContextSlot": 0
-            }])
-        ).await?;
-
-        let recent_blockhash = blockhash["value"]["blockhash"]
-            .as_str()
-            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
-
-        // Create simulation transaction (without compute budget instruction)
-        let sim_message = Message::new(
-            &base_instructions,
-            Some(&target_pubkey),
-        );
-
-        let mut sim_transaction = Transaction::new_unsigned(sim_message);
-        sim_transaction.message.recent_blockhash = solana_sdk::hash::Hash::from_str(recent_blockhash)
-            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
-        sim_transaction.sign(&[&keypair], sim_transaction.message.recent_blockhash);
-
-        // Serialize simulation transaction
-        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
-            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
-
-        // Simulate transaction to get compute units consumption
-        let sim_params = serde_json::json!([
-            sim_serialized_tx,
-            {
-                "encoding": "base64",
-                "commitment": "finalized",
-                "replaceRecentBlockhash": true,
-                "sigVerify": false
-            }
-        ]);
-
-        let sim_result: serde_json::Value = self.send_request("simulateTransaction", sim_params).await?;
-        
-        // Parse simulation result to extract compute units consumed
-        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
-            log::info!("Simulation consumed {} compute units", units_consumed);
-            // Add 10% buffer to the simulated consumption
-            let with_buffer = (units_consumed as f64 * 1.1) as u64;
-            // Ensure minimum of 1000 CU
-            std::cmp::max(with_buffer, 1000)
-        } else {
-            log::info!("Failed to get compute units from simulation, using fallback");
-            // Fallback to original calculation if simulation fails
-            match memo_length {
-                69..=100 => 100_000,
-                101..=200 => 150_000,
-                201..=300 => 200_000,
-                301..=400 => 250_000,
-                401..=500 => 300_000,
-                501..=600 => 350_000,
-                601..=700 => 400_000,
-                _ => 400_000
-            }
-        };
-
-        log::info!("Using {} compute units (with 10% buffer)", computed_units);
-
-        // Now build the final transaction with the calculated compute units
-        let mut final_instructions = vec![];
-
-        // Add compute budget instruction first
-        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
-
-        // Add all the base instructions
-        final_instructions.extend(base_instructions);
-
-        // Create and sign final transaction
-        let final_message = Message::new(
-            &final_instructions,
-            Some(&target_pubkey),
-        );
-
-        let mut final_transaction = Transaction::new_unsigned(final_message);
-        final_transaction.message.recent_blockhash = solana_sdk::hash::Hash::from_str(recent_blockhash)
-            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
-        final_transaction.sign(&[&keypair], final_transaction.message.recent_blockhash);
-
-        // Serialize and send final transaction
-        let final_serialized_tx = base64::encode(bincode::serialize(&final_transaction)
-            .map_err(|e| RpcError::Other(format!("Failed to serialize final transaction: {}", e)))?);
-
-        let params = serde_json::json!([
-            final_serialized_tx,
-            {
-                "encoding": "base64",
-                "preflightCommitment": "finalized",
-                "skipPreflight": false,
-                "maxRetries": 3
-            }
-        ]);
-
-        let result: serde_json::Value = self.send_request("sendTransaction", params).await?;
-        Ok(result.to_string())
-    }
-}
-
-// implement the default trait
-impl Default for RpcConnection {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::core::base_rpc::{RpcConnection, RpcError};
     use wasm_bindgen_test::*;
     use wasm_bindgen_test::console_log;
+    use solana_sdk::pubkey::Pubkey;
+    use base64;
+    use flate2::read::DeflateDecoder;
+    use std::io::Read;
 
     wasm_bindgen_test_configure!(run_in_browser);
 
@@ -820,7 +55,7 @@ mod tests {
         log_info("Starting version test");
         
         let rpc = RpcConnection::new();
-        log_info(&format!("Using RPC endpoint: {}", RpcConnection::DEFAULT_RPC_ENDPOINT));
+        log_info(&format!("Using RPC endpoint: {}", "https://rpc.testnet.x1.xyz"));
         
         match rpc.get_version().await {
             Ok(version) => {
@@ -855,7 +90,7 @@ mod tests {
                 log_info(&format!("Test wallet public key: {}", pubkey));
 
                 let rpc = RpcConnection::new();
-                log_info(&format!("Using RPC endpoint: {}", RpcConnection::DEFAULT_RPC_ENDPOINT));
+                log_info(&format!("Using RPC endpoint: {}", "https://rpc.testnet.x1.xyz"));
 
                 match rpc.get_balance(&pubkey).await {
                     Ok(balance_response) => {
@@ -893,7 +128,6 @@ mod tests {
 
     #[wasm_bindgen_test]
     async fn test_user_profile_sequence() {
-
         // 0. Close profile
         test_a4_close_user_profile().await;
 
@@ -913,7 +147,6 @@ mod tests {
         test_a4_close_user_profile().await;
     }
 
-    // #[wasm_bindgen_test]
     async fn test_a3_get_user_profile() {
         print_separator();
         log_info("Starting user profile test sequence (3/4): Get Profile");
@@ -924,7 +157,7 @@ mod tests {
                 log_info(&format!("Test wallet public key: {}", pubkey));
 
                 let rpc = RpcConnection::new();
-                log_info(&format!("Using RPC endpoint: {}", RpcConnection::DEFAULT_RPC_ENDPOINT));
+                log_info(&format!("Using RPC endpoint: {}", "https://rpc.testnet.x1.xyz"));
 
                 match rpc.get_user_profile(&pubkey).await {
                     Ok(account_info_str) => {
@@ -1049,7 +282,6 @@ mod tests {
         }
     }
 
-    // #[wasm_bindgen_test]
     async fn test_a4_close_user_profile() {
         print_separator();
         log_info("Starting user profile test sequence (4/4): Close Profile");
@@ -1059,7 +291,7 @@ mod tests {
                 log_info(&format!("Test wallet public key: {}", pubkey));
 
                 let rpc = RpcConnection::new();
-                log_info(&format!("Using RPC endpoint: {}", RpcConnection::DEFAULT_RPC_ENDPOINT));
+                log_info(&format!("Using RPC endpoint: {}", "https://rpc.testnet.x1.xyz"));
 
                 // first check if user profile exists
                 match rpc.get_user_profile(&pubkey).await {
@@ -1147,7 +379,6 @@ mod tests {
         }
     }
 
-    // #[wasm_bindgen_test]
     async fn test_a1_initialize_user_profile() {
         print_separator();
         log_info("Starting user profile test sequence (1/4): Initialize Profile");
@@ -1157,7 +388,7 @@ mod tests {
                 log_info(&format!("Test wallet public key: {}", pubkey));
 
                 let rpc = RpcConnection::new();
-                log_info(&format!("Using RPC endpoint: {}", RpcConnection::DEFAULT_RPC_ENDPOINT));
+                log_info(&format!("Using RPC endpoint: {}", "https://rpc.testnet.x1.xyz"));
 
                 // First check if user profile already exists
                 match rpc.get_user_profile(&pubkey).await {
@@ -1248,7 +479,6 @@ mod tests {
         }
     }
 
-    // #[wasm_bindgen_test]
     async fn test_a2_update_user_profile() {
         print_separator();
         log_info("Starting user profile test sequence (2/4): Update Profile");
@@ -1258,7 +488,7 @@ mod tests {
                 log_info(&format!("Test wallet public key: {}", pubkey));
 
                 let rpc = RpcConnection::new();
-                log_info(&format!("Using RPC endpoint: {}", RpcConnection::DEFAULT_RPC_ENDPOINT));
+                log_info(&format!("Using RPC endpoint: {}", "https://rpc.testnet.x1.xyz"));
 
                 // First check if user profile exists
                 match rpc.get_user_profile(&pubkey).await {
@@ -1467,7 +697,7 @@ mod tests {
                 log_info(&format!("Test wallet public key: {}", pubkey));
 
                 let rpc = RpcConnection::new();
-                log_info(&format!("Using RPC endpoint: {}", RpcConnection::DEFAULT_RPC_ENDPOINT));
+                log_info(&format!("Using RPC endpoint: {}", "https://rpc.testnet.x1.xyz"));
 
                 match rpc.get_latest_burn_shard().await {
                     Ok(account_info_str) => {
@@ -1596,7 +826,7 @@ mod tests {
                 log_info(&format!("Test wallet public key: {}", pubkey));
 
                 let rpc = RpcConnection::new();
-                log_info(&format!("Using RPC endpoint: {}", RpcConnection::DEFAULT_RPC_ENDPOINT));
+                log_info(&format!("Using RPC endpoint: {}", "https://rpc.testnet.x1.xyz"));
 
                 // define lengths to test
                 let test_lengths = vec![100, 200, 300, 400, 500, 600, 700];
@@ -1673,4 +903,4 @@ mod tests {
             }
         }
     }
-}
+} 
