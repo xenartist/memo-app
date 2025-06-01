@@ -17,9 +17,14 @@ struct BurnRecord {
 #[component]
 pub fn HomePage() -> impl IntoView {
     let (burn_records, set_burn_records) = create_signal(Vec::new());
+    let (is_loading, set_is_loading) = create_signal(true);
+    let (error_message, set_error_message) = create_signal(String::new());
     
     // Fetch latest burn shard data
     spawn_local(async move {
+        set_is_loading.set(true);
+        set_error_message.set(String::new());
+        
         let rpc = RpcConnection::new();
         match rpc.get_latest_burn_shard().await {
             Ok(account_info_str) => {
@@ -85,8 +90,12 @@ pub fn HomePage() -> impl IntoView {
             },
             Err(e) => {
                 log::error!("Failed to fetch burn shard data: {}", e);
+                set_error_message.set(format!("Failed to fetch burn shard data: {}", e));
             }
         }
+        
+        // 在最后设置 loading 为 false
+        set_is_loading.set(false);
     });
 
     view! {
@@ -94,21 +103,50 @@ pub fn HomePage() -> impl IntoView {
             <h2>"Home"</h2>
             
             <div class="memo-cards">
-                <For
-                    each=move || burn_records.get()
-                    key=|record| record.signature.clone()
-                    children=move |record: BurnRecord| {
+                {move || {
+                    if is_loading.get() {
                         view! {
-                            <MemoCard
-                                image="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string()
-                                signature=record.signature
-                                pubkey=record.pubkey.to_string()
-                                blocktime=record.blocktime
-                                amount={(record.amount as f64) / 1_000_000_000.0}
+                            <div class="loading-container">
+                                <div class="loading-spinner"></div>
+                                <p class="loading-text">"Loading burn records..."</p>
+                            </div>
+                        }.into_view()
+                    } else if !error_message.get().is_empty() {
+                        view! {
+                            <div class="error-container">
+                                <p class="error-message">{error_message.get()}</p>
+                                <button class="retry-button" on:click=move |_| {
+                                    // 重试逻辑
+                                    window().location().reload().unwrap();
+                                }>"Retry"</button>
+                            </div>
+                        }.into_view()
+                    } else if burn_records.get().is_empty() {
+                        view! {
+                            <div class="empty-state">
+                                <p class="empty-message">"No burn records found"</p>
+                            </div>
+                        }.into_view()
+                    } else {
+                        view! {
+                            <For
+                                each=move || burn_records.get()
+                                key=|record| record.signature.clone()
+                                children=move |record: BurnRecord| {
+                                    view! {
+                                        <MemoCard
+                                            image="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string()
+                                            signature=record.signature
+                                            pubkey=record.pubkey.to_string()
+                                            blocktime=record.blocktime
+                                            amount={(record.amount as f64) / 1_000_000_000.0}
+                                        />
+                                    }
+                                }
                             />
-                        }
+                        }.into_view()
                     }
-                />
+                }}
             </div>
         </div>
     }
