@@ -15,20 +15,145 @@ use spl_associated_token_account;
 use spl_memo;
 use serde_json::json;
 
+// public constant definitions
+pub struct ProgramConfig;
+
+impl ProgramConfig {
+    // main program ID
+    pub const PROGRAM_ID: &'static str = "TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw";
+    
+    // token mint address
+    pub const TOKEN_MINT: &'static str = "CrfhYtP7XtqFyHTWMyXp25CCzhjhzojngrPCZJ7RarUz";
+    
+    // PDA Seeds
+    pub const USER_PROFILE_SEED: &'static [u8] = b"user_profile";
+    pub const MINT_AUTHORITY_SEED: &'static [u8] = b"mint_authority";
+    pub const LATEST_BURN_SHARD_SEED: &'static [u8] = b"latest_burn_shard";
+    
+    // instruction discriminators
+    pub const INITIALIZE_USER_PROFILE_DISCRIMINATOR: [u8; 8] = [192, 144, 204, 140, 113, 25, 59, 102];
+    pub const UPDATE_USER_PROFILE_DISCRIMINATOR: [u8; 8] = [79, 75, 114, 130, 68, 123, 180, 11];
+    pub const CLOSE_USER_PROFILE_DISCRIMINATOR: [u8; 8] = [242, 80, 248, 79, 81, 251, 65, 113];
+    pub const PROCESS_TRANSFER_DISCRIMINATOR: &'static str = "global:process_transfer";
+    
+    // validation limits
+    pub const MAX_USERNAME_LENGTH: usize = 32;
+    pub const MAX_PROFILE_IMAGE_LENGTH: usize = 256;
+    pub const MIN_MEMO_LENGTH: usize = 69;
+    pub const MAX_MEMO_LENGTH: usize = 700;
+    
+    // compute unit limits
+    pub const MIN_COMPUTE_UNITS: u64 = 1000;
+    pub const COMPUTE_UNIT_BUFFER: f64 = 1.1; // 10% buffer
+    
+    // fallback compute unit configuration
+    pub const FALLBACK_COMPUTE_UNITS: [(usize, u64); 7] = [
+        (100, 100_000),   // 69-100 bytes
+        (200, 150_000),   // 101-200 bytes
+        (300, 200_000),   // 201-300 bytes
+        (400, 250_000),   // 301-400 bytes
+        (500, 300_000),   // 401-500 bytes
+        (600, 350_000),   // 501-600 bytes
+        (700, 400_000),   // 601-700 bytes
+    ];
+    pub const DEFAULT_COMPUTE_UNITS: u64 = 400_000;
+}
+
+// helper functions
+impl ProgramConfig {
+    pub fn get_program_id() -> Result<Pubkey, RpcError> {
+        Pubkey::from_str(Self::PROGRAM_ID)
+            .map_err(|e| RpcError::Other(format!("Invalid program ID: {}", e)))
+    }
+    
+    pub fn get_token_mint() -> Result<Pubkey, RpcError> {
+        Pubkey::from_str(Self::TOKEN_MINT)
+            .map_err(|e| RpcError::Other(format!("Invalid token mint address: {}", e)))
+    }
+    
+    pub fn get_user_profile_pda(user_pubkey: &Pubkey) -> Result<(Pubkey, u8), RpcError> {
+        let program_id = Self::get_program_id()?;
+        Ok(Pubkey::find_program_address(
+            &[Self::USER_PROFILE_SEED, user_pubkey.as_ref()],
+            &program_id
+        ))
+    }
+    
+    pub fn get_mint_authority_pda() -> Result<(Pubkey, u8), RpcError> {
+        let program_id = Self::get_program_id()?;
+        Ok(Pubkey::find_program_address(
+            &[Self::MINT_AUTHORITY_SEED],
+            &program_id
+        ))
+    }
+    
+    pub fn get_latest_burn_shard_pda() -> Result<(Pubkey, u8), RpcError> {
+        let program_id = Self::get_program_id()?;
+        Ok(Pubkey::find_program_address(
+            &[Self::LATEST_BURN_SHARD_SEED],
+            &program_id
+        ))
+    }
+    
+    pub fn calculate_fallback_compute_units(memo_length: usize) -> u64 {
+        for (max_length, compute_units) in Self::FALLBACK_COMPUTE_UNITS.iter() {
+            if memo_length <= *max_length {
+                return *compute_units;
+            }
+        }
+        Self::DEFAULT_COMPUTE_UNITS
+    }
+    
+    pub fn validate_username(username: &str) -> Result<(), RpcError> {
+        if username.len() > Self::MAX_USERNAME_LENGTH {
+            return Err(RpcError::Other(format!(
+                "Username too long. Maximum length is {} characters.", 
+                Self::MAX_USERNAME_LENGTH
+            )));
+        }
+        Ok(())
+    }
+    
+    pub fn validate_profile_image(profile_image: &str) -> Result<(), RpcError> {
+        if profile_image.len() > Self::MAX_PROFILE_IMAGE_LENGTH {
+            return Err(RpcError::Other(format!(
+                "Profile image too long. Maximum length is {} characters.", 
+                Self::MAX_PROFILE_IMAGE_LENGTH
+            )));
+        }
+        if !profile_image.starts_with("n:") && !profile_image.starts_with("c:") {
+            return Err(RpcError::Other(
+                "Profile image must start with 'n:' or 'c:' prefix.".to_string()
+            ));
+        }
+        Ok(())
+    }
+    
+    pub fn validate_memo_length(memo: &str) -> Result<(), RpcError> {
+        let memo_length = memo.len();
+        if memo_length < Self::MIN_MEMO_LENGTH {
+            return Err(RpcError::Other(format!(
+                "Memo length must be at least {} bytes", 
+                Self::MIN_MEMO_LENGTH
+            )));
+        }
+        if memo_length > Self::MAX_MEMO_LENGTH {
+            return Err(RpcError::Other(format!(
+                "Memo length cannot exceed {} bytes", 
+                Self::MAX_MEMO_LENGTH
+            )));
+        }
+        Ok(())
+    }
+}
+
 impl RpcConnection {
     pub async fn get_user_profile(&self, pubkey: &str) -> Result<String, RpcError> {
-        // Program ID
-        let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
-            .map_err(|e| RpcError::Other(format!("Invalid program ID: {}", e)))?;
-        
         let target_pubkey = Pubkey::from_str(pubkey)
             .map_err(|e| RpcError::Other(format!("Invalid public key: {}", e)))?;
 
-        // Calculate user profile PDA
-        let (user_profile_pda, _) = Pubkey::find_program_address(
-            &[b"user_profile", target_pubkey.as_ref()],
-            &program_id
-        );
+        // Calculate user profile PDA using config
+        let (user_profile_pda, _) = ProgramConfig::get_user_profile_pda(&target_pubkey)?;
 
         // get account info, using base64 encoding
         self.get_account_info(&user_profile_pda.to_string(), Some("base64")).await
@@ -40,28 +165,21 @@ impl RpcConnection {
         profile_image: &str,
         keypair_bytes: &[u8]
     ) -> Result<String, RpcError> {
-        // Program ID
-        let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
-            .map_err(|e| RpcError::Other(format!("Invalid program ID: {}", e)))?;
+        // Validate inputs using config
+        ProgramConfig::validate_username(username)?;
+        if !profile_image.is_empty() {
+            ProgramConfig::validate_profile_image(profile_image)?;
+        }
+        
+        let program_id = ProgramConfig::get_program_id()?;
         
         // Create keypair from bytes
         let keypair = Keypair::from_bytes(keypair_bytes)
             .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
         let target_pubkey = keypair.pubkey();
 
-        // Validate inputs
-        if username.len() > 32 {
-            return Err(RpcError::Other("Username too long. Maximum length is 32 characters.".to_string()));
-        }
-        if profile_image.len() > 256 {
-            return Err(RpcError::Other("Profile image too long. Maximum length is 256 characters.".to_string()));
-        }
-
-        // Calculate user profile PDA
-        let (user_profile_pda, _) = Pubkey::find_program_address(
-            &[b"user_profile", target_pubkey.as_ref()],
-            &program_id
-        );
+        // Calculate user profile PDA using config
+        let (user_profile_pda, _) = ProgramConfig::get_user_profile_pda(&target_pubkey)?;
 
         // Get latest blockhash with specific commitment
         let blockhash: serde_json::Value = self.send_request(
@@ -76,11 +194,11 @@ impl RpcConnection {
             .as_str()
             .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
 
-        // Construct the instruction data
+        // Construct the instruction data using config
         let mut instruction_data = Vec::new();
         
-        // Add discriminator [192, 144, 204, 140, 113, 25, 59, 102]
-        instruction_data.extend_from_slice(&[192, 144, 204, 140, 113, 25, 59, 102]);
+        // Add discriminator from config
+        instruction_data.extend_from_slice(&ProgramConfig::INITIALIZE_USER_PROFILE_DISCRIMINATOR);
         
         // Add username length and bytes
         instruction_data.extend_from_slice(&(username.len() as u32).to_le_bytes());
@@ -135,20 +253,15 @@ impl RpcConnection {
         &self,
         keypair_bytes: &[u8]
     ) -> Result<String, RpcError> {
-        // Program ID
-        let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
-            .map_err(|e| RpcError::Other(format!("Invalid program ID: {}", e)))?;
+        let program_id = ProgramConfig::get_program_id()?;
         
         // Create keypair from bytes
         let keypair = Keypair::from_bytes(keypair_bytes)
             .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
         let target_pubkey = keypair.pubkey();
 
-        // Calculate user profile PDA
-        let (user_profile_pda, _) = Pubkey::find_program_address(
-            &[b"user_profile", target_pubkey.as_ref()],
-            &program_id
-        );
+        // Calculate user profile PDA using config
+        let (user_profile_pda, _) = ProgramConfig::get_user_profile_pda(&target_pubkey)?;
 
         // Get latest blockhash with specific commitment
         let blockhash: serde_json::Value = self.send_request(
@@ -163,8 +276,8 @@ impl RpcConnection {
             .as_str()
             .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
 
-        // Create instruction data with discriminator
-        let instruction_data = vec![242, 80, 248, 79, 81, 251, 65, 113]; // close_user_profile discriminator
+        // Create instruction data with discriminator from config
+        let instruction_data = ProgramConfig::CLOSE_USER_PROFILE_DISCRIMINATOR.to_vec();
 
         // Create the instruction
         let instruction = Instruction::new_with_bytes(
@@ -213,35 +326,23 @@ impl RpcConnection {
         profile_image: Option<String>,
         keypair_bytes: &[u8]
     ) -> Result<String, RpcError> {
-        // Program ID
-        let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
-            .map_err(|e| RpcError::Other(format!("Invalid program ID: {}", e)))?;
+        let program_id = ProgramConfig::get_program_id()?;
         
         // Create keypair from bytes
         let keypair = Keypair::from_bytes(keypair_bytes)
             .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
         let target_pubkey = keypair.pubkey();
 
-        // Validate inputs
+        // Validate inputs using config
         if let Some(ref username) = username {
-            if username.len() > 32 {
-                return Err(RpcError::Other("Username too long. Maximum length is 32 characters.".to_string()));
-            }
+            ProgramConfig::validate_username(username)?;
         }
         if let Some(ref profile_image) = profile_image {
-            if profile_image.len() > 256 {
-                return Err(RpcError::Other("Profile image too long. Maximum length is 256 characters.".to_string()));
-            }
-            if !profile_image.starts_with("n:") && !profile_image.starts_with("c:") {
-                return Err(RpcError::Other("Profile image must start with 'n:' or 'c:' prefix.".to_string()));
-            }
+            ProgramConfig::validate_profile_image(profile_image)?;
         }
 
-        // Calculate user profile PDA
-        let (user_profile_pda, _) = Pubkey::find_program_address(
-            &[b"user_profile", target_pubkey.as_ref()],
-            &program_id
-        );
+        // Calculate user profile PDA using config
+        let (user_profile_pda, _) = ProgramConfig::get_user_profile_pda(&target_pubkey)?;
 
         // Get latest blockhash with specific commitment
         let blockhash: serde_json::Value = self.send_request(
@@ -256,11 +357,11 @@ impl RpcConnection {
             .as_str()
             .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
 
-        // Construct the instruction data
+        // Construct the instruction data using config
         let mut instruction_data = Vec::new();
         
-        // Add discriminator [79, 75, 114, 130, 68, 123, 180, 11]
-        instruction_data.extend_from_slice(&[79, 75, 114, 130, 68, 123, 180, 11]);
+        // Add discriminator from config
+        instruction_data.extend_from_slice(&ProgramConfig::UPDATE_USER_PROFILE_DISCRIMINATOR);
         
         // Add username option
         if let Some(username) = username {
@@ -322,15 +423,8 @@ impl RpcConnection {
     }
 
     pub async fn get_latest_burn_shard(&self) -> Result<String, RpcError> {
-        // program ID
-        let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
-            .map_err(|e| RpcError::InvalidParameter(format!("Invalid program ID: {}", e)))?;
-
-        // calculate PDA
-        let (latest_burn_shard_pda, _) = Pubkey::find_program_address(
-            &[b"latest_burn_shard"],
-            &program_id,
-        );
+        // Calculate PDA using config
+        let (latest_burn_shard_pda, _) = ProgramConfig::get_latest_burn_shard_pda()?;
 
         // get account info
         self.get_account_info(&latest_burn_shard_pda.to_string(), Some("base64")).await
@@ -341,28 +435,21 @@ impl RpcConnection {
         memo: &str,
         keypair_bytes: &[u8],
     ) -> Result<String, RpcError> {
-        // Program and mint addresses
-        let program_id = Pubkey::from_str("TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw")
-            .map_err(|e| RpcError::Other(format!("Invalid program ID: {}", e)))?;
-        let mint = Pubkey::from_str("CrfhYtP7XtqFyHTWMyXp25CCzhjhzojngrPCZJ7RarUz")
-            .map_err(|e| RpcError::Other(format!("Invalid mint address: {}", e)))?;
+        // Validate memo length using config
+        ProgramConfig::validate_memo_length(memo)?;
+        
+        // Get addresses from config
+        let program_id = ProgramConfig::get_program_id()?;
+        let mint = ProgramConfig::get_token_mint()?;
 
         // Create keypair from bytes and get pubkey
         let keypair = Keypair::from_bytes(keypair_bytes)
             .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
         let target_pubkey = keypair.pubkey();
 
-        // Calculate PDAs
-        let (mint_authority_pda, _) = Pubkey::find_program_address(
-            &[b"mint_authority"],
-            &program_id,
-        );
-
-        // Calculate user profile PDA
-        let (user_profile_pda, _) = Pubkey::find_program_address(
-            &[b"user_profile", target_pubkey.as_ref()],
-            &program_id,
-        );
+        // Calculate PDAs using config
+        let (mint_authority_pda, _) = ProgramConfig::get_mint_authority_pda()?;
+        let (user_profile_pda, _) = ProgramConfig::get_user_profile_pda(&target_pubkey)?;
 
         // Calculate token account (ATA)
         let token_account = spl_associated_token_account::get_associated_token_address(
@@ -374,15 +461,6 @@ impl RpcConnection {
         let token_account_info = self.get_account_info(&token_account.to_string(), Some("base64")).await?;
         let token_account_info: serde_json::Value = serde_json::from_str(&token_account_info)
             .map_err(|e| RpcError::Other(format!("Failed to parse token account info: {}", e)))?;
-
-        // Verify memo length
-        let memo_length = memo.len();
-        if memo_length < 69 {
-            return Err(RpcError::Other("Memo length must be at least 69 bytes".to_string()));
-        }
-        if memo_length > 700 {
-            return Err(RpcError::Other("Memo length cannot exceed 700 bytes".to_string()));
-        }
 
         // Build instructions without compute budget first (for simulation)
         let mut base_instructions = vec![];
@@ -406,9 +484,9 @@ impl RpcConnection {
             );
         }
 
-        // Calculate Anchor instruction sighash for mint
+        // Calculate Anchor instruction sighash for mint using config
         let mut hasher = sha2::Sha256::new();
-        hasher.update(b"global:process_transfer");
+        hasher.update(ProgramConfig::PROCESS_TRANSFER_DISCRIMINATOR.as_bytes());
         let result = hasher.finalize();
         let instruction_data = result[..8].to_vec();
 
@@ -478,29 +556,20 @@ impl RpcConnection {
         let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
             .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
         
-        // Parse simulation result to extract compute units consumed
+        // Parse simulation result to extract compute units consumed using config
         let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
             log::info!("Simulation consumed {} compute units", units_consumed);
-            // Add 10% buffer to the simulated consumption
-            let with_buffer = (units_consumed as f64 * 1.1) as u64;
-            // Ensure minimum of 1000 CU
-            std::cmp::max(with_buffer, 1000)
+            // Add buffer using config
+            let with_buffer = (units_consumed as f64 * ProgramConfig::COMPUTE_UNIT_BUFFER) as u64;
+            // Ensure minimum using config
+            std::cmp::max(with_buffer, ProgramConfig::MIN_COMPUTE_UNITS)
         } else {
             log::info!("Failed to get compute units from simulation, using fallback");
-            // Fallback to original calculation if simulation fails
-            match memo_length {
-                69..=100 => 100_000,
-                101..=200 => 150_000,
-                201..=300 => 200_000,
-                301..=400 => 250_000,
-                401..=500 => 300_000,
-                501..=600 => 350_000,
-                601..=700 => 400_000,
-                _ => 400_000
-            }
+            // Fallback calculation using config
+            ProgramConfig::calculate_fallback_compute_units(memo.len())
         };
 
-        log::info!("Using {} compute units (with 10% buffer)", computed_units);
+        log::info!("Using {} compute units (with {}% buffer)", computed_units, (ProgramConfig::COMPUTE_UNIT_BUFFER - 1.0) * 100.0);
 
         // Now build the final transaction with the calculated compute units
         let mut final_instructions = vec![];
