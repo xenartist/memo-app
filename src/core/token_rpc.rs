@@ -29,13 +29,26 @@ impl ProgramConfig {
     pub const USER_PROFILE_SEED: &'static [u8] = b"user_profile";
     pub const MINT_AUTHORITY_SEED: &'static [u8] = b"mint_authority";
     pub const LATEST_BURN_SHARD_SEED: &'static [u8] = b"latest_burn_shard";
+    pub const GLOBAL_TOP_BURN_INDEX_SEED: &'static [u8] = b"global_top_burn_index";
+    pub const TOP_BURN_SHARD_SEED: &'static [u8] = b"top_burn_shard";
+    pub const BURN_HISTORY_SEED: &'static [u8] = b"burn_history";
     
-    // instruction discriminators - updated for new contract structure
+    // instruction discriminators - unified to array format, from IDL
     pub const INITIALIZE_USER_PROFILE_DISCRIMINATOR: [u8; 8] = [192, 144, 204, 140, 113, 25, 59, 102];
     pub const CLOSE_USER_PROFILE_DISCRIMINATOR: [u8; 8] = [242, 80, 248, 79, 81, 251, 65, 113];
-    pub const PROCESS_TRANSFER_DISCRIMINATOR: &'static str = "global:process_transfer";
+    pub const PROCESS_TRANSFER_DISCRIMINATOR: [u8; 8] = [212, 115, 192, 211, 191, 149, 132, 69];
+    pub const PROCESS_BURN_DISCRIMINATOR: [u8; 8] = [220, 214, 24, 210, 116, 16, 167, 18];
+    pub const PROCESS_BURN_WITH_HISTORY_DISCRIMINATOR: [u8; 8] = [97, 115, 133, 136, 113, 113, 180, 185];
+    pub const INITIALIZE_BURN_HISTORY_DISCRIMINATOR: [u8; 8] = [40, 163, 144, 239, 40, 5, 88, 119];
+    pub const CLOSE_USER_BURN_HISTORY_DISCRIMINATOR: [u8; 8] = [208, 153, 10, 179, 27, 50, 158, 161];
+    pub const INITIALIZE_LATEST_BURN_SHARD_DISCRIMINATOR: [u8; 8] = [150, 220, 2, 213, 30, 67, 33, 31];
+    pub const CLOSE_LATEST_BURN_SHARD_DISCRIMINATOR: [u8; 8] = [93, 129, 3, 152, 194, 180, 0, 53];
+    pub const INITIALIZE_TOP_BURN_SHARD_DISCRIMINATOR: [u8; 8] = [100, 156, 197, 248, 154, 101, 107, 185];
+    pub const CLOSE_TOP_BURN_SHARD_DISCRIMINATOR: [u8; 8] = [252, 203, 86, 232, 209, 69, 97, 14];
+    pub const INITIALIZE_GLOBAL_TOP_BURN_INDEX_DISCRIMINATOR: [u8; 8] = [89, 23, 213, 27, 103, 194, 63, 67];
+    pub const CLOSE_GLOBAL_TOP_BURN_INDEX_DISCRIMINATOR: [u8; 8] = [169, 205, 89, 205, 64, 5, 147, 219];
     
-    // validation limits - keep for memo validation
+    // validation limits
     pub const MIN_MEMO_LENGTH: usize = 69;
     pub const MAX_MEMO_LENGTH: usize = 700;
     
@@ -59,13 +72,6 @@ impl ProgramConfig {
     pub const TOKEN_2022_PROGRAM_ID: &'static str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
     
     // burn related constants
-    pub const PROCESS_BURN_DISCRIMINATOR: &'static str = "global:process_burn";
-    
-    // burn PDA seeds
-    pub const GLOBAL_TOP_BURN_INDEX_SEED: &'static [u8] = b"global_top_burn_index";
-    pub const TOP_BURN_SHARD_SEED: &'static [u8] = b"top_burn_shard";
-    
-    // burn related configuration
     pub const MIN_BURN_AMOUNT: u64 = 1_000_000_000; // 1 token in lamports
     pub const TOP_BURN_THRESHOLD: u64 = 420_000_000_000; // 420 tokens in lamports
 }
@@ -150,6 +156,14 @@ impl ProgramConfig {
         let program_id = Self::get_program_id()?;
         Ok(Pubkey::find_program_address(
             &[Self::TOP_BURN_SHARD_SEED, &index.to_le_bytes()],
+            &program_id
+        ))
+    }
+
+    pub fn get_burn_history_pda(user_pubkey: &Pubkey, index: u64) -> Result<(Pubkey, u8), RpcError> {
+        let program_id = Self::get_program_id()?;
+        Ok(Pubkey::find_program_address(
+            &[Self::BURN_HISTORY_SEED, user_pubkey.as_ref(), &index.to_le_bytes()],
             &program_id
         ))
     }
@@ -416,11 +430,8 @@ impl RpcConnection {
             );
         }
 
-        // Calculate Anchor instruction sighash for mint using config
-        let mut hasher = sha2::Sha256::new();
-        hasher.update(ProgramConfig::PROCESS_TRANSFER_DISCRIMINATOR.as_bytes());
-        let result = hasher.finalize();
-        let instruction_data = result[..8].to_vec();
+        // use discriminator array directly, no SHA256
+        let instruction_data = ProgramConfig::PROCESS_TRANSFER_DISCRIMINATOR.to_vec();
 
         // Create mint instruction accounts with Token 2022 program
         let mut accounts = vec![
@@ -628,11 +639,8 @@ impl RpcConnection {
             &[&target_pubkey],
         ));
 
-        // calculate Anchor instruction sighash for process_burn
-        let mut hasher = sha2::Sha256::new();
-        hasher.update(ProgramConfig::PROCESS_BURN_DISCRIMINATOR.as_bytes());
-        let result = hasher.finalize();
-        let mut instruction_data = result[..8].to_vec();
+        // use discriminator array directly, no SHA256
+        let mut instruction_data = ProgramConfig::PROCESS_BURN_DISCRIMINATOR.to_vec();
         
         // add burn amount parameter
         instruction_data.extend_from_slice(&amount.to_le_bytes());
@@ -768,5 +776,331 @@ impl RpcConnection {
     pub async fn get_top_burn_shard(&self, index: u64) -> Result<String, RpcError> {
         let (top_burn_shard_pda, _) = ProgramConfig::get_top_burn_shard_pda(index)?;
         self.get_account_info(&top_burn_shard_pda.to_string(), Some("base64")).await
+    }
+
+    // burn with history
+    pub async fn burn_with_history(
+        &self,
+        amount: u64,
+        message: &str,
+        signature: &str,
+        keypair_bytes: &[u8],
+    ) -> Result<String, RpcError> {
+        // validate burn amount
+        if amount < ProgramConfig::MIN_BURN_AMOUNT {
+            return Err(RpcError::Other(format!(
+                "Burn amount too small. Must be at least {} tokens",
+                ProgramConfig::MIN_BURN_AMOUNT / 1_000_000_000
+            )));
+        }
+        
+        // create memo
+        let memo = ProgramConfig::create_burn_memo(message, signature)?;
+        
+        // get address configuration
+        let program_id = ProgramConfig::get_program_id()?;
+        let mint = ProgramConfig::get_token_mint()?;
+        let token_2022_program_id = ProgramConfig::get_token_2022_program_id()?;
+
+        // create keypair and get pubkey
+        let keypair = Keypair::from_bytes(keypair_bytes)
+            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
+        let target_pubkey = keypair.pubkey();
+
+        // calculate PDAs
+        let (user_profile_pda, _) = ProgramConfig::get_user_profile_pda(&target_pubkey)?;
+        let (latest_burn_shard_pda, _) = ProgramConfig::get_latest_burn_shard_pda()?;
+        let (global_top_burn_index_pda, _) = ProgramConfig::get_global_top_burn_index_pda()?;
+
+        // check if user profile exists (required for burn with history)
+        let profile_info = self.get_account_info(&user_profile_pda.to_string(), Some("base64")).await?;
+        let profile_info: serde_json::Value = serde_json::from_str(&profile_info)
+            .map_err(|e| RpcError::Other(format!("Failed to parse profile info: {}", e)))?;
+        
+        if profile_info["value"].is_null() {
+            return Err(RpcError::Other("User profile must exist for burn with history operation".to_string()));
+        }
+
+        // parse user profile to get burn_history_index
+        let data = profile_info["value"]["data"][0].as_str()
+            .ok_or_else(|| RpcError::Other("Failed to get profile data".to_string()))?;
+        let decoded = base64::decode(data)
+            .map_err(|e| RpcError::Other(format!("Failed to decode profile data: {}", e)))?;
+
+        // extract burn_history_index from user profile data
+        // UserProfile structure: discriminator(8) + pubkey(32) + total_minted(8) + total_burned(8) + 
+        // mint_count(8) + burn_count(8) + created_at(8) + last_updated(8) + burn_history_index(Option<u64> = 1+8)
+        let burn_history_index = if decoded.len() >= 89 { // minimum size to contain option tag
+            let option_tag = decoded[88]; // position of Option<u64> tag
+            if option_tag == 1 && decoded.len() >= 97 { // Some variant with u64 value
+                u64::from_le_bytes(decoded[89..97].try_into().unwrap())
+            } else {
+                return Err(RpcError::Other("User profile has no burn history index. Please initialize burn history first.".to_string()));
+            }
+        } else {
+            return Err(RpcError::Other("Invalid user profile data structure".to_string()));
+        };
+
+        // calculate burn history PDA for the next index
+        let (burn_history_pda, _) = ProgramConfig::get_burn_history_pda(&target_pubkey, burn_history_index)?;
+
+        // verify burn history account exists
+        let burn_history_info = self.get_account_info(&burn_history_pda.to_string(), Some("base64")).await?;
+        let burn_history_info: serde_json::Value = serde_json::from_str(&burn_history_info)
+            .map_err(|e| RpcError::Other(format!("Failed to parse burn history info: {}", e)))?;
+        
+        if burn_history_info["value"].is_null() {
+            return Err(RpcError::Other("Burn history account does not exist. Please initialize burn history first.".to_string()));
+        }
+
+        // calculate token account (ATA) using Token 2022
+        let token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
+            &target_pubkey,
+            &mint,
+            &token_2022_program_id,
+        );
+
+        // get current top burn shard index
+        let current_top_burn_shard_index = self.get_current_top_burn_shard_index().await?;
+
+        // build base instructions (for simulation)
+        let mut base_instructions = vec![];
+
+        // add memo instruction
+        base_instructions.push(spl_memo::build_memo(
+            memo.as_bytes(),
+            &[&target_pubkey],
+        ));
+
+        // create instruction data using discriminator
+        let mut instruction_data = ProgramConfig::PROCESS_BURN_WITH_HISTORY_DISCRIMINATOR.to_vec();
+        
+        // add burn amount parameter
+        instruction_data.extend_from_slice(&amount.to_le_bytes());
+
+        // create burn with history instruction accounts
+        let mut accounts = vec![
+            AccountMeta::new(target_pubkey, true),                        // user
+            AccountMeta::new(mint, false),                               // mint
+            AccountMeta::new(token_account, false),                      // token_account
+            AccountMeta::new_readonly(token_2022_program_id, false),     // token_program
+            AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false), // instructions sysvar
+            AccountMeta::new(latest_burn_shard_pda, false),              // latest_burn_shard (optional)
+            AccountMeta::new(global_top_burn_index_pda, false),          // global_top_burn_index (optional)
+        ];
+
+        // if there is current top burn shard, add to accounts list
+        if let Some(index) = current_top_burn_shard_index {
+            let (top_burn_shard_pda, _) = ProgramConfig::get_top_burn_shard_pda(index)?;
+            accounts.push(AccountMeta::new(top_burn_shard_pda, false)); // top_burn_shard (optional)
+        }
+
+        // add user profile (optional but required for burn with history)
+        accounts.push(AccountMeta::new(user_profile_pda, false)); // user_profile
+
+        // add burn history (required for this instruction)
+        accounts.push(AccountMeta::new(burn_history_pda, false)); // burn_history
+
+        // add burn with history instruction
+        base_instructions.push(Instruction::new_with_bytes(
+            program_id,
+            &instruction_data,
+            accounts,
+        ));
+
+        // get latest blockhash
+        let blockhash: serde_json::Value = self.send_request(
+            "getLatestBlockhash",
+            serde_json::json!([{
+                "commitment": "finalized",
+                "minContextSlot": 0
+            }])
+        ).await?;
+
+        let recent_blockhash = blockhash["value"]["blockhash"]
+            .as_str()
+            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
+
+        // create simulation transaction (without compute budget instruction)
+        let sim_message = Message::new(
+            &base_instructions,
+            Some(&target_pubkey),
+        );
+
+        let mut sim_transaction = Transaction::new_unsigned(sim_message);
+        sim_transaction.message.recent_blockhash = solana_sdk::hash::Hash::from_str(recent_blockhash)
+            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
+        sim_transaction.sign(&[&keypair], sim_transaction.message.recent_blockhash);
+
+        // serialize simulation transaction
+        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
+
+        // simulate transaction to get compute units consumed
+        let sim_options = serde_json::json!({
+            "encoding": "base64",
+            "commitment": "finalized",
+            "replaceRecentBlockhash": true,
+            "sigVerify": false
+        });
+
+        let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
+        let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
+            .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
+        
+        // parse simulation result to extract compute units consumed
+        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            log::info!("Token 2022 burn with history simulation consumed {} compute units", units_consumed);
+            // add buffer
+            let with_buffer = (units_consumed as f64 * ProgramConfig::COMPUTE_UNIT_BUFFER) as u64;
+            // ensure minimum
+            std::cmp::max(with_buffer, ProgramConfig::MIN_COMPUTE_UNITS)
+        } else {
+            log::info!("Failed to get compute units from simulation, using fallback");
+            // fallback calculation - burn with history operations usually require more compute units
+            480_000u64 // slightly higher than regular burn due to history processing
+        };
+
+        log::info!("Using {} compute units for Token 2022 burn with history (with {}% buffer)", computed_units, (ProgramConfig::COMPUTE_UNIT_BUFFER - 1.0) * 100.0);
+
+        // build final transaction with computed compute units
+        let mut final_instructions = vec![];
+
+        // first add compute budget instruction
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+
+        // add all base instructions
+        final_instructions.extend(base_instructions);
+
+        // create and sign final transaction
+        let final_message = Message::new(
+            &final_instructions,
+            Some(&target_pubkey),
+        );
+
+        let mut final_transaction = Transaction::new_unsigned(final_message);
+        final_transaction.message.recent_blockhash = solana_sdk::hash::Hash::from_str(recent_blockhash)
+            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
+        final_transaction.sign(&[&keypair], final_transaction.message.recent_blockhash);
+
+        // serialize and send final transaction
+        let final_serialized_tx = base64::encode(bincode::serialize(&final_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize final transaction: {}", e)))?);
+
+        let params = serde_json::json!([
+            final_serialized_tx,
+            {
+                "encoding": "base64",
+                "preflightCommitment": "finalized",
+                "skipPreflight": false,
+                "maxRetries": 3
+            }
+        ]);
+
+        self.send_request("sendTransaction", params).await
+    }
+
+    // 辅助函数：初始化 burn history
+    pub async fn initialize_burn_history(
+        &self,
+        keypair_bytes: &[u8],
+    ) -> Result<String, RpcError> {
+        let program_id = ProgramConfig::get_program_id()?;
+        
+        // create keypair from bytes
+        let keypair = Keypair::from_bytes(keypair_bytes)
+            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
+        let target_pubkey = keypair.pubkey();
+
+        // calculate user profile PDA
+        let (user_profile_pda, _) = ProgramConfig::get_user_profile_pda(&target_pubkey)?;
+
+        // check if user profile exists
+        let profile_info = self.get_account_info(&user_profile_pda.to_string(), Some("base64")).await?;
+        let profile_info: serde_json::Value = serde_json::from_str(&profile_info)
+            .map_err(|e| RpcError::Other(format!("Failed to parse profile info: {}", e)))?;
+        
+        if profile_info["value"].is_null() {
+            return Err(RpcError::Other("User profile must exist before initializing burn history".to_string()));
+        }
+
+        // parse user profile to get current burn_history_index
+        let data = profile_info["value"]["data"][0].as_str()
+            .ok_or_else(|| RpcError::Other("Failed to get profile data".to_string()))?;
+        let decoded = base64::decode(data)
+            .map_err(|e| RpcError::Other(format!("Failed to decode profile data: {}", e)))?;
+
+        // determine next burn history index
+        let next_index = if decoded.len() >= 89 {
+            let option_tag = decoded[88];
+            if option_tag == 1 && decoded.len() >= 97 {
+                let current_index = u64::from_le_bytes(decoded[89..97].try_into().unwrap());
+                current_index + 1
+            } else {
+                0 // first burn history
+            }
+        } else {
+            0
+        };
+
+        // calculate burn history PDA for the next index
+        let (burn_history_pda, _) = ProgramConfig::get_burn_history_pda(&target_pubkey, next_index)?;
+
+        // get latest blockhash
+        let blockhash: serde_json::Value = self.send_request(
+            "getLatestBlockhash",
+            serde_json::json!([{
+                "commitment": "finalized",
+                "minContextSlot": 0
+            }])
+        ).await?;
+
+        let recent_blockhash = blockhash["value"]["blockhash"]
+            .as_str()
+            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
+
+        // create instruction data
+        let instruction_data = ProgramConfig::INITIALIZE_BURN_HISTORY_DISCRIMINATOR.to_vec();
+
+        // create the instruction
+        let instruction = Instruction::new_with_bytes(
+            program_id,
+            &instruction_data,
+            vec![
+                AccountMeta::new(target_pubkey, true),         // user (signer)
+                AccountMeta::new(user_profile_pda, false),     // user_profile
+                AccountMeta::new(burn_history_pda, false),     // burn_history
+                AccountMeta::new_readonly(solana_sdk::system_program::id(), false), // System Program
+            ],
+        );
+
+        // create the message
+        let message = Message::new(
+            &[instruction],
+            Some(&target_pubkey), // fee payer
+        );
+
+        // create and sign transaction
+        let mut transaction = Transaction::new_unsigned(message);
+        transaction.message.recent_blockhash = solana_sdk::hash::Hash::from_str(recent_blockhash)
+            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
+        transaction.sign(&[&keypair], transaction.message.recent_blockhash);
+
+        // serialize the transaction to base64
+        let serialized_tx = base64::encode(bincode::serialize(&transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?);
+
+        // send transaction
+        let params = serde_json::json!([
+            serialized_tx,
+            {
+                "encoding": "base64",
+                "preflightCommitment": "finalized",
+                "skipPreflight": false,
+                "maxRetries": 3
+            }
+        ]);
+
+        self.send_request("sendTransaction", params).await
     }
 } 
