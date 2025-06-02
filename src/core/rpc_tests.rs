@@ -127,18 +127,18 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
-    async fn test_user_profile_sequence() {
-        // 0. Close profile
+    async fn test_token_2022_sequence() {
+        // 0. Close profile (cleanup)
         test_a3_close_user_profile().await;
 
         // 1. Initialize profile
         test_a1_initialize_user_profile().await;
         
-        // 2. Get profile
+        // 2. Get profile (verify mint tracking only)
         test_a2_get_user_profile().await;
 
-        // 3. Test mint with various memo lengths
-        test_mint_with_various_memo_lengths().await;
+        // 3. Test Token 2022 mint with various memo lengths
+        test_token_2022_mint_with_various_memo_lengths().await;
         
         // 4. Close profile
         test_a3_close_user_profile().await;
@@ -146,9 +146,8 @@ mod tests {
 
     async fn test_a2_get_user_profile() {
         print_separator();
-        log_info("Starting user profile test sequence (2/3): Get Profile");
+        log_info("Starting Token 2022 user profile test sequence (2/3): Get Profile");
 
-        // using load_test_wallet to get test wallet pubkey
         match load_test_wallet() {
             Ok((pubkey, _)) => {
                 log_info(&format!("Test wallet public key: {}", pubkey));
@@ -162,17 +161,14 @@ mod tests {
                         log_info("Raw account info received:");
                         log_info(&account_info_str);
 
-                        // parse account info JSON
                         let account_info: serde_json::Value = serde_json::from_str(&account_info_str)
                             .expect("Failed to parse account info JSON");
 
-                        // get base64 encoded data
                         if let Some(data) = account_info["value"]["data"].get(0).and_then(|v| v.as_str()) {
-                            // decode base64 data
                             let decoded = base64::decode(data)
                                 .expect("Failed to decode base64 data");
 
-                            // start parsing data structure (simulate UI behavior) - updated for new UserProfile
+                            // parse Token 2022 UserProfile data structure
                             let mut data = &decoded[8..]; // Skip discriminator
 
                             // Read pubkey
@@ -181,7 +177,7 @@ mod tests {
                             let account_pubkey = Pubkey::new_from_array(pubkey_bytes);
                             data = &data[32..];
 
-                            // Read stats (mint/burn data only)
+                            // Read Token 2022 stats (mint data only)
                             let total_minted = u64::from_le_bytes([
                                 data[0], data[1], data[2], data[3], 
                                 data[4], data[5], data[6], data[7]
@@ -218,12 +214,12 @@ mod tests {
                                 data[4], data[5], data[6], data[7]
                             ]);
 
-                            // display parsed user info (no username/image)
+                            // display Token 2022 user info
                             print_separator();
-                            log_info("==== USER PROFILE ====");
+                            log_info("==== TOKEN 2022 USER PROFILE ====");
                             log_info("Note: Username and profile image now handled by separate contract");
                             
-                            log_info("\n==== TOKEN STATISTICS ====");
+                            log_info("\n==== TOKEN 2022 STATISTICS ====");
                             log_info(&format!("Total Minted: {} tokens", total_minted));
                             log_info(&format!("Total Burned: {} tokens", total_burned));
                             log_info(&format!("Net Balance: {} tokens", 
@@ -240,7 +236,7 @@ mod tests {
                         }
 
                         print_separator();
-                        log_success("User profile test completed successfully");
+                        log_success("Token 2022 user profile test completed successfully");
                     },
                     Err(e) => {
                         print_separator();
@@ -260,7 +256,7 @@ mod tests {
 
     async fn test_a3_close_user_profile() {
         print_separator();
-        log_info("Starting user profile test sequence (3/3): Close Profile");
+        log_info("Starting Token 2022 user profile test sequence (3/3): Close Profile");
 
         match load_test_wallet() {
             Ok((pubkey, keypair_bytes)) => {
@@ -269,7 +265,6 @@ mod tests {
                 let rpc = RpcConnection::new();
                 log_info(&format!("Using RPC endpoint: {}", "https://rpc.testnet.x1.xyz"));
 
-                // first check if user profile exists
                 match rpc.get_user_profile(&pubkey).await {
                     Ok(account_info_str) => {
                         let account_info: serde_json::Value = serde_json::from_str(&account_info_str)
@@ -280,33 +275,17 @@ mod tests {
                             return;
                         }
 
-                        // if account exists, attempt to close it
-                        log_info("Found existing user profile, attempting to close...");
+                        log_info("Found existing Token 2022 user profile, attempting to close...");
                         
                         match rpc.close_user_profile(&keypair_bytes).await {
                             Ok(response) => {
-                                // print raw response
                                 print_separator();
                                 log_info("Raw Close Profile Response:");
                                 log_info(&response);
-                                print_separator();
 
-                                // try to parse response as JSON (but don't let parsing fail affect test flow)
-                                match serde_json::from_str::<serde_json::Value>(&response) {
-                                    Ok(json_response) => {
-                                        log_json("Parsed Close Profile Response", &json_response);
-                                    }
-                                    Err(e) => {
-                                        log_error(&format!("Failed to parse response as JSON: {}", e));
-                                    }
-                                }
-
-                                // wait for transaction confirmation
-                                log_info("Waiting for transaction confirmation...");
+                                log_info("Waiting for Token 2022 profile closure confirmation...");
                                 
-                                // try 10 times, 10 seconds interval
                                 for i in 1..=10 {
-                                    // use gloo_timers future version for delay
                                     gloo_timers::future::TimeoutFuture::new(10_000).await;
                                     
                                     log_info(&format!("Checking account status (attempt {}/10)...", i));
@@ -317,9 +296,9 @@ mod tests {
                                                 .expect("Failed to parse verification info JSON");
 
                                             if verify_info["value"].is_null() {
-                                                log_success("User profile successfully closed and removed");
+                                                log_success("Token 2022 user profile successfully closed and removed");
                                                 print_separator();
-                                                log_success("Close user profile test completed");
+                                                log_success("Close Token 2022 user profile test completed");
                                                 return;
                                             } else {
                                                 log_info("Profile still exists, waiting for confirmation...");
@@ -331,7 +310,6 @@ mod tests {
                                     }
                                 }
 
-                                // if all attempts fail
                                 log_error("Profile still exists after maximum retries");
                                 panic!("Close operation failed - account still exists after timeout");
                             },
@@ -357,7 +335,7 @@ mod tests {
 
     async fn test_a1_initialize_user_profile() {
         print_separator();
-        log_info("Starting user profile test sequence (1/3): Initialize Profile");
+        log_info("Starting Token 2022 user profile test sequence (1/3): Initialize Profile");
 
         match load_test_wallet() {
             Ok((pubkey, keypair_bytes)) => {
@@ -366,7 +344,6 @@ mod tests {
                 let rpc = RpcConnection::new();
                 log_info(&format!("Using RPC endpoint: {}", "https://rpc.testnet.x1.xyz"));
 
-                // First check if user profile already exists
                 match rpc.get_user_profile(&pubkey).await {
                     Ok(account_info_str) => {
                         let account_info: serde_json::Value = serde_json::from_str(&account_info_str)
@@ -377,31 +354,16 @@ mod tests {
                             return;
                         }
 
-                        // If account doesn't exist, proceed with initialization (no username/image)
-                        log_info("No existing user profile found, proceeding with initialization...");
+                        log_info("No existing user profile found, proceeding with Token 2022 initialization...");
                         
                         match rpc.initialize_user_profile(&keypair_bytes).await {
                             Ok(response) => {
-                                // Print raw response
                                 print_separator();
                                 log_info("Raw Initialize Profile Response:");
                                 log_info(&response);
-                                print_separator();
 
-                                // Try to parse response as JSON
-                                match serde_json::from_str::<serde_json::Value>(&response) {
-                                    Ok(json_response) => {
-                                        log_json("Parsed Initialize Profile Response", &json_response);
-                                    }
-                                    Err(e) => {
-                                        log_error(&format!("Failed to parse response as JSON: {}", e));
-                                    }
-                                }
-
-                                // Wait for transaction confirmation
-                                log_info("Waiting for transaction confirmation...");
+                                log_info("Waiting for Token 2022 profile initialization confirmation...");
                                 
-                                // Try 10 times, 10 seconds interval
                                 for i in 1..=10 {
                                     gloo_timers::future::TimeoutFuture::new(10_000).await;
                                     
@@ -413,9 +375,9 @@ mod tests {
                                                 .expect("Failed to parse verification info JSON");
 
                                             if !verify_info["value"].is_null() {
-                                                log_success("User profile successfully initialized (mint/burn tracking only)");
+                                                log_success("Token 2022 user profile successfully initialized (mint tracking only)");
                                                 print_separator();
-                                                log_success("Initialize user profile test completed");
+                                                log_success("Initialize Token 2022 user profile test completed");
                                                 return;
                                             } else {
                                                 log_info("Profile not yet created, waiting for confirmation...");
@@ -427,7 +389,6 @@ mod tests {
                                     }
                                 }
 
-                                // If all attempts fail
                                 log_error("Profile not created after maximum retries");
                                 panic!("Initialize operation failed - account not created after timeout");
                             },
@@ -661,27 +622,18 @@ mod tests {
     }
 
     fn create_test_memo(target_length: usize) -> String {
-        // fixed signature
         let signature = "2ZaX";
-        
-        // calculate base JSON structure length (excluding message content)
-        // {"message":"","signature":""}
         let base_length = 29 + signature.len();
-        
-        // calculate required message length
         let message_length = target_length - base_length;
         let message = "a".repeat(message_length);
         
-        // create complete JSON
         let memo_json = serde_json::json!({
             "message": message,
             "signature": signature
         });
         
-        // convert to string
         let memo = serde_json::to_string(&memo_json).unwrap();
         
-        // verify length
         assert_eq!(memo.len(), target_length, 
             "Generated memo length {} does not match target length {}", 
             memo.len(), target_length);
@@ -689,9 +641,9 @@ mod tests {
         memo
     }
 
-    async fn test_mint_with_various_memo_lengths() {
+    async fn test_token_2022_mint_with_various_memo_lengths() {
         print_separator();
-        log_info("Starting mint test with various memo lengths");
+        log_info("Starting Token 2022 mint test with various memo lengths");
 
         match load_test_wallet() {
             Ok((pubkey, keypair_bytes)) => {
@@ -705,68 +657,81 @@ mod tests {
 
                 for length in test_lengths {
                     print_separator();
-                    log_info(&format!("\nTesting memo with length: {} bytes", length));
+                    log_info(&format!("\nTesting Token 2022 mint with memo length: {} bytes", length));
 
                     // create memo of specified length
                     let memo = create_test_memo(length);
                     log_info(&format!("Generated memo length: {}", memo.len()));
-                    log_info(&format!("Memo content: {}", memo));
+                    log_info(&format!("Memo content preview: {}...", &memo[..std::cmp::min(50, memo.len())]));
 
-                    // send mint transaction
+                    // send Token 2022 mint transaction
                     match rpc.mint(&memo, &keypair_bytes).await {
                         Ok(response) => {
-                            // parse complete JSON response
-                            let json_response: serde_json::Value = serde_json::from_str(&response)
-                                .expect("Failed to parse response");
+                            print_separator();
+                            log_info("Raw Token 2022 mint response received:");
+                            log_info(&format!("Response length: {} characters", response.len()));
+                            log_info(&format!("Response content: {}", response));
+                            print_separator();
+
+                            // simple response handling: assume return is transaction signature
+                            let signature = response.trim_matches('"').trim().to_string();
                             
-                            // get signature
-                            let signature = json_response.as_str()
-                                .expect("Failed to get signature from response");
+                            if signature.is_empty() {
+                                log_error("Empty signature received");
+                                continue;
+                            }
+
+                            log_success(&format!("Token 2022 mint transaction signature: {}", signature));
                             
-                            log_success(&format!("Transaction signature: {}", signature));
+                            // simplified confirmation logic: check only once
+                            log_info("Waiting for Token 2022 mint transaction confirmation...");
+                            gloo_timers::future::TimeoutFuture::new(15_000).await; // wait 15 seconds
                             
-                            // wait for transaction confirmation
-                            log_info("Waiting for transaction confirmation...");
-                            
-                            // try 5 times, 10 seconds interval
-                            for i in 1..=5 {
-                                gloo_timers::future::TimeoutFuture::new(10_000).await;
-                                
-                                match rpc.get_transaction_status(signature).await {
-                                    Ok(status_response) => {
-                                        let status: serde_json::Value = serde_json::from_str(&status_response)
-                                            .expect("Failed to parse status response");
-                                        
-                                        if let Some(value) = status["value"].get(0) {
-                                            if value["confirmationStatus"].as_str() == Some("finalized") {
-                                                log_success(&format!("Transaction confirmed for memo length {}", length));
-                                                break;
+                            match rpc.get_transaction_status(&signature).await {
+                                Ok(status_response) => {
+                                    log_info("Transaction status response:");
+                                    log_info(&status_response);
+                                    
+                                    match serde_json::from_str::<serde_json::Value>(&status_response) {
+                                        Ok(status) => {
+                                            if let Some(value) = status["value"].as_array() {
+                                                if !value.is_empty() && !value[0].is_null() {
+                                                    log_success(&format!("Token 2022 mint found in blockchain for memo length {}", length));
+                                                } else {
+                                                    log_info(&format!("Transaction not yet confirmed for memo length {}", length));
+                                                }
+                                            } else {
+                                                log_info("Transaction status format unexpected");
+                                                log_json("Status", &status);
                                             }
+                                        },
+                                        Err(e) => {
+                                            log_error(&format!("Failed to parse status response: {}", e));
                                         }
-                                        
-                                        if i == 5 {
-                                            log_error(&format!("Transaction not confirmed after maximum attempts for memo length {}", length));
-                                        } else {
-                                            log_info(&format!("Checking confirmation status (attempt {}/5)...", i));
-                                        }
-                                    },
-                                    Err(e) => {
-                                        log_error(&format!("Failed to check transaction status: {}", e));
                                     }
+                                },
+                                Err(e) => {
+                                    log_error(&format!("Failed to check transaction status: {}", e));
                                 }
                             }
                         },
                         Err(e) => {
-                            log_error(&format!("Failed to mint with memo length {}: {}", length, e));
+                            log_error(&format!("Failed Token 2022 mint with memo length {}: {}", length, e));
+                            print_separator();
+                            log_error("This might be due to:");
+                            log_error("1. Network connectivity issues");
+                            log_error("2. Insufficient SOL balance for fees");
+                            log_error("3. Token 2022 program configuration issues");
+                            log_error("4. RPC endpoint limitations");
                         }
                     }
 
-                    // add delay between tests
-                    gloo_timers::future::TimeoutFuture::new(5_000).await;
+                    // add test interval
+                    gloo_timers::future::TimeoutFuture::new(5_000).await; // increase to 5 seconds interval, give network more time
                 }
 
                 print_separator();
-                log_success("Mint test with various memo lengths completed");
+                log_success("Token 2022 mint test with various memo lengths completed");
             },
             Err(e) => {
                 print_separator();

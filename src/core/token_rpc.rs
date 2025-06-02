@@ -54,6 +54,9 @@ impl ProgramConfig {
         (700, 400_000),   // 601-700 bytes
     ];
     pub const DEFAULT_COMPUTE_UNITS: u64 = 400_000;
+    
+    // Token 2022 Program ID
+    pub const TOKEN_2022_PROGRAM_ID: &'static str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 }
 
 // helper functions
@@ -116,6 +119,11 @@ impl ProgramConfig {
             )));
         }
         Ok(())
+    }
+    
+    pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
+        Pubkey::from_str(Self::TOKEN_2022_PROGRAM_ID)
+            .map_err(|e| RpcError::Other(format!("Invalid Token 2022 program ID: {}", e)))
     }
 }
 
@@ -292,6 +300,7 @@ impl RpcConnection {
         // Get addresses from config
         let program_id = ProgramConfig::get_program_id()?;
         let mint = ProgramConfig::get_token_mint()?;
+        let token_2022_program_id = ProgramConfig::get_token_2022_program_id()?; // 使用 Token 2022
 
         // Create keypair from bytes and get pubkey
         let keypair = Keypair::from_bytes(keypair_bytes)
@@ -302,10 +311,11 @@ impl RpcConnection {
         let (mint_authority_pda, _) = ProgramConfig::get_mint_authority_pda()?;
         let (user_profile_pda, _) = ProgramConfig::get_user_profile_pda(&target_pubkey)?;
 
-        // Calculate token account (ATA)
-        let token_account = spl_associated_token_account::get_associated_token_address(
+        // Calculate token account (ATA) using Token 2022 program
+        let token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
             &target_pubkey,
             &mint,
+            &token_2022_program_id, // 使用 Token 2022 程序 ID
         );
 
         // Check if token account exists
@@ -322,15 +332,15 @@ impl RpcConnection {
             &[&target_pubkey],
         ));
 
-        // If token account doesn't exist, add create ATA instruction
+        // If token account doesn't exist, add create ATA instruction for Token 2022
         if token_account_info["value"].is_null() {
-            log::info!("Token account does not exist, creating it...");
+            log::info!("Token 2022 account does not exist, creating it...");
             base_instructions.push(
-                spl_associated_token_account::instruction::create_associated_token_account(
-                    &target_pubkey,  // Funding account (fee payer)
-                    &target_pubkey,  // Wallet address
-                    &mint,           // Mint address
-                    &spl_token::id() // Token program
+                spl_associated_token_account::instruction::create_associated_token_account_idempotent(
+                    &target_pubkey,         // Funding account (fee payer)
+                    &target_pubkey,         // Wallet address
+                    &mint,                  // Mint address
+                    &token_2022_program_id  // Token 2022 program ID
                 )
             );
         }
@@ -341,13 +351,13 @@ impl RpcConnection {
         let result = hasher.finalize();
         let instruction_data = result[..8].to_vec();
 
-        // Create mint instruction accounts
+        // Create mint instruction accounts with Token 2022 program
         let mut accounts = vec![
-            AccountMeta::new(target_pubkey, true),         // user
-            AccountMeta::new(mint, false),                 // mint
-            AccountMeta::new(mint_authority_pda, false),   // mint_authority
-            AccountMeta::new(token_account, false),        // token_account
-            AccountMeta::new_readonly(spl_token::id(), false), // token_program
+            AccountMeta::new(target_pubkey, true),               // user
+            AccountMeta::new(mint, false),                       // mint
+            AccountMeta::new(mint_authority_pda, false),         // mint_authority
+            AccountMeta::new(token_account, false),              // token_account
+            AccountMeta::new_readonly(token_2022_program_id, false), // Token 2022 program
             AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false), // instructions sysvar
         ];
 
@@ -409,7 +419,7 @@ impl RpcConnection {
         
         // Parse simulation result to extract compute units consumed using config
         let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
-            log::info!("Simulation consumed {} compute units", units_consumed);
+            log::info!("Token 2022 mint simulation consumed {} compute units", units_consumed);
             // Add buffer using config
             let with_buffer = (units_consumed as f64 * ProgramConfig::COMPUTE_UNIT_BUFFER) as u64;
             // Ensure minimum using config
@@ -420,7 +430,7 @@ impl RpcConnection {
             ProgramConfig::calculate_fallback_compute_units(memo.len())
         };
 
-        log::info!("Using {} compute units (with {}% buffer)", computed_units, (ProgramConfig::COMPUTE_UNIT_BUFFER - 1.0) * 100.0);
+        log::info!("Using {} compute units for Token 2022 mint (with {}% buffer)", computed_units, (ProgramConfig::COMPUTE_UNIT_BUFFER - 1.0) * 100.0);
 
         // Now build the final transaction with the calculated compute units
         let mut final_instructions = vec![];
