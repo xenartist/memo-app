@@ -57,6 +57,17 @@ impl ProgramConfig {
     
     // Token 2022 Program ID
     pub const TOKEN_2022_PROGRAM_ID: &'static str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+    
+    // burn related constants
+    pub const PROCESS_BURN_DISCRIMINATOR: &'static str = "global:process_burn";
+    
+    // burn PDA seeds
+    pub const GLOBAL_TOP_BURN_INDEX_SEED: &'static [u8] = b"global_top_burn_index";
+    pub const TOP_BURN_SHARD_SEED: &'static [u8] = b"top_burn_shard";
+    
+    // burn related configuration
+    pub const MIN_BURN_AMOUNT: u64 = 1_000_000_000; // 1 token in lamports
+    pub const TOP_BURN_THRESHOLD: u64 = 420_000_000_000; // 420 tokens in lamports
 }
 
 // helper functions
@@ -124,6 +135,66 @@ impl ProgramConfig {
     pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
         Pubkey::from_str(Self::TOKEN_2022_PROGRAM_ID)
             .map_err(|e| RpcError::Other(format!("Invalid Token 2022 program ID: {}", e)))
+    }
+    
+    // global top burn index PDA calculation function
+    pub fn get_global_top_burn_index_pda() -> Result<(Pubkey, u8), RpcError> {
+        let program_id = Self::get_program_id()?;
+        Ok(Pubkey::find_program_address(
+            &[Self::GLOBAL_TOP_BURN_INDEX_SEED],
+            &program_id
+        ))
+    }
+    
+    pub fn get_top_burn_shard_pda(index: u64) -> Result<(Pubkey, u8), RpcError> {
+        let program_id = Self::get_program_id()?;
+        Ok(Pubkey::find_program_address(
+            &[Self::TOP_BURN_SHARD_SEED, &index.to_le_bytes()],
+            &program_id
+        ))
+    }
+    
+    // create burn memo helper function
+    pub fn create_burn_memo(message: &str, signature: &str) -> Result<String, RpcError> {
+        let memo_json = serde_json::json!({
+            "signature": signature,
+            "message": message
+        });
+        
+        let memo_text = serde_json::to_string(&memo_json)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo JSON: {}", e)))?;
+        
+        // ensure memo length is within requirements
+        let memo_text = Self::ensure_min_memo_length(memo_text, Self::MIN_MEMO_LENGTH);
+        Self::validate_memo_length(&memo_text)?;
+        
+        Ok(memo_text)
+    }
+    
+    // ensure memo minimum length helper function
+    fn ensure_min_memo_length(text: String, min_length: usize) -> String {
+        if text.as_bytes().len() >= min_length {
+            return text;
+        }
+        
+        // parse existing JSON
+        let mut json: serde_json::Value = serde_json::from_str(&text)
+            .expect("Failed to parse JSON");
+        
+        // get existing message
+        let message = json["message"].as_str().unwrap_or("");
+        
+        // calculate required padding length
+        let current_length = text.as_bytes().len();
+        let padding_needed = min_length - current_length;
+        
+        // fill with spaces
+        let padding = " ".repeat(padding_needed);
+        let new_message = format!("{}{}", message, padding);
+        json["message"] = serde_json::Value::String(new_message);
+        
+        // convert back to string
+        serde_json::to_string(&json).expect("Failed to serialize JSON")
     }
 }
 
@@ -300,7 +371,7 @@ impl RpcConnection {
         // Get addresses from config
         let program_id = ProgramConfig::get_program_id()?;
         let mint = ProgramConfig::get_token_mint()?;
-        let token_2022_program_id = ProgramConfig::get_token_2022_program_id()?; // 使用 Token 2022
+        let token_2022_program_id = ProgramConfig::get_token_2022_program_id()?; // use Token 2022
 
         // Create keypair from bytes and get pubkey
         let keypair = Keypair::from_bytes(keypair_bytes)
@@ -315,7 +386,7 @@ impl RpcConnection {
         let token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
             &target_pubkey,
             &mint,
-            &token_2022_program_id, // 使用 Token 2022 程序 ID
+            &token_2022_program_id, // use Token 2022 program ID
         );
 
         // Check if token account exists
@@ -467,5 +538,235 @@ impl RpcConnection {
         ]);
 
         self.send_request("sendTransaction", params).await
+    }
+
+    // get current top burn shard index
+    pub async fn get_current_top_burn_shard_index(&self) -> Result<Option<u64>, RpcError> {
+        let (global_top_burn_index_pda, _) = ProgramConfig::get_global_top_burn_index_pda()?;
+        
+        match self.get_account_info(&global_top_burn_index_pda.to_string(), Some("base64")).await {
+            Ok(account_info_str) => {
+                let account_info: serde_json::Value = serde_json::from_str(&account_info_str)
+                    .map_err(|e| RpcError::Other(format!("Failed to parse account info: {}", e)))?;
+                
+                if let Some(data) = account_info["value"]["data"].get(0).and_then(|v| v.as_str()) {
+                    let decoded = base64::decode(data)
+                        .map_err(|e| RpcError::Other(format!("Failed to decode base64 data: {}", e)))?;
+                    
+                    if decoded.len() >= 17 { // 8 bytes discriminator + 8 bytes total_count + 1 byte option tag
+                        let data = &decoded[8..]; // skip discriminator
+                        let option_tag = data[8];
+                        
+                        if option_tag == 1 && data.len() >= 17 {
+                            let current_index = u64::from_le_bytes(data[9..17].try_into().unwrap());
+                            return Ok(Some(current_index));
+                        }
+                    }
+                }
+                Ok(None)
+            },
+            Err(_) => Ok(None) // Account doesn't exist
+        }
+    }
+
+    // main burn function
+    pub async fn burn(
+        &self,
+        amount: u64,
+        message: &str,
+        signature: &str,
+        keypair_bytes: &[u8],
+    ) -> Result<String, RpcError> {
+        // validate burn amount
+        if amount < ProgramConfig::MIN_BURN_AMOUNT {
+            return Err(RpcError::Other(format!(
+                "Burn amount too small. Must be at least {} tokens",
+                ProgramConfig::MIN_BURN_AMOUNT / 1_000_000_000
+            )));
+        }
+        
+        // create memo
+        let memo = ProgramConfig::create_burn_memo(message, signature)?;
+        
+        // get address configuration
+        let program_id = ProgramConfig::get_program_id()?;
+        let mint = ProgramConfig::get_token_mint()?;
+        let token_2022_program_id = ProgramConfig::get_token_2022_program_id()?;
+
+        // create keypair and get pubkey
+        let keypair = Keypair::from_bytes(keypair_bytes)
+            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
+        let target_pubkey = keypair.pubkey();
+
+        // calculate PDAs
+        let (user_profile_pda, _) = ProgramConfig::get_user_profile_pda(&target_pubkey)?;
+        let (latest_burn_shard_pda, _) = ProgramConfig::get_latest_burn_shard_pda()?;
+        let (global_top_burn_index_pda, _) = ProgramConfig::get_global_top_burn_index_pda()?;
+
+        // calculate token account (ATA) using Token 2022
+        let token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
+            &target_pubkey,
+            &mint,
+            &token_2022_program_id,
+        );
+
+        // check if user profile exists
+        let profile_info = self.get_account_info(&user_profile_pda.to_string(), Some("base64")).await?;
+        let profile_info: serde_json::Value = serde_json::from_str(&profile_info)
+            .map_err(|e| RpcError::Other(format!("Failed to parse profile info: {}", e)))?;
+        let user_profile_exists = !profile_info["value"].is_null();
+
+        // get current top burn shard index
+        let current_top_burn_shard_index = self.get_current_top_burn_shard_index().await?;
+
+        // build base instructions (for simulation)
+        let mut base_instructions = vec![];
+
+        // add memo instruction
+        base_instructions.push(spl_memo::build_memo(
+            memo.as_bytes(),
+            &[&target_pubkey],
+        ));
+
+        // calculate Anchor instruction sighash for process_burn
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(ProgramConfig::PROCESS_BURN_DISCRIMINATOR.as_bytes());
+        let result = hasher.finalize();
+        let mut instruction_data = result[..8].to_vec();
+        
+        // add burn amount parameter
+        instruction_data.extend_from_slice(&amount.to_le_bytes());
+
+        // create burn instruction accounts
+        let mut accounts = vec![
+            AccountMeta::new(target_pubkey, true),                        // user
+            AccountMeta::new(mint, false),                               // mint
+            AccountMeta::new(token_account, false),                      // token_account
+            AccountMeta::new_readonly(token_2022_program_id, false),     // token_program
+            AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false), // instructions sysvar
+            AccountMeta::new(latest_burn_shard_pda, false),              // latest_burn_shard
+            AccountMeta::new(global_top_burn_index_pda, false),          // global_top_burn_index
+        ];
+
+        // if there is current top burn shard, add to accounts list
+        if let Some(index) = current_top_burn_shard_index {
+            let (top_burn_shard_pda, _) = ProgramConfig::get_top_burn_shard_pda(index)?;
+            accounts.push(AccountMeta::new(top_burn_shard_pda, false)); // top_burn_shard
+        }
+
+        // if user profile exists, add to accounts list
+        if user_profile_exists {
+            accounts.push(AccountMeta::new(user_profile_pda, false)); // user_profile
+        }
+
+        // add burn instruction
+        base_instructions.push(Instruction::new_with_bytes(
+            program_id,
+            &instruction_data,
+            accounts,
+        ));
+
+        // get latest blockhash
+        let blockhash: serde_json::Value = self.send_request(
+            "getLatestBlockhash",
+            serde_json::json!([{
+                "commitment": "finalized",
+                "minContextSlot": 0
+            }])
+        ).await?;
+
+        let recent_blockhash = blockhash["value"]["blockhash"]
+            .as_str()
+            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
+
+        // create simulation transaction (without compute budget instruction)
+        let sim_message = Message::new(
+            &base_instructions,
+            Some(&target_pubkey),
+        );
+
+        let mut sim_transaction = Transaction::new_unsigned(sim_message);
+        sim_transaction.message.recent_blockhash = solana_sdk::hash::Hash::from_str(recent_blockhash)
+            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
+        sim_transaction.sign(&[&keypair], sim_transaction.message.recent_blockhash);
+
+        // serialize simulation transaction
+        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
+
+        // simulate transaction to get compute units consumed
+        let sim_options = serde_json::json!({
+            "encoding": "base64",
+            "commitment": "finalized",
+            "replaceRecentBlockhash": true,
+            "sigVerify": false
+        });
+
+        let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
+        let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
+            .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
+        
+        // parse simulation result to extract compute units consumed
+        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            log::info!("Token 2022 burn simulation consumed {} compute units", units_consumed);
+            // add buffer
+            let with_buffer = (units_consumed as f64 * ProgramConfig::COMPUTE_UNIT_BUFFER) as u64;
+            // ensure minimum
+            std::cmp::max(with_buffer, ProgramConfig::MIN_COMPUTE_UNITS)
+        } else {
+            log::info!("Failed to get compute units from simulation, using fallback");
+            // fallback calculation - burn operations usually require more compute units
+            440_000u64 // default value based on reference code
+        };
+
+        log::info!("Using {} compute units for Token 2022 burn (with {}% buffer)", computed_units, (ProgramConfig::COMPUTE_UNIT_BUFFER - 1.0) * 100.0);
+
+        // build final transaction, including computed compute units
+        let mut final_instructions = vec![];
+
+        // first add compute budget instruction
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+
+        // add all base instructions
+        final_instructions.extend(base_instructions);
+
+        // create and sign final transaction
+        let final_message = Message::new(
+            &final_instructions,
+            Some(&target_pubkey),
+        );
+
+        let mut final_transaction = Transaction::new_unsigned(final_message);
+        final_transaction.message.recent_blockhash = solana_sdk::hash::Hash::from_str(recent_blockhash)
+            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
+        final_transaction.sign(&[&keypair], final_transaction.message.recent_blockhash);
+
+        // serialize and send final transaction
+        let final_serialized_tx = base64::encode(bincode::serialize(&final_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize final transaction: {}", e)))?);
+
+        let params = serde_json::json!([
+            final_serialized_tx,
+            {
+                "encoding": "base64",
+                "preflightCommitment": "finalized",
+                "skipPreflight": false,
+                "maxRetries": 3
+            }
+        ]);
+
+        self.send_request("sendTransaction", params).await
+    }
+
+    // get global top burn index info
+    pub async fn get_global_top_burn_index(&self) -> Result<String, RpcError> {
+        let (global_top_burn_index_pda, _) = ProgramConfig::get_global_top_burn_index_pda()?;
+        self.get_account_info(&global_top_burn_index_pda.to_string(), Some("base64")).await
+    }
+
+    // get top burn shard by index
+    pub async fn get_top_burn_shard(&self, index: u64) -> Result<String, RpcError> {
+        let (top_burn_shard_pda, _) = ProgramConfig::get_top_burn_shard_pda(index)?;
+        self.get_account_info(&top_burn_shard_pda.to_string(), Some("base64")).await
     }
 } 

@@ -740,4 +740,216 @@ mod tests {
             }
         }
     }
+
+    // add burn test function
+    async fn test_token_2022_burn_operations() {
+        print_separator();
+        log_info("Starting Token 2022 burn operations test");
+
+        match load_test_wallet() {
+            Ok((pubkey, keypair_bytes)) => {
+                log_info(&format!("Test wallet public key: {}", pubkey));
+
+                let rpc = RpcConnection::new();
+                log_info(&format!("Using RPC endpoint: {}", "https://rpc.testnet.x1.xyz"));
+
+                // use actual signature from previous mint test
+                let test_signature = "3GZFMnLbY2kaV1EpS8sa2rXjMGJaGjZ2QtVE5EANSicTqAWrmmqrKcyEg2m44D2Zs1cJ9r226K8F1zuoqYfU7KFr";
+                
+                // test different burn amounts
+                let test_amounts = vec![
+                    (1, "Small burn test"),
+                    (2, "Medium burn test"),
+                    (3, "Large burn test"),
+                ];
+
+                for (amount_tokens, description) in test_amounts {
+                    print_separator();
+                    log_info(&format!("\nTesting Token 2022 burn: {}", description));
+                    
+                    let amount_lamports = amount_tokens * 1_000_000_000; // convert to lamports
+                    log_info(&format!("Burning {} tokens ({} lamports)", amount_tokens, amount_lamports));
+
+                    // create test message
+                    let message = format!("Test burn of {} tokens from RPC test suite", amount_tokens);
+                    
+                    // execute burn operation
+                    match rpc.burn(amount_lamports, &message, test_signature, &keypair_bytes).await {
+                        Ok(response) => {
+                            print_separator();
+                            log_info("Raw Token 2022 burn response received:");
+                            log_info(&format!("Response length: {} characters", response.len()));
+                            log_info(&format!("Response content: {}", response));
+                            print_separator();
+
+                            // parse response
+                            let signature = response.trim_matches('"').trim().to_string();
+                            
+                            if signature.is_empty() {
+                                log_error("Empty signature received");
+                                continue;
+                            }
+
+                            log_success(&format!("Token 2022 burn transaction signature: {}", signature));
+                            
+                            // wait for confirmation
+                            log_info("Waiting for Token 2022 burn transaction confirmation...");
+                            gloo_timers::future::TimeoutFuture::new(15_000).await;
+                            
+                            match rpc.get_transaction_status(&signature).await {
+                                Ok(status_response) => {
+                                    log_info("Transaction status response:");
+                                    log_info(&status_response);
+                                    
+                                    match serde_json::from_str::<serde_json::Value>(&status_response) {
+                                        Ok(status) => {
+                                            if let Some(value) = status["value"].as_array() {
+                                                if !value.is_empty() && !value[0].is_null() {
+                                                    log_success(&format!("Token 2022 burn confirmed for {} tokens", amount_tokens));
+                                                } else {
+                                                    log_info(&format!("Transaction not yet confirmed for {} tokens burn", amount_tokens));
+                                                }
+                                            } else {
+                                                log_info("Transaction status format unexpected");
+                                                log_json("Status", &status);
+                                            }
+                                        },
+                                        Err(e) => {
+                                            log_error(&format!("Failed to parse status response: {}", e));
+                                        }
+                                    }
+                                },
+                                Err(e) => {
+                                    log_error(&format!("Failed to check transaction status: {}", e));
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            log_error(&format!("Failed Token 2022 burn for {} tokens: {}", amount_tokens, e));
+                            print_separator();
+                            log_error("This might be due to:");
+                            log_error("1. Insufficient token balance");
+                            log_error("2. Burn shards not initialized");
+                            log_error("3. Network connectivity issues");
+                            log_error("4. Token 2022 program configuration issues");
+                        }
+                    }
+
+                    // test interval
+                    gloo_timers::future::TimeoutFuture::new(5_000).await;
+                }
+
+                print_separator();
+                log_success("Token 2022 burn operations test completed");
+            },
+            Err(e) => {
+                print_separator();
+                log_error(&format!("Failed to load test wallet: {}", e));
+                panic!("Failed to load wallet");
+            }
+        }
+    }
+
+    // test global top burn index and top burn shard
+    async fn test_burn_shard_operations() {
+        print_separator();
+        log_info("Starting burn shard operations test");
+
+        match load_test_wallet() {
+            Ok((pubkey, _)) => {
+                log_info(&format!("Test wallet public key: {}", pubkey));
+
+                let rpc = RpcConnection::new();
+                log_info(&format!("Using RPC endpoint: {}", "https://rpc.testnet.x1.xyz"));
+
+                // test get global top burn index
+                log_info("Testing get_global_top_burn_index...");
+                match rpc.get_global_top_burn_index().await {
+                    Ok(index_info) => {
+                        print_separator();
+                        log_info("Global Top Burn Index Info:");
+                        log_info(&index_info);
+                        
+                        // try
+                        let account_info: serde_json::Value = serde_json::from_str(&index_info)
+                            .expect("Failed to parse account info JSON");
+                        
+                        if let Some(data) = account_info["value"]["data"].get(0).and_then(|v| v.as_str()) {
+                            let decoded = base64::decode(data)
+                                .expect("Failed to decode base64 data");
+                            
+                            if decoded.len() >= 17 {
+                                let data = &decoded[8..]; // skip discriminator
+                                let total_count = u64::from_le_bytes(data[0..8].try_into().unwrap());
+                                let option_tag = data[8];
+                                
+                                log_info(&format!("Total top burn shard count: {}", total_count));
+                                
+                                if option_tag == 1 && data.len() >= 17 {
+                                    let current_index = u64::from_le_bytes(data[9..17].try_into().unwrap());
+                                    log_info(&format!("Current top burn shard index: {}", current_index));
+                                    
+                                    // test get current top burn shard
+                                    log_info("Testing get_top_burn_shard...");
+                                    match rpc.get_top_burn_shard(current_index).await {
+                                        Ok(shard_info) => {
+                                            log_info("Top Burn Shard Info:");
+                                            log_info(&shard_info);
+                                            log_success("Top burn shard retrieval successful");
+                                        },
+                                        Err(e) => {
+                                            log_error(&format!("Failed to get top burn shard: {}", e));
+                                        }
+                                    }
+                                } else {
+                                    log_info("No active top burn shard currently");
+                                }
+                            }
+                        }
+                        
+                        log_success("Global top burn index test completed");
+                    },
+                    Err(e) => {
+                        log_error(&format!("Failed to get global top burn index: {}", e));
+                    }
+                }
+
+                print_separator();
+                log_success("Burn shard operations test completed");
+            },
+            Err(e) => {
+                print_separator();
+                log_error(&format!("Failed to load test wallet: {}", e));
+                panic!("Failed to load wallet");
+            }
+        }
+    }
+
+    // update main test sequence, including burn test
+    #[wasm_bindgen_test]
+    async fn test_complete_token_2022_sequence() {
+        // 0. Close profile (cleanup)
+        test_a3_close_user_profile().await;
+
+        // 1. Initialize profile
+        test_a1_initialize_user_profile().await;
+        
+        // 2. Get profile (verify mint tracking only)
+        test_a2_get_user_profile().await;
+
+        // 3. Test Token 2022 mint with various memo lengths
+        test_token_2022_mint_with_various_memo_lengths().await;
+
+        // 4. Test burn shard operations
+        test_burn_shard_operations().await;
+        
+        // 5. Test Token 2022 burn operations
+        test_token_2022_burn_operations().await;
+        
+        // 6. Get profile again to see updated burn stats
+        test_a2_get_user_profile().await;
+        
+        // 7. Close profile
+        test_a3_close_user_profile().await;
+    }
 } 
