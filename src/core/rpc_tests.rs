@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::core::base_rpc::{RpcConnection, RpcError};
+    use crate::core::rpc_base::{RpcConnection, RpcError};
     use wasm_bindgen_test::*;
     use wasm_bindgen_test::console_log;
     use solana_sdk::pubkey::Pubkey;

@@ -1,5 +1,5 @@
 use leptos::*;
-use crate::core::base_rpc::RpcConnection;
+use crate::core::rpc_base::RpcConnection;
 use crate::pages::memo_card::MemoCard;
 use base64;
 use solana_sdk::pubkey::Pubkey;

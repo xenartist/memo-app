@@ -1,4 +1,4 @@
-use super::base_rpc::{RpcConnection, RpcError};
+use super::rpc_base::{RpcConnection, RpcError};
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use solana_sdk::{

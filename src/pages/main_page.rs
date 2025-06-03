@@ -1,5 +1,5 @@
 use leptos::*;
-use crate::core::base_rpc::RpcConnection;
+use crate::core::rpc_base::RpcConnection;
 use crate::core::session::Session;
 use crate::pages::home_page::HomePage;
 use crate::pages::profile_page::ProfilePage;

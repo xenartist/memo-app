@@ -1,7 +1,7 @@
 use serde::{Serialize, Deserialize};
 use std::time::{Duration, SystemTime};
 use crate::core::encrypt;
-use crate::core::base_rpc::RpcConnection;
+use crate::core::rpc_base::RpcConnection;
 use web_sys::js_sys::Date;
 use secrecy::{Secret, ExposeSecret};
 use zeroize::Zeroize;
