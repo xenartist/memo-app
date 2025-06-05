@@ -1269,7 +1269,6 @@ mod tests {
         }
     }
 
-    // modify the main test sequence, using the new thorough cleanup function
     #[wasm_bindgen_test]
     async fn test_complete_token_2022_with_burn_history_sequence() {
         // 1. initialize profile
