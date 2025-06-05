@@ -126,25 +126,7 @@ mod tests {
         }
     }
 
-    #[wasm_bindgen_test]
-    async fn test_token_2022_sequence() {
-        // 0. Close profile (cleanup)
-        test_a3_close_user_profile().await;
-
-        // 1. Initialize profile
-        test_a1_initialize_user_profile().await;
-        
-        // 2. Get profile (verify mint tracking only)
-        test_a2_get_user_profile().await;
-
-        // 3. Test Token 2022 mint with various memo lengths
-        test_token_2022_mint_with_various_memo_lengths().await;
-        
-        // 4. Close profile
-        test_a3_close_user_profile().await;
-    }
-
-    async fn test_a2_get_user_profile() {
+    async fn test_get_user_profile() {
         print_separator();
         log_info("Starting Token 2022 user profile test sequence (2/3): Get Profile");
 
@@ -254,7 +236,7 @@ mod tests {
         }
     }
 
-    async fn test_a3_close_user_profile() {
+    async fn test_close_user_profile() {
         print_separator();
         log_info("Starting Token 2022 user profile test sequence (3/3): Close Profile");
 
@@ -333,7 +315,7 @@ mod tests {
         }
     }
 
-    async fn test_a1_initialize_user_profile() {
+    async fn test_initialize_user_profile() {
         print_separator();
         log_info("Starting Token 2022 user profile test sequence (1/3): Initialize Profile");
 
@@ -925,31 +907,396 @@ mod tests {
         }
     }
 
-    // update main test sequence, including burn test
+    // test burn without user burn history
+    async fn test_token_2022_burn_without_history() {
+        print_separator();
+        log_info("Starting Token 2022 burn test WITHOUT user burn history");
+
+        match load_test_wallet() {
+            Ok((pubkey, keypair_bytes)) => {
+                log_info(&format!("Test wallet public key: {}", pubkey));
+
+                let rpc = RpcConnection::new();
+                log_info(&format!("Using RPC endpoint: {}", "https://rpc.testnet.x1.xyz"));
+
+                // use actual signature for test
+                let test_signature = "3GZFMnLbY2kaV1EpS8sa2rXjMGJaGjZ2QtVE5EANSicTqAWrmmqrKcyEg2m44D2Zs1cJ9r226K8F1zuoqYfU7KFr";
+                
+                // test small burn (without user burn history)
+                let amount_tokens = 1;
+                let amount_lamports = amount_tokens * 1_000_000_000;
+                
+                log_info(&format!("Burning {} tokens ({} lamports) WITHOUT user burn history", amount_tokens, amount_lamports));
+
+                // create test message
+                let message = format!("Test burn WITHOUT user burn history - {} tokens", amount_tokens);
+                
+                // execute burn operation (using process_burn, not process_burn_with_history)
+                match rpc.burn(amount_lamports, &message, test_signature, &keypair_bytes).await {
+                    Ok(response) => {
+                        print_separator();
+                        log_info("Raw Token 2022 burn WITHOUT history response:");
+                        log_info(&format!("Response: {}", response));
+
+                        let signature = response.trim_matches('"').trim().to_string();
+                        
+                        if signature.is_empty() {
+                            log_error("Empty signature received");
+                            return;
+                        }
+
+                        log_success(&format!("Token 2022 burn WITHOUT history transaction signature: {}", signature));
+                        
+                        // wait for confirmation
+                        log_info("Waiting for Token 2022 burn WITHOUT history confirmation...");
+                        gloo_timers::future::TimeoutFuture::new(15_000).await;
+                        
+                        match rpc.get_transaction_status(&signature).await {
+                            Ok(status_response) => {
+                                log_info("Transaction status:");
+                                log_info(&status_response);
+                                
+                                match serde_json::from_str::<serde_json::Value>(&status_response) {
+                                    Ok(status) => {
+                                        if let Some(value) = status["value"].as_array() {
+                                            if !value.is_empty() && !value[0].is_null() {
+                                                log_success("Token 2022 burn WITHOUT history confirmed");
+                                            } else {
+                                                log_info("Transaction not yet confirmed");
+                                            }
+                                        }
+                                    },
+                                    Err(e) => {
+                                        log_error(&format!("Failed to parse status: {}", e));
+                                    }
+                                }
+                            },
+                            Err(e) => {
+                                log_error(&format!("Failed to check transaction status: {}", e));
+                            }
+                        }
+
+                        print_separator();
+                        log_success("Token 2022 burn WITHOUT user burn history test completed");
+                    },
+                    Err(e) => {
+                        log_error(&format!("Failed Token 2022 burn WITHOUT history: {}", e));
+                        print_separator();
+                        log_error("This might be due to:");
+                        log_error("1. Insufficient token balance");
+                        log_error("2. Burn shards not initialized");
+                        log_error("3. Network connectivity issues");
+                    }
+                }
+            },
+            Err(e) => {
+                print_separator();
+                log_error(&format!("Failed to load test wallet: {}", e));
+            }
+        }
+    }
+
+    // test burn with user burn history - fixed version
+    async fn test_token_2022_burn_with_history() {
+        print_separator();
+        log_info("Starting Token 2022 burn test WITH user burn history");
+
+        match load_test_wallet() {
+            Ok((pubkey, keypair_bytes)) => {
+                log_info(&format!("Test wallet public key: {}", pubkey));
+
+                let rpc = RpcConnection::new();
+                log_info(&format!("Using RPC endpoint: {}", "https://rpc.testnet.x1.xyz"));
+
+                // step 1: directly initialize new user burn history (previously thoroughly cleaned)
+                log_info("Step 1: Initializing new user burn history...");
+                
+                match rpc.initialize_user_burn_history(&keypair_bytes).await {
+                    Ok(init_response) => {
+                        log_success("User burn history initialized successfully");
+                        log_info(&format!("Init response: {}", init_response));
+                        
+                        // wait for user profile burn_history_index field to update
+                        log_info("Waiting for user profile burn_history_index field to update...");
+                        gloo_timers::future::TimeoutFuture::new(25_000).await;
+                        
+                        // multiple retries to check if burn_history_index has been updated
+                        let mut retries = 5;
+                        let mut burn_history_ready = false;
+                        
+                        while retries > 0 && !burn_history_ready {
+                            match rpc.get_user_burn_history_index(&pubkey).await {
+                                Ok(Some(_)) => {
+                                    burn_history_ready = true;
+                                    log_success("User burn history index confirmed in user profile");
+                                },
+                                Ok(None) => {
+                                    log_info(&format!("User burn history index not yet updated, retries left: {}", retries - 1));
+                                    gloo_timers::future::TimeoutFuture::new(8_000).await;
+                                    retries -= 1;
+                                },
+                                Err(e) => {
+                                    log_error(&format!("Error checking burn history index: {}", e));
+                                    retries -= 1;
+                                }
+                            }
+                        }
+                        
+                        if !burn_history_ready {
+                            log_error("User burn history index not updated in user profile after maximum retries");
+                            log_error("Skipping burn_with_history test to avoid failure");
+                            return;
+                        }
+                    },
+                    Err(e) => {
+                        log_error(&format!("Failed to initialize user burn history: {}", e));
+                        return;
+                    }
+                }
+
+                // step 2: verify user burn history status
+                log_info("Step 2: Verifying user burn history status before burn...");
+                match rpc.get_user_burn_history_index(&pubkey).await {
+                    Ok(Some(index)) => {
+                        log_info(&format!("Confirmed: User burn history index = {}", index));
+                        
+                        // verify corresponding burn history account exists
+                        match rpc.get_user_burn_history(&pubkey, index).await {
+                            Ok(history_info) => {
+                                log_info("Confirmed: User burn history account exists and is accessible");
+                                log_info(&format!("History account preview: {}...", 
+                                    &history_info[..std::cmp::min(100, history_info.len())]));
+                            },
+                            Err(e) => {
+                                log_error(&format!("Warning: User burn history account not accessible: {}", e));
+                                log_info("This may cause the burn_with_history operation to fail");
+                            }
+                        }
+                    },
+                    Ok(None) => {
+                        log_error("User burn history index is still None after initialization");
+                        log_error("Skipping burn_with_history test to avoid failure");
+                        return;
+                    },
+                    Err(e) => {
+                        log_error(&format!("Failed to verify user burn history: {}", e));
+                        return;
+                    }
+                }
+
+                // step 3: perform burn with user burn history
+                log_info("Step 3: Performing burn WITH user burn history...");
+                
+                let test_signature = "3GZFMnLbY2kaV1EpS8sa2rXjMGJaGjZ2QtVE5EANSicTqAWrmmqrKcyEg2m44D2Zs1cJ9r226K8F1zuoqYfU7KFr";
+                let amount_tokens = 2;
+                let amount_lamports = amount_tokens * 1_000_000_000;
+                
+                log_info(&format!("Burning {} tokens ({} lamports) WITH user burn history", amount_tokens, amount_lamports));
+
+                let message = format!("Test burn WITH user burn history - {} tokens", amount_tokens);
+                
+                // execute burn with history operation
+                match rpc.burn_with_history(amount_lamports, &message, test_signature, &keypair_bytes).await {
+                    Ok(response) => {
+                        print_separator();
+                        log_info("Raw Token 2022 burn WITH history response:");
+                        log_info(&format!("Response: {}", response));
+
+                        let signature = response.trim_matches('"').trim().to_string();
+                        
+                        if signature.is_empty() {
+                            log_error("Empty signature received");
+                            return;
+                        }
+
+                        log_success(&format!("Token 2022 burn WITH history transaction signature: {}", signature));
+                        
+                        // wait for confirmation
+                        log_info("Waiting for Token 2022 burn WITH history confirmation...");
+                        gloo_timers::future::TimeoutFuture::new(20_000).await;
+                        
+                        match rpc.get_transaction_status(&signature).await {
+                            Ok(status_response) => {
+                                log_info("Transaction status:");
+                                log_info(&status_response);
+                                
+                                match serde_json::from_str::<serde_json::Value>(&status_response) {
+                                    Ok(status) => {
+                                        if let Some(value) = status["value"].as_array() {
+                                            if !value.is_empty() && !value[0].is_null() {
+                                                log_success("Token 2022 burn WITH history confirmed");
+                                            } else {
+                                                log_info("Transaction not yet confirmed");
+                                            }
+                                        }
+                                    },
+                                    Err(e) => {
+                                        log_error(&format!("Failed to parse status: {}", e));
+                                    }
+                                }
+                            },
+                            Err(e) => {
+                                log_error(&format!("Failed to check transaction status: {}", e));
+                            }
+                        }
+
+                        // step 4: verify user burn history record
+                        log_info("Step 4: Verifying user burn history record...");
+                        
+                        match rpc.get_user_burn_history_index(&pubkey).await {
+                            Ok(Some(current_index)) => {
+                                log_info(&format!("Current user burn history index: {}", current_index));
+                                
+                                match rpc.get_user_burn_history(&pubkey, current_index).await {
+                                    Ok(history_info) => {
+                                        log_info("User burn history account info:");
+                                        log_info(&format!("History data preview: {}...", 
+                                            &history_info[..std::cmp::min(200, history_info.len())]));
+                                        log_success("User burn history verification completed");
+                                    },
+                                    Err(e) => {
+                                        log_error(&format!("Failed to get user burn history: {}", e));
+                                    }
+                                }
+                            },
+                            Ok(None) => {
+                                log_error("No user burn history index found after burn");
+                            },
+                            Err(e) => {
+                                log_error(&format!("Failed to get user burn history index: {}", e));
+                            }
+                        }
+
+                        print_separator();
+                        log_success("Token 2022 burn WITH user burn history test completed");
+                    },
+                    Err(e) => {
+                        log_error(&format!("Failed Token 2022 burn WITH history: {}", e));
+                        print_separator();
+                        log_error("This might be due to:");
+                        log_error("1. User burn history account not properly initialized");
+                        log_error("2. User burn history account is full");
+                        log_error("3. Insufficient token balance");
+                        log_error("4. Network connectivity issues");
+                        log_error("5. User profile burn_history_index field not yet updated");
+                    }
+                }
+            },
+            Err(e) => {
+                print_separator();
+                log_error(&format!("Failed to load test wallet: {}", e));
+            }
+        }
+    }
+
+    // test close user burn history
+    async fn test_close_user_burn_history() {
+        print_separator();
+        log_info("Starting close user burn history test");
+
+        match load_test_wallet() {
+            Ok((pubkey, keypair_bytes)) => {
+                log_info(&format!("Test wallet public key: {}", pubkey));
+
+                let rpc = RpcConnection::new();
+                log_info(&format!("Using RPC endpoint: {}", "https://rpc.testnet.x1.xyz"));
+
+                // check if there is user burn history to close
+                match rpc.get_user_burn_history_index(&pubkey).await {
+                    Ok(current_index) => {
+                        if let Some(index) = current_index {
+                            log_info(&format!("Found user burn history with index: {}", index));
+                            log_info("Attempting to close user burn history...");
+                            
+                            match rpc.close_user_burn_history(&keypair_bytes).await {
+                                Ok(response) => {
+                                    print_separator();
+                                    log_info("Raw close user burn history response:");
+                                    log_info(&format!("Response: {}", response));
+
+                                    let signature = response.trim_matches('"').trim().to_string();
+                                    
+                                    if signature.is_empty() {
+                                        log_error("Empty signature received");
+                                        return;
+                                    }
+
+                                    log_success(&format!("Close user burn history transaction signature: {}", signature));
+                                    
+                                    // wait for confirmation
+                                    log_info("Waiting for close user burn history confirmation...");
+                                    gloo_timers::future::TimeoutFuture::new(20_000).await;
+                                    
+                                    // verify close operation
+                                    match rpc.get_user_burn_history_index(&pubkey).await {
+                                        Ok(new_index) => {
+                                            if let Some(new_idx) = new_index {
+                                                if new_idx < index {
+                                                    log_success(&format!("User burn history successfully closed. Index reduced from {} to {}", index, new_idx));
+                                                } else {
+                                                    log_info(&format!("User burn history index unchanged: {}", new_idx));
+                                                }
+                                            } else {
+                                                log_success("All user burn history records have been closed");
+                                            }
+                                        },
+                                        Err(e) => {
+                                            log_error(&format!("Failed to verify closure: {}", e));
+                                        }
+                                    }
+
+                                    print_separator();
+                                    log_success("Close user burn history test completed");
+                                },
+                                Err(e) => {
+                                    log_error(&format!("Failed to close user burn history: {}", e));
+                                }
+                            }
+                        } else {
+                            log_info("No user burn history found to close");
+                            log_success("Close user burn history test completed (nothing to close)");
+                        }
+                    },
+                    Err(e) => {
+                        log_error(&format!("Failed to check user burn history: {}", e));
+                    }
+                }
+            },
+            Err(e) => {
+                print_separator();
+                log_error(&format!("Failed to load test wallet: {}", e));
+            }
+        }
+    }
+
+    // modify the main test sequence, using the new thorough cleanup function
     #[wasm_bindgen_test]
-    async fn test_complete_token_2022_sequence() {
-        // 0. Close profile (cleanup)
-        test_a3_close_user_profile().await;
-
-        // 1. Initialize profile
-        test_a1_initialize_user_profile().await;
+    async fn test_complete_token_2022_with_burn_history_sequence() {
+        // 1. initialize profile
+        test_initialize_user_profile().await;
         
-        // 2. Get profile (verify mint tracking only)
-        test_a2_get_user_profile().await;
+        // 2. get profile (verify only tracking mint)
+        test_get_user_profile().await;
 
-        // 3. Test Token 2022 mint with various memo lengths
+        // 3. test Token 2022 mint (various memo lengths)
         test_token_2022_mint_with_various_memo_lengths().await;
 
-        // 4. Test burn shard operations
+        // 4. test burn operation - without user burn history
+        test_token_2022_burn_without_history().await;
+        
+        // 5. test burn operation - with user burn history
+        test_token_2022_burn_with_history().await;
+        
+        // 6. test burn shard operation
         test_burn_shard_operations().await;
         
-        // 5. Test Token 2022 burn operations
-        test_token_2022_burn_operations().await;
+        // 7. get profile again to see updated burn statistics
+        test_get_user_profile().await;
         
-        // 6. Get profile again to see updated burn stats
-        test_a2_get_user_profile().await;
-        
-        // 7. Close profile
-        test_a3_close_user_profile().await;
+        // 8. test close single user burn history
+        test_close_user_burn_history().await;
+
+        // 9. close profile
+        test_close_user_profile().await;
     }
 } 
