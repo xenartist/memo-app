@@ -9,6 +9,8 @@ use gloo_utils::format::JsValueSerdeExt;
 use std::time::Duration;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
+use crate::core::rpc_base::RpcConnection;
+use hex;
 
 #[derive(Clone, Copy, PartialEq)]
 enum MiningMode {
@@ -40,6 +42,7 @@ pub fn MinerPage(
     let (is_mining, set_is_mining) = create_signal(false);
     let (error_message, set_error_message) = create_signal(String::new());
     let (show_copied, set_show_copied) = create_signal(false);
+    let (mining_status, set_mining_status) = create_signal(String::new());
 
     // when the size changes, recreate the pixel art
     create_effect(move |_| {
@@ -114,8 +117,126 @@ pub fn MinerPage(
     let handle_start_mining = move |ev: web_sys::SubmitEvent| {
         ev.prevent_default();
         set_is_mining.set(true);
-        
-        // TODO: mining logic
+        set_error_message.set(String::new());
+        set_mining_status.set("Preparing to mint...".to_string());
+
+        spawn_local(async move {
+            // give UI some time to update status
+            TimeoutFuture::new(100).await;
+
+            // get memo string from pixel art
+            let memo = pixel_art.get_untracked().to_optimal_string();
+            
+            if memo.is_empty() {
+                set_error_message.set("❌ Please create some pixel art before mining".to_string());
+                set_is_mining.set(false);
+                set_mining_status.set(String::new());
+                return;
+            }
+
+            set_mining_status.set("Getting wallet credentials...".to_string());
+
+            // get wallet credentials
+            let session_value = session.get_untracked();
+            let seed = match session_value.get_seed() {
+                Ok(seed) => seed,
+                Err(e) => {
+                    set_error_message.set(format!("❌ Failed to get wallet seed: {}", e));
+                    set_is_mining.set(false);
+                    set_mining_status.set(String::new());
+                    return;
+                }
+            };
+
+            // convert seed to keypair bytes
+            let seed_bytes = match hex::decode(&seed) {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    set_error_message.set(format!("❌ Failed to decode seed: {}", e));
+                    set_is_mining.set(false);
+                    set_mining_status.set(String::new());
+                    return;
+                }
+            };
+
+            let seed_array: [u8; 64] = match seed_bytes.try_into() {
+                Ok(array) => array,
+                Err(_) => {
+                    set_error_message.set("❌ Invalid seed length".to_string());
+                    set_is_mining.set(false);
+                    set_mining_status.set(String::new());
+                    return;
+                }
+            };
+
+            let (keypair, _) = match crate::core::wallet::derive_keypair_from_seed(
+                &seed_array,
+                crate::core::wallet::get_default_derivation_path()
+            ) {
+                Ok(result) => result,
+                Err(e) => {
+                    set_error_message.set(format!("❌ Failed to derive keypair: {:?}", e));
+                    set_is_mining.set(false);
+                    set_mining_status.set(String::new());
+                    return;
+                }
+            };
+
+            let keypair_bytes = keypair.to_bytes();
+
+            set_mining_status.set("Sending mint transaction...".to_string());
+
+            // call mint RPC
+            let rpc = RpcConnection::new();
+            match rpc.mint(&memo, &keypair_bytes).await {
+                Ok(signature) => {
+                    set_mining_status.set("Transaction sent! Waiting for confirmation...".to_string());
+                    log::info!("Mint transaction sent: {}", signature);
+
+                    // wait for transaction confirmation
+                    TimeoutFuture::new(15_000).await;
+
+                    set_mining_status.set("Updating profile data...".to_string());
+
+                    // re-fetch and update user profile
+                    let mut session_update = session.get_untracked();
+                    match session_update.fetch_and_cache_user_profile().await {
+                        Ok(Some(updated_profile)) => {
+                            // update profile in session
+                            session.update(|s| s.set_user_profile(Some(updated_profile.clone())));
+                            
+                            set_error_message.set(format!(
+                                "✅ Mining successful! Transaction: {}\nMinted: {} tokens, Total: {}", 
+                                signature, 
+                                1, // assume each mint is 1 token, you can adjust this based on actual needs
+                                updated_profile.total_minted
+                            ));
+                            log::info!("Profile updated successfully after mint");
+                        },
+                        Ok(None) => {
+                            set_error_message.set(format!(
+                                "✅ Mining transaction sent: {}\n⚠️ Warning: Could not fetch updated profile", 
+                                signature
+                            ));
+                        },
+                        Err(e) => {
+                            set_error_message.set(format!(
+                                "✅ Mining transaction sent: {}\n⚠️ Profile update failed: {}", 
+                                signature, e
+                            ));
+                            log::error!("Failed to update profile after mint: {}", e);
+                        }
+                    }
+                },
+                Err(e) => {
+                    set_error_message.set(format!("❌ Mining failed: {}", e));
+                    log::error!("Mint transaction failed: {}", e);
+                }
+            }
+
+            set_is_mining.set(false);
+            set_mining_status.set(String::new());
+        });
     };
 
     // handle copy string
@@ -153,8 +274,47 @@ pub fn MinerPage(
                 <div class="miner-status">
                     <h3>"Mining Status"</h3>
                     <div class="status-info">
-                        <p>"Wallet: " {wallet_address}</p>
-                        // Add more mining status information here
+                        <div class="wallet-info">
+                            <span>"Wallet: " {wallet_address}</span>
+                            
+                            // display user profile information
+                            {move || {
+                                if let Some(profile) = session.get().get_user_profile() {
+                                    view! {
+                                        <div class="profile-info">
+                                            <span class="profile-status success">"✅ Profile Active"</span>
+                                            <div class="profile-stats">
+                                                <span>"Minted: " {profile.total_minted}</span>
+                                                <span>"Burned: " {profile.total_burned}</span>
+                                                <span>"Net Balance: " {profile.total_minted as i64 - profile.total_burned as i64}</span>
+                                                <span>"Mint Count: " {profile.mint_count}</span>
+                                            </div>
+                                        </div>
+                                    }
+                                } else {
+                                    view! {
+                                        <div class="no-profile-warning">
+                                            <span class="profile-status warning">"⚠️ No Profile - Please create profile in Profile page first"</span>
+                                        </div>
+                                    }
+                                }
+                            }}
+                        </div>
+                        
+                        // display mining progress
+                        {move || {
+                            let status = mining_status.get();
+                            if !status.is_empty() {
+                                view! {
+                                    <div class="mining-progress">
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        <span>{status}</span>
+                                    </div>
+                                }
+                            } else {
+                                view! { <div></div> }
+                            }
+                        }}
                     </div>
                 </div>
 
@@ -169,180 +329,193 @@ pub fn MinerPage(
                 </div>
             </div>
 
-            <form class="miner-form" on:submit=handle_start_mining>
-                <div class="form-group">
-                    <label>"Mining Mode"</label>
-                    <div class="mining-mode-group">
-                        <label class="radio-label">
-                            <input 
-                                type="radio"
-                                name="mining-mode"
-                                checked=move || mining_mode.get() == MiningMode::Manual
-                                on:change=move |_| set_mining_mode.set(MiningMode::Manual)
-                            />
-                            <span class="radio-text">"Manual"</span>
-                        </label>
-                        <label class="radio-label">
-                            <input 
-                                type="radio"
-                                name="mining-mode"
-                                checked=move || mining_mode.get() == MiningMode::Auto
-                                on:change=move |_| set_mining_mode.set(MiningMode::Auto)
-                            />
-                            <span class="radio-text">"Auto"</span>
-                        </label>
-                    </div>
-                </div>
-
-                // number of iterations in auto mode
-                {move || {
-                    if mining_mode.get() == MiningMode::Auto {
-                        view! {
-                            <div class="form-group">
-                                <label for="auto-count">"Number of Iterations (0 for infinite)"</label>
+            // only show mining form when user has profile
+            <Show when=move || session.get().has_user_profile()>
+                <form class="miner-form" on:submit=handle_start_mining>
+                    <div class="form-group">
+                        <label>"Mining Mode"</label>
+                        <div class="mining-mode-group">
+                            <label class="radio-label">
                                 <input 
-                                    type="number"
-                                    id="auto-count"
-                                    min="0"
-                                    value=auto_count
-                                    on:input=move |ev| {
-                                        let input = event_target::<HtmlInputElement>(&ev);
-                                        if let Ok(count) = input.value().parse::<u32>() {
-                                            set_auto_count.set(count);
-                                        }
-                                    }
-                                    prop:disabled=is_mining
+                                    type="radio"
+                                    name="mining-mode"
+                                    checked=move || mining_mode.get() == MiningMode::Manual
+                                    on:change=move |_| set_mining_mode.set(MiningMode::Manual)
                                 />
-                            </div>
-                        }
-                    } else {
-                        view! { <div></div> }
-                    }
-                }}
-
-                // add size selection
-                <div class="form-group">
-                    <label>"Grid Size"</label>
-                    <div class="grid-size-group">
-                        <label class="radio-label">
-                            <input 
-                                type="radio"
-                                name="grid-size"
-                                checked=move || grid_size.get() == GridSize::Size64
-                                on:change=move |_| set_grid_size.set(GridSize::Size64)
-                            />
-                            <span class="radio-text">"64x64"</span>
-                        </label>
-                        <label class="radio-label">
-                            <input 
-                                type="radio"
-                                name="grid-size"
-                                checked=move || grid_size.get() == GridSize::Size96
-                                on:change=move |_| set_grid_size.set(GridSize::Size96)
-                            />
-                            <span class="radio-text">"96x96"</span>
-                        </label>
+                                <span class="radio-text">"Manual"</span>
+                            </label>
+                            <label class="radio-label">
+                                <input 
+                                    type="radio"
+                                    name="mining-mode"
+                                    checked=move || mining_mode.get() == MiningMode::Auto
+                                    on:change=move |_| set_mining_mode.set(MiningMode::Auto)
+                                />
+                                <span class="radio-text">"Auto"</span>
+                            </label>
+                        </div>
                     </div>
-                </div>
 
-                <div class="pixel-art-editor">
-                    <div class="pixel-art-header">
-                        <label>
-                            {move || {
-                                let size = match grid_size.get() {
-                                    GridSize::Size64 => "64x64",
-                                    GridSize::Size96 => "96x96",
-                                };
-                                format!("Mining Image ({} Pixel Art)", size)
-                            }}
-                        </label>
-                        <button 
-                            type="button"
-                            class="import-btn"
-                            on:click=handle_import
-                            prop:disabled=is_mining
-                        >
-                            "Import Image"
-                        </button>
-                    </div>
+                    // number of iterations in auto mode
                     {move || {
-                        let art_string = pixel_art.get().to_optimal_string();
-                        let click_handler = Box::new(move |row, col| {
-                            let mut new_art = pixel_art.get();
-                            new_art.toggle_pixel(row, col);
-                            set_pixel_art.set(new_art);
-                        });
-                        
-                        let display_size = match grid_size.get() {
-                            GridSize::Size64 => 512,
-                            GridSize::Size96 => 768,  // larger display size to fit more pixels
-                        };
-                        
-                        view! {
-                            <PixelView
-                                art=art_string
-                                size=display_size
-                                editable=true
-                                on_click=click_handler
-                            />
+                        if mining_mode.get() == MiningMode::Auto {
+                            view! {
+                                <div class="form-group">
+                                    <label for="auto-count">"Number of Iterations (0 for infinite)"</label>
+                                    <input 
+                                        type="number"
+                                        id="auto-count"
+                                        min="0"
+                                        value=auto_count
+                                        on:input=move |ev| {
+                                            let input = event_target::<HtmlInputElement>(&ev);
+                                            if let Ok(count) = input.value().parse::<u32>() {
+                                                set_auto_count.set(count);
+                                            }
+                                        }
+                                        prop:disabled=is_mining
+                                    />
+                                </div>
+                            }
+                        } else {
+                            view! { <div></div> }
                         }
                     }}
 
-                    // add string information display
-                    <div class="pixel-string-info">
-                        <div class="string-display">
-                            <span class="label">"Encoded String: "</span>
-                            <span class="value">
-                                {move || format_display_string(&pixel_art.get().to_optimal_string())}
-                            </span>
-                            <div class="copy-container">
-                                <button
-                                    type="button"
-                                    class="copy-button"
-                                    on:click=copy_string
-                                    title="Copy encoded string to clipboard"
-                                >
-                                    <i class="fas fa-copy"></i>
-                                </button>
-                                <div 
-                                    class="copy-tooltip"
-                                    class:show=move || show_copied.get()
-                                >
-                                    "Copied!"
-                                </div>
-                            </div>
-                        </div>
-                        <div class="string-length">
-                            <span class="label">"Length: "</span>
-                            <span class="value">
-                                {move || format!("{} bytes", pixel_art.get().to_optimal_string().len())}
-                            </span>
+                    // add size selection
+                    <div class="form-group">
+                        <label>"Grid Size"</label>
+                        <div class="grid-size-group">
+                            <label class="radio-label">
+                                <input 
+                                    type="radio"
+                                    name="grid-size"
+                                    checked=move || grid_size.get() == GridSize::Size64
+                                    on:change=move |_| set_grid_size.set(GridSize::Size64)
+                                />
+                                <span class="radio-text">"64x64"</span>
+                            </label>
+                            <label class="radio-label">
+                                <input 
+                                    type="radio"
+                                    name="grid-size"
+                                    checked=move || grid_size.get() == GridSize::Size96
+                                    on:change=move |_| set_grid_size.set(GridSize::Size96)
+                                />
+                                <span class="radio-text">"96x96"</span>
+                            </label>
                         </div>
                     </div>
-                </div>
 
-                {move || {
-                    let message = error_message.get();
-                    view! {
-                        <div class="error-message" 
-                            class:success=message.contains("success")
-                            style:display={if message.is_empty() { "none" } else { "block" }}
-                        >
-                            {message}
+                    <div class="pixel-art-editor">
+                        <div class="pixel-art-header">
+                            <label>
+                                {move || {
+                                    let size = match grid_size.get() {
+                                        GridSize::Size64 => "64x64",
+                                        GridSize::Size96 => "96x96",
+                                    };
+                                    format!("Mining Image ({} Pixel Art)", size)
+                                }}
+                            </label>
+                            <button 
+                                type="button"
+                                class="import-btn"
+                                on:click=handle_import
+                                prop:disabled=is_mining
+                            >
+                                "Import Image"
+                            </button>
                         </div>
-                    }
-                }}
+                        {move || {
+                            let art_string = pixel_art.get().to_optimal_string();
+                            let click_handler = Box::new(move |row, col| {
+                                let mut new_art = pixel_art.get();
+                                new_art.toggle_pixel(row, col);
+                                set_pixel_art.set(new_art);
+                            });
+                            
+                            let display_size = match grid_size.get() {
+                                GridSize::Size64 => 512,
+                                GridSize::Size96 => 768,  // larger display size to fit more pixels
+                            };
+                            
+                            view! {
+                                <PixelView
+                                    art=art_string
+                                    size=display_size
+                                    editable=true
+                                    on_click=click_handler
+                                />
+                            }
+                        }}
 
-                <div class="button-group">
-                    <button
-                        type="submit"
-                        class="start-mining-btn"
-                        prop:disabled=is_mining
-                    >
-                        {move || if is_mining.get() { "Mining..." } else { "Start Mining" }}
-                    </button>
+                        // add string information display
+                        <div class="pixel-string-info">
+                            <div class="string-display">
+                                <span class="label">"Encoded String: "</span>
+                                <span class="value">
+                                    {move || format_display_string(&pixel_art.get().to_optimal_string())}
+                                </span>
+                                <div class="copy-container">
+                                    <button
+                                        type="button"
+                                        class="copy-button"
+                                        on:click=copy_string
+                                        title="Copy encoded string to clipboard"
+                                    >
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                    <div 
+                                        class="copy-tooltip"
+                                        class:show=move || show_copied.get()
+                                    >
+                                        "Copied!"
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="string-length">
+                                <span class="label">"Length: "</span>
+                                <span class="value">
+                                    {move || format!("{} bytes", pixel_art.get().to_optimal_string().len())}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {move || {
+                        let message = error_message.get();
+                        view! {
+                            <div class="error-message" 
+                                class:success=message.contains("✅")
+                                class:error=message.contains("❌")
+                                class:warning=message.contains("⚠️")
+                                style:display={if message.is_empty() { "none" } else { "block" }}
+                            >
+                                {message}
+                            </div>
+                        }
+                    }}
+
+                    <div class="button-group">
+                        <button
+                            type="submit"
+                            class="start-mining-btn"
+                            prop:disabled=move || is_mining.get() || !session.get().has_user_profile()
+                        >
+                            {move || if is_mining.get() { "Mining..." } else { "Start Mining" }}
+                        </button>
+                    </div>
+                </form>
+            </Show>
+
+            // show warning when no profile
+            <Show when=move || !session.get().has_user_profile()>
+                <div class="no-profile-message">
+                    <h3>"Profile Required"</h3>
+                    <p>"Please create your miner profile in the Profile page before you can start mining."</p>
                 </div>
-            </form>
+            </Show>
         </div>
     }
 }

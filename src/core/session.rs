@@ -250,6 +250,53 @@ impl Session {
 
         Ok(())
     }
+
+    // fetch and cache user profile
+    pub async fn fetch_and_cache_user_profile(&mut self) -> Result<Option<UserProfile>, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey = self.get_public_key()?;
+        let rpc = RpcConnection::new();
+
+        match rpc.get_user_profile(&pubkey).await {
+            Ok(account_data) => {
+                // check if account exists
+                let account_info: serde_json::Value = serde_json::from_str(&account_data)
+                    .map_err(|e| SessionError::InvalidData(format!("Failed to parse account data: {}", e)))?;
+
+                if account_info["value"].is_null() {
+                    // account not exists
+                    log::info!("User profile not found for pubkey: {}", pubkey);
+                    self.user_profile = None;
+                    Ok(None)
+                } else {
+                    // parse user profile
+                    match parse_user_profile(&account_data) {
+                        Ok(profile) => {
+                            log::info!("Successfully fetched and cached user profile");
+                            self.user_profile = Some(profile.clone());
+                            Ok(Some(profile))
+                        },
+                        Err(e) => {
+                            log::error!("Failed to parse user profile: {}", e);
+                            Err(e)
+                        }
+                    }
+                }
+            },
+            Err(e) => {
+                log::error!("Failed to fetch user profile: {}", e);
+                Err(SessionError::InvalidData(format!("RPC error: {}", e)))
+            }
+        }
+    }
+
+    // check if user has profile
+    pub fn has_user_profile(&self) -> bool {
+        self.user_profile.is_some()
+    }
 }
 
 // implement Drop trait to ensure session data is properly cleaned up
