@@ -22,14 +22,16 @@ pub fn CompleteStep(
         <div class="login-container">
             <h2>"Wallet Created Successfully!"</h2>
             
-            <div class="wallet-info">
-                <h3>"Your Wallet Address"</h3>
-                <div class="address-container">
-                    <code class="wallet-address">
+            <div class="wallet-info" style="display: flex; flex-direction: column; align-items: center;">
+                <h3 style="display: block; width: 100%; text-align: center; margin-bottom: 12px;">
+                    "Your Wallet Address"
+                </h3>
+                <div class="address-container" style="display: block; width: 100%; margin: 16px 0; padding: 16px; background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px;">
+                    <code class="wallet-address" style="display: block; width: 100%; text-align: center; font-family: monospace; word-break: break-all;">
                         {move || wallet_address.get()}
                     </code>
                 </div>
-                <p class="info-text">
+                <p class="info-text" style="display: block; width: 100%; text-align: center; margin-top: 12px; font-size: 14px; color: #6c757d;">
                     "This is your wallet address. You can use it to receive tokens."
                 </p>
             </div>
