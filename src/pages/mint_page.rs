@@ -13,7 +13,7 @@ use crate::core::rpc_base::RpcConnection;
 use hex;
 
 #[derive(Clone, Copy, PartialEq)]
-enum MiningMode {
+enum MintingMode {
     Manual,
     Auto,
 }
@@ -25,7 +25,7 @@ enum GridSize {
 }
 
 #[component]
-pub fn MinerPage(
+pub fn MintPage(
     session: RwSignal<Session>
 ) -> impl IntoView {
     let wallet_address = move || {
@@ -35,14 +35,14 @@ pub fn MinerPage(
         }
     };
 
-    let (mining_mode, set_mining_mode) = create_signal(MiningMode::Manual);
+    let (minting_mode, set_minting_mode) = create_signal(MintingMode::Manual);
     let (auto_count, set_auto_count) = create_signal(0); // 0 means infinite
     let (grid_size, set_grid_size) = create_signal(GridSize::Size64);
     let (pixel_art, set_pixel_art) = create_signal(Pixel::new_with_size(64));
-    let (is_mining, set_is_mining) = create_signal(false);
+    let (is_minting, set_is_minting) = create_signal(false);
     let (error_message, set_error_message) = create_signal(String::new());
     let (show_copied, set_show_copied) = create_signal(false);
-    let (mining_status, set_mining_status) = create_signal(String::new());
+    let (minting_status, set_minting_status) = create_signal(String::new());
 
     // when the size changes, recreate the pixel art
     create_effect(move |_| {
@@ -113,12 +113,12 @@ pub fn MinerPage(
         input.click();
     };
 
-    // handle mining
-    let handle_start_mining = move |ev: web_sys::SubmitEvent| {
+    // handle minting
+    let handle_start_minting = move |ev: web_sys::SubmitEvent| {
         ev.prevent_default();
-        set_is_mining.set(true);
+        set_is_minting.set(true);
         set_error_message.set(String::new());
-        set_mining_status.set("Preparing to mint...".to_string());
+        set_minting_status.set("Preparing to mint...".to_string());
 
         spawn_local(async move {
             // give UI some time to update status
@@ -128,13 +128,13 @@ pub fn MinerPage(
             let memo = pixel_art.get_untracked().to_optimal_string();
             
             if memo.is_empty() {
-                set_error_message.set("❌ Please create some pixel art before mining".to_string());
-                set_is_mining.set(false);
-                set_mining_status.set(String::new());
+                set_error_message.set("❌ Please create some pixel art before minting".to_string());
+                set_is_minting.set(false);
+                set_minting_status.set(String::new());
                 return;
             }
 
-            set_mining_status.set("Getting wallet credentials...".to_string());
+            set_minting_status.set("Getting wallet credentials...".to_string());
 
             // get wallet credentials
             let session_value = session.get_untracked();
@@ -142,8 +142,8 @@ pub fn MinerPage(
                 Ok(seed) => seed,
                 Err(e) => {
                     set_error_message.set(format!("❌ Failed to get wallet seed: {}", e));
-                    set_is_mining.set(false);
-                    set_mining_status.set(String::new());
+                    set_is_minting.set(false);
+                    set_minting_status.set(String::new());
                     return;
                 }
             };
@@ -153,8 +153,8 @@ pub fn MinerPage(
                 Ok(bytes) => bytes,
                 Err(e) => {
                     set_error_message.set(format!("❌ Failed to decode seed: {}", e));
-                    set_is_mining.set(false);
-                    set_mining_status.set(String::new());
+                    set_is_minting.set(false);
+                    set_minting_status.set(String::new());
                     return;
                 }
             };
@@ -163,8 +163,8 @@ pub fn MinerPage(
                 Ok(array) => array,
                 Err(_) => {
                     set_error_message.set("❌ Invalid seed length".to_string());
-                    set_is_mining.set(false);
-                    set_mining_status.set(String::new());
+                    set_is_minting.set(false);
+                    set_minting_status.set(String::new());
                     return;
                 }
             };
@@ -176,27 +176,27 @@ pub fn MinerPage(
                 Ok(result) => result,
                 Err(e) => {
                     set_error_message.set(format!("❌ Failed to derive keypair: {:?}", e));
-                    set_is_mining.set(false);
-                    set_mining_status.set(String::new());
+                    set_is_minting.set(false);
+                    set_minting_status.set(String::new());
                     return;
                 }
             };
 
             let keypair_bytes = keypair.to_bytes();
 
-            set_mining_status.set("Sending mint transaction...".to_string());
+            set_minting_status.set("Sending mint transaction...".to_string());
 
             // call mint RPC
             let rpc = RpcConnection::new();
             match rpc.mint(&memo, &keypair_bytes).await {
                 Ok(signature) => {
-                    set_mining_status.set("Transaction sent! Waiting for confirmation...".to_string());
+                    set_minting_status.set("Transaction sent! Waiting for confirmation...".to_string());
                     log::info!("Mint transaction sent: {}", signature);
 
                     // wait for transaction confirmation
                     TimeoutFuture::new(15_000).await;
 
-                    set_mining_status.set("Updating profile data...".to_string());
+                    set_minting_status.set("Updating profile data...".to_string());
 
                     // re-fetch and update user profile
                     let mut session_update = session.get_untracked();
@@ -206,7 +206,7 @@ pub fn MinerPage(
                             session.update(|s| s.set_user_profile(Some(updated_profile.clone())));
                             
                             set_error_message.set(format!(
-                                "✅ Mining successful! Transaction: {}\nMinted: {} tokens, Total: {}", 
+                                "✅ Minting successful! Transaction: {}\nMinted: {} tokens, Total: {}", 
                                 signature, 
                                 1, // assume each mint is 1 token, you can adjust this based on actual needs
                                 updated_profile.total_minted
@@ -215,13 +215,13 @@ pub fn MinerPage(
                         },
                         Ok(None) => {
                             set_error_message.set(format!(
-                                "✅ Mining transaction sent: {}\n⚠️ Warning: Could not fetch updated profile", 
+                                "✅ Minting transaction sent: {}\n⚠️ Warning: Could not fetch updated profile", 
                                 signature
                             ));
                         },
                         Err(e) => {
                             set_error_message.set(format!(
-                                "✅ Mining transaction sent: {}\n⚠️ Profile update failed: {}", 
+                                "✅ Minting transaction sent: {}\n⚠️ Profile update failed: {}", 
                                 signature, e
                             ));
                             log::error!("Failed to update profile after mint: {}", e);
@@ -229,13 +229,13 @@ pub fn MinerPage(
                     }
                 },
                 Err(e) => {
-                    set_error_message.set(format!("❌ Mining failed: {}", e));
+                    set_error_message.set(format!("❌ Minting failed: {}", e));
                     log::error!("Mint transaction failed: {}", e);
                 }
             }
 
-            set_is_mining.set(false);
-            set_mining_status.set(String::new());
+            set_is_minting.set(false);
+            set_minting_status.set(String::new());
         });
     };
 
@@ -267,12 +267,12 @@ pub fn MinerPage(
     };
 
     view! {
-        <div class="miner-page">
-            <h2>"Miner"</h2>
+        <div class="mint-page">
+            <h2>"Mint"</h2>
             
-            <div class="miner-content">
-                <div class="miner-status">
-                    <h3>"Mining Status"</h3>
+            <div class="mint-content">
+                <div class="mint-status">
+                    <h3>"Minting Status"</h3>
                     <div class="status-info">
                         <div class="wallet-info">
                             <span>"Wallet: " {wallet_address}</span>
@@ -301,12 +301,12 @@ pub fn MinerPage(
                             }}
                         </div>
                         
-                        // display mining progress
+                        // display minting progress
                         {move || {
-                            let status = mining_status.get();
+                            let status = minting_status.get();
                             if !status.is_empty() {
                                 view! {
-                                    <div class="mining-progress">
+                                    <div class="minting-progress">
                                         <i class="fas fa-spinner fa-spin"></i>
                                         <span>{status}</span>
                                     </div>
@@ -318,38 +318,38 @@ pub fn MinerPage(
                     </div>
                 </div>
 
-                <div class="mining-controls">
+                <div class="minting-controls">
                     <h3>"Controls"</h3>
-                    // Add mining control buttons and options here
+                    // Add minting control buttons and options here
                 </div>
 
-                <div class="mining-stats">
+                <div class="minting-stats">
                     <h3>"Statistics"</h3>
-                    // Add mining statistics here
+                    // Add minting statistics here
                 </div>
             </div>
 
-            // only show mining form when user has profile
+            // only show minting form when user has profile
             <Show when=move || session.get().has_user_profile()>
-                <form class="miner-form" on:submit=handle_start_mining>
+                <form class="mint-form" on:submit=handle_start_minting>
                     <div class="form-group">
-                        <label>"Mining Mode"</label>
-                        <div class="mining-mode-group">
+                        <label>"Minting Mode"</label>
+                        <div class="minting-mode-group">
                             <label class="radio-label">
                                 <input 
                                     type="radio"
-                                    name="mining-mode"
-                                    checked=move || mining_mode.get() == MiningMode::Manual
-                                    on:change=move |_| set_mining_mode.set(MiningMode::Manual)
+                                    name="minting-mode"
+                                    checked=move || minting_mode.get() == MintingMode::Manual
+                                    on:change=move |_| set_minting_mode.set(MintingMode::Manual)
                                 />
                                 <span class="radio-text">"Manual"</span>
                             </label>
                             <label class="radio-label">
                                 <input 
                                     type="radio"
-                                    name="mining-mode"
-                                    checked=move || mining_mode.get() == MiningMode::Auto
-                                    on:change=move |_| set_mining_mode.set(MiningMode::Auto)
+                                    name="minting-mode"
+                                    checked=move || minting_mode.get() == MintingMode::Auto
+                                    on:change=move |_| set_minting_mode.set(MintingMode::Auto)
                                 />
                                 <span class="radio-text">"Auto"</span>
                             </label>
@@ -358,7 +358,7 @@ pub fn MinerPage(
 
                     // number of iterations in auto mode
                     {move || {
-                        if mining_mode.get() == MiningMode::Auto {
+                        if minting_mode.get() == MintingMode::Auto {
                             view! {
                                 <div class="form-group">
                                     <label for="auto-count">"Number of Iterations (0 for infinite)"</label>
@@ -373,7 +373,7 @@ pub fn MinerPage(
                                                 set_auto_count.set(count);
                                             }
                                         }
-                                        prop:disabled=is_mining
+                                        prop:disabled=is_minting
                                     />
                                 </div>
                             }
@@ -415,14 +415,14 @@ pub fn MinerPage(
                                         GridSize::Size64 => "64x64",
                                         GridSize::Size96 => "96x96",
                                     };
-                                    format!("Mining Image ({} Pixel Art)", size)
+                                    format!("Minting Image ({} Pixel Art)", size)
                                 }}
                             </label>
                             <button 
                                 type="button"
                                 class="import-btn"
                                 on:click=handle_import
-                                prop:disabled=is_mining
+                                prop:disabled=is_minting
                             >
                                 "Import Image"
                             </button>
@@ -500,10 +500,10 @@ pub fn MinerPage(
                     <div class="button-group">
                         <button
                             type="submit"
-                            class="start-mining-btn"
-                            prop:disabled=move || is_mining.get() || !session.get().has_user_profile()
+                            class="start-minting-btn"
+                            prop:disabled=move || is_minting.get() || !session.get().has_user_profile()
                         >
-                            {move || if is_mining.get() { "Mining..." } else { "Start Mining" }}
+                            {move || if is_minting.get() { "Minting..." } else { "Start Minting" }}
                         </button>
                     </div>
                 </form>
@@ -513,7 +513,7 @@ pub fn MinerPage(
             <Show when=move || !session.get().has_user_profile()>
                 <div class="no-profile-message">
                     <h3>"Profile Required"</h3>
-                    <p>"Please create your miner profile in the Profile page before you can start mining."</p>
+                    <p>"Please create your mint profile in the Profile page before you can start minting."</p>
                 </div>
             </Show>
         </div>

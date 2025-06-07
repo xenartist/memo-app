@@ -1219,21 +1219,21 @@ body.modal-open {
     margin-top: 30px;
 }
 
-/* Miner Page Styles */
-.miner-page {
+/* Mint Page Styles */
+.mint-page {
     padding: 24px;
     max-width: 800px;
     margin: 0 auto;
 }
 
-.miner-form {
+.mint-form {
     background: white;
     padding: 32px;
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.mining-mode-group {
+.minting-mode-group {
     display: flex;
     gap: 24px;
     margin-top: 8px;
@@ -1256,7 +1256,7 @@ body.modal-open {
     color: #333;
 }
 
-.start-mining-btn {
+.start-minting-btn {
     background-color: #28a745;
     color: white;
     padding: 12px 24px;
@@ -1269,11 +1269,11 @@ body.modal-open {
     min-width: 120px;
 }
 
-.start-mining-btn:hover:not(:disabled) {
+.start-minting-btn:hover:not(:disabled) {
     background-color: #218838;
 }
 
-.start-mining-btn:disabled {
+.start-minting-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
 }
@@ -1451,7 +1451,7 @@ body.modal-open {
     font-style: italic;
 }
 
-.mining-progress {
+.minting-progress {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1464,7 +1464,7 @@ body.modal-open {
     font-size: 0.9em;
 }
 
-.mining-progress i {
+.minting-progress i {
     color: #2196f3;
 }
 

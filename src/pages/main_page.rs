@@ -4,7 +4,7 @@ use crate::core::session::Session;
 use crate::pages::home_page::HomePage;
 use crate::pages::profile_page::ProfilePage;
 use crate::pages::settings_page::SettingsPage;
-use crate::pages::miner_page::MinerPage;
+use crate::pages::mint_page::MintPage;
 
 use wasm_bindgen::prelude::*;
 use web_sys::{window, Navigator, Clipboard};
@@ -223,7 +223,7 @@ pub fn MainPage(
                             <HomePage/>
                         },
                         MenuItem::Miner => view! {
-                            <MinerPage session=session/>
+                            <MintPage session=session/>
                         },
                         MenuItem::Profile => view! {
                             <ProfilePage session=session/>
