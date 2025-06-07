@@ -15,7 +15,7 @@ use serde_json;
 #[derive(Clone, PartialEq)]
 enum MenuItem {
     Home,
-    Miner,
+    Mint,
     Profile,
     Settings,
 }
@@ -193,11 +193,11 @@ pub fn MainPage(
                     </div>
                     <div 
                         class="menu-item"
-                        class:active=move || current_menu.get() == MenuItem::Miner
-                        on:click=move |_| set_current_menu.set(MenuItem::Miner)
+                        class:active=move || current_menu.get() == MenuItem::Mint
+                        on:click=move |_| set_current_menu.set(MenuItem::Mint)
                     >
                         <i class="fas fa-hammer"></i>
-                        <span>"Miner"</span>
+                        <span>"Mint"</span>
                     </div>
                     <div 
                         class="menu-item"
@@ -222,7 +222,7 @@ pub fn MainPage(
                         MenuItem::Home => view! {
                             <HomePage/>
                         },
-                        MenuItem::Miner => view! {
+                        MenuItem::Mint => view! {
                             <MintPage session=session/>
                         },
                         MenuItem::Profile => view! {
