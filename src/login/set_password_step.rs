@@ -8,6 +8,8 @@ use crate::core::wallet::{
 };
 use crate::core::encrypt;
 use hex;
+use wasm_bindgen_futures::spawn_local;
+use gloo_timers::future::TimeoutFuture;
 
 #[component]
 pub fn SetPasswordStep(
@@ -24,6 +26,9 @@ pub fn SetPasswordStep(
     let (password_input, set_password_input) = create_signal(String::new());
     let (password_confirm, set_password_confirm) = create_signal(String::new());
     let (error_message, set_error_message) = create_signal(String::new());
+    
+    // add loading status
+    let (is_encrypting, set_is_encrypting) = create_signal(false);
 
     let on_submit = move |ev: web_sys::SubmitEvent| {
         ev.prevent_default();
@@ -39,6 +44,10 @@ pub fn SetPasswordStep(
                 return;
             }
         }
+
+        // set loading status
+        set_is_encrypting.set(true);
+        set_error_message.set(String::new());
     
         let mnemonic_owned = mnemonic.get().to_string();
         let password_owned = password_input.get().to_string();
@@ -49,6 +58,9 @@ pub fn SetPasswordStep(
         };
     
         spawn_local(async move {
+            // give UI some time to update status
+            TimeoutFuture::new(100).await;
+            
             let passphrase_ref = passphrase_owned.as_deref();
             
             match generate_seed_from_mnemonic(&mnemonic_owned, passphrase_ref) {
@@ -57,26 +69,37 @@ pub fn SetPasswordStep(
                         Ok((_, address)) => {
                             set_wallet_address.set(address);
                             
-                            if let Ok(encrypted) = encrypt::encrypt(&hex::encode(seed), &password_owned) {
-                                set_encrypted_seed.set(encrypted.clone());
-                                
-                                if let Ok(()) = store_encrypted_seed(&seed, &password_owned).await {
-                                    set_password.set(password_owned);
-                                    set_current_step.set(CreateWalletStep::Complete);
-                                } else {
-                                    set_error_message.set("Failed to store encrypted seed".to_string());
+                            // use async encrypt function
+                            match encrypt::encrypt_async(&hex::encode(seed), &password_owned).await {
+                                Ok(encrypted) => {
+                                    set_encrypted_seed.set(encrypted.clone());
+                                    
+                                    match store_encrypted_seed(&seed, &password_owned).await {
+                                        Ok(()) => {
+                                            set_password.set(password_owned);
+                                            set_current_step.set(CreateWalletStep::Complete);
+                                        }
+                                        Err(_) => {
+                                            set_error_message.set("Failed to store encrypted seed".to_string());
+                                            set_is_encrypting.set(false);
+                                        }
+                                    }
                                 }
-                            } else {
-                                set_error_message.set("Failed to encrypt seed".to_string());
+                                Err(e) => {
+                                    set_error_message.set(format!("Failed to encrypt seed: {}", e));
+                                    set_is_encrypting.set(false);
+                                }
                             }
                         }
                         Err(_) => {
                             set_error_message.set("Failed to derive keypair".to_string());
+                            set_is_encrypting.set(false);
                         }
                     }
                 }
                 Err(_) => {
                     set_error_message.set("Failed to generate seed from mnemonic".to_string());
+                    set_is_encrypting.set(false);
                 }
             }
         });
@@ -95,6 +118,8 @@ pub fn SetPasswordStep(
                             set_current_step.set(CreateWalletStep::VerifyMnemonic(mnemonic.get()))
                         }
                     }
+                    // disable back button when encrypting
+                    prop:disabled=move || is_encrypting.get()
                 >
                     "← Back"
                 </button>
@@ -109,6 +134,8 @@ pub fn SetPasswordStep(
                             let checked = event_target_checked(&ev);
                             set_show_passphrase.set(checked);
                         }
+                        // disable checkbox when encrypting
+                        prop:disabled=move || is_encrypting.get()
                     />
                     "Set BIP39 passphrase"
                 </label>
@@ -129,6 +156,7 @@ pub fn SetPasswordStep(
                                 on:input=move |ev| {
                                     set_passphrase.set(event_target_value(&ev));
                                 }
+                                prop:disabled=move || is_encrypting.get()
                                 required
                             />
                         </div>
@@ -139,6 +167,7 @@ pub fn SetPasswordStep(
                                 on:input=move |ev| {
                                     set_passphrase_confirm.set(event_target_value(&ev));
                                 }
+                                prop:disabled=move || is_encrypting.get()
                                 required
                             />
                         </div>
@@ -155,6 +184,7 @@ pub fn SetPasswordStep(
                             on:input=move |ev| {
                                 set_password_input.set(event_target_value(&ev));
                             }
+                            prop:disabled=move || is_encrypting.get()
                             required
                         />
                     </div>
@@ -165,17 +195,36 @@ pub fn SetPasswordStep(
                             on:input=move |ev| {
                                 set_password_confirm.set(event_target_value(&ev));
                             }
+                            prop:disabled=move || is_encrypting.get()
                             required
                         />
                     </div>
                 </div>
 
+                // display encrypting status
+                {move || {
+                    if is_encrypting.get() {
+                        view! {
+                            <div class="encrypting-status">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <span>"Encrypting wallet data..."</span>
+                            </div>
+                        }
+                    } else {
+                        view! { <div></div> }
+                    }
+                }}
+
                 <div class="error-message">
                     {move || error_message.get()}
                 </div>
 
-                <button type="submit" class="wallet-btn">
-                    "Continue"
+                <button 
+                    type="submit" 
+                    class="wallet-btn"
+                    prop:disabled=move || is_encrypting.get()
+                >
+                    {move || if is_encrypting.get() { "Encrypting..." } else { "Continue" }}
                 </button>
             </form>
         </div>

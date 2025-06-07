@@ -180,6 +180,49 @@ pub async fn decrypt_async(encrypted_data: &str, password: &str) -> Result<Strin
     Ok(result)
 }
 
+// Add this new async version for encrypt
+pub async fn encrypt_async(data: &str, password: &str) -> Result<String, EncryptError> {
+    use gloo_timers::future::sleep;
+    use std::time::Duration;
+    
+    // Generate random salt
+    let mut salt = [0u8; 12];
+    OsRng.fill_bytes(&mut salt);
+
+    // Give UI a chance to update before CPU-intensive operation
+    sleep(Duration::from_millis(10)).await;
+
+    // Derive key from password (this is the CPU-intensive part)
+    let key = derive_key(password, &salt)?;
+
+    // Give UI another chance to update
+    sleep(Duration::from_millis(10)).await;
+
+    // Create ChaCha20Poly1305 instance
+    let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(&key));
+
+    // Generate random nonce
+    let mut nonce = [0u8; 12];
+    OsRng.fill_bytes(&mut nonce);
+    let nonce = GenericArray::from_slice(&nonce);
+
+    // Encrypt data
+    let ciphertext = cipher
+        .encrypt(nonce, data.as_bytes())
+        .map_err(|e| EncryptError::ChaChaError(e.to_string()))?;
+
+    // Combine salt, nonce, and ciphertext into a string
+    // Format: hex(salt) + ":" + hex(nonce) + ":" + hex(ciphertext)
+    let result = format!(
+        "{}:{}:{}",
+        hex::encode(salt),
+        hex::encode(nonce),
+        hex::encode(ciphertext)
+    );
+
+    Ok(result)
+}
+
 pub fn generate_random_key() -> Secret<String> {
     // create a buffer that can be securely cleared
     let mut key = [0u8; 32];

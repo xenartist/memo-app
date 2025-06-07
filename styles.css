@@ -82,6 +82,18 @@
   background-color: #5a6268;
 }
 
+.wallet-btn.disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.wallet-btn:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .mnemonic-display {
   background-color: #f8f9fa;
   padding: 1.5rem;
@@ -1506,4 +1518,29 @@ body.modal-open {
     background-color: #fff3cd;
     border: 1px solid #ffc107;
     color: #856404;
+}
+
+.encrypting-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    margin: 16px 0;
+    color: #495057;
+    font-size: 14px;
+}
+
+.encrypting-status i {
+    color: #007bff;
+    font-size: 16px;
+}
+
+input:disabled {
+    background-color: #f8f9fa;
+    color: #6c757d;
+    cursor: not-allowed;
 }
