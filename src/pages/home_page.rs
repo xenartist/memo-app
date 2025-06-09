@@ -12,7 +12,7 @@ pub fn HomePage(
     session: RwSignal<Session>
 ) -> impl IntoView {
     let (burn_records, set_burn_records) = create_signal(Vec::<BurnRecord>::new());
-    let (is_loading, set_is_loading) = create_signal(false);
+    let (is_loading, set_is_loading) = create_signal(true);
     let (error_message, set_error_message) = create_signal(String::new());
 
     // format timestamp
@@ -21,20 +21,21 @@ pub fn HomePage(
         date.to_locale_string("en-US", &js_sys::Object::new()).as_string().unwrap_or_else(|| "Unknown".to_string())
     };
 
-    // load latest burn shard data (first load)
+    // load data (using built-in cache logic)
     let load_burn_records = move || {
         set_is_loading.set(true);
         set_error_message.set(String::new());
 
         spawn_local(async move {
+            // give UI time to render page frame
+            TimeoutFuture::new(50).await;
+            
             let mut current_session = session.get_untracked();
             
             match current_session.get_latest_burn_shard().await {
                 Ok(records) => {
                     set_burn_records.set(records);
                     set_error_message.set(String::new());
-                    
-                    // update session
                     session.set(current_session);
                 }
                 Err(e) => {
@@ -52,7 +53,6 @@ pub fn HomePage(
         set_is_loading.set(true);
         
         spawn_local(async move {
-            // give UI time to update state
             TimeoutFuture::new(100).await;
             
             let mut current_session = session.get_untracked();
@@ -74,7 +74,7 @@ pub fn HomePage(
         });
     };
 
-    // automatically fetch data when page loads
+    // get data when page loads
     create_effect(move |_| {
         load_burn_records();
     });
@@ -133,7 +133,7 @@ pub fn HomePage(
                                 <p class="loading-text">"Loading latest burns..."</p>
                             </div>
                         }
-                    } else if records.is_empty() {
+                    } else if records.is_empty() && !is_loading.get() {
                         // no data and not loading
                         view! {
                             <div class="empty-state">
