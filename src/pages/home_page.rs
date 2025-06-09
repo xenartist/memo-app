@@ -12,8 +12,9 @@ pub fn HomePage(
     session: RwSignal<Session>
 ) -> impl IntoView {
     let (burn_records, set_burn_records) = create_signal(Vec::<BurnRecord>::new());
-    let (is_loading, set_is_loading) = create_signal(true);
+    let (is_loading, set_is_loading) = create_signal(false);
     let (error_message, set_error_message) = create_signal(String::new());
+    let (is_initial_load, set_is_initial_load) = create_signal(true);
 
     // format timestamp
     let format_timestamp = |timestamp: i64| -> String {
@@ -21,34 +22,41 @@ pub fn HomePage(
         date.to_locale_string("en-US", &js_sys::Object::new()).as_string().unwrap_or_else(|| "Unknown".to_string())
     };
 
-    // load data (using built-in cache logic)
-    let load_burn_records = move || {
-        set_is_loading.set(true);
-        set_error_message.set(String::new());
-
+    // silent refresh data (without changing loading state, keeping existing UI)
+    let silent_refresh = move || {
         spawn_local(async move {
-            // give UI time to render page frame
+            // give UI time to render
             TimeoutFuture::new(50).await;
             
             let mut current_session = session.get_untracked();
             
             match current_session.get_latest_burn_shard().await {
                 Ok(records) => {
+                    // only update display when successfully getting data
                     set_burn_records.set(records);
                     set_error_message.set(String::new());
                     session.set(current_session);
+                    
+                    // after first load, update state
+                    if is_initial_load.get_untracked() {
+                        set_is_initial_load.set(false);
+                    }
+                    
+                    log::info!("Silently updated burn records");
                 }
                 Err(e) => {
-                    set_error_message.set(format!("Failed to load burn records: {}", e));
-                    log::error!("Failed to load burn records: {}", e);
+                    // only show error on first load, subsequent silent refresh failures do not affect UI
+                    if is_initial_load.get_untracked() {
+                        set_error_message.set(format!("Failed to load burn records: {}", e));
+                        set_is_initial_load.set(false);
+                    }
+                    log::error!("Failed to refresh burn records: {}", e);
                 }
             }
-            
-            set_is_loading.set(false);
         });
     };
 
-    // manually refresh data
+    // manually refresh data (show loading state)
     let handle_refresh = move |_| {
         set_is_loading.set(true);
         
@@ -74,9 +82,9 @@ pub fn HomePage(
         });
     };
 
-    // get data when page loads
+    // silent refresh when page loads (without affecting existing UI)
     create_effect(move |_| {
-        load_burn_records();
+        silent_refresh();
     });
 
     view! {
@@ -125,7 +133,9 @@ pub fn HomePage(
 
                 {move || {
                     let records = burn_records.get();
-                    if is_loading.get() && records.is_empty() {
+                    let is_initial = is_initial_load.get();
+                    
+                    if records.is_empty() && is_initial {
                         // only show loading when first loading and no data
                         view! {
                             <div class="loading-container">
@@ -133,8 +143,8 @@ pub fn HomePage(
                                 <p class="loading-text">"Loading latest burns..."</p>
                             </div>
                         }
-                    } else if records.is_empty() && !is_loading.get() {
-                        // no data and not loading
+                    } else if records.is_empty() && !is_initial {
+                        // not first load, but no data
                         view! {
                             <div class="empty-state">
                                 <p class="empty-message">
@@ -144,7 +154,7 @@ pub fn HomePage(
                             </div>
                         }
                     } else {
-                        // show cards when there is data
+                        // show cards when there is data (keep existing cards when switching pages)
                         view! {
                             <div class="memo-cards">
                                 <For
