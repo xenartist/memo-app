@@ -1,6 +1,8 @@
 use leptos::*;
 use crate::CreateWalletStep;
 use crate::core::session::Session;
+use wasm_bindgen_futures::spawn_local;
+use gloo_timers::future::TimeoutFuture;
 
 #[component]
 pub fn CompleteStep(
@@ -10,12 +12,38 @@ pub fn CompleteStep(
     encrypted_seed: String,
     password: String,
 ) -> impl IntoView {
-    let handle_enter = move |_| async move {
-        let mut current_session = session.get();
-        if let Ok(()) = current_session.initialize(&encrypted_seed, &password).await {
-            session.set(current_session);
-            set_show_main_page.set(true);
-        }
+    // add loading status
+    let (is_initializing, set_is_initializing) = create_signal(false);
+    let (error_message, set_error_message) = create_signal(String::new());
+
+    let handle_enter = move |_| {
+        // set loading status
+        set_is_initializing.set(true);
+        set_error_message.set(String::new());
+
+        let encrypted_seed_clone = encrypted_seed.clone();
+        let password_clone = password.clone();
+
+        spawn_local(async move {
+            // give UI some time to update status
+            TimeoutFuture::new(100).await;
+
+            let mut current_session = session.get_untracked();
+            
+            match current_session.initialize(&encrypted_seed_clone, &password_clone).await {
+                Ok(()) => {
+                    // give UI some time to display "success" status
+                    TimeoutFuture::new(200).await;
+                    
+                    session.set(current_session);
+                    set_show_main_page.set(true);
+                }
+                Err(e) => {
+                    set_error_message.set(format!("Failed to initialize session: {}", e));
+                    set_is_initializing.set(false);
+                }
+            }
+        });
     };
 
     view! {
@@ -45,16 +73,40 @@ pub fn CompleteStep(
                 </ul>
             </div>
 
+            // display initializing status
+            {move || {
+                if is_initializing.get() {
+                    view! {
+                        <div class="initializing-status">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <span>"Initializing wallet session..."</span>
+                        </div>
+                    }
+                } else {
+                    view! { <div></div> }
+                }
+            }}
+
+            // display error message
+            {move || {
+                let error = error_message.get();
+                if !error.is_empty() {
+                    view! {
+                        <div class="error-message" style="color: #dc3545; text-align: center; margin: 12px 0; font-size: 14px;">
+                            {error}
+                        </div>
+                    }
+                } else {
+                    view! { <div></div> }
+                }
+            }}
+
             <button 
                 class="wallet-btn"
-                on:click=move |e| {
-                    let handle = handle_enter.clone();
-                    wasm_bindgen_futures::spawn_local(async move {
-                        handle(e).await;
-                    });
-                }
+                on:click=handle_enter
+                prop:disabled=move || is_initializing.get()
             >
-                "Let's GO!"
+                {move || if is_initializing.get() { "Initializing..." } else { "Let's GO!" }}
             </button>
         </div>
     }
