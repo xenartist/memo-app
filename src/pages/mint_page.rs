@@ -28,13 +28,6 @@ enum GridSize {
 pub fn MintPage(
     session: RwSignal<Session>
 ) -> impl IntoView {
-    let wallet_address = move || {
-        match session.get().get_public_key() {
-            Ok(addr) => addr,
-            Err(_) => "Not initialized".to_string()
-        }
-    };
-
     let (minting_mode, set_minting_mode) = create_signal(MintingMode::Manual);
     let (auto_count, set_auto_count) = create_signal(0); // 0 means infinite
     let (grid_size, set_grid_size) = create_signal(GridSize::Size64);
@@ -270,64 +263,20 @@ pub fn MintPage(
         <div class="mint-page">
             <h2>"Mint"</h2>
             
-            <div class="mint-content">
-                <div class="mint-status">
-                    <h3>"Minting Status"</h3>
-                    <div class="status-info">
-                        <div class="wallet-info">
-                            <span>"Wallet: " {wallet_address}</span>
-                            
-                            // display user profile information
-                            {move || {
-                                if let Some(profile) = session.get().get_user_profile() {
-                                    view! {
-                                        <div class="profile-info">
-                                            <span class="profile-status success">"✅ Profile Active"</span>
-                                            <div class="profile-stats">
-                                                <span>"Minted: " {profile.total_minted}</span>
-                                                <span>"Burned: " {profile.total_burned}</span>
-                                                <span>"Net Balance: " {profile.total_minted as i64 - profile.total_burned as i64}</span>
-                                                <span>"Mint Count: " {profile.mint_count}</span>
-                                            </div>
-                                        </div>
-                                    }
-                                } else {
-                                    view! {
-                                        <div class="no-profile-warning">
-                                            <span class="profile-status warning">"⚠️ No Profile - Please create profile in Profile page first"</span>
-                                        </div>
-                                    }
-                                }
-                            }}
+            // display minting progress (only show when minting)
+            {move || {
+                let status = minting_status.get();
+                if !status.is_empty() {
+                    view! {
+                        <div class="minting-progress">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <span>{status}</span>
                         </div>
-                        
-                        // display minting progress
-                        {move || {
-                            let status = minting_status.get();
-                            if !status.is_empty() {
-                                view! {
-                                    <div class="minting-progress">
-                                        <i class="fas fa-spinner fa-spin"></i>
-                                        <span>{status}</span>
-                                    </div>
-                                }
-                            } else {
-                                view! { <div></div> }
-                            }
-                        }}
-                    </div>
-                </div>
-
-                <div class="minting-controls">
-                    <h3>"Controls"</h3>
-                    // Add minting control buttons and options here
-                </div>
-
-                <div class="minting-stats">
-                    <h3>"Statistics"</h3>
-                    // Add minting statistics here
-                </div>
-            </div>
+                    }
+                } else {
+                    view! { <div></div> }
+                }
+            }}
 
             // only show minting form when user has profile
             <Show when=move || session.get().has_user_profile()>
