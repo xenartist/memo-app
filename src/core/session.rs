@@ -23,6 +23,50 @@ pub struct UserProfile {
     pub last_updated: i64,        // last updated
 }
 
+// cached LatestBurnShard 
+#[derive(Clone, Debug)]
+pub struct LatestBurnShard {
+    pub data: Vec<BurnRecord>,
+    pub last_updated: f64,     // cache last updated time
+    pub cache_ttl: u64,        // TTL in milliseconds (default 10 minutes)
+}
+
+#[derive(Clone, Debug)]
+pub struct BurnRecord {
+    pub pubkey: String,      // wallet address
+    pub signature: String,   // transaction signature (base58 encoded)
+    pub slot: u64,          // slot
+    pub blocktime: i64,     // blocktime
+    pub amount: u64,        // amount of tokens burned (lamports)
+}
+
+impl Default for LatestBurnShard {
+    fn default() -> Self {
+        Self {
+            data: Vec::new(),
+            last_updated: 0.0,
+            cache_ttl: 10 * 60 * 1000, // 10 minutes
+        }
+    }
+}
+
+impl LatestBurnShard {
+    pub fn is_expired(&self) -> bool {
+        let current_time = Date::now();
+        (current_time - self.last_updated) > self.cache_ttl as f64
+    }
+
+    pub fn update_data(&mut self, data: Vec<BurnRecord>) {
+        self.data = data;
+        self.last_updated = Date::now();
+    }
+
+    pub fn clear(&mut self) {
+        self.data.clear();
+        self.last_updated = 0.0;
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum SessionError {
     Encryption(String),
@@ -77,6 +121,8 @@ pub struct Session {
     user_profile: Option<UserProfile>,
     // cached pubkey
     cached_pubkey: Option<String>,
+    // latest burn shard cache
+    latest_burn_shard: Option<LatestBurnShard>,
 }
 
 impl Session {
@@ -89,6 +135,7 @@ impl Session {
             ui_locked: false,
             user_profile: None,
             cached_pubkey: None,
+            latest_burn_shard: None,
         }
     }
 
@@ -174,6 +221,7 @@ impl Session {
         self.encrypted_seed = None;
         self.session_key = None;
         self.cached_pubkey = None;
+        self.latest_burn_shard = None; // clear cache
     }
 
     // update config
@@ -296,6 +344,203 @@ impl Session {
     // check if user has profile
     pub fn has_user_profile(&self) -> bool {
         self.user_profile.is_some()
+    }
+
+    // get cached latest burn shard data
+    pub async fn get_latest_burn_shard(&mut self) -> Result<Vec<BurnRecord>, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        // check if cache exists and is not expired
+        if let Some(cache) = &self.latest_burn_shard {
+            if !cache.is_expired() {
+                log::info!("Using cached latest burn shard data");
+                return Ok(cache.data.clone());
+            } else {
+                log::info!("Latest burn shard cache expired, fetching fresh data");
+            }
+        } else {
+            log::info!("No latest burn shard cache found, fetching fresh data");
+        }
+
+        // cache does not exist or is expired, fetch data from chain
+        self.fetch_and_cache_latest_burn_shard().await
+    }
+
+    // fetch and cache latest burn shard data from chain
+    async fn fetch_and_cache_latest_burn_shard(&mut self) -> Result<Vec<BurnRecord>, SessionError> {
+        let rpc = RpcConnection::new();
+        
+        match rpc.get_latest_burn_shard().await {
+            Ok(data_str) => {
+                match self.parse_latest_burn_shard(&data_str) {
+                    Ok(burn_records) => {
+                        // update cache
+                        if self.latest_burn_shard.is_none() {
+                            self.latest_burn_shard = Some(LatestBurnShard::default());
+                        }
+                        
+                        if let Some(cache) = &mut self.latest_burn_shard {
+                            cache.update_data(burn_records.clone());
+                        }
+                        
+                        log::info!("Successfully fetched and cached {} burn records", burn_records.len());
+                        Ok(burn_records)
+                    }
+                    Err(e) => {
+                        log::error!("Failed to parse latest burn shard data: {}", e);
+                        Err(e)
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to fetch latest burn shard: {}", e);
+                Err(SessionError::InvalidData(format!("RPC error: {}", e)))
+            }
+        }
+    }
+
+    // parse
+    fn parse_latest_burn_shard(&self, data_str: &str) -> Result<Vec<BurnRecord>, SessionError> {
+        let value: serde_json::Value = serde_json::from_str(data_str)
+            .map_err(|e| SessionError::InvalidData(format!("Failed to parse JSON: {}", e)))?;
+
+        log::info!("Parsing latest burn shard data...");
+
+        // check if account exists
+        if value["value"].is_null() {
+            log::info!("Latest burn shard account does not exist yet");
+            return Ok(Vec::new());
+        }
+
+        // get base64 encoded data
+        if let Some(data_str) = value["value"]["data"].get(0).and_then(|v| v.as_str()) {
+            log::info!("Found base64 encoded burn shard data");
+            
+            // decode base64 data
+            let data_bytes = base64::decode(data_str)
+                .map_err(|e| SessionError::InvalidData(format!("Failed to decode base64: {}", e)))?;
+
+            if data_bytes.len() < 8 {
+                return Err(SessionError::InvalidData("Data too short".to_string()));
+            }
+
+            // skip discriminator (8 bytes)
+            let mut data = &data_bytes[8..];
+
+            if data.is_empty() {
+                log::info!("No burn records in latest burn shard");
+                return Ok(Vec::new());
+            }
+
+            // parse current_index (1 byte)
+            if data.len() < 1 {
+                return Err(SessionError::InvalidData("Invalid data format".to_string()));
+            }
+            let _current_index = data[0];
+            data = &data[1..];
+
+            // parse record vector length (4 bytes)
+            if data.len() < 4 {
+                return Err(SessionError::InvalidData("Invalid vector length".to_string()));
+            }
+            let vec_len = u32::from_le_bytes(data[..4].try_into().unwrap()) as usize;
+            data = &data[4..];
+
+            log::info!("Found {} burn records in latest burn shard", vec_len);
+
+            let mut burn_records = Vec::new();
+
+            // parse each record (according to the correct BurnRecord structure)
+            for i in 0..vec_len {
+                // parse pubkey (32 bytes)
+                if data.len() < 32 {
+                    log::warn!("Record {} has insufficient data for pubkey", i);
+                    break;
+                }
+                let mut pubkey_bytes = [0u8; 32];
+                pubkey_bytes.copy_from_slice(&data[..32]);
+                let pubkey = solana_sdk::pubkey::Pubkey::new_from_array(pubkey_bytes).to_string();
+                data = &data[32..];
+
+                // parse signature length (4 bytes) + signature string (88 bytes)
+                if data.len() < 4 {
+                    log::warn!("Record {} has insufficient data for signature length", i);
+                    break;
+                }
+                let sig_len = u32::from_le_bytes(data[..4].try_into().unwrap()) as usize;
+                data = &data[4..];
+
+                if data.len() < sig_len {
+                    log::warn!("Record {} has invalid signature length", i);
+                    break;
+                }
+                
+                let signature = String::from_utf8(data[..sig_len].to_vec())
+                    .map_err(|e| SessionError::InvalidData(format!("Invalid UTF-8 in signature: {}", e)))?;
+                data = &data[sig_len..];
+
+                // parse slot (8 bytes)
+                if data.len() < 8 {
+                    log::warn!("Record {} missing slot field", i);
+                    break;
+                }
+                let slot = u64::from_le_bytes(data[..8].try_into().unwrap());
+                data = &data[8..];
+
+                // parse blocktime (8 bytes)
+                if data.len() < 8 {
+                    log::warn!("Record {} missing blocktime field", i);
+                    break;
+                }
+                let blocktime = i64::from_le_bytes(data[..8].try_into().unwrap());
+                data = &data[8..];
+
+                // parse amount (8 bytes)
+                if data.len() < 8 {
+                    log::warn!("Record {} missing amount field", i);
+                    break;
+                }
+                let amount = u64::from_le_bytes(data[..8].try_into().unwrap());
+                data = &data[8..];
+
+                // log first, then create structure to avoid moving error
+                log::info!("Parsed record {}: {} lamports burned by {} at slot {} ({})", 
+                    i, amount, &pubkey, slot, blocktime);
+
+                burn_records.push(BurnRecord {
+                    pubkey,
+                    signature,
+                    slot,
+                    blocktime,
+                    amount,
+                });
+            }
+
+            // sort by blocktime in descending order (latest first)
+            burn_records.sort_by(|a, b| b.blocktime.cmp(&a.blocktime));
+
+            log::info!("Successfully parsed {} burn records", burn_records.len());
+            Ok(burn_records)
+        } else {
+            log::warn!("No data field found in account");
+            Ok(Vec::new())
+        }
+    }
+
+    // clear latest burn shard cache
+    pub fn clear_latest_burn_shard_cache(&mut self) {
+        if let Some(cache) = &mut self.latest_burn_shard {
+            cache.clear();
+        }
+        log::info!("Cleared latest burn shard cache");
+    }
+
+    // force refresh latest burn shard cache
+    pub async fn refresh_latest_burn_shard(&mut self) -> Result<Vec<BurnRecord>, SessionError> {
+        self.clear_latest_burn_shard_cache();
+        self.fetch_and_cache_latest_burn_shard().await
     }
 }
 

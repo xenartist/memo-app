@@ -1,150 +1,189 @@
 use leptos::*;
-use crate::core::rpc_base::RpcConnection;
+use crate::core::session::{Session, BurnRecord};
 use crate::pages::memo_card::MemoCard;
-use base64;
-use solana_sdk::pubkey::Pubkey;
-
-// Burn Record
-#[derive(Clone, Debug)]
-struct BurnRecord {
-    pubkey: Pubkey,      // 32 bytes
-    signature: String,    // 88 bytes (base58 encoded signature)
-    slot: u64,           // 8 bytes
-    blocktime: i64,      // 8 bytes
-    amount: u64,         // 8 bytes - token burn amount
-}
+use wasm_bindgen_futures::spawn_local;
+use gloo_timers::future::TimeoutFuture;
+use gloo_timers::future::sleep;
+use std::time::Duration;
+use wasm_bindgen::JsCast;
 
 #[component]
-pub fn HomePage() -> impl IntoView {
-    let (burn_records, set_burn_records) = create_signal(Vec::new());
-    let (is_loading, set_is_loading) = create_signal(true);
+pub fn HomePage(
+    session: RwSignal<Session>
+) -> impl IntoView {
+    let (burn_records, set_burn_records) = create_signal(Vec::<BurnRecord>::new());
+    let (is_loading, set_is_loading) = create_signal(false);
     let (error_message, set_error_message) = create_signal(String::new());
-    
-    // Fetch latest burn shard data
-    spawn_local(async move {
+
+    // format timestamp
+    let format_timestamp = |timestamp: i64| -> String {
+        let date = js_sys::Date::new(&(timestamp as f64 * 1000.0).into());
+        date.to_locale_string("en-US", &js_sys::Object::new()).as_string().unwrap_or_else(|| "Unknown".to_string())
+    };
+
+    // load latest burn shard data (first load)
+    let load_burn_records = move || {
         set_is_loading.set(true);
         set_error_message.set(String::new());
-        
-        let rpc = RpcConnection::new();
-        match rpc.get_latest_burn_shard().await {
-            Ok(account_info_str) => {
-                // Parse JSON response
-                if let Ok(account_info) = serde_json::from_str::<serde_json::Value>(&account_info_str) {
-                    // Get base64 encoded data
-                    if let Some(data) = account_info["value"]["data"].get(0).and_then(|v| v.as_str()) {
-                        // Decode base64 data
-                        if let Ok(decoded) = base64::decode(data) {
-                            let mut records = Vec::new();
-                            let mut data = &decoded[8..]; // Skip discriminator
 
-                            // Read current_index (1 byte)
-                            let _current_index = data[0];
-                            data = &data[1..];
-                            
-                            // Read record vector length
-                            let vec_len = u32::from_le_bytes(data[..4].try_into().unwrap()) as usize;
-                            data = &data[4..];
-
-                            // Parse each record
-                            for _ in 0..vec_len {
-                                // Parse pubkey (32 bytes)
-                                let mut pubkey_bytes = [0u8; 32];
-                                pubkey_bytes.copy_from_slice(&data[..32]);
-                                let record_pubkey = Pubkey::new_from_array(pubkey_bytes);
-                                data = &data[32..];
-                                
-                                // Parse signature
-                                let sig_len = u32::from_le_bytes(data[..4].try_into().unwrap()) as usize;
-                                data = &data[4..];
-                                let signature = String::from_utf8(data[..sig_len].to_vec())
-                                    .unwrap_or_default();
-                                data = &data[sig_len..];
-                                
-                                // Parse slot (8 bytes)
-                                let slot = u64::from_le_bytes(data[..8].try_into().unwrap());
-                                data = &data[8..];
-                                
-                                // Parse blocktime (8 bytes)
-                                let blocktime = i64::from_le_bytes(data[..8].try_into().unwrap());
-                                data = &data[8..];
-                                
-                                // Parse amount (8 bytes)
-                                let amount = u64::from_le_bytes(data[..8].try_into().unwrap());
-                                data = &data[8..];
-
-                                records.push(BurnRecord {
-                                    pubkey: record_pubkey,
-                                    signature,
-                                    slot,
-                                    blocktime,
-                                    amount,
-                                });
-                            }
-
-                            // Sort by amount in descending order
-                            records.sort_by(|a, b| b.amount.cmp(&a.amount));
-                            set_burn_records.set(records);
-                        }
-                    }
+        spawn_local(async move {
+            let mut current_session = session.get_untracked();
+            
+            match current_session.get_latest_burn_shard().await {
+                Ok(records) => {
+                    set_burn_records.set(records);
+                    set_error_message.set(String::new());
+                    
+                    // update session
+                    session.set(current_session);
                 }
-            },
-            Err(e) => {
-                log::error!("Failed to fetch burn shard data: {}", e);
-                set_error_message.set(format!("Failed to fetch burn shard data: {}", e));
+                Err(e) => {
+                    set_error_message.set(format!("Failed to load burn records: {}", e));
+                    log::error!("Failed to load burn records: {}", e);
+                }
             }
-        }
+            
+            set_is_loading.set(false);
+        });
+    };
+
+    // manually refresh data
+    let handle_refresh = move |_| {
+        set_is_loading.set(true);
         
-        // 在最后设置 loading 为 false
-        set_is_loading.set(false);
+        spawn_local(async move {
+            // give UI time to update state
+            TimeoutFuture::new(100).await;
+            
+            let mut current_session = session.get_untracked();
+            
+            match current_session.refresh_latest_burn_shard().await {
+                Ok(new_records) => {
+                    set_burn_records.set(new_records);
+                    set_error_message.set(String::new());
+                    session.set(current_session);
+                    log::info!("Successfully refreshed burn records");
+                }
+                Err(e) => {
+                    set_error_message.set(format!("Failed to refresh burn records: {}. Showing previous data.", e));
+                    log::error!("Failed to refresh burn records: {}", e);
+                }
+            }
+            
+            set_is_loading.set(false);
+        });
+    };
+
+    // automatically fetch data when page loads
+    create_effect(move |_| {
+        load_burn_records();
     });
 
     view! {
         <div class="home-page">
-            <h2>"Home"</h2>
-            
-            <div class="memo-cards">
+            <div class="burn-shard-section">
+                <div class="header-section" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>"Latest Burns"</h2>
+                    <button 
+                        class="refresh-btn"
+                        on:click=handle_refresh
+                        prop:disabled=move || is_loading.get()
+                        style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                    >
+                        {move || if is_loading.get() {
+                            view! {
+                                <>
+                                    <i class="fas fa-sync-alt fa-spin"></i>
+                                    " Refreshing..."
+                                </>
+                            }
+                        } else {
+                            view! {
+                                <>
+                                    <i class="fas fa-sync-alt"></i>
+                                    " Refresh"
+                                </>
+                            }
+                        }}
+                    </button>
+                </div>
+
+                // error message display
                 {move || {
-                    if is_loading.get() {
+                    let error = error_message.get();
+                    if !error.is_empty() {
+                        view! {
+                            <div class="error-banner" style="margin-bottom: 16px; padding: 12px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; color: #856404;">
+                                <i class="fas fa-exclamation-triangle" style="margin-right: 8px;"></i>
+                                {error}
+                            </div>
+                        }
+                    } else {
+                        view! { <div></div> }
+                    }
+                }}
+
+                {move || {
+                    let records = burn_records.get();
+                    if is_loading.get() && records.is_empty() {
+                        // only show loading when first loading and no data
                         view! {
                             <div class="loading-container">
                                 <div class="loading-spinner"></div>
-                                <p class="loading-text">"Loading burn records..."</p>
+                                <p class="loading-text">"Loading latest burns..."</p>
                             </div>
-                        }.into_view()
-                    } else if !error_message.get().is_empty() {
-                        view! {
-                            <div class="error-container">
-                                <p class="error-message">{error_message.get()}</p>
-                                <button class="retry-button" on:click=move |_| {
-                                    // 重试逻辑
-                                    window().location().reload().unwrap();
-                                }>"Retry"</button>
-                            </div>
-                        }.into_view()
-                    } else if burn_records.get().is_empty() {
+                        }
+                    } else if records.is_empty() {
+                        // no data and not loading
                         view! {
                             <div class="empty-state">
-                                <p class="empty-message">"No burn records found"</p>
+                                <p class="empty-message">
+                                    <i class="fas fa-fire" style="margin-right: 8px;"></i>
+                                    "No burn records found"
+                                </p>
                             </div>
-                        }.into_view()
+                        }
                     } else {
+                        // show cards when there is data
                         view! {
-                            <For
-                                each=move || burn_records.get()
-                                key=|record| record.signature.clone()
-                                children=move |record: BurnRecord| {
-                                    view! {
-                                        <MemoCard
-                                            image="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string()
-                                            signature=record.signature
-                                            pubkey=record.pubkey.to_string()
-                                            blocktime=record.blocktime
-                                            amount={(record.amount as f64) / 1_000_000_000.0}
-                                        />
+                            <div class="memo-cards">
+                                <For
+                                    each=move || burn_records.get()
+                                    key=|record| format!("{}_{}", record.blocktime, record.signature)
+                                    children=move |record| {
+                                        // format pubkey (display first 4 and last 4 characters)
+                                        let display_pubkey = if record.pubkey.len() >= 8 {
+                                            format!("{}...{}", &record.pubkey[..4], &record.pubkey[record.pubkey.len()-4..])
+                                        } else {
+                                            record.pubkey.clone()
+                                        };
+                                        
+                                        // format signature (display first 8 and last 8 characters)
+                                        let display_signature = if record.signature.len() >= 16 {
+                                            format!("{}...{}", &record.signature[..8], &record.signature[record.signature.len()-8..])
+                                        } else {
+                                            record.signature.clone()
+                                        };
+                                        
+                                        // convert amount to tokens (from lamports)
+                                        let amount_tokens = record.amount as f64 / 1_000_000_000.0;
+                                        
+                                        // generate a placeholder image URL  
+                                        let placeholder_image = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjZjBmMGYwIi8+Cjx0ZXh0IHg9IjMyIiB5PSIzNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjNjY2Ij5CdXJuPC90ZXh0Pgo8L3N2Zz4K";
+                                        
+                                        view! {
+                                            <MemoCard
+                                                image=placeholder_image.to_string()
+                                                signature=display_signature
+                                                pubkey=display_pubkey
+                                                blocktime=record.blocktime
+                                                amount=amount_tokens
+                                            />
+                                        }
                                     }
-                                }
-                            />
-                        }.into_view()
+                                />
+                            </div>
+                        }
                     }
                 }}
             </div>

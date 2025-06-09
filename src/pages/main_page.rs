@@ -220,7 +220,7 @@ pub fn MainPage(
                 <div class="content">
                     {move || match current_menu.get() {
                         MenuItem::Home => view! {
-                            <HomePage/>
+                            <HomePage session=session/>
                         },
                         MenuItem::Mint => view! {
                             <MintPage session=session/>
