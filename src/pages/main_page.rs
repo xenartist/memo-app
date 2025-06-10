@@ -239,20 +239,18 @@ pub fn MainPage(
                 </div>
 
                 <div class="content">
-                    {move || match current_menu.get() {
-                        MenuItem::Home => view! {
-                            <HomePage/>
-                        },
-                        MenuItem::Mint => view! {
-                            <MintPage session=session/>
-                        },
-                        MenuItem::Profile => view! {
-                            <ProfilePage session=session/>
-                        },
-                        MenuItem::Settings => view! {
-                            <SettingsPage/>
-                        }
-                    }}
+                    <div style=move || if current_menu.get() == MenuItem::Home { "display: block;" } else { "display: none;" }>
+                        <HomePage/>
+                    </div>
+                    <div style=move || if current_menu.get() == MenuItem::Mint { "display: block;" } else { "display: none;" }>
+                        <MintPage session=session/>
+                    </div>
+                    <div style=move || if current_menu.get() == MenuItem::Profile { "display: block;" } else { "display: none;" }>
+                        <ProfilePage session=session/>
+                    </div>
+                    <div style=move || if current_menu.get() == MenuItem::Settings { "display: block;" } else { "display: none;" }>
+                        <SettingsPage/>
+                    </div>
                 </div>
             </div>
 
