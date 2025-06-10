@@ -1,7 +1,7 @@
 use serde::{Serialize, Deserialize};
 use std::time::{Duration, SystemTime};
 use crate::core::encrypt;
-use crate::core::rpc_base::RpcConnection;
+use crate::core::rpc_base::{RpcConnection, RpcError};
 use web_sys::js_sys::Date;
 use secrecy::{Secret, ExposeSecret};
 use zeroize::Zeroize;
@@ -291,6 +291,33 @@ impl Session {
                 Err(SessionError::InvalidData(format!("RPC error: {}", e)))
             }
         }
+    }
+
+    // mint tokens using memo - internal handle all key operations
+    pub async fn mint(&mut self, memo: &str) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        // internal get and handle keypair
+        let seed = self.get_seed()?;
+        let seed_bytes = hex::decode(&seed)
+            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
+        
+        let seed_array: [u8; 64] = seed_bytes.try_into()
+            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
+
+        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
+            &seed_array,
+            crate::core::wallet::get_default_derivation_path()
+        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
+
+        let keypair_bytes = keypair.to_bytes().to_vec();
+
+        // call RPC mint method
+        let rpc = RpcConnection::new();
+        rpc.mint(memo, &keypair_bytes).await
+            .map_err(|e| SessionError::InvalidData(format!("Mint failed: {}", e)))
     }
 
     // check if user has profile

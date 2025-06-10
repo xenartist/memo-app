@@ -11,6 +11,7 @@ use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
 use crate::core::rpc_base::RpcConnection;
 use hex;
+use serde_json;
 
 #[derive(Clone, Copy, PartialEq)]
 enum MintingMode {
@@ -36,6 +37,10 @@ pub fn MintPage(
     let (error_message, set_error_message) = create_signal(String::new());
     let (show_copied, set_show_copied) = create_signal(false);
     let (minting_status, set_minting_status) = create_signal(String::new());
+    
+    // title and content fields
+    let (title_text, set_title_text) = create_signal(String::new());
+    let (content_text, set_content_text) = create_signal(String::new());
 
     // when the size changes, recreate the pixel art
     create_effect(move |_| {
@@ -45,6 +50,31 @@ pub fn MintPage(
         };
         set_pixel_art.set(Pixel::new_with_size(size));
     });
+
+    // create combined memo function
+    let create_combined_memo = |title: &str, content: &str, pixel_data: &str| -> String {
+        let mut memo_object = serde_json::Map::new();
+        
+        // only add non-empty fields
+        if !title.trim().is_empty() {
+            memo_object.insert("title".to_string(), serde_json::Value::String(title.trim().to_string()));
+        }
+        
+        if !content.trim().is_empty() {
+            memo_object.insert("content".to_string(), serde_json::Value::String(content.trim().to_string()));
+        }
+        
+        // always include pixel art data
+        if !pixel_data.trim().is_empty() {
+            memo_object.insert("image".to_string(), serde_json::Value::String(pixel_data.trim().to_string()));
+        }
+        
+        // add timestamp
+        memo_object.insert("timestamp".to_string(), serde_json::Value::Number(serde_json::Number::from(js_sys::Date::now() as u64)));
+        
+        let memo_value = serde_json::Value::Object(memo_object);
+        memo_value.to_string()
+    };
 
     // handle image import
     let handle_import = move |ev: web_sys::MouseEvent| {
@@ -117,80 +147,51 @@ pub fn MintPage(
             // give UI some time to update status
             TimeoutFuture::new(100).await;
 
-            // get memo string from pixel art
-            let memo = pixel_art.get_untracked().to_optimal_string();
+            // get all input data
+            let title = title_text.get_untracked();
+            let content = content_text.get_untracked();
+            let pixel_data = pixel_art.get_untracked().to_optimal_string();
             
-            if memo.is_empty() {
-                set_error_message.set("❌ Please create some pixel art before minting".to_string());
+            // create combined memo JSON
+            let memo_json = create_combined_memo(&title, &content, &pixel_data);
+            
+            // validate at least one content
+            if title.trim().is_empty() && content.trim().is_empty() && pixel_data.is_empty() {
+                set_error_message.set("❌ Please enter at least one field (title, content, or create pixel art)".to_string());
                 set_is_minting.set(false);
                 set_minting_status.set(String::new());
                 return;
             }
 
-            set_minting_status.set("Getting wallet credentials...".to_string());
+            // validate memo length
+            if memo_json.len() < 69 {
+                set_error_message.set(format!("❌ Content too short. Need at least 69 characters (current: {})", memo_json.len()));
+                set_is_minting.set(false);
+                set_minting_status.set(String::new());
+                return;
+            }
 
-            // get wallet credentials
-            let session_value = session.get_untracked();
-            let seed = match session_value.get_seed() {
-                Ok(seed) => seed,
-                Err(e) => {
-                    set_error_message.set(format!("❌ Failed to get wallet seed: {}", e));
-                    set_is_minting.set(false);
-                    set_minting_status.set(String::new());
-                    return;
-                }
-            };
-
-            // convert seed to keypair bytes
-            let seed_bytes = match hex::decode(&seed) {
-                Ok(bytes) => bytes,
-                Err(e) => {
-                    set_error_message.set(format!("❌ Failed to decode seed: {}", e));
-                    set_is_minting.set(false);
-                    set_minting_status.set(String::new());
-                    return;
-                }
-            };
-
-            let seed_array: [u8; 64] = match seed_bytes.try_into() {
-                Ok(array) => array,
-                Err(_) => {
-                    set_error_message.set("❌ Invalid seed length".to_string());
-                    set_is_minting.set(false);
-                    set_minting_status.set(String::new());
-                    return;
-                }
-            };
-
-            let (keypair, _) = match crate::core::wallet::derive_keypair_from_seed(
-                &seed_array,
-                crate::core::wallet::get_default_derivation_path()
-            ) {
-                Ok(result) => result,
-                Err(e) => {
-                    set_error_message.set(format!("❌ Failed to derive keypair: {:?}", e));
-                    set_is_minting.set(false);
-                    set_minting_status.set(String::new());
-                    return;
-                }
-            };
-
-            let keypair_bytes = keypair.to_bytes();
+            if memo_json.len() > 700 {
+                set_error_message.set(format!("❌ Content too long. Maximum 700 characters (current: {})", memo_json.len()));
+                set_is_minting.set(false);
+                set_minting_status.set(String::new());
+                return;
+            }
 
             set_minting_status.set("Sending mint transaction...".to_string());
 
-            // call mint RPC
-            let rpc = RpcConnection::new();
-            match rpc.mint(&memo, &keypair_bytes).await {
+            // record the total_minted number before mint
+            let pre_mint_total = session.with_untracked(|s| {
+                s.get_user_profile()
+                    .map(|profile| profile.total_minted)
+                    .unwrap_or(0)
+            });
+
+            // use the new session.mint() method
+            let mut session_update = session.get_untracked();
+            match session_update.mint(&memo_json).await {
                 Ok(signature) => {
                     log::info!("Mint transaction sent: {}", signature);
-                    
-                    // record the total_minted number before mint
-                    let pre_mint_total = session.with_untracked(|s| {
-                        s.get_user_profile()
-                            .map(|profile| profile.total_minted)
-                            .unwrap_or(0)
-                    });
                     
                     // display the waiting status and countdown
                     for i in (1..=30).rev() {
@@ -201,7 +202,6 @@ pub fn MintPage(
                     set_minting_status.set("Finalizing...".to_string());
                     
                     // re-fetch and update user profile
-                    let mut session_update = session.get_untracked();
                     match session_update.fetch_and_cache_user_profile().await {
                         Ok(Some(updated_profile)) => {
                             // calculate the actual minted number
@@ -215,6 +215,14 @@ pub fn MintPage(
                                 "✅ Minting successful! Transaction: {} - Minted: {} tokens, Total: {}", 
                                 signature, tokens_minted, updated_profile.total_minted
                             ));
+
+                            // clear the form (optional)
+                            set_title_text.set(String::new());
+                            set_content_text.set(String::new());
+                            set_pixel_art.set(Pixel::new_with_size(match grid_size.get_untracked() {
+                                GridSize::Size64 => 64,
+                                GridSize::Size96 => 96,
+                            }));
                         },
                         Ok(None) => {
                             set_minting_status.set("Profile update failed".to_string());
@@ -293,6 +301,38 @@ pub fn MintPage(
             // only show minting form when user has profile
             <Show when=move || session.get().has_user_profile()>
                 <form class="mint-form" on:submit=handle_start_minting>
+                    // Title field
+                    <div class="form-group">
+                        <label for="title">"Title (optional):"</label>
+                        <input
+                            type="text"
+                            id="title"
+                            prop:value=title_text
+                            on:input=move |ev| {
+                                let value = event_target_value(&ev);
+                                set_title_text.set(value);
+                            }
+                            placeholder="Enter title..."
+                            prop:disabled=is_minting
+                        />
+                    </div>
+
+                    // Content field
+                    <div class="form-group">
+                        <label for="content">"Content (optional):"</label>
+                        <textarea
+                            id="content"
+                            prop:value=content_text
+                            on:input=move |ev| {
+                                let value = event_target_value(&ev);
+                                set_content_text.set(value);
+                            }
+                            placeholder="Enter your content..."
+                            rows="3"
+                            prop:disabled=is_minting
+                        ></textarea>
+                    </div>
+
                     <div class="form-group">
                         <label>"Minting Mode"</label>
                         <div class="minting-mode-group">
@@ -444,6 +484,28 @@ pub fn MintPage(
                         </div>
                     </div>
 
+                    // display the total memo length preview
+                    <div class="memo-preview">
+                        <div class="memo-length">
+                            <span class="label">"Total Memo Length: "</span>
+                            <span class="value">
+                                {move || {
+                                    let title = title_text.get();
+                                    let content = content_text.get();
+                                    let pixel_data = pixel_art.get().to_optimal_string();
+                                    let memo_json = create_combined_memo(&title, &content, &pixel_data);
+                                    let len = memo_json.len();
+                                    let color = if len < 69 { "red" } else if len > 700 { "red" } else { "green" };
+                                    view! {
+                                        <span style=format!("color: {}", color)>
+                                            {format!("{}/700 characters (minimum 69)", len)}
+                                        </span>
+                                    }
+                                }}
+                            </span>
+                        </div>
+                    </div>
+
                     {move || {
                         let message = error_message.get();
                         view! {
@@ -462,7 +524,17 @@ pub fn MintPage(
                         <button
                             type="submit"
                             class="start-minting-btn"
-                            prop:disabled=move || is_minting.get() || !session.get().has_user_profile()
+                            prop:disabled=move || {
+                                is_minting.get() || 
+                                !session.get().has_user_profile() ||
+                                {
+                                    let title = title_text.get();
+                                    let content = content_text.get();
+                                    let pixel_data = pixel_art.get().to_optimal_string();
+                                    let memo_json = create_combined_memo(&title, &content, &pixel_data);
+                                    memo_json.len() < 69 || memo_json.len() > 700
+                                }
+                            }
                         >
                             {move || if is_minting.get() { "Minting..." } else { "Start Minting" }}
                         </button>
