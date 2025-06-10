@@ -1,5 +1,6 @@
 use leptos::*;
-use crate::core::session::{Session, BurnRecord};
+use crate::core::session::Session;
+use crate::core::cache::{BurnRecord, get_latest_burn_shard, refresh_latest_burn_shard};
 use crate::pages::memo_card::MemoCard;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
@@ -28,14 +29,12 @@ pub fn HomePage(
             // give UI time to render
             TimeoutFuture::new(50).await;
             
-            let mut current_session = session.get_untracked();
-            
-            match current_session.get_latest_burn_shard().await {
+            // Use the new cache system instead of session
+            match get_latest_burn_shard().await {
                 Ok(records) => {
                     // only update display when successfully getting data
                     set_burn_records.set(records);
                     set_error_message.set(String::new());
-                    session.set(current_session);
                     
                     // after first load, update state
                     if is_initial_load.get_untracked() {
@@ -63,13 +62,11 @@ pub fn HomePage(
         spawn_local(async move {
             TimeoutFuture::new(100).await;
             
-            let mut current_session = session.get_untracked();
-            
-            match current_session.refresh_latest_burn_shard().await {
+            // Use the new cache system to force refresh
+            match refresh_latest_burn_shard().await {
                 Ok(new_records) => {
                     set_burn_records.set(new_records);
                     set_error_message.set(String::new());
-                    session.set(current_session);
                     log::info!("Successfully refreshed burn records");
                 }
                 Err(e) => {
