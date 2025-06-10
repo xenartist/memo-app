@@ -5,6 +5,7 @@ use crate::pages::home_page::HomePage;
 use crate::pages::profile_page::ProfilePage;
 use crate::pages::settings_page::SettingsPage;
 use crate::pages::mint_page::MintPage;
+use crate::pages::log_view::{LogView, add_log_entry};
 
 use wasm_bindgen::prelude::*;
 use web_sys::{window, Navigator, Clipboard};
@@ -38,28 +39,34 @@ pub fn MainPage(
     
     // get wallet address from session
     let wallet_address = move || {
-        match session.get().get_public_key() {
-            Ok(addr) => addr,
-            Err(_) => "Not initialized".to_string()
-        }
+        session.with(|s| {
+            match s.get_public_key() {
+                Ok(addr) => addr,
+                Err(_) => "Not initialized".to_string()
+            }
+        })
     };
     
     // get username from session
     let profile_status = move || {
-        match session.get().get_user_profile() {
-            Some(profile) => {
-                // Display profile creation status and basic stats
-                format!("Profile Active (Minted: {}, Burned: {})", 
-                    profile.total_minted, profile.total_burned)
-            },
-            None => "No Profile".to_string()
-        }
+        session.with(|s| {
+            match s.get_user_profile() {
+                Some(profile) => {
+                    // Display profile creation status and basic stats
+                    format!("Profile Active (Minted: {}, Burned: {})", 
+                        profile.total_minted, profile.total_burned)
+                },
+                None => "No Profile".to_string()
+            }
+        })
     };
     
     // test rpc connection
     spawn_local(async move {
+        let addr = session.get_untracked().get_public_key().unwrap_or_else(|_| "Not initialized".to_string());
+        
+        add_log_entry("INFO", "Starting RPC connection tests");
         let rpc = RpcConnection::new();
-        let addr = wallet_address();
         
         // get token balance
         match rpc.get_token_balance(&addr, TOKEN_MINT).await {
@@ -78,12 +85,15 @@ pub fn MainPage(
                                 .and_then(|a| a.as_f64())
                             {
                                 set_token_balance.set(amount);
+                                add_log_entry("INFO", &format!("Token balance: {}", amount));
                             }
                         }
                     }
                 }
             }
-            Err(_) => {}
+            Err(e) => {
+                add_log_entry("ERROR", &format!("Failed to get token balance: {}", e));
+            }
         }
         
         // get balance
@@ -93,10 +103,12 @@ pub fn MainPage(
                     if let Some(lamports) = json.get("value").and_then(|v| v.as_u64()) {
                         let sol = lamports as f64 / 1_000_000_000.0;
                         set_balance.set(sol);
+                        add_log_entry("INFO", &format!("SOL balance: {}", sol));
                     }
                 }
             }
             Err(e) => {
+                add_log_entry("ERROR", &format!("Failed to get balance: {}", e));
             }
         }
         
@@ -104,9 +116,11 @@ pub fn MainPage(
         match rpc.get_version().await {
             Ok(version) => {
                 set_version_status.set(format!("✅ RPC Version: {}", version));
+                add_log_entry("INFO", &format!("RPC version retrieved: {}", version));
             }
             Err(e) => {
                 set_version_status.set(format!("❌ RPC Version Error: {}", e));
+                add_log_entry("ERROR", &format!("Failed to get RPC version: {}", e));
             }
         }
 
@@ -114,20 +128,27 @@ pub fn MainPage(
         match rpc.get_latest_blockhash().await {
             Ok(blockhash) => {
                 set_blockhash_status.set(format!("✅ Latest Blockhash: {}", blockhash));
+                add_log_entry("INFO", &format!("Latest blockhash retrieved: {}", blockhash));
             }
             Err(e) => {
                 set_blockhash_status.set(format!("❌ Blockhash Error: {}", e));
+                add_log_entry("ERROR", &format!("Failed to get latest blockhash: {}", e));
             }
         }
     });
 
     // copy address to clipboard
     let copy_address = move |_| {
-        let addr = wallet_address();
+        let addr = session.with_untracked(|s| {
+            s.get_public_key().unwrap_or_else(|_| "Not initialized".to_string())
+        });
+        
         if let Some(window) = window() {
             let navigator = window.navigator();
             let clipboard = navigator.clipboard();
             let _ = clipboard.write_text(&addr);
+            
+            add_log_entry("INFO", "Address copied to clipboard");
             
             // show tooltip
             set_show_copied.set(true);
@@ -220,7 +241,7 @@ pub fn MainPage(
                 <div class="content">
                     {move || match current_menu.get() {
                         MenuItem::Home => view! {
-                            <HomePage session=session/>
+                            <HomePage/>
                         },
                         MenuItem::Mint => view! {
                             <MintPage session=session/>
@@ -234,6 +255,9 @@ pub fn MainPage(
                     }}
                 </div>
             </div>
+
+            // Global log viewer - always visible at the bottom
+            <LogView/>
         </div>
     }
 } 

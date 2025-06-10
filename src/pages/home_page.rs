@@ -1,5 +1,4 @@
 use leptos::*;
-use crate::core::session::Session;
 use crate::core::cache::{BurnRecord, get_latest_burn_shard, refresh_latest_burn_shard};
 use crate::pages::memo_card::MemoCard;
 use wasm_bindgen_futures::spawn_local;
@@ -10,7 +9,6 @@ use wasm_bindgen::JsCast;
 
 #[component]
 pub fn HomePage(
-    session: RwSignal<Session>
 ) -> impl IntoView {
     let (burn_records, set_burn_records) = create_signal(Vec::<BurnRecord>::new());
     let (is_loading, set_is_loading) = create_signal(false);
