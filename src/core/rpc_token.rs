@@ -242,7 +242,7 @@ impl RpcConnection {
         let blockhash: serde_json::Value = self.send_request(
             "getLatestBlockhash",
             serde_json::json!([{
-                "commitment": "finalized",
+                "commitment": "confirmed",
                 "minContextSlot": 0
             }])
         ).await?;
@@ -286,7 +286,7 @@ impl RpcConnection {
             serialized_tx,
             {
                 "encoding": "base64",
-                "preflightCommitment": "finalized",
+                "preflightCommitment": "confirmed",
                 "skipPreflight": false,
                 "maxRetries": 3
             }
@@ -313,7 +313,7 @@ impl RpcConnection {
         let blockhash: serde_json::Value = self.send_request(
             "getLatestBlockhash",
             serde_json::json!([{
-                "commitment": "finalized",
+                "commitment": "confirmed",
                 "minContextSlot": 0
             }])
         ).await?;
@@ -357,7 +357,7 @@ impl RpcConnection {
             serialized_tx,
             {
                 "encoding": "base64",
-                "preflightCommitment": "finalized",
+                "preflightCommitment": "confirmed",
                 "skipPreflight": false,
                 "maxRetries": 3
             }
@@ -463,7 +463,7 @@ impl RpcConnection {
         let blockhash: serde_json::Value = self.send_request(
             "getLatestBlockhash",
             serde_json::json!([{
-                "commitment": "finalized",
+                "commitment": "confirmed",
                 "minContextSlot": 0
             }])
         ).await?;
@@ -490,7 +490,7 @@ impl RpcConnection {
         // Simulate transaction to get compute units consumption
         let sim_options = serde_json::json!({
             "encoding": "base64",
-            "commitment": "finalized",
+            "commitment": "confirmed",
             "replaceRecentBlockhash": true,
             "sigVerify": false
         });
@@ -542,7 +542,7 @@ impl RpcConnection {
             final_serialized_tx,
             {
                 "encoding": "base64",
-                "preflightCommitment": "finalized",
+                "preflightCommitment": "confirmed",
                 "skipPreflight": false,
                 "maxRetries": 3
             }
@@ -678,7 +678,7 @@ impl RpcConnection {
         let blockhash: serde_json::Value = self.send_request(
             "getLatestBlockhash",
             serde_json::json!([{
-                "commitment": "finalized",
+                "commitment": "confirmed",
                 "minContextSlot": 0
             }])
         ).await?;
@@ -705,7 +705,7 @@ impl RpcConnection {
         // simulate transaction to get compute units consumed
         let sim_options = serde_json::json!({
             "encoding": "base64",
-            "commitment": "finalized",
+            "commitment": "confirmed",
             "replaceRecentBlockhash": true,
             "sigVerify": false
         });
@@ -757,7 +757,7 @@ impl RpcConnection {
             final_serialized_tx,
             {
                 "encoding": "base64",
-                "preflightCommitment": "finalized",
+                "preflightCommitment": "confirmed",
                 "skipPreflight": false,
                 "maxRetries": 3
             }
@@ -912,7 +912,7 @@ impl RpcConnection {
         let blockhash: serde_json::Value = self.send_request(
             "getLatestBlockhash",
             serde_json::json!([{
-                "commitment": "finalized",
+                "commitment": "confirmed",
                 "minContextSlot": 0
             }])
         ).await?;
@@ -939,7 +939,7 @@ impl RpcConnection {
         // simulate transaction to get compute units consumed
         let sim_options = serde_json::json!({
             "encoding": "base64",
-            "commitment": "finalized",
+            "commitment": "confirmed",
             "replaceRecentBlockhash": true,
             "sigVerify": false
         });
@@ -991,7 +991,7 @@ impl RpcConnection {
             final_serialized_tx,
             {
                 "encoding": "base64",
-                "preflightCommitment": "finalized",
+                "preflightCommitment": "confirmed",
                 "skipPreflight": false,
                 "maxRetries": 3
             }
@@ -1050,7 +1050,7 @@ impl RpcConnection {
         let blockhash: serde_json::Value = self.send_request(
             "getLatestBlockhash",
             serde_json::json!([{
-                "commitment": "finalized",
+                "commitment": "confirmed",
                 "minContextSlot": 0
             }])
         ).await?;
@@ -1095,7 +1095,7 @@ impl RpcConnection {
             serialized_tx,
             {
                 "encoding": "base64",
-                "preflightCommitment": "finalized",
+                "preflightCommitment": "confirmed",
                 "skipPreflight": false,
                 "maxRetries": 3
             }
@@ -1217,7 +1217,7 @@ impl RpcConnection {
         let blockhash: serde_json::Value = self.send_request(
             "getLatestBlockhash",
             serde_json::json!([{
-                "commitment": "finalized",
+                "commitment": "confirmed",
                 "minContextSlot": 0
             }])
         ).await?;
@@ -1244,7 +1244,7 @@ impl RpcConnection {
         // simulate transaction to get compute units consumed
         let sim_options = serde_json::json!({
             "encoding": "base64",
-            "commitment": "finalized",
+            "commitment": "confirmed",
             "replaceRecentBlockhash": true,
             "sigVerify": false
         });
@@ -1296,7 +1296,7 @@ impl RpcConnection {
             final_serialized_tx,
             {
                 "encoding": "base64",
-                "preflightCommitment": "finalized",
+                "preflightCommitment": "confirmed",
                 "skipPreflight": false,
                 "maxRetries": 3
             }
