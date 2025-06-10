@@ -55,7 +55,7 @@ pub fn MintPage(
     let create_combined_memo = |title: &str, content: &str, pixel_data: &str| -> String {
         let mut memo_object = serde_json::Map::new();
         
-        // only add non-empty fields
+        // add fields in specific order: title, content, image
         if !title.trim().is_empty() {
             memo_object.insert("title".to_string(), serde_json::Value::String(title.trim().to_string()));
         }
@@ -64,13 +64,9 @@ pub fn MintPage(
             memo_object.insert("content".to_string(), serde_json::Value::String(content.trim().to_string()));
         }
         
-        // always include pixel art data
         if !pixel_data.trim().is_empty() {
             memo_object.insert("image".to_string(), serde_json::Value::String(pixel_data.trim().to_string()));
         }
-        
-        // add timestamp
-        memo_object.insert("timestamp".to_string(), serde_json::Value::Number(serde_json::Number::from(js_sys::Date::now() as u64)));
         
         let memo_value = serde_json::Value::Object(memo_object);
         memo_value.to_string()
