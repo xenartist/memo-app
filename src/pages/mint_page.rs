@@ -183,47 +183,59 @@ pub fn MintPage(
             let rpc = RpcConnection::new();
             match rpc.mint(&memo, &keypair_bytes).await {
                 Ok(signature) => {
-                    set_minting_status.set("Transaction sent! Waiting for confirmation...".to_string());
                     log::info!("Mint transaction sent: {}", signature);
-
-                    // wait for transaction confirmation
-                    TimeoutFuture::new(15_000).await;
-
-                    set_minting_status.set("Updating profile data...".to_string());
-
+                    
+                    // record the total_minted number before mint
+                    let pre_mint_total = session.with_untracked(|s| {
+                        s.get_user_profile()
+                            .map(|profile| profile.total_minted)
+                            .unwrap_or(0)
+                    });
+                    
+                    // display the waiting status and countdown
+                    for i in (1..=30).rev() {
+                        set_minting_status.set(format!("Transaction confirmed! Updating data... {}s", i));
+                        TimeoutFuture::new(1_000).await;
+                    }
+                    
+                    set_minting_status.set("Finalizing...".to_string());
+                    
                     // re-fetch and update user profile
                     let mut session_update = session.get_untracked();
                     match session_update.fetch_and_cache_user_profile().await {
                         Ok(Some(updated_profile)) => {
-                            // update profile in session
+                            // calculate the actual minted number
+                            let tokens_minted = updated_profile.total_minted.saturating_sub(pre_mint_total);
+                            
+                            // update the profile in session
                             session.update(|s| s.set_user_profile(Some(updated_profile.clone())));
                             
+                            set_minting_status.set("Minting completed successfully!".to_string());
                             set_error_message.set(format!(
-                                "✅ Minting successful! Transaction: {}\nMinted: {} tokens, Total: {}", 
-                                signature, 
-                                1, // assume each mint is 1 token, you can adjust this based on actual needs
-                                updated_profile.total_minted
+                                "✅ Minting successful! Transaction: {} - Minted: {} tokens, Total: {}", 
+                                signature, tokens_minted, updated_profile.total_minted
                             ));
-                            log::info!("Profile updated successfully after mint");
                         },
                         Ok(None) => {
+                            set_minting_status.set("Profile update failed".to_string());
                             set_error_message.set(format!(
-                                "✅ Minting transaction sent: {}\n⚠️ Warning: Could not fetch updated profile", 
+                                "✅ Minting successful! Transaction: {} (Profile not found)", 
                                 signature
                             ));
                         },
                         Err(e) => {
+                            log::error!("Failed to refresh user profile after mint: {}", e);
+                            set_minting_status.set("Profile update failed".to_string());
                             set_error_message.set(format!(
-                                "✅ Minting transaction sent: {}\n⚠️ Profile update failed: {}", 
+                                "✅ Minting successful! Transaction: {} (Profile refresh error: {})", 
                                 signature, e
                             ));
-                            log::error!("Failed to update profile after mint: {}", e);
                         }
                     }
                 },
                 Err(e) => {
+                    set_minting_status.set("Minting failed".to_string());
                     set_error_message.set(format!("❌ Minting failed: {}", e));
-                    log::error!("Mint transaction failed: {}", e);
                 }
             }
 
