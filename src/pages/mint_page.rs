@@ -12,6 +12,7 @@ use gloo_timers::future::TimeoutFuture;
 use crate::core::rpc_base::RpcConnection;
 use hex;
 use serde_json;
+use crate::core::storage::{get_storage, MintRecord};
 
 #[derive(Clone, Copy, PartialEq)]
 enum MintingMode {
@@ -42,6 +43,22 @@ pub fn MintPage(
     // title and content fields
     let (title_text, set_title_text) = create_signal(String::new());
     let (content_text, set_content_text) = create_signal(String::new());
+
+    // add a signal to track the number of stored records
+    let (stored_records_count, set_stored_records_count) = create_signal(0);
+
+    // get the current record number when the component is initialized
+    spawn_local(async move {
+        match get_storage().get_record_count() {
+            Ok(count) => {
+                set_stored_records_count.set(count);
+                log::info!("Found {} stored mint records", count);
+            },
+            Err(e) => {
+                log::error!("Failed to get stored records count: {}", e);
+            }
+        }
+    });
 
     // when the size changes, recreate the pixel art
     create_effect(move |_| {
@@ -192,6 +209,17 @@ pub fn MintPage(
                 Ok(signature) => {
                     log::info!("Mint transaction sent: {}", signature);
                     
+                    // immediately save mint record to local storage
+                    if let Err(e) = get_storage().save_mint_record(&signature, &memo_json) {
+                        log::error!("Failed to save mint record: {}", e);
+                    } else {
+                        log::info!("Mint record saved successfully for signature: {}", signature);
+                        // update the record number display
+                        if let Ok(count) = get_storage().get_record_count() {
+                            set_stored_records_count.set(count);
+                        }
+                    }
+                    
                     // display the waiting status and countdown
                     for i in (1..=30).rev() {
                         set_minting_status.set(format!("Transaction confirmed! Updating data... {}s", i));
@@ -289,6 +317,13 @@ pub fn MintPage(
     view! {
         <div class="mint-page">
             <h2>"Mint"</h2>
+            
+            // display storage statistics
+            <div class="storage-info">
+                <span class="storage-count">
+                    {move || format!("Stored Records: {}", stored_records_count.get())}
+                </span>
+            </div>
             
             // display minting progress (only show when minting)
             {move || {
