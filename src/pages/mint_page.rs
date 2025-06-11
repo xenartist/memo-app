@@ -21,6 +21,7 @@ enum MintingMode {
 
 #[derive(Clone, Copy, PartialEq)]
 enum GridSize {
+    Size32,
     Size64,
     Size96,
 }
@@ -31,8 +32,8 @@ pub fn MintPage(
 ) -> impl IntoView {
     let (minting_mode, set_minting_mode) = create_signal(MintingMode::Manual);
     let (auto_count, set_auto_count) = create_signal(0); // 0 means infinite
-    let (grid_size, set_grid_size) = create_signal(GridSize::Size64);
-    let (pixel_art, set_pixel_art) = create_signal(Pixel::new_with_size(64));
+    let (grid_size, set_grid_size) = create_signal(GridSize::Size32);
+    let (pixel_art, set_pixel_art) = create_signal(Pixel::new_with_size(32));
     let (is_minting, set_is_minting) = create_signal(false);
     let (error_message, set_error_message) = create_signal(String::new());
     let (show_copied, set_show_copied) = create_signal(false);
@@ -45,6 +46,7 @@ pub fn MintPage(
     // when the size changes, recreate the pixel art
     create_effect(move |_| {
         let size = match grid_size.get() {
+            GridSize::Size32 => 32,
             GridSize::Size64 => 64,
             GridSize::Size96 => 96,
         };
@@ -103,6 +105,7 @@ pub fn MintPage(
                         let data = array.to_vec();
                         
                         let size = match current_grid_size {
+                            GridSize::Size32 => 32,
                             GridSize::Size64 => 64,
                             GridSize::Size96 => 96,
                         };
@@ -216,6 +219,7 @@ pub fn MintPage(
                             set_title_text.set(String::new());
                             set_content_text.set(String::new());
                             set_pixel_art.set(Pixel::new_with_size(match grid_size.get_untracked() {
+                                GridSize::Size32 => 32,
                                 GridSize::Size64 => 64,
                                 GridSize::Size96 => 96,
                             }));
@@ -387,6 +391,15 @@ pub fn MintPage(
                                 <input 
                                     type="radio"
                                     name="grid-size"
+                                    checked=move || grid_size.get() == GridSize::Size32
+                                    on:change=move |_| set_grid_size.set(GridSize::Size32)
+                                />
+                                <span class="radio-text">"32x32"</span>
+                            </label>
+                            <label class="radio-label">
+                                <input 
+                                    type="radio"
+                                    name="grid-size"
                                     checked=move || grid_size.get() == GridSize::Size64
                                     on:change=move |_| set_grid_size.set(GridSize::Size64)
                                 />
@@ -409,6 +422,7 @@ pub fn MintPage(
                             <label>
                                 {move || {
                                     let size = match grid_size.get() {
+                                        GridSize::Size32 => "32x32",
                                         GridSize::Size64 => "64x64",
                                         GridSize::Size96 => "96x96",
                                     };
@@ -433,6 +447,7 @@ pub fn MintPage(
                             });
                             
                             let display_size = match grid_size.get() {
+                                GridSize::Size32 => 384,
                                 GridSize::Size64 => 512,
                                 GridSize::Size96 => 768,  // larger display size to fit more pixels
                             };
