@@ -301,202 +301,210 @@ pub fn MintPage(
             // only show minting form when user has profile
             <Show when=move || session.get().has_user_profile()>
                 <form class="mint-form" on:submit=handle_start_minting>
-                    // Minting Mode moved to the front
-                    <div class="form-group">
-                        <label>"Minting Mode"</label>
-                        <div class="minting-mode-group">
-                            <label class="radio-label">
-                                <input 
-                                    type="radio"
-                                    name="minting-mode"
-                                    checked=move || minting_mode.get() == MintingMode::Manual
-                                    on:change=move |_| set_minting_mode.set(MintingMode::Manual)
-                                />
-                                <span class="radio-text">"Manual"</span>
-                            </label>
-                            <label class="radio-label">
-                                <input 
-                                    type="radio"
-                                    name="minting-mode"
-                                    checked=move || minting_mode.get() == MintingMode::Auto
-                                    on:change=move |_| set_minting_mode.set(MintingMode::Auto)
-                                />
-                                <span class="radio-text">"Auto"</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    // number of iterations in auto mode (after Minting Mode)
-                    {move || {
-                        if minting_mode.get() == MintingMode::Auto {
-                            view! {
-                                <div class="form-group">
-                                    <label for="auto-count">"Number of Iterations (0 for infinite)"</label>
-                                    <input 
-                                        type="number"
-                                        id="auto-count"
-                                        min="0"
-                                        value=auto_count
-                                        on:input=move |ev| {
-                                            let input = event_target::<HtmlInputElement>(&ev);
-                                            if let Ok(count) = input.value().parse::<u32>() {
-                                                set_auto_count.set(count);
-                                            }
-                                        }
-                                        prop:disabled=is_minting
-                                    />
+                    <div class="form-layout">
+                        // Left side: Minting Mode, Title, Content
+                        <div class="form-left">
+                            // Minting Mode
+                            <div class="form-group">
+                                <label>"Minting Mode"</label>
+                                <div class="minting-mode-group">
+                                    <label class="radio-label">
+                                        <input 
+                                            type="radio"
+                                            name="minting-mode"
+                                            checked=move || minting_mode.get() == MintingMode::Manual
+                                            on:change=move |_| set_minting_mode.set(MintingMode::Manual)
+                                        />
+                                        <span class="radio-text">"Manual"</span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input 
+                                            type="radio"
+                                            name="minting-mode"
+                                            checked=move || minting_mode.get() == MintingMode::Auto
+                                            on:change=move |_| set_minting_mode.set(MintingMode::Auto)
+                                        />
+                                        <span class="radio-text">"Auto"</span>
+                                    </label>
                                 </div>
-                            }
-                        } else {
-                            view! { <div></div> }
-                        }
-                    }}
+                            </div>
 
-                    // Title field (now after Minting Mode)
-                    <div class="form-group">
-                        <label for="title">"Title (optional):"</label>
-                        <input
-                            type="text"
-                            id="title"
-                            prop:value=title_text
-                            on:input=move |ev| {
-                                let value = event_target_value(&ev);
-                                set_title_text.set(value);
-                            }
-                            placeholder="Enter title..."
-                            prop:disabled=is_minting
-                        />
-                    </div>
+                            // number of iterations in auto mode
+                            {move || {
+                                if minting_mode.get() == MintingMode::Auto {
+                                    view! {
+                                        <div class="form-group">
+                                            <label for="auto-count">"Number of Iterations (0 for infinite)"</label>
+                                            <input 
+                                                type="number"
+                                                id="auto-count"
+                                                min="0"
+                                                value=auto_count
+                                                on:input=move |ev| {
+                                                    let input = event_target::<HtmlInputElement>(&ev);
+                                                    if let Ok(count) = input.value().parse::<u32>() {
+                                                        set_auto_count.set(count);
+                                                    }
+                                                }
+                                                prop:disabled=is_minting
+                                            />
+                                        </div>
+                                    }
+                                } else {
+                                    view! { <div></div> }
+                                }
+                            }}
 
-                    // Content field
-                    <div class="form-group">
-                        <label for="content">"Content (optional):"</label>
-                        <textarea
-                            id="content"
-                            prop:value=content_text
-                            on:input=move |ev| {
-                                let value = event_target_value(&ev);
-                                set_content_text.set(value);
-                            }
-                            placeholder="Enter your content..."
-                            rows="3"
-                            prop:disabled=is_minting
-                        ></textarea>
-                    </div>
+                            // Title field
+                            <div class="form-group">
+                                <label for="title">"Title (optional):"</label>
+                                <input
+                                    type="text"
+                                    id="title"
+                                    prop:value=title_text
+                                    on:input=move |ev| {
+                                        let value = event_target_value(&ev);
+                                        set_title_text.set(value);
+                                    }
+                                    placeholder="Enter title..."
+                                    prop:disabled=is_minting
+                                />
+                            </div>
 
-                    // Grid Size selection
-                    <div class="form-group">
-                        <label>"Grid Size"</label>
-                        <div class="grid-size-group">
-                            <label class="radio-label">
-                                <input 
-                                    type="radio"
-                                    name="grid-size"
-                                    checked=move || grid_size.get() == GridSize::Size32
-                                    on:change=move |_| set_grid_size.set(GridSize::Size32)
-                                />
-                                <span class="radio-text">"32x32"</span>
-                            </label>
-                            <label class="radio-label">
-                                <input 
-                                    type="radio"
-                                    name="grid-size"
-                                    checked=move || grid_size.get() == GridSize::Size64
-                                    on:change=move |_| set_grid_size.set(GridSize::Size64)
-                                />
-                                <span class="radio-text">"64x64"</span>
-                            </label>
-                            <label class="radio-label">
-                                <input 
-                                    type="radio"
-                                    name="grid-size"
-                                    checked=move || grid_size.get() == GridSize::Size96
-                                    on:change=move |_| set_grid_size.set(GridSize::Size96)
-                                />
-                                <span class="radio-text">"96x96"</span>
-                            </label>
+                            // Content field
+                            <div class="form-group">
+                                <label for="content">"Content (optional):"</label>
+                                <textarea
+                                    id="content"
+                                    prop:value=content_text
+                                    on:input=move |ev| {
+                                        let value = event_target_value(&ev);
+                                        set_content_text.set(value);
+                                    }
+                                    placeholder="Enter your content..."
+                                    rows="15"
+                                    prop:disabled=is_minting
+                                ></textarea>
+                            </div>
                         </div>
-                    </div>
 
-                    <div class="pixel-art-editor">
-                        <div class="pixel-art-header">
-                            <label>
-                                {move || {
-                                    let size = match grid_size.get() {
-                                        GridSize::Size32 => "32x32",
-                                        GridSize::Size64 => "64x64",
-                                        GridSize::Size96 => "96x96",
-                                    };
-                                    format!("Minting Image ({} Pixel Art)", size)
-                                }}
-                            </label>
-                            <button 
-                                type="button"
-                                class="import-btn"
-                                on:click=handle_import
-                                prop:disabled=is_minting
-                            >
-                                "Import Image"
-                            </button>
-                        </div>
-                        {move || {
-                            let art_string = pixel_art.get().to_optimal_string();
-                            let click_handler = Box::new(move |row, col| {
-                                let mut new_art = pixel_art.get();
-                                new_art.toggle_pixel(row, col);
-                                set_pixel_art.set(new_art);
-                            });
-                            
-                            let display_size = match grid_size.get() {
-                                GridSize::Size32 => 384,
-                                GridSize::Size64 => 512,
-                                GridSize::Size96 => 768,  // larger display size to fit more pixels
-                            };
-                            
-                            view! {
-                                <PixelView
-                                    art=art_string
-                                    size=display_size
-                                    editable=true
-                                    on_click=click_handler
-                                />
-                            }
-                        }}
+                        // Right side: Grid Size and Pixel Art
+                        <div class="form-right">
+                            // Grid Size selection
+                            <div class="form-group">
+                                <label>"Grid Size"</label>
+                                <div class="grid-size-group">
+                                    <label class="radio-label">
+                                        <input 
+                                            type="radio"
+                                            name="grid-size"
+                                            checked=move || grid_size.get() == GridSize::Size32
+                                            on:change=move |_| set_grid_size.set(GridSize::Size32)
+                                        />
+                                        <span class="radio-text">"32x32"</span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input 
+                                            type="radio"
+                                            name="grid-size"
+                                            checked=move || grid_size.get() == GridSize::Size64
+                                            on:change=move |_| set_grid_size.set(GridSize::Size64)
+                                        />
+                                        <span class="radio-text">"64x64"</span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input 
+                                            type="radio"
+                                            name="grid-size"
+                                            checked=move || grid_size.get() == GridSize::Size96
+                                            on:change=move |_| set_grid_size.set(GridSize::Size96)
+                                        />
+                                        <span class="radio-text">"96x96"</span>
+                                    </label>
+                                </div>
+                            </div>
 
-                        // add string information display
-                        <div class="pixel-string-info">
-                            <div class="string-display">
-                                <span class="label">"Encoded String: "</span>
-                                <span class="value">
-                                    {move || format_display_string(&pixel_art.get().to_optimal_string())}
-                                </span>
-                                <div class="copy-container">
-                                    <button
+                            <div class="pixel-art-editor">
+                                <div class="pixel-art-header">
+                                    <label>
+                                        {move || {
+                                            let size = match grid_size.get() {
+                                                GridSize::Size32 => "32x32",
+                                                GridSize::Size64 => "64x64",
+                                                GridSize::Size96 => "96x96",
+                                            };
+                                            format!("Minting Image ({} Pixel Art)", size)
+                                        }}
+                                    </label>
+                                    <button 
                                         type="button"
-                                        class="copy-button"
-                                        on:click=copy_string
-                                        title="Copy encoded string to clipboard"
+                                        class="import-btn"
+                                        on:click=handle_import
+                                        prop:disabled=is_minting
                                     >
-                                        <i class="fas fa-copy"></i>
+                                        "Import Image"
                                     </button>
-                                    <div 
-                                        class="copy-tooltip"
-                                        class:show=move || show_copied.get()
-                                    >
-                                        "Copied!"
+                                </div>
+                                {move || {
+                                    let art_string = pixel_art.get().to_optimal_string();
+                                    let click_handler = Box::new(move |row, col| {
+                                        let mut new_art = pixel_art.get();
+                                        new_art.toggle_pixel(row, col);
+                                        set_pixel_art.set(new_art);
+                                    });
+                                    
+                                    let display_size = match grid_size.get() {
+                                        GridSize::Size32 => 320,
+                                        GridSize::Size64 => 400,
+                                        GridSize::Size96 => 480,
+                                    };
+                                    
+                                    view! {
+                                        <PixelView
+                                            art=art_string
+                                            size=display_size
+                                            editable=true
+                                            on_click=click_handler
+                                        />
+                                    }
+                                }}
+
+                                // add string information display
+                                <div class="pixel-string-info">
+                                    <div class="string-display">
+                                        <span class="label">"Encoded String: "</span>
+                                        <span class="value">
+                                            {move || format_display_string(&pixel_art.get().to_optimal_string())}
+                                        </span>
+                                        <div class="copy-container">
+                                            <button
+                                                type="button"
+                                                class="copy-button"
+                                                on:click=copy_string
+                                                title="Copy encoded string to clipboard"
+                                            >
+                                                <i class="fas fa-copy"></i>
+                                            </button>
+                                            <div 
+                                                class="copy-tooltip"
+                                                class:show=move || show_copied.get()
+                                            >
+                                                "Copied!"
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="string-length">
+                                        <span class="label">"Length: "</span>
+                                        <span class="value">
+                                            {move || format!("{} bytes", pixel_art.get().to_optimal_string().len())}
+                                        </span>
                                     </div>
                                 </div>
                             </div>
-                            <div class="string-length">
-                                <span class="label">"Length: "</span>
-                                <span class="value">
-                                    {move || format!("{} bytes", pixel_art.get().to_optimal_string().len())}
-                                </span>
-                            </div>
                         </div>
                     </div>
 
-                    // display the total memo length preview
+                    // display the total memo length preview (full width below the two columns)
                     <div class="memo-preview">
                         <div class="memo-length">
                             <span class="label">"Total Memo Length: "</span>
