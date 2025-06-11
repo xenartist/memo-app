@@ -46,8 +46,8 @@ impl fmt::Display for SessionError {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SessionConfig {
-    // session timeout in minutes
-    timeout_minutes: u32,
+    // session timeout in minutes, None means never expire
+    timeout_minutes: Option<u32>,
     // minimum amount to confirm in lamports
     confirm_threshold: u64,
 }
@@ -55,7 +55,7 @@ pub struct SessionConfig {
 impl Default for SessionConfig {
     fn default() -> Self {
         Self {
-            timeout_minutes: 60,  // default 1 hour timeout
+            timeout_minutes: None,  // never expire by default
             confirm_threshold: 1_000_000_000,  // default 1 SOL confirmation
         }
     }
@@ -136,9 +136,14 @@ impl Session {
 
     // check if session is expired
     pub fn is_expired(&self) -> bool {
-        let current_time = Date::now();
-        let elapsed_minutes = (current_time - self.start_time) / (60.0 * 1000.0);
-        elapsed_minutes > self.config.timeout_minutes as f64
+        match self.config.timeout_minutes {
+            None => false, // never expire
+            Some(timeout_minutes) => {
+                let current_time = Date::now();
+                let elapsed_minutes = (current_time - self.start_time) / (60.0 * 1000.0);
+                elapsed_minutes > timeout_minutes as f64
+            }
+        }
     }
 
     // get decrypted seed (if session is valid)
@@ -415,6 +420,36 @@ impl Session {
 
         self.balance_update_needed = false;
         Ok(())
+    }
+
+    // check if expiration is enabled
+    pub fn has_expiration(&self) -> bool {
+        self.config.timeout_minutes.is_some()
+    }
+
+    // get expiration time setting
+    pub fn get_timeout_minutes(&self) -> Option<u32> {
+        self.config.timeout_minutes
+    }
+
+    // set expiration time (None = never expire)
+    pub fn set_timeout(&mut self, timeout_minutes: Option<u32>) {
+        self.config.timeout_minutes = timeout_minutes;
+        // reset start time
+        self.start_time = Date::now();
+    }
+
+    // get session remaining time
+    pub fn get_remaining_time(&self) -> Option<f64> {
+        match self.config.timeout_minutes {
+            None => None, // never expire
+            Some(timeout_minutes) => {
+                let current_time = Date::now();
+                let elapsed_minutes = (current_time - self.start_time) / (60.0 * 1000.0);
+                let remaining = timeout_minutes as f64 - elapsed_minutes;
+                Some(remaining.max(0.0))
+            }
+        }
     }
 }
 
