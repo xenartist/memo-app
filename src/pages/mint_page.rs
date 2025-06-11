@@ -206,8 +206,11 @@ pub fn MintPage(
                             // calculate the actual minted number
                             let tokens_minted = updated_profile.total_minted.saturating_sub(pre_mint_total);
                             
-                            // update the profile in session
-                            session.update(|s| s.set_user_profile(Some(updated_profile.clone())));
+                            // update the profile in session and mark balance update needed
+                            session.update(|s| {
+                                s.set_user_profile(Some(updated_profile.clone()));
+                                s.mark_balance_update_needed(); // mark balance update needed
+                            });
                             
                             set_minting_status.set("Minting completed successfully!".to_string());
                             set_error_message.set(format!(
@@ -230,6 +233,8 @@ pub fn MintPage(
                                 "✅ Minting successful! Transaction: {} (Profile not found)", 
                                 signature
                             ));
+                            // even if profile is not found, mark balance update needed
+                            session.update(|s| s.mark_balance_update_needed());
                         },
                         Err(e) => {
                             log::error!("Failed to refresh user profile after mint: {}", e);
@@ -238,6 +243,8 @@ pub fn MintPage(
                                 "✅ Minting successful! Transaction: {} (Profile refresh error: {})", 
                                 signature, e
                             ));
+                            // even if profile is not found, mark balance update needed
+                            session.update(|s| s.mark_balance_update_needed());
                         }
                     }
                 },

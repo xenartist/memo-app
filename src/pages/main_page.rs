@@ -30,10 +30,6 @@ pub fn MainPage(
     
     let (show_copied, set_show_copied) = create_signal(false);
     
-    let (balance, set_balance) = create_signal(0f64);
-    
-    let (token_balance, set_token_balance) = create_signal(0f64);
-    
     // token address
     const TOKEN_MINT: &str = "MEM69mjnKAMxgqwosg5apfYNk2rMuV26FR9THDfT3Q7";
     
@@ -45,6 +41,15 @@ pub fn MainPage(
                 Err(_) => "Not initialized".to_string()
             }
         })
+    };
+    
+    // get sol balance from session
+    let sol_balance = move || {
+        session.with(|s| s.get_sol_balance())
+    };
+    
+    let token_balance = move || {
+        session.with(|s| s.get_token_balance())
     };
     
     // get username from session
@@ -61,6 +66,30 @@ pub fn MainPage(
         })
     };
     
+    // listen to balance update needed in session
+    create_effect(move |_| {
+        let needs_update = session.with(|s| s.is_balance_update_needed());
+        if needs_update {
+            log::info!("Balance update needed, fetching latest balances...");
+            let session_clone = session;
+            spawn_local(async move {
+                let mut session_update = session_clone.get_untracked();
+                match session_update.fetch_and_update_balances().await {
+                    Ok(()) => {
+                        log::info!("Successfully updated balances");
+                        // update balance info in session
+                        session_clone.update(|s| {
+                            s.set_balances(session_update.get_sol_balance(), session_update.get_token_balance());
+                        });
+                    },
+                    Err(e) => {
+                        log::error!("Failed to update balances: {}", e);
+                    }
+                }
+            });
+        }
+    });
+    
     // test rpc connection
     spawn_local(async move {
         let addr = session.get_untracked().get_public_key().unwrap_or_else(|_| "Not initialized".to_string());
@@ -68,47 +97,20 @@ pub fn MainPage(
         add_log_entry("INFO", "Starting RPC connection tests");
         let rpc = RpcConnection::new();
         
-        // get token balance
-        match rpc.get_token_balance(&addr, TOKEN_MINT).await {
-            Ok(token_result) => {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&token_result) {
-                    // parse token account info
-                    if let Some(accounts) = json.get("value").and_then(|v| v.as_array()) {
-                        if let Some(first_account) = accounts.first() {
-                            if let Some(amount) = first_account
-                                .get("account")
-                                .and_then(|a| a.get("data"))
-                                .and_then(|d| d.get("parsed"))
-                                .and_then(|p| p.get("info"))
-                                .and_then(|i| i.get("tokenAmount"))
-                                .and_then(|t| t.get("uiAmount"))
-                                .and_then(|a| a.as_f64())
-                            {
-                                set_token_balance.set(amount);
-                                add_log_entry("INFO", &format!("Token balance: {}", amount));
-                            }
-                        }
-                    }
-                }
-            }
+        // initial fetch balance and set to session
+        let mut session_update = session.get_untracked();
+        match session_update.fetch_and_update_balances().await {
+            Ok(()) => {
+                log::info!("Initial balance fetch successful");
+                session.update(|s| {
+                    s.set_balances(session_update.get_sol_balance(), session_update.get_token_balance());
+                });
+                add_log_entry("INFO", &format!("SOL balance: {}", session_update.get_sol_balance()));
+                add_log_entry("INFO", &format!("Token balance: {}", session_update.get_token_balance()));
+            },
             Err(e) => {
-                add_log_entry("ERROR", &format!("Failed to get token balance: {}", e));
-            }
-        }
-        
-        // get balance
-        match rpc.get_balance(&addr).await {
-            Ok(balance_result) => {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&balance_result) {
-                    if let Some(lamports) = json.get("value").and_then(|v| v.as_u64()) {
-                        let sol = lamports as f64 / 1_000_000_000.0;
-                        set_balance.set(sol);
-                        add_log_entry("INFO", &format!("SOL balance: {}", sol));
-                    }
-                }
-            }
-            Err(e) => {
-                add_log_entry("ERROR", &format!("Failed to get balance: {}", e));
+                log::error!("Failed to fetch initial balances: {}", e);
+                add_log_entry("ERROR", &format!("Failed to get balances: {}", e));
             }
         }
         
@@ -170,8 +172,8 @@ pub fn MainPage(
                     <span class="profile-status">{profile_status}</span>
                 </div>
                 <div class="wallet-address">
-                    <span class="token-balance">{move || format!("{:.2} MEMO", token_balance.get())}</span>
-                    <span class="balance">{move || format!("{:.4} SOL", balance.get())}</span>
+                    <span class="token-balance">{move || format!("{:.2} MEMO", token_balance())}</span>
+                    <span class="balance">{move || format!("{:.4} SOL", sol_balance())}</span>
                     <span class="address-label">"Wallet: "</span>
                     <span 
                         class="address-value" 

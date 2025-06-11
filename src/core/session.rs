@@ -77,6 +77,11 @@ pub struct Session {
     user_profile: Option<UserProfile>,
     // cached pubkey
     cached_pubkey: Option<String>,
+    // balance information
+    sol_balance: f64,
+    token_balance: f64,
+    // balance update trigger
+    balance_update_needed: bool,
 }
 
 impl Session {
@@ -89,6 +94,9 @@ impl Session {
             ui_locked: false,
             user_profile: None,
             cached_pubkey: None,
+            sol_balance: 0.0,
+            token_balance: 0.0,
+            balance_update_needed: false,
         }
     }
 
@@ -316,13 +324,97 @@ impl Session {
 
         // call RPC mint method
         let rpc = RpcConnection::new();
-        rpc.mint(memo, &keypair_bytes).await
-            .map_err(|e| SessionError::InvalidData(format!("Mint failed: {}", e)))
+        let result = rpc.mint(memo, &keypair_bytes).await
+            .map_err(|e| SessionError::InvalidData(format!("Mint failed: {}", e)))?;
+
+        // mark that balances need to be updated after successful mint
+        self.mark_balance_update_needed();
+        
+        Ok(result)
     }
 
     // check if user has profile
     pub fn has_user_profile(&self) -> bool {
         self.user_profile.is_some()
+    }
+
+    // balance related methods
+    pub fn get_sol_balance(&self) -> f64 {
+        self.sol_balance
+    }
+
+    pub fn get_token_balance(&self) -> f64 {
+        self.token_balance
+    }
+
+    pub fn set_balances(&mut self, sol_balance: f64, token_balance: f64) {
+        self.sol_balance = sol_balance;
+        self.token_balance = token_balance;
+        self.balance_update_needed = false;
+    }
+
+    pub fn mark_balance_update_needed(&mut self) {
+        self.balance_update_needed = true;
+    }
+
+    pub fn is_balance_update_needed(&self) -> bool {
+        self.balance_update_needed
+    }
+
+    // fetch and update balances
+    pub async fn fetch_and_update_balances(&mut self) -> Result<(), SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey = self.get_public_key()?;
+        let rpc = RpcConnection::new();
+        
+        const TOKEN_MINT: &str = "MEM69mjnKAMxgqwosg5apfYNk2rMuV26FR9THDfT3Q7";
+
+        // get token balance
+        match rpc.get_token_balance(&pubkey, TOKEN_MINT).await {
+            Ok(token_result) => {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&token_result) {
+                    if let Some(accounts) = json.get("value").and_then(|v| v.as_array()) {
+                        if let Some(first_account) = accounts.first() {
+                            if let Some(amount) = first_account
+                                .get("account")
+                                .and_then(|a| a.get("data"))
+                                .and_then(|d| d.get("parsed"))
+                                .and_then(|p| p.get("info"))
+                                .and_then(|i| i.get("tokenAmount"))
+                                .and_then(|t| t.get("uiAmount"))
+                                .and_then(|a| a.as_f64())
+                            {
+                                self.token_balance = amount;
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to get token balance: {}", e);
+            }
+        }
+
+        // get SOL balance
+        match rpc.get_balance(&pubkey).await {
+            Ok(balance_result) => {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&balance_result) {
+                    if let Some(lamports) = json.get("value").and_then(|v| v.as_u64()) {
+                        let sol = lamports as f64 / 1_000_000_000.0;
+                        self.sol_balance = sol;
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to get SOL balance: {}", e);
+            }
+        }
+
+        self.balance_update_needed = false;
+        Ok(())
     }
 }
 
