@@ -301,7 +301,58 @@ pub fn MintPage(
             // only show minting form when user has profile
             <Show when=move || session.get().has_user_profile()>
                 <form class="mint-form" on:submit=handle_start_minting>
-                    // Title field
+                    // Minting Mode moved to the front
+                    <div class="form-group">
+                        <label>"Minting Mode"</label>
+                        <div class="minting-mode-group">
+                            <label class="radio-label">
+                                <input 
+                                    type="radio"
+                                    name="minting-mode"
+                                    checked=move || minting_mode.get() == MintingMode::Manual
+                                    on:change=move |_| set_minting_mode.set(MintingMode::Manual)
+                                />
+                                <span class="radio-text">"Manual"</span>
+                            </label>
+                            <label class="radio-label">
+                                <input 
+                                    type="radio"
+                                    name="minting-mode"
+                                    checked=move || minting_mode.get() == MintingMode::Auto
+                                    on:change=move |_| set_minting_mode.set(MintingMode::Auto)
+                                />
+                                <span class="radio-text">"Auto"</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    // number of iterations in auto mode (after Minting Mode)
+                    {move || {
+                        if minting_mode.get() == MintingMode::Auto {
+                            view! {
+                                <div class="form-group">
+                                    <label for="auto-count">"Number of Iterations (0 for infinite)"</label>
+                                    <input 
+                                        type="number"
+                                        id="auto-count"
+                                        min="0"
+                                        value=auto_count
+                                        on:input=move |ev| {
+                                            let input = event_target::<HtmlInputElement>(&ev);
+                                            if let Ok(count) = input.value().parse::<u32>() {
+                                                set_auto_count.set(count);
+                                            }
+                                        }
+                                        prop:disabled=is_minting
+                                    />
+                                </div>
+                            }
+                        } else {
+                            view! { <div></div> }
+                        }
+                    }}
+
+                    // Title field (now after Minting Mode)
                     <div class="form-group">
                         <label for="title">"Title (optional):"</label>
                         <input
@@ -333,57 +384,7 @@ pub fn MintPage(
                         ></textarea>
                     </div>
 
-                    <div class="form-group">
-                        <label>"Minting Mode"</label>
-                        <div class="minting-mode-group">
-                            <label class="radio-label">
-                                <input 
-                                    type="radio"
-                                    name="minting-mode"
-                                    checked=move || minting_mode.get() == MintingMode::Manual
-                                    on:change=move |_| set_minting_mode.set(MintingMode::Manual)
-                                />
-                                <span class="radio-text">"Manual"</span>
-                            </label>
-                            <label class="radio-label">
-                                <input 
-                                    type="radio"
-                                    name="minting-mode"
-                                    checked=move || minting_mode.get() == MintingMode::Auto
-                                    on:change=move |_| set_minting_mode.set(MintingMode::Auto)
-                                />
-                                <span class="radio-text">"Auto"</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    // number of iterations in auto mode
-                    {move || {
-                        if minting_mode.get() == MintingMode::Auto {
-                            view! {
-                                <div class="form-group">
-                                    <label for="auto-count">"Number of Iterations (0 for infinite)"</label>
-                                    <input 
-                                        type="number"
-                                        id="auto-count"
-                                        min="0"
-                                        value=auto_count
-                                        on:input=move |ev| {
-                                            let input = event_target::<HtmlInputElement>(&ev);
-                                            if let Ok(count) = input.value().parse::<u32>() {
-                                                set_auto_count.set(count);
-                                            }
-                                        }
-                                        prop:disabled=is_minting
-                                    />
-                                </div>
-                            }
-                        } else {
-                            view! { <div></div> }
-                        }
-                    }}
-
-                    // add size selection
+                    // Grid Size selection
                     <div class="form-group">
                         <label>"Grid Size"</label>
                         <div class="grid-size-group">
