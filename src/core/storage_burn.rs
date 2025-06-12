@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use crate::core::storage_base::{StorageBase, StorageError};
+use crate::core::storage_base::{StorageBase, StorageError, StorageBackend};
 use wasm_bindgen_futures::spawn_local;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -21,7 +21,7 @@ impl BurnStorage {
         Self {
             base: StorageBase::new(
                 "memo-burn-records.dat".to_string(),
-                "burn_records".to_string(),
+                "memo_burn_records".to_string(),
                 100
             ),
         }
@@ -64,10 +64,13 @@ impl BurnStorage {
 
     /// Get storage status information (sync version, for UI)
     pub fn get_storage_status(&self) -> Result<String, StorageError> {
-        if StorageBase::<BurnRecord>::is_tauri_available() {
-            Ok("Tauri Store: Ready".to_string())
-        } else {
-            Err(StorageError::NotSupported)
+        match self.base.get_backend() {
+            StorageBackend::TauriStore => {
+                Ok("Tauri Store: Ready".to_string())
+            }
+            StorageBackend::LocalStorage => {
+                Ok("LocalStorage: Ready".to_string())
+            }
         }
     }
 
@@ -76,10 +79,11 @@ impl BurnStorage {
         let (count, max, total) = self.base.get_storage_info().await?;
         let usage_bytes = self.base.get_storage_usage_bytes().await?;
         let usage_kb = usage_bytes as f64 / 1024.0;
+        let backend_info = self.base.get_environment_info();
         
         Ok(format!(
-            "Burn Records: {}/{} (Total: {}), Storage: {:.1}KB",
-            count, max, total, usage_kb
+            "Burn Records: {}/{} (Total: {}), Storage: {:.1}KB [{}]",
+            count, max, total, usage_kb, backend_info
         ))
     }
 
@@ -172,6 +176,11 @@ impl BurnStorage {
             is_full: self.base.is_full().await?,
             total_burned_amount: total_burned,
         })
+    }
+
+    /// Get current used storage backend
+    pub fn get_backend(&self) -> StorageBackend {
+        self.base.get_backend()
     }
 }
 

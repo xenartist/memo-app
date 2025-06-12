@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use crate::core::storage_base::{StorageBase, StorageError};
+use crate::core::storage_base::{StorageBase, StorageError, StorageBackend};
 use wasm_bindgen_futures::spawn_local;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -16,12 +16,12 @@ pub struct MintStorage {
 }
 
 impl MintStorage {
-    /// Create a new Mint storage instance
+    /// Create new Mint storage instance
     pub fn new() -> Self {
         Self {
             base: StorageBase::new(
                 "memo-mint-records.dat".to_string(),
-                "mint_records".to_string(),
+                "memo_mint_records".to_string(),
                 100
             ),
         }
@@ -65,10 +65,13 @@ impl MintStorage {
 
     /// Get storage status information (sync version, for UI)
     pub fn get_storage_status(&self) -> Result<String, StorageError> {
-        if StorageBase::<MintRecord>::is_tauri_available() {
-            Ok("Tauri Store: Ready".to_string())
-        } else {
-            Err(StorageError::NotSupported)
+        match self.base.get_backend() {
+            StorageBackend::TauriStore => {
+                Ok("Tauri Store: Ready".to_string())
+            }
+            StorageBackend::LocalStorage => {
+                Ok("LocalStorage: Ready".to_string())
+            }
         }
     }
 
@@ -77,10 +80,11 @@ impl MintStorage {
         let (count, max, total) = self.base.get_storage_info().await?;
         let usage_bytes = self.base.get_storage_usage_bytes().await?;
         let usage_kb = usage_bytes as f64 / 1024.0;
+        let backend_info = self.base.get_environment_info();
         
         Ok(format!(
-            "Mint Records: {}/{} (Total: {}), Storage: {:.1}KB",
-            count, max, total, usage_kb
+            "Mint Records: {}/{} (Total: {}), Storage: {:.1}KB [{}]",
+            count, max, total, usage_kb, backend_info
         ))
     }
 
@@ -117,6 +121,11 @@ impl MintStorage {
     /// Clear all records
     pub async fn clear_all_records(&self) -> Result<(), StorageError> {
         self.base.clear_all_records().await
+    }
+
+    /// Get current used storage backend
+    pub fn get_backend(&self) -> StorageBackend {
+        self.base.get_backend()
     }
 }
 

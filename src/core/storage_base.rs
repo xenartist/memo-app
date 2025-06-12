@@ -2,6 +2,7 @@ use serde::{Serialize, Deserialize, de::DeserializeOwned};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use js_sys::*;
+use web_sys::{window, Storage};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CircularStorageData<T> {
@@ -16,6 +17,7 @@ pub enum StorageError {
     SerializationError(String),
     NotFound,
     NotSupported,
+    LocalStorageError(String),
 }
 
 impl std::fmt::Display for StorageError {
@@ -25,8 +27,16 @@ impl std::fmt::Display for StorageError {
             StorageError::SerializationError(msg) => write!(f, "Serialization error: {}", msg),
             StorageError::NotFound => write!(f, "Record not found"),
             StorageError::NotSupported => write!(f, "Storage not supported"),
+            StorageError::LocalStorageError(msg) => write!(f, "LocalStorage error: {}", msg),
         }
     }
+}
+
+/// Storage backend type
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StorageBackend {
+    TauriStore,
+    LocalStorage,
 }
 
 // Tauri Store JavaScript API binding
@@ -57,12 +67,13 @@ extern "C" {
     async fn delete(this: &TauriStore, key: &str) -> JsValue;
 }
 
-/// Generic Tauri Store storage base class
+/// Generic adaptive storage base class
 #[derive(Clone)]
 pub struct StorageBase<T> {
     pub store_filename: String,
     pub storage_key: String,
     pub max_records: usize,
+    backend: StorageBackend,
     _phantom: std::marker::PhantomData<T>,
 }
 
@@ -70,13 +81,26 @@ impl<T> StorageBase<T>
 where
     T: Serialize + DeserializeOwned + Clone,
 {
-    /// Create a new storage instance
+    /// Create new storage instance, automatically detect environment
     pub fn new(store_filename: String, storage_key: String, max_records: usize) -> Self {
+        let backend = Self::detect_storage_backend();
+        log::info!("Storage backend detected: {:?}", backend);
+        
         Self {
             store_filename,
             storage_key,
             max_records,
+            backend,
             _phantom: std::marker::PhantomData,
+        }
+    }
+
+    /// Detect storage backend
+    fn detect_storage_backend() -> StorageBackend {
+        if Self::is_tauri_available() {
+            StorageBackend::TauriStore
+        } else {
+            StorageBackend::LocalStorage
         }
     }
 
@@ -91,12 +115,31 @@ where
         }
     }
 
+    /// Get current used storage backend
+    pub fn get_backend(&self) -> StorageBackend {
+        self.backend
+    }
+
+    /// Get storage data structure (uniform interface)
+    pub async fn get_storage_data(&self) -> Result<CircularStorageData<T>, StorageError> {
+        match self.backend {
+            StorageBackend::TauriStore => self.get_storage_data_tauri().await,
+            StorageBackend::LocalStorage => self.get_storage_data_localstorage().await,
+        }
+    }
+
+    /// Save storage data structure (uniform interface)
+    pub async fn save_storage_data(&self, data: &CircularStorageData<T>) -> Result<(), StorageError> {
+        match self.backend {
+            StorageBackend::TauriStore => self.save_storage_data_tauri(data).await,
+            StorageBackend::LocalStorage => self.save_storage_data_localstorage(data).await,
+        }
+    }
+
+    // ============ Tauri Store implementation ============
+
     /// Get Tauri Store instance
     async fn get_store(&self) -> Result<TauriStore, StorageError> {
-        if !Self::is_tauri_available() {
-            return Err(StorageError::NotSupported);
-        }
-
         let store_js = tauri_store_load(&self.store_filename).await;
         
         if store_js.is_undefined() || store_js.is_null() {
@@ -106,27 +149,25 @@ where
         Ok(store_js.unchecked_into::<TauriStore>())
     }
 
-    /// Get storage data structure
-    pub async fn get_storage_data(&self) -> Result<CircularStorageData<T>, StorageError> {
+    /// Tauri Store version of get data
+    async fn get_storage_data_tauri(&self) -> Result<CircularStorageData<T>, StorageError> {
         let store = self.get_store().await?;
         let js_value = store.get(&self.storage_key).await;
 
         if js_value.is_null() || js_value.is_undefined() {
-            // Create new storage data
             Ok(CircularStorageData {
                 records: vec![None; self.max_records],
                 next_index: 0,
                 total_count: 0,
             })
         } else {
-            // Parse existing data
             serde_wasm_bindgen::from_value(js_value)
                 .map_err(|e| StorageError::SerializationError(e.to_string()))
         }
     }
 
-    /// Save storage data structure
-    pub async fn save_storage_data(&self, data: &CircularStorageData<T>) -> Result<(), StorageError> {
+    /// Tauri Store version of save data
+    async fn save_storage_data_tauri(&self, data: &CircularStorageData<T>) -> Result<(), StorageError> {
         let store = self.get_store().await?;
         
         let js_value = serde_wasm_bindgen::to_value(data)
@@ -137,6 +178,58 @@ where
         
         Ok(())
     }
+
+    // ============ LocalStorage implementation ============
+
+    /// Get localStorage instance
+    fn get_local_storage(&self) -> Result<Storage, StorageError> {
+        let window = window().ok_or(StorageError::LocalStorageError("Window not available".to_string()))?;
+        window.local_storage()
+            .map_err(|_| StorageError::LocalStorageError("localStorage access denied".to_string()))?
+            .ok_or(StorageError::LocalStorageError("localStorage not available".to_string()))
+    }
+
+    /// LocalStorage version of get data
+    async fn get_storage_data_localstorage(&self) -> Result<CircularStorageData<T>, StorageError> {
+        let storage = self.get_local_storage()?;
+        
+        match storage.get_item(&self.storage_key) {
+            Ok(Some(data)) => {
+                log::debug!("Found existing localStorage data for key: {}", self.storage_key);
+                serde_json::from_str(&data)
+                    .map_err(|e| {
+                        log::error!("Failed to deserialize localStorage data: {}", e);
+                        StorageError::SerializationError(format!("Deserialization failed: {}", e))
+                    })
+            }
+            Ok(None) => {
+                log::debug!("No existing localStorage data found for key: {}, creating new", self.storage_key);
+                Ok(CircularStorageData {
+                    records: vec![None; self.max_records],
+                    next_index: 0,
+                    total_count: 0,
+                })
+            }
+            Err(e) => {
+                log::error!("Failed to access localStorage for key {}: {:?}", self.storage_key, e);
+                Err(StorageError::LocalStorageError("Failed to read from localStorage".to_string()))
+            }
+        }
+    }
+
+    /// LocalStorage version of save data
+    async fn save_storage_data_localstorage(&self, data: &CircularStorageData<T>) -> Result<(), StorageError> {
+        let storage = self.get_local_storage()?;
+        let serialized = serde_json::to_string(data)
+            .map_err(|e| StorageError::SerializationError(e.to_string()))?;
+        
+        storage.set_item(&self.storage_key, &serialized)
+            .map_err(|_| StorageError::LocalStorageError("Failed to write to localStorage".to_string()))?;
+        
+        Ok(())
+    }
+
+    // ============ Unified public interface ============
 
     /// Generic save record method
     pub async fn save_record<F>(&self, record: T, get_id: F) -> Result<(), StorageError>
@@ -163,11 +256,11 @@ where
             data.total_count += 1;
             
             if was_overwriting {
-                log::debug!("Overwrote old record at position {} with ID: {}", 
-                    (data.next_index + self.max_records - 1) % self.max_records, record_id);
+                log::debug!("Overwrote old record at position {} with ID: {} using {:?}", 
+                    (data.next_index + self.max_records - 1) % self.max_records, record_id, self.backend);
             } else {
-                log::debug!("Added new record at position {} with ID: {}", 
-                    (data.next_index + self.max_records - 1) % self.max_records, record_id);
+                log::debug!("Added new record at position {} with ID: {} using {:?}", 
+                    (data.next_index + self.max_records - 1) % self.max_records, record_id, self.backend);
             }
         }
         
@@ -243,9 +336,18 @@ where
 
     /// Clear all records
     pub async fn clear_all_records(&self) -> Result<(), StorageError> {
-        let store = self.get_store().await?;
-        store.delete(&self.storage_key).await;
-        store.save().await;
+        match self.backend {
+            StorageBackend::TauriStore => {
+                let store = self.get_store().await?;
+                store.delete(&self.storage_key).await;
+                store.save().await;
+            }
+            StorageBackend::LocalStorage => {
+                let storage = self.get_local_storage()?;
+                storage.remove_item(&self.storage_key)
+                    .map_err(|_| StorageError::LocalStorageError("Failed to clear localStorage".to_string()))?;
+            }
+        }
         Ok(())
     }
 
@@ -268,5 +370,13 @@ where
     /// Get maximum number of records
     pub fn get_max_records(&self) -> usize {
         self.max_records
+    }
+
+    /// Get environment description
+    pub fn get_environment_info(&self) -> String {
+        match self.backend {
+            StorageBackend::TauriStore => format!("Tauri Store ({})", self.store_filename),
+            StorageBackend::LocalStorage => format!("LocalStorage ({})", self.storage_key),
+        }
     }
 } 
