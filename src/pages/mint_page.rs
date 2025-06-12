@@ -1,6 +1,7 @@
 use leptos::*;
 use crate::core::session::Session;
 use crate::core::pixel::Pixel;
+use crate::core::storage_mint::get_mint_storage;
 use crate::pages::pixel_view::PixelView;
 use web_sys::{HtmlInputElement, File, FileReader, Event, ProgressEvent, window, Clipboard};
 use wasm_bindgen::{JsCast, closure::Closure};
@@ -12,7 +13,6 @@ use gloo_timers::future::TimeoutFuture;
 use crate::core::rpc_base::RpcConnection;
 use hex;
 use serde_json;
-use crate::core::storage::{get_storage, MintRecord};
 
 #[derive(Clone, Copy, PartialEq)]
 enum MintingMode {
@@ -44,21 +44,8 @@ pub fn MintPage(
     let (title_text, set_title_text) = create_signal(String::new());
     let (content_text, set_content_text) = create_signal(String::new());
 
-    // add a signal to track the number of stored records
-    let (stored_records_count, set_stored_records_count) = create_signal(0);
-
-    // get the current record number when the component is initialized
-    spawn_local(async move {
-        match get_storage().get_record_count() {
-            Ok(count) => {
-                set_stored_records_count.set(count);
-                log::info!("Found {} stored mint records", count);
-            },
-            Err(e) => {
-                log::error!("Failed to get stored records count: {}", e);
-            }
-        }
-    });
+    // add storage status display
+    let (storage_status, set_storage_status) = create_signal(String::new());
 
     // when the size changes, recreate the pixel art
     create_effect(move |_| {
@@ -68,6 +55,62 @@ pub fn MintPage(
             GridSize::Size96 => 96,
         };
         set_pixel_art.set(Pixel::new_with_size(size));
+    });
+
+    // add debug button to manually test storage
+    let test_storage = move |_| {
+        spawn_local(async move {
+            log::info!("=== Manual Storage Test Start ===");
+            
+            match get_mint_storage().get_detailed_storage_status().await {
+                Ok(status) => {
+                    log::info!("Manual test - Storage status: {}", status);
+                    set_storage_status.set(format!("✅ {}", status));
+                },
+                Err(e) => {
+                    log::error!("Manual test - Storage error: {}", e);
+                    set_storage_status.set(format!("❌ Error: {}", e));
+                }
+            }
+            
+            log::info!("=== Manual Storage Test End ===");
+        });
+    };
+
+    // get storage status on initialization - modified to async get detailed status
+    create_effect(move |_| {
+        spawn_local(async move {
+            log::info!("=== Storage Initialization Start ===");
+            
+            // add small delay to ensure DOM is ready
+            TimeoutFuture::new(100).await;
+            
+            // first try to get sync status
+            match get_mint_storage().get_storage_status() {
+                Ok(basic_status) => {
+                    log::info!("Basic storage status: {}", basic_status);
+                    set_storage_status.set(basic_status);
+                    
+                    // then try to get detailed status
+                    match get_mint_storage().get_detailed_storage_status().await {
+                        Ok(detailed_status) => {
+                            log::info!("Detailed storage status: {}", detailed_status);
+                            set_storage_status.set(detailed_status);
+                        },
+                        Err(e) => {
+                            log::error!("Failed to get detailed storage status: {}", e);
+                            // keep basic status display
+                        }
+                    }
+                },
+                Err(e) => {
+                    log::error!("Failed to get basic storage status: {}", e);
+                    set_storage_status.set(format!("Storage Error: {}", e));
+                }
+            }
+            
+            log::info!("=== Storage Initialization End ===");
+        });
     });
 
     // create combined memo function
@@ -209,15 +252,23 @@ pub fn MintPage(
                 Ok(signature) => {
                     log::info!("Mint transaction sent: {}", signature);
                     
-                    // immediately save mint record to local storage
-                    if let Err(e) = get_storage().save_mint_record(&signature, &memo_json) {
+                    // save mint record to local storage (sync call, internal async handling)
+                    if let Err(e) = get_mint_storage().save_mint_record(&signature, &memo_json) {
                         log::error!("Failed to save mint record: {}", e);
                     } else {
                         log::info!("Mint record saved successfully for signature: {}", signature);
-                        // update the record number display
-                        if let Ok(count) = get_storage().get_record_count() {
-                            set_stored_records_count.set(count);
-                        }
+                        
+                        // async update storage status display
+                        spawn_local(async move {
+                            if let Ok(status) = get_mint_storage().get_detailed_storage_status().await {
+                                set_storage_status.set(status);
+                            }
+                            
+                            // check storage status and display warning
+                            if let Ok(true) = get_mint_storage().is_near_capacity(80).await {
+                                log::warn!("Storage is near capacity (>80%), old records will be overwritten soon");
+                            }
+                        });
                     }
                     
                     // display the waiting status and countdown
@@ -261,7 +312,7 @@ pub fn MintPage(
                                 "✅ Minting successful! Transaction: {} (Profile not found)", 
                                 signature
                             ));
-                            // even if profile is not found, mark balance update needed
+                            // even if profile fetch fails, mark balance update needed
                             session.update(|s| s.mark_balance_update_needed());
                         },
                         Err(e) => {
@@ -271,7 +322,7 @@ pub fn MintPage(
                                 "✅ Minting successful! Transaction: {} (Profile refresh error: {})", 
                                 signature, e
                             ));
-                            // even if profile is not found, mark balance update needed
+                            // even if profile fetch fails, mark balance update needed
                             session.update(|s| s.mark_balance_update_needed());
                         }
                     }
@@ -318,10 +369,26 @@ pub fn MintPage(
         <div class="mint-page">
             <h2>"Mint"</h2>
             
-            // display storage statistics
-            <div class="storage-info">
-                <span class="storage-count">
-                    {move || format!("Stored Records: {}", stored_records_count.get())}
+            // debug button - temporary add
+            <div style="margin: 10px 0; padding: 10px; background: #f0f0f0; border-radius: 5px;">
+                <button type="button" on:click=test_storage 
+                    style="background: #007bff; color: white; padding: 5px 10px; border: none; border-radius: 3px; margin-right: 10px;">
+                    "🔧 Test Storage"
+                </button>
+                <span style="font-size: 12px; color: #666;">"Debug: Click to test storage manually"</span>
+            </div>
+            
+            // display storage status information - ensure always display
+            <div class="storage-status">
+                <span class="storage-info">
+                    {move || {
+                        let status = storage_status.get();
+                        if status.is_empty() {
+                            "🔄 Loading storage info...".to_string()
+                        } else {
+                            status
+                        }
+                    }}
                 </span>
             </div>
             

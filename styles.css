@@ -1651,3 +1651,31 @@ input:disabled {
         gap: 1rem;
     }
 }
+
+/* add storage status display style */
+.storage-status {
+    margin: 10px 0;
+    padding: 8px 12px;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #6c757d;
+}
+
+.storage-info {
+    font-family: monospace;
+}
+
+/* if need warning style */
+.storage-status.warning {
+    background-color: #fff3cd;
+    border-color: #ffc107;
+    color: #856404;
+}
+
+.storage-status.full {
+    background-color: #f8d7da;
+    border-color: #dc3545;
+    color: #721c24;
+}

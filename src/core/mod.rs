@@ -5,7 +5,9 @@ pub mod rpc_base;
 pub mod rpc_token;
 pub mod pixel;
 pub mod cache;
-pub mod storage;
+pub mod storage_base;
+pub mod storage_mint;
+pub mod storage_burn;
 
 #[cfg(test)]
 pub mod rpc_tests;
