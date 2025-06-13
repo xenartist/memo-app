@@ -57,27 +57,7 @@ pub fn MintPage(
         set_pixel_art.set(Pixel::new_with_size(size));
     });
 
-    // add debug button to manually test storage
-    let test_storage = move |_| {
-        spawn_local(async move {
-            log::info!("=== Manual Storage Test Start ===");
-            
-            match get_mint_storage().get_detailed_storage_status().await {
-                Ok(status) => {
-                    log::info!("Manual test - Storage status: {}", status);
-                    set_storage_status.set(format!("✅ {}", status));
-                },
-                Err(e) => {
-                    log::error!("Manual test - Storage error: {}", e);
-                    set_storage_status.set(format!("❌ Error: {}", e));
-                }
-            }
-            
-            log::info!("=== Manual Storage Test End ===");
-        });
-    };
-
-    // get storage status on initialization - modified to async get detailed status
+    // get storage status on initialization
     create_effect(move |_| {
         spawn_local(async move {
             log::info!("=== Storage Initialization Start ===");
@@ -252,24 +232,33 @@ pub fn MintPage(
                 Ok(signature) => {
                     log::info!("Mint transaction sent: {}", signature);
                     
-                    // save mint record to local storage (sync call, internal async handling)
-                    if let Err(e) = get_mint_storage().save_mint_record(&signature, &memo_json) {
-                        log::error!("Failed to save mint record: {}", e);
-                    } else {
-                        log::info!("Mint record saved successfully for signature: {}", signature);
-                        
-                        // async update storage status display
-                        spawn_local(async move {
-                            if let Ok(status) = get_mint_storage().get_detailed_storage_status().await {
-                                set_storage_status.set(status);
+                    // async save mint record and update UI status
+                    let signature_for_storage = signature.clone();
+                    let memo_json_for_storage = memo_json.clone();
+                    let storage_status_setter = set_storage_status.clone();
+                    
+                    spawn_local(async move {
+                        // use async version to ensure data saved
+                        match get_mint_storage().save_mint_record_async(&signature_for_storage, &memo_json_for_storage).await {
+                            Ok(_) => {
+                                log::info!("Mint record saved successfully for signature: {}", signature_for_storage);
+                                
+                                // update storage status display immediately after data saved
+                                if let Ok(status) = get_mint_storage().get_detailed_storage_status().await {
+                                    log::info!("Storage status updated: {}", status);
+                                    storage_status_setter.set(status);
+                                }
+                                
+                                // check storage status and display warning
+                                if let Ok(true) = get_mint_storage().is_near_capacity(80).await {
+                                    log::warn!("Storage is near capacity (>80%), old records will be overwritten soon");
+                                }
+                            },
+                            Err(e) => {
+                                log::error!("Failed to save mint record: {}", e);
                             }
-                            
-                            // check storage status and display warning
-                            if let Ok(true) = get_mint_storage().is_near_capacity(80).await {
-                                log::warn!("Storage is near capacity (>80%), old records will be overwritten soon");
-                            }
-                        });
-                    }
+                        }
+                    });
                     
                     // display the waiting status and countdown
                     for i in (1..=30).rev() {
@@ -288,7 +277,7 @@ pub fn MintPage(
                             // update the profile in session and mark balance update needed
                             session.update(|s| {
                                 s.set_user_profile(Some(updated_profile.clone()));
-                                s.mark_balance_update_needed(); // mark balance update needed
+                                s.mark_balance_update_needed();
                             });
                             
                             set_minting_status.set("Minting completed successfully!".to_string());
@@ -369,16 +358,7 @@ pub fn MintPage(
         <div class="mint-page">
             <h2>"Mint"</h2>
             
-            // debug button - temporary add
-            <div style="margin: 10px 0; padding: 10px; background: #f0f0f0; border-radius: 5px;">
-                <button type="button" on:click=test_storage 
-                    style="background: #007bff; color: white; padding: 5px 10px; border: none; border-radius: 3px; margin-right: 10px;">
-                    "🔧 Test Storage"
-                </button>
-                <span style="font-size: 12px; color: #666;">"Debug: Click to test storage manually"</span>
-            </div>
-            
-            // display storage status information - ensure always display
+            // display storage status information
             <div class="storage-status">
                 <span class="storage-info">
                     {move || {
