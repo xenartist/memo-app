@@ -542,11 +542,8 @@ pub fn MintPage(
                                         set_pixel_art.set(new_art);
                                     });
                                     
-                                    let display_size = match grid_size.get() {
-                                        GridSize::Size32 => 320,
-                                        GridSize::Size64 => 400,
-                                        GridSize::Size96 => 480,
-                                    };
+                                    // fixed display area size to 320px, not change with grid_size
+                                    let display_size = 320;
                                     
                                     view! {
                                         <PixelView
