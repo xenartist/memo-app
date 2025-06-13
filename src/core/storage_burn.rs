@@ -64,14 +64,7 @@ impl BurnStorage {
 
     /// Get storage status information (sync version, for UI)
     pub fn get_storage_status(&self) -> Result<String, StorageError> {
-        match self.base.get_backend() {
-            StorageBackend::TauriStore => {
-                Ok("Tauri Store: Ready".to_string())
-            }
-            StorageBackend::LocalStorage => {
-                Ok("LocalStorage: Ready".to_string())
-            }
-        }
+        Ok("Storage: Ready".to_string())
     }
 
     /// Async get detailed storage status
@@ -79,11 +72,10 @@ impl BurnStorage {
         let (count, max, total) = self.base.get_storage_info().await?;
         let usage_bytes = self.base.get_storage_usage_bytes().await?;
         let usage_kb = usage_bytes as f64 / 1024.0;
-        let backend_info = self.base.get_environment_info();
         
         Ok(format!(
-            "Burn Records: {}/{} (Total: {}), Storage: {:.1}KB [{}]",
-            count, max, total, usage_kb, backend_info
+            "Burn Records: {}/{} (Total: {}), Storage: {:.1}KB",
+            count, max, total, usage_kb
         ))
     }
 

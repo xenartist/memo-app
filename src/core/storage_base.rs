@@ -375,8 +375,8 @@ where
     /// Get environment description
     pub fn get_environment_info(&self) -> String {
         match self.backend {
-            StorageBackend::TauriStore => format!("Tauri Store ({})", self.store_filename),
-            StorageBackend::LocalStorage => format!("LocalStorage ({})", self.storage_key),
+            StorageBackend::TauriStore => "Local Storage".to_string(),
+            StorageBackend::LocalStorage => "Local Storage".to_string(),
         }
     }
 } 
