@@ -475,63 +475,6 @@ pub fn MintPage(
                     }}
                 </span>
             </div>
-            
-            // display minting progress (only show when minting)
-            {move || {
-                let status = minting_status.get();
-                if !status.is_empty() {
-                    view! {
-                        <div class="minting-progress">
-                            <i class="fas fa-spinner fa-spin"></i>
-                            <span>{status}</span>
-                        </div>
-                    }
-                } else {
-                    view! { <div></div> }
-                }
-            }}
-
-            // Auto minting progress and controls
-            {move || {
-                if is_auto_minting.get() {
-                    let (current, total) = auto_progress.get();
-                    let success = auto_success_count.get();
-                    let errors = auto_error_count.get();
-                    
-                    view! {
-                        <div class="auto-minting-controls">
-                            <div class="auto-progress">
-                                <span class="progress-text">
-                                    {if total == 0 {
-                                        format!("Round: {} | Success: {} | Errors: {}", current, success, errors)
-                                    } else {
-                                        format!("Progress: {}/{} | Success: {} | Errors: {}", current, total, success, errors)
-                                    }}
-                                </span>
-                                {if total > 0 {
-                                    let percentage = if total > 0 { (current as f32 / total as f32 * 100.0) } else { 0.0 };
-                                    view! {
-                                        <div class="progress-bar">
-                                            <div class="progress-fill" style=format!("width: {}%", percentage)></div>
-                                        </div>
-                                    }
-                                } else {
-                                    view! { <div></div> }
-                                }}
-                            </div>
-                            <button
-                                type="button"
-                                class="stop-auto-btn"
-                                on:click=handle_stop_auto
-                            >
-                                "Stop Auto Minting"
-                            </button>
-                        </div>
-                    }
-                } else {
-                    view! { <div></div> }
-                }
-            }}
 
             // only show minting form when user has profile
             <Show when=move || session.get().has_user_profile()>
@@ -812,6 +755,63 @@ pub fn MintPage(
                         </button>
                     </div>
                 </form>
+
+                // display minting progress (moved here - below the form)
+                {move || {
+                    let status = minting_status.get();
+                    if !status.is_empty() {
+                        view! {
+                            <div class="minting-progress">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <span>{status}</span>
+                            </div>
+                        }
+                    } else {
+                        view! { <div></div> }
+                    }
+                }}
+
+                // Auto minting progress and controls (below minting progress)
+                {move || {
+                    if is_auto_minting.get() {
+                        let (current, total) = auto_progress.get();
+                        let success = auto_success_count.get();
+                        let errors = auto_error_count.get();
+                        
+                        view! {
+                            <div class="auto-minting-controls">
+                                <div class="auto-progress">
+                                    <span class="progress-text">
+                                        {if total == 0 {
+                                            format!("Round: {} | Success: {} | Errors: {}", current, success, errors)
+                                        } else {
+                                            format!("Progress: {}/{} | Success: {} | Errors: {}", current, total, success, errors)
+                                        }}
+                                    </span>
+                                    {if total > 0 {
+                                        let percentage = if total > 0 { (current as f32 / total as f32 * 100.0) } else { 0.0 };
+                                        view! {
+                                            <div class="progress-bar">
+                                                <div class="progress-fill" style=format!("width: {}%", percentage)></div>
+                                            </div>
+                                        }
+                                    } else {
+                                        view! { <div></div> }
+                                    }}
+                                </div>
+                                <button
+                                    type="button"
+                                    class="stop-auto-btn"
+                                    on:click=handle_stop_auto
+                                >
+                                    "Stop Auto Minting"
+                                </button>
+                            </div>
+                        }
+                    } else {
+                        view! { <div></div> }
+                    }
+                }}
             </Show>
 
             // show warning when no profile

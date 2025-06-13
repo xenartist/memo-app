@@ -1679,3 +1679,65 @@ input:disabled {
     border-color: #dc3545;
     color: #721c24;
 }
+
+.stop-auto-btn {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background-color 0.2s ease;
+}
+
+.stop-auto-btn:hover {
+    background-color: #c82333;
+}
+
+.stop-auto-btn:active {
+    background-color: #bd2130;
+}
+
+.stop-auto-btn:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+/* Auto minting controls container style */
+.auto-minting-controls {
+    margin-top: 16px;
+    padding: 16px;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+}
+
+.auto-progress {
+    margin-bottom: 12px;
+}
+
+.progress-text {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: #495057;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 20px;
+    background-color: #e9ecef;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.progress-fill {
+    height: 100%;
+    background-color: #007bff;
+    transition: width 0.3s ease;
+    border-radius: 10px;
+}
