@@ -47,6 +47,13 @@ pub fn MintPage(
     // add storage status display
     let (storage_status, set_storage_status) = create_signal(String::new());
 
+    // Auto minting related signals
+    let (is_auto_minting, set_is_auto_minting) = create_signal(false);
+    let (auto_progress, set_auto_progress) = create_signal((0u32, 0u32)); // (current, total)
+    let (auto_should_stop, set_auto_should_stop) = create_signal(false);
+    let (auto_success_count, set_auto_success_count) = create_signal(0u32);
+    let (auto_error_count, set_auto_error_count) = create_signal(0u32);
+
     // when the size changes, recreate the pixel art
     create_effect(move |_| {
         let size = match grid_size.get() {
@@ -114,6 +121,90 @@ pub fn MintPage(
         memo_value.to_string()
     };
 
+    // Single mint function (extracted for reuse)
+    let perform_single_mint = move |memo_json: String| async move {
+        // record the total_minted number before mint
+        let pre_mint_total = session.with_untracked(|s| {
+            s.get_user_profile()
+                .map(|profile| profile.total_minted)
+                .unwrap_or(0)
+        });
+
+        // use the new session.mint() method
+        let mut session_update = session.get_untracked();
+        match session_update.mint(&memo_json).await {
+            Ok(signature) => {
+                log::info!("Mint transaction sent: {}", signature);
+                
+                // async save mint record and update UI status
+                let signature_for_storage = signature.clone();
+                let memo_json_for_storage = memo_json.clone();
+                let storage_status_setter = set_storage_status.clone();
+                
+                spawn_local(async move {
+                    // use async version to ensure data saved
+                    match get_mint_storage().save_mint_record_async(&signature_for_storage, &memo_json_for_storage).await {
+                        Ok(_) => {
+                            log::info!("Mint record saved successfully for signature: {}", signature_for_storage);
+                            
+                            // update storage status display immediately after data saved
+                            if let Ok(status) = get_mint_storage().get_detailed_storage_status().await {
+                                log::info!("Storage status updated: {}", status);
+                                storage_status_setter.set(status);
+                            }
+                            
+                            // check storage status and display warning
+                            if let Ok(true) = get_mint_storage().is_near_capacity(80).await {
+                                log::warn!("Storage is near capacity (>80%), old records will be overwritten soon");
+                            }
+                        },
+                        Err(e) => {
+                            log::error!("Failed to save mint record: {}", e);
+                        }
+                    }
+                });
+                
+                // display the waiting status and countdown
+                for i in (1..=30).rev() {
+                    set_minting_status.set(format!("Transaction confirmed! Updating data... {}s", i));
+                    TimeoutFuture::new(1_000).await;
+                }
+                
+                set_minting_status.set("Finalizing...".to_string());
+                
+                // re-fetch and update user profile
+                match session_update.fetch_and_cache_user_profile().await {
+                    Ok(Some(updated_profile)) => {
+                        // calculate the actual minted number
+                        let tokens_minted = updated_profile.total_minted.saturating_sub(pre_mint_total);
+                        
+                        // update the profile in session and mark balance update needed
+                        session.update(|s| {
+                            s.set_user_profile(Some(updated_profile.clone()));
+                            s.mark_balance_update_needed();
+                        });
+                        
+                        Ok((signature, tokens_minted, updated_profile.total_minted))
+                    },
+                    Ok(None) => {
+                        // even if profile fetch fails, mark balance update needed
+                        session.update(|s| s.mark_balance_update_needed());
+                        Err(format!("Profile not found"))
+                    },
+                    Err(e) => {
+                        log::error!("Failed to refresh user profile after mint: {}", e);
+                        // even if profile fetch fails, mark balance update needed
+                        session.update(|s| s.mark_balance_update_needed());
+                        Err(format!("Profile refresh error: {}", e))
+                    }
+                }
+            },
+            Err(e) => {
+                Err(format!("Minting failed: {}", e))
+            }
+        }
+    };
+
     // handle image import
     let handle_import = move |ev: web_sys::MouseEvent| {
         ev.prevent_default();
@@ -175,7 +266,7 @@ pub fn MintPage(
         input.click();
     };
 
-    // handle minting
+    // handle minting (updated for auto mode support)
     let handle_start_minting = move |ev: web_sys::SubmitEvent| {
         ev.prevent_default();
         set_is_minting.set(true);
@@ -217,76 +308,24 @@ pub fn MintPage(
                 return;
             }
 
-            set_minting_status.set("Sending mint transaction...".to_string());
+            // Check minting mode
+            let mode = minting_mode.get_untracked();
+            let count = auto_count.get_untracked();
 
-            // record the total_minted number before mint
-            let pre_mint_total = session.with_untracked(|s| {
-                s.get_user_profile()
-                    .map(|profile| profile.total_minted)
-                    .unwrap_or(0)
-            });
-
-            // use the new session.mint() method
-            let mut session_update = session.get_untracked();
-            match session_update.mint(&memo_json).await {
-                Ok(signature) => {
-                    log::info!("Mint transaction sent: {}", signature);
+            match mode {
+                MintingMode::Manual => {
+                    // Manual mode: single mint
+                    set_minting_status.set("Sending mint transaction...".to_string());
                     
-                    // async save mint record and update UI status
-                    let signature_for_storage = signature.clone();
-                    let memo_json_for_storage = memo_json.clone();
-                    let storage_status_setter = set_storage_status.clone();
-                    
-                    spawn_local(async move {
-                        // use async version to ensure data saved
-                        match get_mint_storage().save_mint_record_async(&signature_for_storage, &memo_json_for_storage).await {
-                            Ok(_) => {
-                                log::info!("Mint record saved successfully for signature: {}", signature_for_storage);
-                                
-                                // update storage status display immediately after data saved
-                                if let Ok(status) = get_mint_storage().get_detailed_storage_status().await {
-                                    log::info!("Storage status updated: {}", status);
-                                    storage_status_setter.set(status);
-                                }
-                                
-                                // check storage status and display warning
-                                if let Ok(true) = get_mint_storage().is_near_capacity(80).await {
-                                    log::warn!("Storage is near capacity (>80%), old records will be overwritten soon");
-                                }
-                            },
-                            Err(e) => {
-                                log::error!("Failed to save mint record: {}", e);
-                            }
-                        }
-                    });
-                    
-                    // display the waiting status and countdown
-                    for i in (1..=30).rev() {
-                        set_minting_status.set(format!("Transaction confirmed! Updating data... {}s", i));
-                        TimeoutFuture::new(1_000).await;
-                    }
-                    
-                    set_minting_status.set("Finalizing...".to_string());
-                    
-                    // re-fetch and update user profile
-                    match session_update.fetch_and_cache_user_profile().await {
-                        Ok(Some(updated_profile)) => {
-                            // calculate the actual minted number
-                            let tokens_minted = updated_profile.total_minted.saturating_sub(pre_mint_total);
-                            
-                            // update the profile in session and mark balance update needed
-                            session.update(|s| {
-                                s.set_user_profile(Some(updated_profile.clone()));
-                                s.mark_balance_update_needed();
-                            });
-                            
+                    match perform_single_mint(memo_json).await {
+                        Ok((signature, tokens_minted, total_minted)) => {
                             set_minting_status.set("Minting completed successfully!".to_string());
                             set_error_message.set(format!(
                                 "✅ Minting successful! Transaction: {} - Minted: {} tokens, Total: {}", 
-                                signature, tokens_minted, updated_profile.total_minted
+                                signature, tokens_minted, total_minted
                             ));
 
-                            // clear the form (optional)
+                            // clear the form
                             set_title_text.set(String::new());
                             set_content_text.set(String::new());
                             set_pixel_art.set(Pixel::new_with_size(match grid_size.get_untracked() {
@@ -295,36 +334,101 @@ pub fn MintPage(
                                 GridSize::Size96 => 96,
                             }));
                         },
-                        Ok(None) => {
-                            set_minting_status.set("Profile update failed".to_string());
-                            set_error_message.set(format!(
-                                "✅ Minting successful! Transaction: {} (Profile not found)", 
-                                signature
-                            ));
-                            // even if profile fetch fails, mark balance update needed
-                            session.update(|s| s.mark_balance_update_needed());
-                        },
                         Err(e) => {
-                            log::error!("Failed to refresh user profile after mint: {}", e);
-                            set_minting_status.set("Profile update failed".to_string());
-                            set_error_message.set(format!(
-                                "✅ Minting successful! Transaction: {} (Profile refresh error: {})", 
-                                signature, e
-                            ));
-                            // even if profile fetch fails, mark balance update needed
-                            session.update(|s| s.mark_balance_update_needed());
+                            set_minting_status.set("Minting failed".to_string());
+                            set_error_message.set(format!("❌ {}", e));
                         }
                     }
                 },
-                Err(e) => {
-                    set_minting_status.set("Minting failed".to_string());
-                    set_error_message.set(format!("❌ Minting failed: {}", e));
+                MintingMode::Auto => {
+                    // Auto mode: multiple mints
+                    set_is_auto_minting.set(true);
+                    set_auto_should_stop.set(false);
+                    set_auto_success_count.set(0);
+                    set_auto_error_count.set(0);
+                    
+                    let total_count = if count == 0 { u32::MAX } else { count };
+                    set_auto_progress.set((0, if count == 0 { 0 } else { count }));
+                    
+                    let mut current_round = 0u32;
+                    let mut success_count = 0u32;
+                    let mut error_count = 0u32;
+                    
+                    while (count == 0 || current_round < count) && !auto_should_stop.get_untracked() {
+                        current_round += 1;
+                        
+                        // Update progress
+                        set_auto_progress.set((current_round, if count == 0 { 0 } else { count }));
+                        
+                        if count == 0 {
+                            set_minting_status.set(format!("Auto Minting: Round {} (∞)", current_round));
+                        } else {
+                            set_minting_status.set(format!("Auto Minting: Round {}/{}", current_round, count));
+                        }
+                        
+                        // Perform single mint
+                        match perform_single_mint(memo_json.clone()).await {
+                            Ok((signature, tokens_minted, total_minted)) => {
+                                success_count += 1;
+                                set_auto_success_count.set(success_count);
+                                log::info!("Auto mint round {} successful: {}", current_round, signature);
+                            },
+                            Err(e) => {
+                                error_count += 1;
+                                set_auto_error_count.set(error_count);
+                                log::error!("Auto mint round {} failed: {}", current_round, e);
+                            }
+                        }
+                        
+                        // Check if should stop
+                        if auto_should_stop.get_untracked() {
+                            break;
+                        }
+                        
+                        // Wait before next mint (only if not the last one)
+                        if count == 0 || current_round < count {
+                            set_minting_status.set(format!("Waiting for next mint... (Success: {}, Errors: {})", success_count, error_count));
+                            TimeoutFuture::new(30_000).await; // 30 second interval between mints
+                        }
+                    }
+                    
+                    // Auto minting finished
+                    set_is_auto_minting.set(false);
+                    let reason = if auto_should_stop.get_untracked() { "stopped by user" } else { "completed" };
+                    set_minting_status.set(format!("Auto minting {} after {} rounds", reason, current_round));
+                    
+                    // Set different message prefix based on success/failure ratio
+                    let message = if error_count == 0 && success_count > 0 {
+                        // All successful - green
+                        format!("✅ Auto minting finished: {} rounds completed, {} successful, {} failed", 
+                            current_round, success_count, error_count)
+                    } else if success_count == 0 && error_count > 0 {
+                        // All failed - red
+                        format!("❌ Auto minting finished: {} rounds completed, {} successful, {} failed", 
+                            current_round, success_count, error_count)
+                    } else if success_count > 0 && error_count > 0 {
+                        // Partial success - orange
+                        format!("⚠️ Auto minting finished: {} rounds completed, {} successful, {} failed", 
+                            current_round, success_count, error_count)
+                    } else {
+                        // No transactions (shouldn't happen but just in case)
+                        format!("🎯 Auto minting finished: {} rounds completed, {} successful, {} failed", 
+                            current_round, success_count, error_count)
+                    };
+                    
+                    set_error_message.set(message);
                 }
             }
 
             set_is_minting.set(false);
             set_minting_status.set(String::new());
         });
+    };
+
+    // handle stop auto minting
+    let handle_stop_auto = move |_: web_sys::MouseEvent| {
+        set_auto_should_stop.set(true);
+        set_minting_status.set("Stopping auto minting...".to_string());
     };
 
     // handle copy string
@@ -387,6 +491,48 @@ pub fn MintPage(
                 }
             }}
 
+            // Auto minting progress and controls
+            {move || {
+                if is_auto_minting.get() {
+                    let (current, total) = auto_progress.get();
+                    let success = auto_success_count.get();
+                    let errors = auto_error_count.get();
+                    
+                    view! {
+                        <div class="auto-minting-controls">
+                            <div class="auto-progress">
+                                <span class="progress-text">
+                                    {if total == 0 {
+                                        format!("Round: {} | Success: {} | Errors: {}", current, success, errors)
+                                    } else {
+                                        format!("Progress: {}/{} | Success: {} | Errors: {}", current, total, success, errors)
+                                    }}
+                                </span>
+                                {if total > 0 {
+                                    let percentage = if total > 0 { (current as f32 / total as f32 * 100.0) } else { 0.0 };
+                                    view! {
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style=format!("width: {}%", percentage)></div>
+                                        </div>
+                                    }
+                                } else {
+                                    view! { <div></div> }
+                                }}
+                            </div>
+                            <button
+                                type="button"
+                                class="stop-auto-btn"
+                                on:click=handle_stop_auto
+                            >
+                                "Stop Auto Minting"
+                            </button>
+                        </div>
+                    }
+                } else {
+                    view! { <div></div> }
+                }
+            }}
+
             // only show minting form when user has profile
             <Show when=move || session.get().has_user_profile()>
                 <form class="mint-form" on:submit=handle_start_minting>
@@ -403,6 +549,7 @@ pub fn MintPage(
                                             name="minting-mode"
                                             checked=move || minting_mode.get() == MintingMode::Manual
                                             on:change=move |_| set_minting_mode.set(MintingMode::Manual)
+                                            prop:disabled=is_minting
                                         />
                                         <span class="radio-text">"Manual"</span>
                                     </label>
@@ -412,6 +559,7 @@ pub fn MintPage(
                                             name="minting-mode"
                                             checked=move || minting_mode.get() == MintingMode::Auto
                                             on:change=move |_| set_minting_mode.set(MintingMode::Auto)
+                                            prop:disabled=is_minting
                                         />
                                         <span class="radio-text">"Auto"</span>
                                     </label>
@@ -437,6 +585,9 @@ pub fn MintPage(
                                                 }
                                                 prop:disabled=is_minting
                                             />
+                                            <div class="auto-mode-info">
+                                                <small>"Auto mode will mint repeatedly with 30-second intervals between transactions"</small>
+                                            </div>
                                         </div>
                                     }
                                 } else {
@@ -489,6 +640,7 @@ pub fn MintPage(
                                             name="grid-size"
                                             checked=move || grid_size.get() == GridSize::Size32
                                             on:change=move |_| set_grid_size.set(GridSize::Size32)
+                                            prop:disabled=is_minting
                                         />
                                         <span class="radio-text">"32x32"</span>
                                     </label>
@@ -498,6 +650,7 @@ pub fn MintPage(
                                             name="grid-size"
                                             checked=move || grid_size.get() == GridSize::Size64
                                             on:change=move |_| set_grid_size.set(GridSize::Size64)
+                                            prop:disabled=is_minting
                                         />
                                         <span class="radio-text">"64x64"</span>
                                     </label>
@@ -507,6 +660,7 @@ pub fn MintPage(
                                             name="grid-size"
                                             checked=move || grid_size.get() == GridSize::Size96
                                             on:change=move |_| set_grid_size.set(GridSize::Size96)
+                                            prop:disabled=is_minting
                                         />
                                         <span class="radio-text">"96x96"</span>
                                     </label>
@@ -642,7 +796,19 @@ pub fn MintPage(
                                 }
                             }
                         >
-                            {move || if is_minting.get() { "Minting..." } else { "Start Minting" }}
+                            {move || {
+                                if is_minting.get() {
+                                    match minting_mode.get() {
+                                        MintingMode::Manual => "Minting...".to_string(),
+                                        MintingMode::Auto => if is_auto_minting.get() { "Auto Minting..." } else { "Minting..." }.to_string(),
+                                    }
+                                } else {
+                                    match minting_mode.get() {
+                                        MintingMode::Manual => "Start Minting".to_string(),
+                                        MintingMode::Auto => "Start Auto Minting".to_string(),
+                                    }
+                                }
+                            }}
                         </button>
                     </div>
                 </form>
