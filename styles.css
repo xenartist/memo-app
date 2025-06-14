@@ -1236,6 +1236,8 @@ body.modal-open {
     padding: 24px;
     max-width: 800px;
     margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .mint-form {
@@ -1740,4 +1742,199 @@ input:disabled {
     background-color: #007bff;
     transition: width 0.3s ease;
     border-radius: 10px;
+}
+
+/* Clean, consistent Mint Page styles */
+.mint-intro {
+    background: white;
+    padding: 32px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    text-align: center;
+    margin-bottom: 24px;
+}
+
+.mint-welcome h3 {
+    color: #333;
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+.mint-welcome p {
+    color: #666;
+    font-size: 1rem;
+    margin-bottom: 2rem;
+    line-height: 1.5;
+}
+
+.lets-mint-btn {
+    background-color: #28a745;
+    color: white;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.lets-mint-btn:hover:not(:disabled) {
+    background-color: #218838;
+}
+
+.lets-mint-btn:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.no-profile-warning {
+    background-color: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 6px;
+    padding: 12px;
+    margin-top: 16px;
+    color: #856404;
+}
+
+.no-profile-warning p {
+    margin: 0;
+    font-size: 14px;
+}
+
+.mint-form-container {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.mint-form-header {
+    background-color: #f8f9fa;
+    padding: 16px 24px;
+    border-bottom: 1px solid #dee2e6;
+    display: flex;
+    align-items: center;
+}
+
+.mint-form-header .back-btn {
+    background-color: #6c757d;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.mint-form-header .back-btn:hover {
+    background-color: #5a6268;
+}
+
+/* Ensure mint form content has proper padding */
+.mint-form-container .mint-form {
+    margin: 0;
+    padding: 24px;
+    background: transparent;
+    box-shadow: none;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .mint-intro {
+        padding: 24px 16px;
+    }
+    
+    .mint-form-header {
+        padding: 12px 16px;
+    }
+    
+    .mint-form-container .mint-form {
+        padding: 16px;
+    }
+}
+
+.button-group .back-btn {
+    background-color: #6c757d;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-right: auto;
+}
+
+.button-group .back-btn:hover {
+    background-color: #5a6268;
+}
+
+.mint-form-wrapper {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    width: 100%;
+    max-width: 100%;
+    margin: 0 auto;
+}
+
+.mint-form-header {
+    background-color: #f8f9fa;
+    padding: 12px 24px;
+    border-bottom: 1px solid #dee2e6;
+    width: 100%;
+    box-sizing: border-box;
+    position: relative;
+}
+
+.mint-form-header .back-btn {
+    background-color: #6c757d;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: static;
+    display: inline-block;
+}
+
+.mint-form-header .back-btn:hover {
+    background-color: #5a6268;
+}
+
+.mint-form-wrapper .mint-form {
+    margin: 0;
+    padding: 24px;
+    background: transparent;
+    box-shadow: none;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.mint-page {
+    padding: 24px;
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+    .mint-form-header {
+        padding: 12px 16px;
+    }
+    
+    .mint-form-wrapper .mint-form {
+        padding: 16px;
+    }
 }
