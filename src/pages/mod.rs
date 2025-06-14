@@ -4,6 +4,7 @@ pub mod profile_page;
 pub mod settings_page;
 pub mod memo_card;
 pub mod mint_page;
+pub mod mint_form;
 pub mod pixel_view;
 pub mod log_view;
 
@@ -13,5 +14,6 @@ pub use profile_page::ProfilePage;
 pub use settings_page::SettingsPage; 
 pub use memo_card::MemoCard;
 pub use mint_page::MintPage;
+pub use mint_form::{MintForm, MintingMode, GridSize};
 pub use pixel_view::PixelView;
 pub use log_view::*;
