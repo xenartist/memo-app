@@ -222,13 +222,13 @@ impl Pixel {
         match self.compress_with_deflate(&normal_string) {
             Ok(compressed_str) => {
                 if compressed_str.len() + 2 < normal_string.len() {
-                    format!("c:{}", compressed_str)
+                    format!("c:{}x{}:{}", self.width, self.height, compressed_str)
                 } else {
-                    format!("n:{}", normal_string)
+                    format!("n:{}x{}:{}", self.width, self.height, normal_string)
                 }
             }
             Err(e) => {
-                format!("n:{}", normal_string)
+                format!("n:{}x{}:{}", self.width, self.height, normal_string)
             }
         }
     }
@@ -239,27 +239,111 @@ impl Pixel {
             return None;
         }
 
-        let (prefix, data) = s.split_once(':')?;
+        // Try new format first: type:widthxheight:data
+        let parts: Vec<&str> = s.splitn(3, ':').collect();
         
-        match prefix {
-            "c" => {
-                // process compressed data
-                match Self::decompress_with_deflate(data) {
-                    Ok(decompressed) => {
-                        // print debug information
-                        println!("Decompressed length: {}", decompressed.len());
-                        println!("Decompressed data: {}", decompressed);
-                        Self::from_safe_string(&decompressed)
-                    },
-                    Err(e) => {
-                        println!("Decompression error: {}", e);
-                        None
+        if parts.len() == 3 {
+            // New format: type:widthxheight:data
+            let format_type = parts[0];
+            let size_str = parts[1];
+            let data = parts[2];
+            
+            // Parse size: "32x32" -> (32, 32)
+            let size_parts: Vec<&str> = size_str.split('x').collect();
+            if size_parts.len() != 2 {
+                return None;
+            }
+            
+            let width = size_parts[0].parse::<usize>().ok()?;
+            let height = size_parts[1].parse::<usize>().ok()?;
+            
+            // Process data based on format type
+            match format_type {
+                "c" => {
+                    // Process compressed data
+                    match Self::decompress_with_deflate(data) {
+                        Ok(decompressed) => {
+                            Self::from_safe_string_with_size(&decompressed, width, height)
+                        },
+                        Err(e) => {
+                            println!("Decompression error: {}", e);
+                            None
+                        }
                     }
-                }
-            },
-            "n" => Self::from_safe_string(data),
-            _ => None
+                },
+                "n" => Self::from_safe_string_with_size(data, width, height),
+                _ => None
+            }
+        } else if parts.len() == 2 {
+            // Old format for backward compatibility: type:data
+            let (prefix, data) = s.split_once(':')?;
+            
+            match prefix {
+                "c" => {
+                    // Process compressed data (old format)
+                    match Self::decompress_with_deflate(data) {
+                        Ok(decompressed) => {
+                            println!("Decompressed length: {}", decompressed.len());
+                            println!("Decompressed data: {}", decompressed);
+                            Self::from_safe_string(&decompressed)
+                        },
+                        Err(e) => {
+                            println!("Decompression error: {}", e);
+                            None
+                        }
+                    }
+                },
+                "n" => Self::from_safe_string(data),
+                _ => None
+            }
+        } else {
+            None
         }
+    }
+
+    // New helper function: restore from safe string with specified dimensions
+    pub fn from_safe_string_with_size(s: &str, width: usize, height: usize) -> Option<Self> {
+        let expected_pixels = width * height;
+        let expected_chars = (expected_pixels + 5) / 6; // Round up division
+        
+        // Validate string length makes sense for the given dimensions
+        if s.len() < expected_chars || s.len() > expected_chars + 1 {
+            println!("String length {} doesn't match expected {} for {}x{}", 
+                s.len(), expected_chars, width, height);
+            return None;
+        }
+        
+        let mut pixel = Self::with_size(width, height);
+        let mut bit_pos = 0;
+        
+        for c in s.chars() {
+            let value = match Self::map_from_safe_char(c) {
+                Some(v) => v,
+                None => {
+                    println!("Failed to map char: '{}'", c);
+                    return None;
+                }
+            };
+            
+            for i in (0..6).rev() {
+                if bit_pos >= expected_pixels {
+                    break; // Stop if we've filled all pixels
+                }
+                
+                let bit = (value & (1 << i)) != 0;
+                let x = bit_pos % width;
+                let y = bit_pos / width;
+                
+                pixel.set(x, y, bit);
+                bit_pos += 1;
+            }
+            
+            if bit_pos >= expected_pixels {
+                break;
+            }
+        }
+        
+        Some(pixel)
     }
 
     // compress string
