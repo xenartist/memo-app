@@ -619,7 +619,7 @@ pub fn MintPage(
                                                 GridSize::Size64 => "64x64",
                                                 GridSize::Size96 => "96x96",
                                             };
-                                            format!("Minting Image ({} Pixel Art)", size)
+                                            format!("Image ({} Pixel Art)", size)
                                         }}
                                     </label>
                                     <button 
