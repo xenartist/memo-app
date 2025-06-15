@@ -70,72 +70,89 @@ pub fn MintPage(
 
     view! {
         <div class="mint-page">
-            <h2>"Mint"</h2>
-            
-            // display storage status information
-            <div class="storage-status">
-                <span class="storage-info">
-                    {move || {
-                        let status = storage_status.get();
-                        if status.is_empty() {
-                            "🔄 Loading storage info...".to_string()
-                        } else {
-                            status
-                        }
-                    }}
-                </span>
+            <div class="mint-page-header">
+                <h2>"Mint"</h2>
+                
+                // display storage status information
+                <div class="storage-status">
+                    <span class="storage-info">
+                        {move || {
+                            let status = storage_status.get();
+                            if status.is_empty() {
+                                "🔄 Loading storage info...".to_string()
+                            } else {
+                                status
+                            }
+                        }}
+                    </span>
+                </div>
+                
+                // Action buttons
+                <div class="mint-actions">
+                    <button 
+                        class="open-mint-form-btn"
+                        on:click=move |_| set_show_mint_form.set(true)
+                        disabled=move || !session.get().has_user_profile()
+                    >
+                        "🚀 Engrave & Mint"
+                    </button>
+                    
+                    // Show warning when no profile
+                    <Show when=move || !session.get().has_user_profile()>
+                        <div class="no-profile-warning">
+                            <p>"⚠️ Please create your mint profile in the Profile page before you can start minting."</p>
+                        </div>
+                    </Show>
+                </div>
             </div>
             
-            // Show "Let's Mint" button when form is hidden
-            <Show when=move || !show_mint_form.get()>
-                <div class="mint-intro">
-                    <div class="mint-welcome">
-                        <h3>"Ready to Engrave Your Memories?"</h3>
-                        <p>"Engrave your thoughts, ideas, and art into permanent memories on the blockchain."</p>
-                        <p>"And mint random amount of MEMO tokens at the same time."</p>
-                        <button 
-                            class="lets-mint-btn"
-                            on:click=move |_| set_show_mint_form.set(true)
-                            disabled=move || !session.get().has_user_profile()
-                        >
-                            "Let's Engrave & Mint!"
-                        </button>
-                        
-                        // Show warning when no profile
-                        <Show when=move || !session.get().has_user_profile()>
-                            <div class="no-profile-warning">
-                                <p>"⚠️ Please create your mint profile in the Profile page before you can start minting."</p>
-                            </div>
-                        </Show>
+            // Main content area (where you can add card lists, etc.)
+            <div class="mint-content">
+                <div class="welcome-section">
+                    <h3>"Ready to Engrave Your Memories?"</h3>
+                    <p>"Engrave your thoughts, ideas, and art into permanent memories on the blockchain."</p>
+                    <p>"And mint random amount of MEMO tokens at the same time."</p>
+                    
+                    // Here you can add card lists or other content
+                    <div class="content-placeholder">
+                        <p>"🎨 Your minted memories will appear here..."</p>
+                        <p>"📝 Recent transactions and history..."</p>
+                        <p>"🖼️ Gallery of your pixel art creations..."</p>
                     </div>
                 </div>
-            </Show>
+            </div>
             
-            // Show mint form when button is clicked
+            // Modal overlay for mint form
             <Show when=move || show_mint_form.get()>
-                <div class="mint-form-wrapper">
-                    <div class="mint-form-header">
-                        <button 
-                            class="back-btn"
-                            on:click=move |_| set_show_mint_form.set(false)
-                        >
-                            "← Back"
-                        </button>
-                    </div>
-                    
-                    // Use the new MintForm component
-                    {
-                        let success_cb = on_mint_success.clone();
-                        let error_cb = on_mint_error.clone();
+                <div class="modal-overlay" on:click=move |_| set_show_mint_form.set(false)>
+                    <div class="modal-content" on:click=|e| e.stop_propagation()>
+                        <div class="modal-header">
+                            <h3>"Engrave & Mint Your Memory"</h3>
+                            <button 
+                                class="modal-close-btn"
+                                on:click=move |_| set_show_mint_form.set(false)
+                                title="Close"
+                            >
+                                "×"
+                            </button>
+                        </div>
                         
-                        view! {
-                            <MintForm 
-                                session=session 
-                                on_mint_success=success_cb
-                                on_mint_error=error_cb
-                            />
-                        }
-                    }
+                        <div class="modal-body">
+                            // Use the new MintForm component
+                            {
+                                let success_cb = on_mint_success.clone();
+                                let error_cb = on_mint_error.clone();
+                                
+                                view! {
+                                    <MintForm 
+                                        session=session 
+                                        on_mint_success=success_cb
+                                        on_mint_error=error_cb
+                                    />
+                                }
+                            }
+                        </div>
+                    </div>
                 </div>
             </Show>
         </div>

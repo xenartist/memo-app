@@ -220,7 +220,7 @@ pub fn MainPage(
                         on:click=move |_| set_current_menu.set(MenuItem::Mint)
                     >
                         <i class="fas fa-hammer"></i>
-                        <span>"Mint"</span>
+                        <span>"Engrave & Mint"</span>
                     </div>
                     <div 
                         class="menu-item"
