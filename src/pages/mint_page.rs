@@ -127,7 +127,7 @@ pub fn MintPage(
                 <div class="modal-overlay" on:click=move |_| set_show_mint_form.set(false)>
                     <div class="modal-content" on:click=|e| e.stop_propagation()>
                         <div class="modal-header">
-                            <h3>"Engrave & Mint Your Memory"</h3>
+                            <h3>"Engrave Memories & Mint MEMO Tokens"</h3>
                             <button 
                                 class="modal-close-btn"
                                 on:click=move |_| set_show_mint_form.set(false)
