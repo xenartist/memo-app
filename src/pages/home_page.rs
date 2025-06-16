@@ -91,7 +91,6 @@ pub fn HomePage(
                         class="refresh-btn"
                         on:click=handle_refresh
                         prop:disabled=move || is_loading.get()
-                        style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;"
                     >
                         {move || if is_loading.get() {
                             view! {

@@ -167,7 +167,6 @@ pub fn MintPage(
                         class="refresh-btn"
                         on:click=handle_refresh_records
                         prop:disabled=move || is_loading_records.get()
-                        style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;"
                     >
                         {move || if is_loading_records.get() {
                             view! {
