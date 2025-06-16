@@ -1,18 +1,35 @@
 use leptos::*;
 use crate::pages::pixel_view::PixelView;
+use wasm_bindgen_futures::spawn_local;
+use gloo_timers::future::TimeoutFuture;
 
 #[component]
 pub fn MemoCard(
-    #[prop(optional)] title: Option<String>,         // title (optional)
-    #[prop(optional)] image: Option<String>,         // image data (optional - can be pixel art encoded or image URL)
-    signature: String,                               // signature (required)
-    pubkey: String,                                  // pubkey (required) 
-    blocktime: i64,                                  // blocktime (required)
-    #[prop(optional)] amount: Option<f64>,           // amount (optional - only when burn)
-    #[prop(optional)] class: Option<&'static str>,   // optional CSS class
+    #[prop(optional)] title: Option<String>,
+    #[prop(optional)] image: Option<String>,
+    signature: String,
+    pubkey: String,
+    blocktime: i64,
+    #[prop(optional)] amount: Option<f64>,
+    #[prop(optional)] class: Option<&'static str>,
 ) -> impl IntoView {
     let class_str = class.unwrap_or("");
     
+    // lazy loading state
+    let (is_visible, set_is_visible) = create_signal(false);
+    
+    // simplified visibility detection - use lazy loading instead of Intersection Observer
+    let card_ref = create_node_ref::<leptos::html::Div>();
+    
+    // delay a bit and automatically set to visible (simplified solution)
+    create_effect(move |_| {
+        spawn_local(async move {
+            // short delay and set to visible, simulate lazy loading
+            TimeoutFuture::new(100).await;
+            set_is_visible.set(true);
+        });
+    });
+
     // format timestamp
     let format_timestamp = move |timestamp: i64| -> String {
         let date = js_sys::Date::new(&(timestamp as f64 * 1000.0).into());
@@ -22,7 +39,7 @@ pub fn MemoCard(
     };
 
     view! {
-        <div class=format!("memo-card {}", class_str)>
+        <div class=format!("memo-card {}", class_str) node_ref=card_ref>
             // title area
             <div class="memo-header">
                 {move || {
@@ -38,11 +55,19 @@ pub fn MemoCard(
                 }}
             </div>
 
-            // image area
+            // image area with lazy loading
             <div class="memo-image-container">
                 {move || {
-                    if let Some(ref image_data) = image {
-                        // check if it's pixel art or normal image URL
+                    if !is_visible.get() {
+                        // show placeholder until delay time passes
+                        view! {
+                            <div class="memo-image-placeholder">
+                                <i class="fas fa-image"></i>
+                                <span>"Loading..."</span>
+                            </div>
+                        }.into_view()
+                    } else if let Some(ref image_data) = image {
+                        // handle image after delay
                         if image_data.starts_with("http") || image_data.starts_with("data:") {
                             // normal image URL
                             view! {
@@ -53,12 +78,11 @@ pub fn MemoCard(
                                 />
                             }.into_view()
                         } else {
-                            // pixel art encoded
+                            // pixel art encoded - use lazy loading PixelView
                             view! {
-                                <PixelView
+                                <LazyPixelView
                                     art={image_data.clone()}
                                     size=128
-                                    editable=false
                                 />
                             }.into_view()
                         }
@@ -106,5 +130,47 @@ pub fn MemoCard(
                 }}
             </div>
         </div>
+    }
+}
+
+// lazy loading PixelView component
+#[component]
+pub fn LazyPixelView(
+    art: String,
+    size: u32,
+) -> impl IntoView {
+    let (is_loaded, set_is_loaded) = create_signal(false);
+    
+    // use signal to store art string, avoid moving issues
+    let (art_signal, _) = create_signal(art);
+    
+    // async decode, add delay to avoid blocking UI
+    create_effect(move |_| {
+        spawn_local(async move {
+            // add delay, give UI time to render placeholder
+            TimeoutFuture::new(200).await;
+            set_is_loaded.set(true);
+        });
+    });
+    
+    view! {
+        {move || {
+            if is_loaded.get() {
+                view! {
+                    <PixelView
+                        art={art_signal.get()}
+                        size=size
+                        editable=false
+                    />
+                }.into_view()
+            } else {
+                view! {
+                    <div class="pixel-loading" style="display: flex; align-items: center; justify-content: center; height: 128px; color: #666; background-color: #f8f9fa; border-radius: 6px;">
+                        <i class="fas fa-spinner fa-spin" style="margin-right: 8px;"></i>
+                        <span>"Decoding..."</span>
+                    </div>
+                }.into_view()
+            }
+        }}
     }
 }

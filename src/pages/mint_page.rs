@@ -21,6 +21,9 @@ pub fn MintPage(
     let (mint_records, set_mint_records) = create_signal(Vec::<MintRecord>::new());
     let (is_loading_records, set_is_loading_records) = create_signal(false);
     let (records_error, set_records_error) = create_signal(String::new());
+    
+    // add a signal to control whether to start loading memo cards
+    let (should_load_cards, set_should_load_cards) = create_signal(false);
 
     // load mint records function
     let load_mint_records = move || {
@@ -46,7 +49,7 @@ pub fn MintPage(
         });
     };
 
-    // get storage status on initialization
+    // get storage status on initialization (but not immediately load memo cards)
     create_effect(move |_| {
         spawn_local(async move {
             log::info!("=== Storage Initialization Start ===");
@@ -81,12 +84,23 @@ pub fn MintPage(
             log::info!("=== Storage Initialization End ===");
         });
         
-        // Also load mint records on initialization
-        load_mint_records();
+        // delay starting memo cards loading (let page render first)
+        spawn_local(async move {
+            // delay 800ms to let page fully render before starting to load memo cards
+            TimeoutFuture::new(800).await;
+            set_should_load_cards.set(true);
+        });
+    });
+
+    // only start loading records when should_load_cards is true
+    create_effect(move |_| {
+        if should_load_cards.get() {
+            load_mint_records();
+        }
     });
 
     // Optional callbacks for mint events
-    let on_mint_success = Rc::new(move |signature: String, tokens_minted: u64, total_minted: u64| {
+    let on_mint_success = Rc::new(move |_signature: String, tokens_minted: u64, total_minted: u64| {
         log::info!("Mint successful on page level: {} tokens minted, total: {}", tokens_minted, total_minted);
         
         // Update storage status after successful mint
@@ -204,8 +218,20 @@ pub fn MintPage(
                 {move || {
                     let records = mint_records.get();
                     let is_loading = is_loading_records.get();
+                    let should_load = should_load_cards.get();
                     
-                    if records.is_empty() && is_loading {
+                    if !should_load {
+                        // page just loaded, show loading message instead of loading
+                        view! {
+                            <div class="welcome-state" style="text-align: center; padding: 3rem 2rem; color: #666;">
+                                <div style="font-size: 1.2rem; margin-bottom: 1rem;">
+                                    <i class="fas fa-coins" style="margin-right: 8px; color: #28a745;"></i>
+                                    "Welcome to Your Mint History"
+                                </div>
+                                <p>"Loading your memories..."</p>
+                            </div>
+                        }
+                    } else if records.is_empty() && is_loading {
                         // show loading when loading and no data
                         view! {
                             <div class="loading-container">
