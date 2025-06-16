@@ -1151,12 +1151,140 @@ body.modal-open {
 }
 
 .memo-card {
-    border: 1px solid #ccc;
+    border: 1px solid #dee2e6;
     border-radius: 8px;
     padding: 16px;
     margin: 16px;
     background: white;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: box-shadow 0.2s ease;
+    max-width: 350px;
+}
+
+.memo-card:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.memo-header {
+    margin-bottom: 12px;
+    border-bottom: 1px solid #f1f3f4;
+    padding-bottom: 8px;
+}
+
+.memo-title {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #333;
+    text-align: center;
+}
+
+.memo-image-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 16px;
+    min-height: 128px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.memo-image {
+    max-width: 128px;
+    max-height: 128px;
+    border-radius: 4px;
+    object-fit: cover;
+}
+
+.memo-image-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #6c757d;
+    font-size: 14px;
+    height: 100px;
+}
+
+.memo-image-placeholder i {
+    font-size: 24px;
+    margin-bottom: 8px;
+    opacity: 0.5;
+}
+
+.memo-info {
+    font-size: 14px;
+}
+
+.memo-info-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+    gap: 8px;
+}
+
+.memo-info-item:last-child {
+    margin-bottom: 0;
+}
+
+.memo-info .label {
+    font-weight: 500;
+    color: #6c757d;
+    min-width: 70px;
+    flex-shrink: 0;
+}
+
+.memo-info .value {
+    color: #333;
+    word-break: break-all;
+    text-align: right;
+    flex: 1;
+}
+
+.memo-info .signature,
+.memo-info .pubkey {
+    font-family: monospace;
+    font-size: 12px;
+    color: #666;
+}
+
+.memo-info .blocktime {
+    color: #888;
+    font-size: 12px;
+}
+
+.memo-info .amount {
+    font-weight: 600;
+    color: #dc3545;
+}
+
+/* 响应式设计 */
+@media (max-width: 480px) {
+    .memo-card {
+        margin: 8px auto;
+        max-width: calc(100% - 16px);
+    }
+    
+    .memo-info-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+    
+    .memo-info .value {
+        text-align: left;
+    }
+}
+
+/* 不同类型的卡片样式 */
+.memo-card.mint-card {
+    border-left: 4px solid #28a745;
+}
+
+.memo-card.burn-card {
+    border-left: 4px solid #dc3545;
 }
 
 .pixel-art-container {
