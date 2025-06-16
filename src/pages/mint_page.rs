@@ -114,7 +114,7 @@ pub fn MintPage(
         match serde_json::from_str::<serde_json::Value>(memo_json) {
             Ok(memo) => {
                 let title = memo.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let image = memo.get("pixelArt").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let image = memo.get("image").and_then(|v| v.as_str()).map(|s| s.to_string());
                 (title, image)
             }
             Err(_) => (None, None)
@@ -231,11 +231,14 @@ pub fn MintPage(
                                     each=move || mint_records.get()
                                     key=|record| format!("{}_{}", record.timestamp as i64, record.signature)
                                     children=move |record| {
-                                        // format pubkey (display first 4 and last 4 characters)
-                                        let display_pubkey = if record.signature.len() >= 8 {
-                                            format!("{}...{}", &record.signature[..4], &record.signature[record.signature.len()-4..])
+                                        // get current user's pubkey address
+                                        let user_pubkey = session.get().get_public_key().unwrap_or_else(|_| "Unknown".to_string());
+                                        
+                                        // format user pubkey (display first 4 and last 4 characters)
+                                        let display_pubkey = if user_pubkey.len() >= 8 && user_pubkey != "Unknown" {
+                                            format!("{}...{}", &user_pubkey[..4], &user_pubkey[user_pubkey.len()-4..])
                                         } else {
-                                            record.signature.clone()
+                                            user_pubkey
                                         };
                                         
                                         // format signature (display first 8 and last 8 characters)
@@ -251,12 +254,19 @@ pub fn MintPage(
                                         // convert timestamp (milliseconds) to seconds for blocktime format
                                         let blocktime = (record.timestamp / 1000.0) as i64;
                                         
-                                        // handle default values for title and image
+                                        // handle title and image, convert to String type
                                         let final_title = title.unwrap_or_else(|| "Memory".to_string());
-                                        let final_image = image.unwrap_or_else(|| {
+                                        let final_image = image.clone().unwrap_or_else(|| {
                                             // default placeholder image for mint records
                                             "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjZTZmN2ZmIi8+Cjx0ZXh0IHg9IjMyIiB5PSIzNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjNGY4NmY3Ij5NaW50PC90ZXh0Pgo8L3N2Zz4K".to_string()
                                         });
+                                        
+                                        // debug output, check image content
+                                        if let Some(ref img) = image {
+                                            log::info!("Parsed image from memo_json: {}", img);
+                                        } else {
+                                            log::info!("No image found in memo_json, using placeholder");
+                                        }
                                         
                                         view! {
                                             <MemoCard
