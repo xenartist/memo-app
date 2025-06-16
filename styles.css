@@ -1362,8 +1362,6 @@ body.modal-open {
 /* Mint Page Styles */
 .mint-page {
     padding: 24px;
-    max-width: 800px;
-    margin: 0 auto;
     width: 100%;
     box-sizing: border-box;
 }
@@ -2051,8 +2049,6 @@ input:disabled {
 
 .mint-page {
     padding: 24px;
-    max-width: 800px;
-    margin: 0 auto;
     width: 100%;
     box-sizing: border-box;
 }
@@ -2147,13 +2143,13 @@ input:disabled {
 /* Mint page layout updates */
 .mint-page {
     padding: 24px;
-    max-width: 1200px;
-    margin: 0 auto;
     width: 100%;
     box-sizing: border-box;
 }
 
 .mint-page-header {
+    max-width: 800px;
+    margin: 0 auto;
     margin-bottom: 24px;
 }
 
@@ -2191,10 +2187,7 @@ input:disabled {
 }
 
 .mint-content {
-    background: white;
-    border-radius: 12px;
-    padding: 32px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    width: 100%;
 }
 
 .welcome-section h3 {

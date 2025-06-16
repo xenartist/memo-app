@@ -1,9 +1,10 @@
 use leptos::*;
 use crate::core::session::Session;
-use crate::core::storage_mint::get_mint_storage;
+use crate::core::storage_mint::{get_mint_storage, MintRecord};
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
 use crate::pages::mint_form::MintForm;
+use crate::pages::memo_card::MemoCard;
 use std::rc::Rc;
 
 #[component]
@@ -15,6 +16,35 @@ pub fn MintPage(
     
     // add signal to control mint form visibility
     let (show_mint_form, set_show_mint_form) = create_signal(false);
+    
+    // add signals for mint records list
+    let (mint_records, set_mint_records) = create_signal(Vec::<MintRecord>::new());
+    let (is_loading_records, set_is_loading_records) = create_signal(false);
+    let (records_error, set_records_error) = create_signal(String::new());
+
+    // load mint records function
+    let load_mint_records = move || {
+        set_is_loading_records.set(true);
+        set_records_error.set(String::new());
+        
+        spawn_local(async move {
+            TimeoutFuture::new(100).await;
+            
+            match get_mint_storage().get_all_records().await {
+                Ok(records) => {
+                    set_mint_records.set(records);
+                    log::info!("Successfully loaded {} mint records", mint_records.get_untracked().len());
+                }
+                Err(e) => {
+                    let error_msg = format!("Failed to load mint records: {}", e);
+                    set_records_error.set(error_msg.clone());
+                    log::error!("{}", error_msg);
+                }
+            }
+            
+            set_is_loading_records.set(false);
+        });
+    };
 
     // get storage status on initialization
     create_effect(move |_| {
@@ -50,6 +80,9 @@ pub fn MintPage(
             
             log::info!("=== Storage Initialization End ===");
         });
+        
+        // Also load mint records on initialization
+        load_mint_records();
     });
 
     // Optional callbacks for mint events
@@ -62,11 +95,31 @@ pub fn MintPage(
                 set_storage_status.set(status);
             }
         });
+        
+        // Reload mint records to show the new one
+        load_mint_records();
     });
 
     let on_mint_error = Rc::new(move |error: String| {
         log::error!("Mint error on page level: {}", error);
     });
+
+    // refresh records manually
+    let handle_refresh_records = move |_| {
+        load_mint_records();
+    };
+
+    // parse memo JSON to extract title and image
+    let parse_memo_json = |memo_json: &str| -> (Option<String>, Option<String>) {
+        match serde_json::from_str::<serde_json::Value>(memo_json) {
+            Ok(memo) => {
+                let title = memo.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let image = memo.get("pixelArt").and_then(|v| v.as_str()).map(|s| s.to_string());
+                (title, image)
+            }
+            Err(_) => (None, None)
+        }
+    };
 
     view! {
         <div class="mint-page">
@@ -106,20 +159,121 @@ pub fn MintPage(
                 </div>
             </div>
             
-            // Main content area (where you can add card lists, etc.)
+            // Main content area - Mint Records List
             <div class="mint-content">
-                <div class="welcome-section">
-                    <h3>"Ready to Engrave Your Memories?"</h3>
-                    <p>"Engrave your thoughts, ideas, and art into permanent memories on the blockchain."</p>
-                    <p>"And mint random amount of MEMO tokens at the same time."</p>
-                    
-                    // Here you can add card lists or other content
-                    <div class="content-placeholder">
-                        <p>"🎨 Your minted memories will appear here..."</p>
-                        <p>"📝 Recent transactions and history..."</p>
-                        <p>"🖼️ Gallery of your pixel art creations..."</p>
-                    </div>
+                <div class="header-section" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>"Your Mint History"</h2>
+                    <button 
+                        class="refresh-btn"
+                        on:click=handle_refresh_records
+                        prop:disabled=move || is_loading_records.get()
+                        style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                    >
+                        {move || if is_loading_records.get() {
+                            view! {
+                                <>
+                                    <i class="fas fa-sync-alt fa-spin"></i>
+                                    " Refreshing..."
+                                </>
+                            }
+                        } else {
+                            view! {
+                                <>
+                                    <i class="fas fa-sync-alt"></i>
+                                    " Refresh"
+                                </>
+                            }
+                        }}
+                    </button>
                 </div>
+
+                // error message display
+                {move || {
+                    let error = records_error.get();
+                    if !error.is_empty() {
+                        view! {
+                            <div class="error-banner" style="margin-bottom: 16px; padding: 12px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; color: #856404;">
+                                <i class="fas fa-exclamation-triangle" style="margin-right: 8px;"></i>
+                                {error}
+                            </div>
+                        }
+                    } else {
+                        view! { <div></div> }
+                    }
+                }}
+
+                {move || {
+                    let records = mint_records.get();
+                    let is_loading = is_loading_records.get();
+                    
+                    if records.is_empty() && is_loading {
+                        // show loading when loading and no data
+                        view! {
+                            <div class="loading-container">
+                                <div class="loading-spinner"></div>
+                                <p class="loading-text">"Loading your mint history..."</p>
+                            </div>
+                        }
+                    } else if records.is_empty() && !is_loading {
+                        // no data and not loading
+                        view! {
+                            <div class="empty-state">
+                                <p class="empty-message">
+                                    <i class="fas fa-coins" style="margin-right: 8px;"></i>
+                                    "No mint records found. Start by creating your first memory!"
+                                </p>
+                            </div>
+                        }
+                    } else {
+                        // show cards when there is data
+                        view! {
+                            <div class="memo-cards">
+                                <For
+                                    each=move || mint_records.get()
+                                    key=|record| format!("{}_{}", record.timestamp as i64, record.signature)
+                                    children=move |record| {
+                                        // format pubkey (display first 4 and last 4 characters)
+                                        let display_pubkey = if record.signature.len() >= 8 {
+                                            format!("{}...{}", &record.signature[..4], &record.signature[record.signature.len()-4..])
+                                        } else {
+                                            record.signature.clone()
+                                        };
+                                        
+                                        // format signature (display first 8 and last 8 characters)
+                                        let display_signature = if record.signature.len() >= 16 {
+                                            format!("{}...{}", &record.signature[..8], &record.signature[record.signature.len()-8..])
+                                        } else {
+                                            record.signature.clone()
+                                        };
+                                        
+                                        // parse memo JSON to get title and image
+                                        let (title, image) = parse_memo_json(&record.memo_json);
+                                        
+                                        // convert timestamp (milliseconds) to seconds for blocktime format
+                                        let blocktime = (record.timestamp / 1000.0) as i64;
+                                        
+                                        // handle default values for title and image
+                                        let final_title = title.unwrap_or_else(|| "Memory".to_string());
+                                        let final_image = image.unwrap_or_else(|| {
+                                            // default placeholder image for mint records
+                                            "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjZTZmN2ZmIi8+Cjx0ZXh0IHg9IjMyIiB5PSIzNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjNGY4NmY3Ij5NaW50PC90ZXh0Pgo8L3N2Zz4K".to_string()
+                                        });
+                                        
+                                        view! {
+                                            <MemoCard
+                                                title=final_title
+                                                image=final_image
+                                                signature=display_signature
+                                                pubkey=display_pubkey
+                                                blocktime=blocktime
+                                            />
+                                        }
+                                    }
+                                />
+                            </div>
+                        }
+                    }
+                }}
             </div>
             
             // Modal overlay for mint form
