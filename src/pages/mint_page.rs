@@ -5,7 +5,7 @@ use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
 use crate::pages::mint_form::MintForm;
 use crate::pages::memo_card::{MemoCard, MemoDetails};
-use crate::pages::pixel_view::PixelView;
+use crate::pages::memo_card_details::MemoCardDetails;
 use std::rc::Rc;
 
 #[component]
@@ -505,154 +505,22 @@ pub fn MintPage(
                 </div>
             </Show>
 
-            // details modal
-            <Show when=move || show_details_modal.get()>
-                <div class="modal-overlay" on:click=move |_| set_show_details_modal.set(false)>
-                    <div class="modal-content details-modal" on:click=|e| e.stop_propagation()>
-                        <div class="modal-header">
-                            <h3>"🔍 Memory Details"</h3>
-                            <button 
-                                class="modal-close-btn"
-                                on:click=move |_| set_show_details_modal.set(false)
-                                title="Close"
-                            >
-                                "×"
-                            </button>
-                        </div>
-                        
-                        <div class="modal-body">
-                            {move || {
-                                if let Some(details) = current_memo_details.get() {
-                                    view! {
-                                        <div class="memo-details-content">
-                                            // Title
-                                            <div class="detail-section">
-                                                <h4 class="detail-label">
-                                                    <i class="fas fa-quote-left"></i>
-                                                    "Title:"
-                                                </h4>
-                                                <div class="detail-value">
-                                                    {details.title.clone().unwrap_or_else(|| "Memory".to_string())}
-                                                </div>
-                                            </div>
-
-                                            // Image
-                                            <div class="detail-section">
-                                                <h4 class="detail-label">
-                                                    <i class="fas fa-image"></i>
-                                                    "Image:"
-                                                </h4>
-                                                <div class="detail-value">
-                                                    <div class="detail-image">
-                                                        {if let Some(ref image_data) = details.image {
-                                                            if image_data.starts_with("http") || image_data.starts_with("data:") {
-                                                                view! {
-                                                                    <img 
-                                                                        src={image_data.clone()}
-                                                                        alt="Memory Image"
-                                                                        class="detail-image-display"
-                                                                    />
-                                                                }.into_view()
-                                                            } else {
-                                                                view! {
-                                                                    <div class="detail-pixel-art">
-                                                                        <PixelView
-                                                                            art={image_data.clone()}
-                                                                            size=200
-                                                                            editable=false
-                                                                        />
-                                                                    </div>
-                                                                }.into_view()
-                                                            }
-                                                        } else {
-                                                            view! {
-                                                                <div class="no-image-placeholder">
-                                                                    <p>"No image"</p>
-                                                                </div>
-                                                            }.into_view()
-                                                        }}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            // Content
-                                            <div class="detail-section">
-                                                <h4 class="detail-label">
-                                                    <i class="fas fa-file-text"></i>
-                                                    "Content:"
-                                                </h4>
-                                                <div class="detail-value">
-                                                    <div class="content-text">
-                                                        {details.content.clone().unwrap_or_else(|| "No content".to_string())}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            // Signature
-                                            <div class="detail-section">
-                                                <h4 class="detail-label">
-                                                    <i class="fas fa-key"></i>
-                                                    "Signature:"
-                                                </h4>
-                                                <div class="detail-value">
-                                                    <div class="signature-text">
-                                                        {details.signature.clone()}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            // From
-                                            <div class="detail-section">
-                                                <h4 class="detail-label">
-                                                    <i class="fas fa-user"></i>
-                                                    "From:"
-                                                </h4>
-                                                <div class="detail-value">
-                                                    <div class="pubkey-text">
-                                                        {details.pubkey.clone()}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            // Time
-                                            <div class="detail-section">
-                                                <h4 class="detail-label">
-                                                    <i class="fas fa-clock"></i>
-                                                    "Time:"
-                                                </h4>
-                                                <div class="detail-value">
-                                                    {format_timestamp(details.blocktime)}
-                                                </div>
-                                            </div>
-
-                                            // Burn button
-                                            <div class="detail-actions">
-                                                <button 
-                                                    class="detail-burn-btn"
-                                                    on:click=move |_| {
-                                                        log::info!("Burn clicked from details for signature: {}", details.signature);
-                                                        // TODO: implement burn
-                                                        // TODO: close details modal and open burn confirmation dialog
-                                                    }
-                                                >
-                                                    <i class="fas fa-fire"></i>
-                                                    " Burn This Memory"
-                                                </button>
-                                            </div>
-                                        </div>
-                                    }
-                                } else {
-                                    view! {
-                                        <div class="no-details">
-                                            <p>"No details available"</p>
-                                        </div>
-                                    }
-                                }
-                            }}
-                        </div>
-                    </div>
-                </div>
-            </Show>
+            // use new details modal component
+            <MemoCardDetails 
+                show_modal=show_details_modal.into()
+                set_show_modal=set_show_details_modal
+                memo_details=current_memo_details.into()
+                on_burn_click=Callback::new(move |signature: String| {
+                    log::info!("Burn clicked from details component for signature: {}", signature);
+                    // TODO: implement burn
+                    // can close details modal after burn
+                    set_show_details_modal.set(false);
+                })
+                on_close=Callback::new(move |_| {
+                    log::info!("Details modal closed");
+                    // can add extra close logic here
+                })
+            />
         </div>
     }
 }
