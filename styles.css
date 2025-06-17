@@ -2612,7 +2612,7 @@ body.modal-open {
 
 .detail-image {
     display: flex;
-    justify-content: flex-start;
+    justify-content: center;
     align-items: center;
     padding: 8px;
     background: #f8f9fa;
@@ -2629,13 +2629,13 @@ body.modal-open {
 
 .detail-pixel-art {
     display: flex;
-    justify-content: flex-start;
+    justify-content: center;
     align-items: center;
     margin: 0;
 }
 
 .no-image-placeholder {
-    text-align: left;
+    text-align: center;
     padding: 1rem;
     color: #999;
     font-style: italic;
@@ -2739,4 +2739,18 @@ body.modal-open {
         max-width: 150px;
         max-height: 150px;
     }
+}
+
+/* Details Modal Pixel Art - Remove Grid */
+.details-modal .pixel-grid {
+    border: none;
+    box-shadow: none;
+}
+
+.details-modal .pixel {
+    border: none;
+}
+
+.details-modal .pixel.black {
+    border: none;
 }
