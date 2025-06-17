@@ -342,7 +342,7 @@ pub fn MintPage(
                                         <button 
                                             class="pagination-btn"
                                             on:click=handle_next_page
-                                            disabled=move || current_page.get() >= get_total_pages()
+                                            disabled=move || { current_page.get() >= get_total_pages() }
                                             style="padding: 8px 12px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px;"
                                         >
                                             "Next →"
@@ -451,7 +451,7 @@ pub fn MintPage(
                                         <button 
                                             class="pagination-btn"
                                             on:click=handle_next_page
-                                            disabled=move || current_page.get() >= get_total_pages()
+                                            disabled=move || { current_page.get() >= get_total_pages() }
                                             style="padding: 8px 12px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px;"
                                         >
                                             "Next →"
