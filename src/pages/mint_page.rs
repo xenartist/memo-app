@@ -528,7 +528,7 @@ pub fn MintPage(
                                             // Title
                                             <div class="detail-section">
                                                 <h4 class="detail-label">
-                                                    <i class="fas fa-heading"></i>
+                                                    <i class="fas fa-quote-left"></i>
                                                     "Title:"
                                                 </h4>
                                                 <div class="detail-value">
