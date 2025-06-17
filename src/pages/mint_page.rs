@@ -17,15 +17,44 @@ pub fn MintPage(
     // add signal to control mint form visibility
     let (show_mint_form, set_show_mint_form) = create_signal(false);
     
-    // add signals for mint records list
-    let (mint_records, set_mint_records) = create_signal(Vec::<MintRecord>::new());
+    // pagination related signals
+    let (all_mint_records, set_all_mint_records) = create_signal(Vec::<MintRecord>::new());
+    let (current_page, set_current_page) = create_signal(1usize);
+    let (page_size, _set_page_size) = create_signal(10usize); // show 10 cards per page
+    let (total_records, set_total_records) = create_signal(0usize);
     let (is_loading_records, set_is_loading_records) = create_signal(false);
     let (records_error, set_records_error) = create_signal(String::new());
     
     // add a signal to control whether to start loading memo cards
     let (should_load_cards, set_should_load_cards) = create_signal(false);
 
-    // load mint records function
+    // calculate records for current page - avoid using create_memo, calculate directly during rendering
+    let get_current_page_records = move || {
+        let all_records = all_mint_records.get();
+        let page = current_page.get();
+        let size = page_size.get();
+        let start_idx = (page - 1) * size;
+        let end_idx = std::cmp::min(start_idx + size, all_records.len());
+        
+        if start_idx < all_records.len() {
+            all_records[start_idx..end_idx].to_vec()
+        } else {
+            Vec::new()
+        }
+    };
+
+    // calculate total pages
+    let get_total_pages = move || {
+        let total = total_records.get();
+        let size = page_size.get();
+        if total == 0 {
+            1
+        } else {
+            ((total as f64) / (size as f64)).ceil() as usize
+        }
+    };
+
+    // load mint records function - load all data once
     let load_mint_records = move || {
         set_is_loading_records.set(true);
         set_records_error.set(String::new());
@@ -35,8 +64,10 @@ pub fn MintPage(
             
             match get_mint_storage().get_all_records().await {
                 Ok(records) => {
-                    set_mint_records.set(records);
-                    log::info!("Successfully loaded {} mint records", mint_records.get_untracked().len());
+                    let total_count = records.len();
+                    set_all_mint_records.set(records);
+                    set_total_records.set(total_count);
+                    log::info!("Successfully loaded {} mint records", total_count);
                 }
                 Err(e) => {
                     let error_msg = format!("Failed to load mint records: {}", e);
@@ -47,6 +78,34 @@ pub fn MintPage(
             
             set_is_loading_records.set(false);
         });
+    };
+
+    // pagination control functions
+    let go_to_page = move |page: usize| {
+        let max_page = get_total_pages();
+        if page >= 1 && page <= max_page {
+            set_current_page.set(page);
+            
+            // scroll to top of page
+            if let Some(window) = web_sys::window() {
+                window.scroll_to_with_x_and_y(0.0, 0.0);
+            }
+        }
+    };
+
+    let handle_prev_page = move |_| {
+        let current = current_page.get();
+        if current > 1 {
+            go_to_page(current - 1);
+        }
+    };
+
+    let handle_next_page = move |_| {
+        let current = current_page.get();
+        let max_page = get_total_pages();
+        if current < max_page {
+            go_to_page(current + 1);
+        }
     };
 
     // get storage status on initialization (but not immediately load memo cards)
@@ -112,6 +171,8 @@ pub fn MintPage(
         
         // Reload mint records to show the new one
         load_mint_records();
+        // jump to first page to show latest records
+        set_current_page.set(1);
     });
 
     let on_mint_error = Rc::new(move |error: String| {
@@ -121,6 +182,7 @@ pub fn MintPage(
     // refresh records manually
     let handle_refresh_records = move |_| {
         load_mint_records();
+        set_current_page.set(1); // reset to first page
     };
 
     // parse memo JSON to extract title and image
@@ -176,7 +238,15 @@ pub fn MintPage(
             // Main content area - Mint Records List
             <div class="mint-content">
                 <div class="header-section" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <h2>"Your Mint History"</h2>
+                    <h2>
+                        "Your Mint History"
+                        // show pagination info
+                        <Show when=move || { total_records.get() > 0 }>
+                            <span style="font-size: 0.8em; color: #666; margin-left: 10px;">
+                                {move || format!("({} total records)", total_records.get())}
+                            </span>
+                        </Show>
+                    </h2>
                     <button 
                         class="refresh-btn"
                         on:click=handle_refresh_records
@@ -216,7 +286,7 @@ pub fn MintPage(
                 }}
 
                 {move || {
-                    let records = mint_records.get();
+                    let all_records = all_mint_records.get();
                     let is_loading = is_loading_records.get();
                     let should_load = should_load_cards.get();
                     
@@ -231,7 +301,7 @@ pub fn MintPage(
                                 <p>"Loading your memories..."</p>
                             </div>
                         }
-                    } else if records.is_empty() && is_loading {
+                    } else if all_records.is_empty() && is_loading {
                         // show loading when loading and no data
                         view! {
                             <div class="loading-container">
@@ -239,7 +309,7 @@ pub fn MintPage(
                                 <p class="loading-text">"Loading your mint history..."</p>
                             </div>
                         }
-                    } else if records.is_empty() && !is_loading {
+                    } else if all_records.is_empty() && !is_loading {
                         // no data and not loading
                         view! {
                             <div class="empty-state">
@@ -252,59 +322,142 @@ pub fn MintPage(
                     } else {
                         // show cards when there is data
                         view! {
-                            <div class="memo-cards">
-                                <For
-                                    each=move || mint_records.get()
-                                    key=|record| format!("{}_{}", record.timestamp as i64, record.signature)
-                                    children=move |record| {
-                                        // get current user's pubkey address
-                                        let user_pubkey = session.get().get_public_key().unwrap_or_else(|_| "Unknown".to_string());
+                            <div class="records-container">
+                                // pagination controls (top)
+                                <Show when=move || { get_total_pages() > 1 }>
+                                    <div class="pagination-top" style="display: flex; justify-content: center; align-items: center; margin-bottom: 20px; gap: 10px;">
+                                        <button 
+                                            class="pagination-btn"
+                                            on:click=handle_prev_page
+                                            disabled=move || current_page.get() == 1
+                                            style="padding: 8px 12px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px;"
+                                        >
+                                            "← Previous"
+                                        </button>
                                         
-                                        // format user pubkey (display first 4 and last 4 characters)
-                                        let display_pubkey = if user_pubkey.len() >= 8 && user_pubkey != "Unknown" {
-                                            format!("{}...{}", &user_pubkey[..4], &user_pubkey[user_pubkey.len()-4..])
-                                        } else {
-                                            user_pubkey
-                                        };
+                                        <span class="pagination-info" style="margin: 0 15px; font-size: 0.9em; color: #666;">
+                                            {move || format!("Page {} of {}", current_page.get(), get_total_pages())}
+                                        </span>
                                         
-                                        // format signature (display first 8 and last 8 characters)
-                                        let display_signature = if record.signature.len() >= 16 {
-                                            format!("{}...{}", &record.signature[..8], &record.signature[record.signature.len()-8..])
-                                        } else {
-                                            record.signature.clone()
-                                        };
-                                        
-                                        // parse memo JSON to get title and image
-                                        let (title, image) = parse_memo_json(&record.memo_json);
-                                        
-                                        // convert timestamp (milliseconds) to seconds for blocktime format
-                                        let blocktime = (record.timestamp / 1000.0) as i64;
-                                        
-                                        // handle title and image, convert to String type
-                                        let final_title = title.unwrap_or_else(|| "Memory".to_string());
-                                        let final_image = image.clone().unwrap_or_else(|| {
-                                            // default placeholder image for mint records
-                                            "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjZTZmN2ZmIi8+Cjx0ZXh0IHg9IjMyIiB5PSIzNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjNGY4NmY3Ij5NaW50PC90ZXh0Pgo8L3N2Zz4K".to_string()
-                                        });
-                                        
-                                        // debug output, check image content
-                                        if let Some(ref img) = image {
-                                            log::info!("Parsed image from memo_json: {}", img);
-                                        } else {
-                                            log::info!("No image found in memo_json, using placeholder");
+                                        <button 
+                                            class="pagination-btn"
+                                            on:click=handle_next_page
+                                            disabled=move || current_page.get() >= get_total_pages()
+                                            style="padding: 8px 12px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px;"
+                                        >
+                                            "Next →"
+                                        </button>
+                                    </div>
+                                </Show>
+
+                                // memo cards - only show current page data
+                                <div class="memo-cards">
+                                    <For
+                                        each=move || get_current_page_records()
+                                        key=|record| format!("{}_{}", record.timestamp as i64, record.signature)
+                                        children=move |record| {
+                                            // get current user's pubkey address
+                                            let user_pubkey = session.get().get_public_key().unwrap_or_else(|_| "Unknown".to_string());
+                                            
+                                            // format user pubkey (display first 4 and last 4 characters)
+                                            let display_pubkey = if user_pubkey.len() >= 8 && user_pubkey != "Unknown" {
+                                                format!("{}...{}", &user_pubkey[..4], &user_pubkey[user_pubkey.len()-4..])
+                                            } else {
+                                                user_pubkey
+                                            };
+                                            
+                                            // format signature (display first 8 and last 8 characters)
+                                            let display_signature = if record.signature.len() >= 16 {
+                                                format!("{}...{}", &record.signature[..8], &record.signature[record.signature.len()-8..])
+                                            } else {
+                                                record.signature.clone()
+                                            };
+                                            
+                                            // parse memo JSON to get title and image
+                                            let (title, image) = parse_memo_json(&record.memo_json);
+                                            
+                                            // convert timestamp (milliseconds) to seconds for blocktime format
+                                            let blocktime = (record.timestamp / 1000.0) as i64;
+                                            
+                                            // handle title and image, convert to String type
+                                            let final_title = title.unwrap_or_else(|| "Memory".to_string());
+                                            let final_image = image.clone().unwrap_or_else(|| {
+                                                // default placeholder image for mint records
+                                                "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjZTZmN2ZmIi8+Cjx0ZXh0IHg9IjMyIiB5PSIzNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjNGY4NmY3Ij5NaW50PC90ZXh0Pgo8L3N2Zz4K".to_string()
+                                            });
+                                            
+                                            view! {
+                                                <MemoCard
+                                                    title=final_title
+                                                    image=final_image
+                                                    signature=display_signature
+                                                    pubkey=display_pubkey
+                                                    blocktime=blocktime
+                                                />
+                                            }
                                         }
+                                    />
+                                </div>
+
+                                // pagination controls (bottom)
+                                <Show when=move || { get_total_pages() > 1 }>
+                                    <div class="pagination-bottom" style="display: flex; justify-content: center; align-items: center; margin-top: 30px; gap: 10px;">
+                                        <button 
+                                            class="pagination-btn"
+                                            on:click=handle_prev_page
+                                            disabled=move || current_page.get() == 1
+                                            style="padding: 8px 12px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px;"
+                                        >
+                                            "← Previous"
+                                        </button>
                                         
-                                        view! {
-                                            <MemoCard
-                                                title=final_title
-                                                image=final_image
-                                                signature=display_signature
-                                                pubkey=display_pubkey
-                                                blocktime=blocktime
-                                            />
-                                        }
-                                    }
-                                />
+                                        // page number quick jump
+                                        <div style="display: flex; gap: 5px; align-items: center;">
+                                            {move || {
+                                                let current = current_page.get();
+                                                let total = get_total_pages();
+                                                let mut pages = Vec::new();
+                                                
+                                                // page display logic: always show page 1, pages around current, and last page
+                                                let start = if current <= 3 { 1 } else { current - 2 };
+                                                let end = if current + 2 >= total { total } else { current + 2 };
+                                                
+                                                for page in start..=end {
+                                                    pages.push(page);
+                                                }
+                                                
+                                                pages.into_iter().map(move |page| {
+                                                    let is_current = page == current;
+                                                    view! {
+                                                        <button
+                                                            class="page-number-btn"
+                                                            on:click=move |_| go_to_page(page)
+                                                            style=move || format!(
+                                                                "padding: 6px 10px; border: 1px solid #ddd; cursor: pointer; border-radius: 4px; {}",
+                                                                if is_current { "background: #007bff; color: white;" } else { "background: white;" }
+                                                            )
+                                                        >
+                                                            {page.to_string()}
+                                                        </button>
+                                                    }
+                                                }).collect::<Vec<_>>()
+                                            }}
+                                        </div>
+                                        
+                                        <span class="pagination-info" style="margin: 0 15px; font-size: 0.9em; color: #666;">
+                                            {move || format!("Page {} of {}", current_page.get(), get_total_pages())}
+                                        </span>
+                                        
+                                        <button 
+                                            class="pagination-btn"
+                                            on:click=handle_next_page
+                                            disabled=move || current_page.get() >= get_total_pages()
+                                            style="padding: 8px 12px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px;"
+                                        >
+                                            "Next →"
+                                        </button>
+                                    </div>
+                                </Show>
                             </div>
                         }
                     }
@@ -327,7 +480,6 @@ pub fn MintPage(
                         </div>
                         
                         <div class="modal-body">
-                            // Use the new MintForm component
                             {
                                 let success_cb = on_mint_success.clone();
                                 let error_cb = on_mint_error.clone();
