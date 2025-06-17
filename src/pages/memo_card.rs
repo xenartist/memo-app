@@ -3,6 +3,18 @@ use crate::pages::pixel_view::PixelView;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
 
+// MemoDetails struct
+#[derive(Clone, Debug)]
+pub struct MemoDetails {
+    pub title: Option<String>,
+    pub image: Option<String>,
+    pub content: Option<String>,
+    pub signature: String,
+    pub pubkey: String,
+    pub blocktime: i64,
+    pub amount: Option<f64>,
+}
+
 #[component]
 pub fn MemoCard(
     #[prop(optional)] title: Option<String>,
@@ -11,11 +23,24 @@ pub fn MemoCard(
     pubkey: String,
     blocktime: i64,
     #[prop(optional)] amount: Option<f64>,
+    #[prop(optional)] content: Option<String>,
     #[prop(optional)] class: Option<&'static str>,
-    #[prop(optional)] on_details_click: Option<Callback<String>>,
+    #[prop(optional)] on_details_click: Option<Callback<MemoDetails>>,
     #[prop(optional)] on_burn_click: Option<Callback<String>>,
 ) -> impl IntoView {
     let class_str = class.unwrap_or("");
+    
+    // clone all possible values that might be used multiple times
+    let title_for_header = title.clone();
+    let title_for_details = title.clone();
+    let image_for_display = image.clone();
+    let image_for_details = image.clone();
+    let content_for_details = content.clone();
+    let signature_for_info = signature.clone();
+    let signature_for_details = signature.clone();
+    let signature_for_burn = signature.clone();
+    let pubkey_for_info = pubkey.clone();
+    let pubkey_for_details = pubkey.clone();
     
     // lazy loading state
     let (is_visible, set_is_visible) = create_signal(false);
@@ -45,7 +70,7 @@ pub fn MemoCard(
             // title area
             <div class="memo-header">
                 {move || {
-                    if let Some(ref title_text) = title {
+                    if let Some(ref title_text) = title_for_header {
                         view! {
                             <h4 class="memo-title">{title_text.clone()}</h4>
                         }
@@ -68,7 +93,7 @@ pub fn MemoCard(
                                 <span>"Loading..."</span>
                             </div>
                         }.into_view()
-                    } else if let Some(ref image_data) = image {
+                    } else if let Some(ref image_data) = image_for_display {
                         // handle image after delay
                         if image_data.starts_with("http") || image_data.starts_with("data:") {
                             // normal image URL
@@ -104,12 +129,12 @@ pub fn MemoCard(
             <div class="memo-info">
                 <div class="memo-info-item">
                     <span class="label">"Signature:"</span>
-                    <span class="value signature">{signature.clone()}</span>
+                    <span class="value signature">{signature_for_info.clone()}</span>
                 </div>
                 
                 <div class="memo-info-item">
                     <span class="label">"From:"</span>
-                    <span class="value pubkey">{pubkey}</span>
+                    <span class="value pubkey">{pubkey_for_info.clone()}</span>
                 </div>
                 
                 <div class="memo-info-item">
@@ -143,16 +168,24 @@ pub fn MemoCard(
                             // Details button
                             {
                                 let details_cb = details_callback.clone();
-                                let sig_for_details = signature.clone();
+                                let memo_details = MemoDetails {
+                                    title: title_for_details.clone(),
+                                    image: image_for_details.clone(),
+                                    content: content_for_details.clone(),
+                                    signature: signature_for_details.clone(),
+                                    pubkey: pubkey_for_details.clone(),
+                                    blocktime: blocktime,
+                                    amount: amount,
+                                };
                                 move || {
                                     if let Some(details_cb) = details_cb.clone() {
-                                        let sig_clone = sig_for_details.clone();
+                                        let details_clone = memo_details.clone();
                                         view! {
                                             <button 
                                                 class="action-btn details-btn"
                                                 on:click=move |e| {
                                                     e.stop_propagation();
-                                                    details_cb.call(sig_clone.clone());
+                                                    details_cb.call(details_clone.clone());
                                                 }
                                             >
                                                 <i class="fas fa-info-circle"></i>
@@ -168,7 +201,7 @@ pub fn MemoCard(
                             // Burn button
                             {
                                 let burn_cb = burn_callback.clone();
-                                let sig_for_burn = signature.clone();
+                                let sig_for_burn = signature_for_burn.clone();
                                 move || {
                                     if let Some(burn_cb) = burn_cb.clone() {
                                         let sig_clone = sig_for_burn.clone();

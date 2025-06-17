@@ -4,7 +4,8 @@ use crate::core::storage_mint::{get_mint_storage, MintRecord};
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
 use crate::pages::mint_form::MintForm;
-use crate::pages::memo_card::MemoCard;
+use crate::pages::memo_card::{MemoCard, MemoDetails};
+use crate::pages::pixel_view::PixelView;
 use std::rc::Rc;
 
 #[component]
@@ -16,6 +17,10 @@ pub fn MintPage(
     
     // add signal to control mint form visibility
     let (show_mint_form, set_show_mint_form) = create_signal(false);
+    
+    // add signal to control details modal visibility
+    let (show_details_modal, set_show_details_modal) = create_signal(false);
+    let (current_memo_details, set_current_memo_details) = create_signal(Option::<MemoDetails>::None);
     
     // pagination related signals
     let (all_mint_records, set_all_mint_records) = create_signal(Vec::<MintRecord>::new());
@@ -186,15 +191,24 @@ pub fn MintPage(
     };
 
     // parse memo JSON to extract title and image
-    let parse_memo_json = |memo_json: &str| -> (Option<String>, Option<String>) {
+    let parse_memo_json = |memo_json: &str| -> (Option<String>, Option<String>, Option<String>) {
         match serde_json::from_str::<serde_json::Value>(memo_json) {
             Ok(memo) => {
                 let title = memo.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
                 let image = memo.get("image").and_then(|v| v.as_str()).map(|s| s.to_string());
-                (title, image)
+                let content = memo.get("content").and_then(|v| v.as_str()).map(|s| s.to_string());
+                (title, image, content)
             }
-            Err(_) => (None, None)
+            Err(_) => (None, None, None)
         }
+    };
+
+    // format timestamp function
+    let format_timestamp = move |timestamp: i64| -> String {
+        let date = js_sys::Date::new(&(timestamp as f64 * 1000.0).into());
+        date.to_locale_string("en-US", &js_sys::Object::new())
+            .as_string()
+            .unwrap_or_else(|| "Unknown".to_string())
     };
 
     view! {
@@ -357,14 +371,14 @@ pub fn MintPage(
                                                 record.signature.clone()
                                             };
                                             
-                                            // parse memo JSON to get title and image
-                                            let (title, image) = parse_memo_json(&record.memo_json);
+                                            // parse memo JSON to get title, image, and content
+                                            let (title, image, content) = parse_memo_json(&record.memo_json);
                                             
                                             // convert timestamp (milliseconds) to seconds for blocktime format
                                             let blocktime = (record.timestamp / 1000.0) as i64;
                                             
                                             // handle title and image, convert to String type
-                                            let final_title = title.unwrap_or_else(|| "Memory".to_string());
+                                            let final_title = title.clone().unwrap_or_else(|| "Memory".to_string());
                                             let final_image = image.clone().unwrap_or_else(|| {
                                                 // default placeholder image for mint records
                                                 "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjZTZmN2ZmIi8+Cjx0ZXh0IHg9IjMyIiB5PSIzNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjNGY4NmY3Ij5NaW50PC90ZXh0Pgo8L3N2Zz4K".to_string()
@@ -374,12 +388,14 @@ pub fn MintPage(
                                                 <MemoCard
                                                     title=final_title
                                                     image=final_image
+                                                    content=content.unwrap_or_else(|| "".to_string())
                                                     signature=display_signature
                                                     pubkey=display_pubkey
                                                     blocktime=blocktime
-                                                    on_details_click=Callback::new(move |signature: String| {
-                                                        log::info!("Details clicked for signature: {}", signature);
-                                                        // TODO: implement details view
+                                                    on_details_click=Callback::new(move |details: MemoDetails| {
+                                                        log::info!("Details clicked for signature: {}", details.signature);
+                                                        set_current_memo_details.set(Some(details));
+                                                        set_show_details_modal.set(true);
                                                     })
                                                     on_burn_click=Callback::new(move |signature: String| {
                                                         log::info!("Burn clicked for signature: {}", signature);
@@ -484,6 +500,155 @@ pub fn MintPage(
                                     />
                                 }
                             }
+                        </div>
+                    </div>
+                </div>
+            </Show>
+
+            // details modal
+            <Show when=move || show_details_modal.get()>
+                <div class="modal-overlay" on:click=move |_| set_show_details_modal.set(false)>
+                    <div class="modal-content details-modal" on:click=|e| e.stop_propagation()>
+                        <div class="modal-header">
+                            <h3>"🔍 Memory Details"</h3>
+                            <button 
+                                class="modal-close-btn"
+                                on:click=move |_| set_show_details_modal.set(false)
+                                title="Close"
+                            >
+                                "×"
+                            </button>
+                        </div>
+                        
+                        <div class="modal-body">
+                            {move || {
+                                if let Some(details) = current_memo_details.get() {
+                                    view! {
+                                        <div class="memo-details-content">
+                                            // Title
+                                            <div class="detail-section">
+                                                <h4 class="detail-label">
+                                                    <i class="fas fa-heading"></i>
+                                                    "Title:"
+                                                </h4>
+                                                <div class="detail-value">
+                                                    {details.title.clone().unwrap_or_else(|| "Memory".to_string())}
+                                                </div>
+                                            </div>
+
+                                            // Image
+                                            <div class="detail-section">
+                                                <h4 class="detail-label">
+                                                    <i class="fas fa-image"></i>
+                                                    "Image:"
+                                                </h4>
+                                                <div class="detail-value">
+                                                    <div class="detail-image">
+                                                        {if let Some(ref image_data) = details.image {
+                                                            if image_data.starts_with("http") || image_data.starts_with("data:") {
+                                                                view! {
+                                                                    <img 
+                                                                        src={image_data.clone()}
+                                                                        alt="Memory Image"
+                                                                        class="detail-image-display"
+                                                                    />
+                                                                }.into_view()
+                                                            } else {
+                                                                view! {
+                                                                    <div class="detail-pixel-art">
+                                                                        <PixelView
+                                                                            art={image_data.clone()}
+                                                                            size=200
+                                                                            editable=false
+                                                                        />
+                                                                    </div>
+                                                                }.into_view()
+                                                            }
+                                                        } else {
+                                                            view! {
+                                                                <div class="no-image-placeholder">
+                                                                    <p>"No image"</p>
+                                                                </div>
+                                                            }.into_view()
+                                                        }}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            // Content
+                                            <div class="detail-section">
+                                                <h4 class="detail-label">
+                                                    <i class="fas fa-file-text"></i>
+                                                    "Content:"
+                                                </h4>
+                                                <div class="detail-value">
+                                                    <div class="content-text">
+                                                        {details.content.clone().unwrap_or_else(|| "No content".to_string())}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            // Signature
+                                            <div class="detail-section">
+                                                <h4 class="detail-label">
+                                                    <i class="fas fa-key"></i>
+                                                    "Signature:"
+                                                </h4>
+                                                <div class="detail-value">
+                                                    <div class="signature-text">
+                                                        {details.signature.clone()}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            // From
+                                            <div class="detail-section">
+                                                <h4 class="detail-label">
+                                                    <i class="fas fa-user"></i>
+                                                    "From:"
+                                                </h4>
+                                                <div class="detail-value">
+                                                    <div class="pubkey-text">
+                                                        {details.pubkey.clone()}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            // Time
+                                            <div class="detail-section">
+                                                <h4 class="detail-label">
+                                                    <i class="fas fa-clock"></i>
+                                                    "Time:"
+                                                </h4>
+                                                <div class="detail-value">
+                                                    {format_timestamp(details.blocktime)}
+                                                </div>
+                                            </div>
+
+                                            // Burn button
+                                            <div class="detail-actions">
+                                                <button 
+                                                    class="detail-burn-btn"
+                                                    on:click=move |_| {
+                                                        log::info!("Burn clicked from details for signature: {}", details.signature);
+                                                        // TODO: implement burn
+                                                        // TODO: close details modal and open burn confirmation dialog
+                                                    }
+                                                >
+                                                    <i class="fas fa-fire"></i>
+                                                    " Burn This Memory"
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
+                                } else {
+                                    view! {
+                                        <div class="no-details">
+                                            <p>"No details available"</p>
+                                        </div>
+                                    }
+                                }
+                            }}
                         </div>
                     </div>
                 </div>
