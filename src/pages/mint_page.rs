@@ -377,6 +377,14 @@ pub fn MintPage(
                                                     signature=display_signature
                                                     pubkey=display_pubkey
                                                     blocktime=blocktime
+                                                    on_details_click=Callback::new(move |signature: String| {
+                                                        log::info!("Details clicked for signature: {}", signature);
+                                                        // TODO: implement details view
+                                                    })
+                                                    on_burn_click=Callback::new(move |signature: String| {
+                                                        log::info!("Burn clicked for signature: {}", signature);
+                                                        // TODO: implement burn
+                                                    })
                                                 />
                                             }
                                         }

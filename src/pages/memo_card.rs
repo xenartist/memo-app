@@ -12,6 +12,8 @@ pub fn MemoCard(
     blocktime: i64,
     #[prop(optional)] amount: Option<f64>,
     #[prop(optional)] class: Option<&'static str>,
+    #[prop(optional)] on_details_click: Option<Callback<String>>,
+    #[prop(optional)] on_burn_click: Option<Callback<String>>,
 ) -> impl IntoView {
     let class_str = class.unwrap_or("");
     
@@ -102,7 +104,7 @@ pub fn MemoCard(
             <div class="memo-info">
                 <div class="memo-info-item">
                     <span class="label">"Signature:"</span>
-                    <span class="value signature">{signature}</span>
+                    <span class="value signature">{signature.clone()}</span>
                 </div>
                 
                 <div class="memo-info-item">
@@ -129,6 +131,70 @@ pub fn MemoCard(
                     }
                 }}
             </div>
+
+            // hover action buttons - only show when callbacks are provided
+            {move || {
+                let details_callback = on_details_click.clone();
+                let burn_callback = on_burn_click.clone();
+                
+                if details_callback.is_some() || burn_callback.is_some() {
+                    view! {
+                        <div class="memo-card-actions">
+                            // Details button
+                            {
+                                let details_cb = details_callback.clone();
+                                let sig_for_details = signature.clone();
+                                move || {
+                                    if let Some(details_cb) = details_cb.clone() {
+                                        let sig_clone = sig_for_details.clone();
+                                        view! {
+                                            <button 
+                                                class="action-btn details-btn"
+                                                on:click=move |e| {
+                                                    e.stop_propagation();
+                                                    details_cb.call(sig_clone.clone());
+                                                }
+                                            >
+                                                <i class="fas fa-info-circle"></i>
+                                                <span>"Details"</span>
+                                            </button>
+                                        }.into_view()
+                                    } else {
+                                        view! { <div style="display: none;"></div> }.into_view()
+                                    }
+                                }
+                            }
+                            
+                            // Burn button
+                            {
+                                let burn_cb = burn_callback.clone();
+                                let sig_for_burn = signature.clone();
+                                move || {
+                                    if let Some(burn_cb) = burn_cb.clone() {
+                                        let sig_clone = sig_for_burn.clone();
+                                        view! {
+                                            <button 
+                                                class="action-btn burn-btn"
+                                                on:click=move |e| {
+                                                    e.stop_propagation();
+                                                    burn_cb.call(sig_clone.clone());
+                                                }
+                                            >
+                                                <i class="fas fa-fire"></i>
+                                                <span>"Burn"</span>
+                                            </button>
+                                        }.into_view()
+                                    } else {
+                                        view! { <div style="display: none;"></div> }.into_view()
+                                    }
+                                }
+                            }
+                        </div>
+                    }.into_view()
+                } else {
+                    view! { <div></div> }.into_view()
+                }
+            }}
         </div>
     }
 }

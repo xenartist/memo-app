@@ -2435,3 +2435,113 @@ body.modal-open {
 .icon {
     margin-bottom: 1rem;
 }
+
+/* Memo Card Hover Actions */
+.memo-card {
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.memo-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.memo-card-actions {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    right: 10px;
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.3s ease;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 8px;
+    border-radius: 6px;
+    backdrop-filter: blur(5px);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.memo-card:hover .memo-card-actions {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.action-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex: 1;
+    justify-content: center;
+}
+
+.action-btn:hover {
+    transform: translateY(-1px);
+}
+
+.details-btn {
+    background: #007bff;
+    color: white;
+}
+
+.details-btn:hover {
+    background: #0056b3;
+}
+
+.burn-btn {
+    background: #dc3545;
+    color: white;
+}
+
+.burn-btn:hover {
+    background: #c82333;
+}
+
+.action-btn i {
+    font-size: 12px;
+}
+
+/* Ensure memo card has enough bottom space for buttons */
+.memo-card {
+    padding-bottom: 50px; /* Add extra space at bottom for hover buttons */
+}
+
+/* Adjust memo-info to not overlap with action buttons */
+.memo-info {
+    margin-bottom: 10px;
+}
+
+/* Make cards slightly taller to accommodate hover buttons */
+.memo-card {
+    min-height: 320px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+    .memo-card-actions {
+        bottom: 5px;
+        left: 5px;
+        right: 5px;
+        padding: 6px;
+    }
+    
+    .action-btn {
+        padding: 5px 8px;
+        font-size: 12px;
+        gap: 4px;
+    }
+    
+    .action-btn span {
+        display: none; /* Hide text on mobile, show only icons */
+    }
+}
