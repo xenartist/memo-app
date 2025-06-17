@@ -200,22 +200,6 @@ pub fn MintPage(
     view! {
         <div class="mint-page">
             <div class="mint-page-header">
-                <h2>"Mint"</h2>
-                
-                // display storage status information
-                <div class="storage-status">
-                    <span class="storage-info">
-                        {move || {
-                            let status = storage_status.get();
-                            if status.is_empty() {
-                                "🔄 Loading storage info...".to_string()
-                            } else {
-                                status
-                            }
-                        }}
-                    </span>
-                </div>
-                
                 // Action buttons
                 <div class="mint-actions">
                     <button 
@@ -239,11 +223,11 @@ pub fn MintPage(
             <div class="mint-content">
                 <div class="header-section" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <h2>
-                        "Your Mint History"
+                        "My Latest Mint"
                         // show pagination info
                         <Show when=move || { total_records.get() > 0 }>
                             <span style="font-size: 0.8em; color: #666; margin-left: 10px;">
-                                {move || format!("({} total records)", total_records.get())}
+                                {move || format!("({} records)", total_records.get())}
                             </span>
                         </Show>
                     </h2>
