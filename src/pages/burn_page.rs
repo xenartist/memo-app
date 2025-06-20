@@ -216,7 +216,7 @@ pub fn BurnPage(
                         on:click=move |_| set_show_burn_form.set(true)
                         disabled=move || !session.get().has_user_profile()
                     >
-                        "🔥 Burn MEMO Tokens"
+                        "🔥 Burn MEMO"
                     </button>
                     
                     // Show warning when no profile
@@ -374,7 +374,7 @@ pub fn BurnPage(
                 <div class="modal-overlay" on:click=move |_| set_show_burn_form.set(false)>
                     <div class="modal-content" on:click=|e| e.stop_propagation()>
                         <div class="modal-header">
-                            <h3>"Burn MEMO Tokens"</h3>
+                            <h3>"Burn MEMO"</h3>
                             <button 
                                 class="modal-close-btn"
                                 on:click=move |_| set_show_burn_form.set(false)

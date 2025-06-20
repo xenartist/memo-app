@@ -84,9 +84,9 @@ pub fn BurnForm(
                     <div class="form-header">
                         <h3>
                             <i class="fas fa-fire"></i>
-                            " Burn MEMO Token"
+                            " Burn MEMO"
                         </h3>
-                        <p>"Enter the transaction signature to load and burn the MEMO token"</p>
+                        <p>"Enter the transaction signature to load and burn the MEMO"</p>
                     </div>
 
                     // Signature input section
@@ -158,7 +158,7 @@ pub fn BurnForm(
                         <div class="instructions">
                             <div class="instruction-content">
                                 <i class="fas fa-info-circle"></i>
-                                <p>"Enter a transaction signature above and click 'Load MEMO' to view the token details and burn it."</p>
+                                <p>"Enter a transaction signature above and click 'Load MEMO' to view the MEMO details and burn it."</p>
                             </div>
                         </div>
                     </Show>
