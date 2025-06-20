@@ -45,7 +45,7 @@ pub fn MemoCardDetails(
             <div class="modal-overlay" on:click=move |_| handle_close()>
                 <div class="modal-content details-modal" on:click=|e| e.stop_propagation()>
                     <div class="modal-header">
-                        <h3>"🔍 Memory Details"</h3>
+                        <h3>"🔍 MEMO Details"</h3>
                         <button 
                             class="modal-close-btn"
                             on:click=move |_| handle_close()
@@ -174,7 +174,7 @@ pub fn MemoCardDetails(
                                                             }
                                                         >
                                                             <i class="fas fa-fire"></i>
-                                                            " Burn This Memory"
+                                                            " Burn This MEMO"
                                                         </button>
                                                     </div>
                                                 }.into_view()
