@@ -1,0 +1,210 @@
+/* Memo Card Details Modal Styles */
+
+/* Details Modal */
+.details-modal {
+    max-width: 800px;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.memo-details-content {
+    padding: 24px;
+}
+
+.detail-section {
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.detail-section:last-of-type {
+    border-bottom: none;
+    margin-bottom: 16px;
+}
+
+.detail-label {
+    color: #333;
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    min-width: 120px;
+}
+
+.detail-value {
+    color: #666;
+    font-size: 1rem;
+    line-height: 1.6;
+    word-wrap: break-word;
+    flex: 1;
+}
+
+.content-text {
+    background: #f8f9fa;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border-left: 4px solid #007bff;
+    white-space: pre-wrap;
+    margin: 0;
+}
+
+.signature-text, .pubkey-text {
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    background: #f1f3f4;
+    padding: 8px 12px;
+    border-radius: 6px;
+    word-break: break-all;
+    margin: 0;
+}
+
+.detail-image {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 8px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin: 0;
+}
+
+.detail-image-display {
+    border: 1px solid #ddd;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    max-width: 200px;
+    max-height: 200px;
+}
+
+.detail-pixel-art {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0;
+}
+
+.no-image-placeholder {
+    text-align: center;
+    padding: 1rem;
+    color: #999;
+    font-style: italic;
+}
+
+.no-image-placeholder p {
+    margin: 0;
+}
+
+.detail-actions {
+    margin-top: 24px;
+    padding: 24px;
+    border-top: 2px solid #f0f0f0;
+    text-align: center;
+}
+
+.detail-burn-btn {
+    background: linear-gradient(135deg, #dc3545, #c82333);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 auto;
+}
+
+.detail-burn-btn:hover {
+    background: linear-gradient(135deg, #c82333, #bd2130);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
+}
+
+.detail-burn-btn:active {
+    transform: translateY(0);
+}
+
+.no-details {
+    text-align: center;
+    padding: 2rem;
+    color: #999;
+}
+
+/* Details Modal Pixel Art - Remove borders */
+.details-modal .pixel-grid {
+    border: none;
+    box-shadow: none;
+}
+
+.details-modal .pixel {
+    border: none;
+}
+
+.details-modal .pixel.black {
+    border: none;
+}
+
+/* Responsive design for details modal */
+@media (max-width: 768px) {
+    .details-modal {
+        max-width: 95vw;
+        max-height: 90vh;
+    }
+    
+    .memo-details-content {
+        padding: 16px;
+    }
+    
+    .detail-section {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .detail-label {
+        font-size: 0.9rem;
+        min-width: auto;
+    }
+    
+    .detail-value {
+        font-size: 0.9rem;
+    }
+    
+    .detail-burn-btn {
+        padding: 10px 20px;
+        font-size: 0.9rem;
+    }
+    
+    .detail-actions {
+        padding: 16px;
+    }
+}
+
+@media (max-width: 480px) {
+    .detail-section {
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+    }
+    
+    .content-text {
+        padding: 8px 12px;
+    }
+    
+    .signature-text, .pubkey-text {
+        padding: 6px 10px;
+        font-size: 0.8rem;
+    }
+    
+    .detail-image-display {
+        max-width: 150px;
+        max-height: 150px;
+    }
+} 

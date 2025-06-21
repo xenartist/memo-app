@@ -1,4 +1,4 @@
-/* Memo Card Styles */
+/* Memo Card Component Styles */
 
 /* Basic card styles */
 .memo-card {
@@ -98,10 +98,11 @@
     padding: 8px;
 }
 
-/* Pixel Grid styles in Memo Card */
+/* Pixel Grid styles in Memo Card - remove borders */
 .memo-card .pixel-grid {
     border: none;
     padding: 0;
+    box-shadow: none;
 }
 
 .memo-card .pixel {
@@ -255,7 +256,7 @@
     font-size: 12px;
 }
 
-/* Memo Cards container styles */
+/* Memo Cards Container */
 .memo-cards {
     display: flex;
     flex-wrap: wrap;
@@ -270,7 +271,6 @@
     .memo-card {
         margin: 8px auto;
         max-width: calc(100% - 16px);
-        width: calc(100% - 32px);
     }
     
     .memo-info-item {
@@ -301,7 +301,7 @@
     }
     
     .action-btn span {
-        display: none; /* Hide text on mobile devices, show only icons */
+        display: none; /* Hide text on mobile, show only icons */
     }
 }
 
