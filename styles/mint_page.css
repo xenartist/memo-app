@@ -1,4 +1,4 @@
-/* Mint Page Styles - minimal version, only handle necessary functionality */
+/* Mint Page Styles - simple version, only handle necessary functionality */
 
 /* 1. Mint button styles */
 .open-mint-form-btn {
@@ -109,12 +109,6 @@
     padding: 20px 24px;
 }
 
-/* 3. Memo Card Details modal styles */
-.details-modal {
-    max-width: 800px;
-    max-height: 85vh;
-}
-
 /* Responsive design */
 @media (max-width: 768px) {
     .modal-content {
@@ -133,11 +127,6 @@
     
     .modal-body {
         padding: 16px 20px;
-    }
-    
-    .details-modal {
-        max-width: 95vw;
-        max-height: 90vh;
     }
 }
 
