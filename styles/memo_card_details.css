@@ -3,6 +3,7 @@
 /* Details Modal */
 .details-modal {
     max-width: 800px;
+    min-width: 800px;
     max-height: 85vh;
     overflow-y: auto;
 }
@@ -72,6 +73,7 @@
     background: #f8f9fa;
     border-radius: 8px;
     margin: 0;
+    min-height: 200px;
 }
 
 .detail-image-display {
@@ -138,6 +140,7 @@
 @media (max-width: 768px) {
     .details-modal {
         max-width: 95vw;
+        min-width: auto;
         max-height: 90vh;
     }
     
@@ -166,6 +169,10 @@
     
     .detail-actions {
         padding: 16px;
+    }
+    
+    .detail-image {
+        min-height: auto;
     }
 }
 
