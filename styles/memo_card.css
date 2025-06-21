@@ -1,0 +1,526 @@
+/* Memo Card Styles */
+
+/* Basic card styles */
+.memo-card {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px;
+    background: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+    max-width: 350px;
+    position: relative;
+    padding-bottom: 50px; /* Reserve space for hover buttons */
+    min-height: 320px; /* Ensure card has enough height for hover buttons */
+}
+
+.memo-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Card header */
+.memo-header {
+    margin-bottom: 12px;
+    border-bottom: 1px solid #f1f3f4;
+    padding-bottom: 8px;
+}
+
+.memo-title {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #333;
+    text-align: center;
+}
+
+/* Image container */
+.memo-image-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 16px;
+    min-height: 128px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.memo-image {
+    max-width: 128px;
+    max-height: 128px;
+    border-radius: 4px;
+    object-fit: cover;
+}
+
+.memo-image-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 128px;
+    background-color: #f8f9fa;
+    border: 2px dashed #dee2e6;
+    border-radius: 6px;
+    color: #6c757d;
+    font-size: 14px;
+}
+
+.memo-image-placeholder i {
+    font-size: 24px;
+    margin-bottom: 8px;
+}
+
+.pixel-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 128px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    color: #666;
+    font-size: 14px;
+}
+
+.pixel-loading i {
+    margin-right: 8px;
+}
+
+/* Pixel Art container */
+.pixel-art-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 16px;
+    background: #f5f5f5;
+    border-radius: 4px;
+    padding: 8px;
+}
+
+/* Pixel Grid styles in Memo Card */
+.memo-card .pixel-grid {
+    border: none;
+    padding: 0;
+}
+
+.memo-card .pixel {
+    border: none;
+}
+
+.memo-card .pixel.black {
+    border: none;
+}
+
+/* Card info area */
+.memo-info {
+    font-size: 14px;
+    margin-bottom: 10px; /* Avoid overlap with hover buttons */
+}
+
+.memo-info-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+    gap: 8px;
+}
+
+.memo-info-item:last-child {
+    margin-bottom: 0;
+}
+
+.memo-info .label {
+    font-weight: 500;
+    color: #6c757d;
+    min-width: 70px;
+    flex-shrink: 0;
+}
+
+.memo-info .value {
+    color: #333;
+    word-break: break-all;
+    text-align: right;
+    flex: 1;
+}
+
+.memo-info .signature,
+.memo-info .pubkey {
+    font-family: monospace;
+    font-size: 12px;
+    color: #666;
+}
+
+.memo-info .blocktime {
+    color: #888;
+    font-size: 12px;
+}
+
+.memo-info .amount {
+    font-weight: 600;
+    color: #dc3545;
+}
+
+/* Legacy style compatibility */
+.memo-info > div {
+    margin: 4px 0;
+    word-break: break-all;
+}
+
+.signature, .pubkey {
+    font-family: monospace;
+    color: #666;
+}
+
+.blocktime {
+    color: #888;
+}
+
+.amount {
+    font-weight: bold;
+    color: #333;
+}
+
+/* Different card type styles */
+.memo-card.mint-card {
+    border-left: 4px solid #28a745;
+}
+
+.memo-card.burn-card {
+    border-left: 4px solid #dc3545;
+}
+
+/* Card hover action buttons */
+.memo-card-actions {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    right: 10px;
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.3s ease;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 8px;
+    border-radius: 6px;
+    backdrop-filter: blur(5px);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.memo-card:hover .memo-card-actions {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.action-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex: 1;
+    justify-content: center;
+}
+
+.action-btn:hover {
+    transform: translateY(-1px);
+}
+
+.details-btn {
+    background: #007bff;
+    color: white;
+}
+
+.details-btn:hover {
+    background: #0056b3;
+}
+
+.burn-btn {
+    background: #dc3545;
+    color: white;
+}
+
+.burn-btn:hover {
+    background: #c82333;
+}
+
+.action-btn i {
+    font-size: 12px;
+}
+
+/* Memo Cards container styles */
+.memo-cards {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 16px;
+    padding: 16px;
+    width: 100%;
+}
+
+/* Responsive design */
+@media (max-width: 480px) {
+    .memo-card {
+        margin: 8px auto;
+        max-width: calc(100% - 16px);
+        width: calc(100% - 32px);
+    }
+    
+    .memo-info-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+    
+    .memo-info .value {
+        text-align: left;
+    }
+    
+    .memo-cards {
+        padding: 0;
+    }
+    
+    .memo-card-actions {
+        bottom: 5px;
+        left: 5px;
+        right: 5px;
+        padding: 6px;
+    }
+    
+    .action-btn {
+        padding: 5px 8px;
+        font-size: 12px;
+        gap: 4px;
+    }
+    
+    .action-btn span {
+        display: none; /* Hide text on mobile devices, show only icons */
+    }
+}
+
+@media (min-width: 481px) {
+    .memo-cards {
+        justify-content: flex-start;
+    }
+    
+    .memo-card {
+        width: 380px;
+        flex-grow: 0;
+    }
+}
+
+/* Details Modal styles */
+.details-modal {
+    max-width: 800px;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.memo-details-content {
+    padding: 24px;
+}
+
+.detail-section {
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.detail-section:last-of-type {
+    border-bottom: none;
+    margin-bottom: 16px;
+}
+
+.detail-label {
+    color: #333;
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    min-width: 120px;
+}
+
+.detail-value {
+    color: #666;
+    font-size: 1rem;
+    line-height: 1.6;
+    word-wrap: break-word;
+    flex: 1;
+}
+
+.content-text {
+    background: #f8f9fa;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border-left: 4px solid #007bff;
+    white-space: pre-wrap;
+    margin: 0;
+}
+
+.signature-text, .pubkey-text {
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    background: #f1f3f4;
+    padding: 8px 12px;
+    border-radius: 6px;
+    word-break: break-all;
+    margin: 0;
+}
+
+.detail-image {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 8px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin: 0;
+}
+
+.detail-image-display {
+    border: 1px solid #ddd;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    max-width: 200px;
+    max-height: 200px;
+}
+
+.detail-pixel-art {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0;
+}
+
+.no-image-placeholder {
+    text-align: center;
+    padding: 1rem;
+    color: #999;
+    font-style: italic;
+}
+
+.no-image-placeholder p {
+    margin: 0;
+}
+
+.detail-actions {
+    margin-top: 24px;
+    padding: 24px;
+    border-top: 2px solid #f0f0f0;
+    text-align: center;
+}
+
+.detail-burn-btn {
+    background: linear-gradient(135deg, #dc3545, #c82333);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 auto;
+}
+
+.detail-burn-btn:hover {
+    background: linear-gradient(135deg, #c82333, #bd2130);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
+}
+
+.detail-burn-btn:active {
+    transform: translateY(0);
+}
+
+.no-details {
+    text-align: center;
+    padding: 2rem;
+    color: #999;
+}
+
+/* Details Modal responsive design */
+@media (max-width: 768px) {
+    .details-modal {
+        max-width: 95vw;
+        max-height: 90vh;
+    }
+    
+    .memo-details-content {
+        padding: 16px;
+    }
+    
+    .detail-section {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .detail-label {
+        font-size: 0.9rem;
+        min-width: auto;
+    }
+    
+    .detail-value {
+        font-size: 0.9rem;
+    }
+    
+    .detail-burn-btn {
+        padding: 10px 20px;
+        font-size: 0.9rem;
+    }
+    
+    .detail-actions {
+        padding: 16px;
+    }
+}
+
+@media (max-width: 480px) {
+    .detail-section {
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+    }
+    
+    .content-text {
+        padding: 8px 12px;
+    }
+    
+    .signature-text, .pubkey-text {
+        padding: 6px 10px;
+        font-size: 0.8rem;
+    }
+    
+    .detail-image-display {
+        max-width: 150px;
+        max-height: 150px;
+    }
+}
+
+/* Remove borders from Pixel Grid in Details Modal */
+.details-modal .pixel-grid {
+    border: none;
+    box-shadow: none;
+}
+
+.details-modal .pixel {
+    border: none;
+}
+
+.details-modal .pixel.black {
+    border: none;
+} 
