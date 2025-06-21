@@ -1,6 +1,6 @@
-/* Mint Page Styles - simple version, only handle necessary functionality */
+/* Mint Page Styles - simple version */
 
-/* 1. Mint button styles */
+/* Mint button styles */
 .open-mint-form-btn {
     background: #28a745;
     color: white;
@@ -45,102 +45,10 @@
     font-size: 14px;
 }
 
-/* 2. Mint Form modal styles */
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-}
-
-.modal-content {
-    background: white;
-    border-radius: 8px;
-    max-width: 90vw;
-    max-height: 90vh;
-    overflow: auto;
-    position: relative;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-}
-
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 20px 24px 16px;
-    border-bottom: 1px solid #e9ecef;
-    background: #f8f9fa;
-}
-
-.modal-header h3 {
-    margin: 0;
-    color: #333;
-    font-size: 1.25rem;
-    font-weight: 600;
-}
-
-.modal-close-btn {
-    background: none;
-    border: none;
-    font-size: 24px;
-    cursor: pointer;
-    color: #6c757d;
-    padding: 0;
-    width: 30px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 4px;
-}
-
-.modal-close-btn:hover {
-    background: #e9ecef;
-    color: #333;
-}
-
-.modal-body {
-    padding: 20px 24px;
-}
-
 /* Responsive design */
-@media (max-width: 768px) {
-    .modal-content {
-        max-width: 95vw;
-        max-height: 95vh;
-        margin: 10px;
-    }
-    
-    .modal-header {
-        padding: 16px 20px 12px;
-    }
-    
-    .modal-header h3 {
-        font-size: 1.1rem;
-    }
-    
-    .modal-body {
-        padding: 16px 20px;
-    }
-}
-
 @media (max-width: 480px) {
     .open-mint-form-btn {
         font-size: 14px;
         padding: 10px 20px;
-    }
-    
-    .modal-header {
-        padding: 12px 16px 8px;
-    }
-    
-    .modal-body {
-        padding: 12px 16px;
     }
 }
