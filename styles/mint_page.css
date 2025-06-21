@@ -1,20 +1,6 @@
-/* Mint Page Styles */
+/* Mint Page Styles - minimal version, only handle necessary functionality */
 
-.mint-page {
-    padding: 20px;
-}
-
-.mint-page-header {
-    margin-bottom: 30px;
-}
-
-.mint-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-}
-
+/* 1. Mint button styles */
 .open-mint-form-btn {
     background: #28a745;
     color: white;
@@ -24,6 +10,9 @@
     font-size: 16px;
     font-weight: 500;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .open-mint-form-btn:hover:not(:disabled) {
@@ -36,6 +25,12 @@
     opacity: 0.7;
 }
 
+/* Mint button container */
+.mint-actions {
+    margin-bottom: 20px;
+}
+
+/* No user configuration warning */
 .no-profile-warning {
     background: #fff3cd;
     border: 1px solid #ffeaa7;
@@ -50,169 +45,7 @@
     font-size: 14px;
 }
 
-.mint-content {
-    width: 100%;
-}
-
-.header-section {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-}
-
-.header-section h2 {
-    color: #333;
-    font-size: 1.8rem;
-    font-weight: 600;
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.refresh-btn {
-    background: #17a2b8;
-    color: white;
-    padding: 8px 16px;
-    border: none;
-    border-radius: 4px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.refresh-btn:hover:not(:disabled) {
-    background: #138496;
-}
-
-.refresh-btn:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-}
-
-.welcome-state {
-    text-align: center;
-    padding: 3rem 2rem;
-    color: #666;
-}
-
-.loading-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem;
-    text-align: center;
-}
-
-.loading-spinner {
-    width: 40px;
-    height: 40px;
-    border: 4px solid #f3f3f3;
-    border-top: 4px solid #3498db;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin-bottom: 1rem;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-.loading-text {
-    color: #666;
-    margin: 0;
-}
-
-.empty-state {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 2rem;
-    text-align: center;
-}
-
-.empty-message {
-    color: #888;
-    font-style: italic;
-}
-
-.records-container {
-    margin-top: 2rem;
-}
-
-.memo-cards {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 16px;
-    padding: 16px;
-    width: 100%;
-}
-
-.pagination-top,
-.pagination-bottom {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 10px;
-}
-
-.pagination-top {
-    margin-bottom: 20px;
-}
-
-.pagination-bottom {
-    margin-top: 30px;
-}
-
-.pagination-btn {
-    padding: 8px 12px;
-    border: 1px solid #ddd;
-    background: white;
-    cursor: pointer;
-    border-radius: 4px;
-    font-size: 14px;
-}
-
-.pagination-btn:hover:not(:disabled) {
-    background: #f8f9fa;
-    border-color: #adb5bd;
-}
-
-.pagination-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    background: #f8f9fa;
-    color: #6c757d;
-}
-
-.pagination-info {
-    margin: 0 15px;
-    font-size: 0.9em;
-    color: #666;
-}
-
-.page-number-btn {
-    padding: 6px 10px;
-    border: 1px solid #ddd;
-    cursor: pointer;
-    border-radius: 4px;
-    font-size: 14px;
-    background: white;
-    color: #333;
-}
-
-.page-number-btn:hover {
-    background: #f8f9fa;
-    border-color: #adb5bd;
-}
-
+/* 2. Mint Form modal styles */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -233,6 +66,7 @@
     max-height: 90vh;
     overflow: auto;
     position: relative;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
 }
 
 .modal-header {
@@ -241,12 +75,14 @@
     align-items: center;
     padding: 20px 24px 16px;
     border-bottom: 1px solid #e9ecef;
+    background: #f8f9fa;
 }
 
 .modal-header h3 {
     margin: 0;
     color: #333;
     font-size: 1.25rem;
+    font-weight: 600;
 }
 
 .modal-close-btn {
@@ -265,7 +101,7 @@
 }
 
 .modal-close-btn:hover {
-    background: #f8f9fa;
+    background: #e9ecef;
     color: #333;
 }
 
@@ -273,72 +109,49 @@
     padding: 20px 24px;
 }
 
-@media (max-width: 480px) {
-    .mint-page {
-        padding: 12px;
-    }
-    
-    .mint-actions {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 12px;
-    }
-    
-    .header-section {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 12px;
-    }
-    
-    .header-section h2 {
-        font-size: 1.5rem;
-    }
-    
-    .refresh-btn {
-        align-self: flex-end;
-        font-size: 13px;
-        padding: 6px 12px;
-    }
-    
-    .memo-cards {
-        padding: 0;
-        gap: 8px;
-    }
-    
-    .pagination-top,
-    .pagination-bottom {
-        flex-wrap: wrap;
-        gap: 8px;
-    }
-    
-    .pagination-info {
-        margin: 0 8px;
-        font-size: 0.8em;
-    }
-    
-    .pagination-btn {
-        padding: 6px 10px;
-        font-size: 13px;
-    }
-    
-    .page-number-btn {
-        padding: 5px 8px;
-        font-size: 13px;
-    }
-    
+/* 3. Memo Card Details modal styles */
+.details-modal {
+    max-width: 800px;
+    max-height: 85vh;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
     .modal-content {
         max-width: 95vw;
+        max-height: 95vh;
         margin: 10px;
     }
     
-    .modal-header,
+    .modal-header {
+        padding: 16px 20px 12px;
+    }
+    
+    .modal-header h3 {
+        font-size: 1.1rem;
+    }
+    
     .modal-body {
-        padding: 16px;
+        padding: 16px 20px;
+    }
+    
+    .details-modal {
+        max-width: 95vw;
+        max-height: 90vh;
     }
 }
 
-@media (min-width: 481px) {
-    .memo-cards {
-        justify-content: flex-start;
+@media (max-width: 480px) {
+    .open-mint-form-btn {
+        font-size: 14px;
+        padding: 10px 20px;
+    }
+    
+    .modal-header {
+        padding: 12px 16px 8px;
+    }
+    
+    .modal-body {
+        padding: 12px 16px;
     }
 }

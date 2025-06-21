@@ -30,4 +30,223 @@
 /* Prevent modal scroll issues */
 body.modal-open {
   overflow: hidden;
+}
+
+/* ==================== public pagination styles ==================== */
+/* Pagination styles - public styles, used by all pages */
+.pagination-top,
+.pagination-bottom {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+}
+
+.pagination-top {
+    margin-bottom: 20px;
+}
+
+.pagination-bottom {
+    margin-top: 30px;
+}
+
+.pagination-btn {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    background: white;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    background: #f8f9fa;
+    border-color: #adb5bd;
+}
+
+.pagination-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: #f8f9fa;
+    color: #6c757d;
+}
+
+.pagination-info {
+    margin: 0 15px;
+    font-size: 0.9em;
+    color: #666;
+}
+
+/* Page number buttons */
+.page-numbers {
+    display: flex;
+    gap: 5px;
+    margin: 0 10px;
+}
+
+.page-number-btn {
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    background: white;
+    color: #333;
+}
+
+.page-number-btn.current {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+.page-number-btn:hover:not(.current) {
+    background: #f8f9fa;
+    border-color: #adb5bd;
+}
+
+/* 分页响应式设计 */
+@media (max-width: 480px) {
+    .pagination-top,
+    .pagination-bottom {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .pagination-info {
+        margin: 0 8px;
+        font-size: 0.8em;
+    }
+    
+    .pagination-btn {
+        padding: 6px 10px;
+        font-size: 13px;
+    }
+    
+    .page-number-btn {
+        padding: 5px 8px;
+        font-size: 13px;
+    }
+}
+
+/* ==================== public refresh button styles ==================== */
+/* Refresh button - public styles, used by all pages */
+.refresh-btn {
+    background: #28a745;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.refresh-btn:hover:not(:disabled) {
+    background: #218838;
+}
+
+.refresh-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+/* Refresh button responsive design */
+@media (max-width: 480px) {
+    .refresh-btn {
+        font-size: 14px;
+        padding: 6px 12px;
+    }
+}
+
+/* ==================== public loading and empty state styles ==================== */
+/* Loading state - public styles */
+.loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    text-align: center;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+    color: #666;
+    margin: 0;
+}
+
+/* Empty state - public styles */
+.empty-state {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem;
+    text-align: center;
+}
+
+.empty-message {
+    color: #888;
+    font-style: italic;
+}
+
+/* Records container - public styles */
+.records-container {
+    margin-top: 2rem;
+}
+
+/* ==================== public header section styles ==================== */
+/* Header section - public styles */
+.header-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.header-section h2 {
+    color: #333;
+    font-size: 1.8rem;
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* header section responsive design */
+@media (max-width: 480px) {
+    .header-section {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+    
+    .header-section h2 {
+        font-size: 1.5rem;
+    }
+    
+    .refresh-btn {
+        align-self: flex-end;
+    }
 } 
