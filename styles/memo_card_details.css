@@ -76,7 +76,6 @@
 
 .detail-image-display {
     border: 1px solid #ddd;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     max-width: 200px;
     max-height: 200px;
 }
@@ -107,7 +106,7 @@
 }
 
 .detail-burn-btn {
-    background: linear-gradient(135deg, #dc3545, #c82333);
+    background: #dc3545;
     color: white;
     border: none;
     padding: 12px 24px;
@@ -115,8 +114,6 @@
     font-size: 1rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s ease;
-    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -124,9 +121,8 @@
 }
 
 .detail-burn-btn:hover {
-    background: linear-gradient(135deg, #c82333, #bd2130);
+    background: #c82333;
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
 }
 
 .detail-burn-btn:active {
@@ -137,20 +133,6 @@
     text-align: center;
     padding: 2rem;
     color: #999;
-}
-
-/* Details Modal Pixel Art - Remove borders */
-.details-modal .pixel-grid {
-    border: none;
-    box-shadow: none;
-}
-
-.details-modal .pixel {
-    border: none;
-}
-
-.details-modal .pixel.black {
-    border: none;
 }
 
 /* Responsive design for details modal */

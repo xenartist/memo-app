@@ -7,8 +7,6 @@
     padding: 16px;
     margin: 16px;
     background: white;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s ease;
     max-width: 350px;
     position: relative;
     padding-bottom: 50px; /* Reserve space for hover buttons */
@@ -17,7 +15,6 @@
 
 .memo-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 /* Card header */
@@ -102,7 +99,6 @@
 .memo-card .pixel-grid {
     border: none;
     padding: 0;
-    box-shadow: none;
 }
 
 .memo-card .pixel {
@@ -202,7 +198,6 @@
     justify-content: center;
     opacity: 0;
     transform: translateY(10px);
-    transition: all 0.3s ease;
     background: rgba(255, 255, 255, 0.95);
     padding: 8px;
     border-radius: 6px;
@@ -224,7 +219,6 @@
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
     flex: 1;
     justify-content: center;
 }
