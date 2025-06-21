@@ -14,7 +14,7 @@
 }
 
 .memo-card:hover {
-    transform: translateY(-2px);
+
 }
 
 /* Card header */
@@ -107,6 +107,7 @@
 
 .memo-card .pixel.black {
     border: none;
+    background: black;
 }
 
 /* Card info area */
@@ -197,16 +198,14 @@
     gap: 8px;
     justify-content: center;
     opacity: 0;
-    transform: translateY(10px);
-    background: rgba(255, 255, 255, 0.95);
+    background: white;
     padding: 8px;
     border-radius: 6px;
-    border: 1px solid rgba(0, 0, 0, 0.1);
+    border: 1px solid #e9ecef;
 }
 
 .memo-card:hover .memo-card-actions {
     opacity: 1;
-    transform: translateY(0);
 }
 
 .action-btn {
@@ -224,7 +223,6 @@
 }
 
 .action-btn:hover {
-    transform: translateY(-1px);
 }
 
 .details-btn {

@@ -1,33 +1,22 @@
 /* Mint Page Styles */
 
-/* Main page container */
 .mint-page {
-    padding: 24px;
-    width: 100%;
-    box-sizing: border-box;
+    padding: 20px;
 }
 
-/* Page header */
 .mint-page-header {
-    max-width: 800px;
-    margin: 0 auto;
-    margin-bottom: 24px;
+    margin-bottom: 30px;
 }
 
-.mint-page-header h2 {
-    color: #333;
-    font-size: 2.5rem;
-    margin-bottom: 1rem;
-    font-weight: 700;
-}
-
-/* Actions section */
 .mint-actions {
-    margin-top: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
 }
 
 .open-mint-form-btn {
-    background-color: #28a745;
+    background: #28a745;
     color: white;
     padding: 12px 24px;
     border: none;
@@ -35,104 +24,21 @@
     font-size: 16px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
 }
 
 .open-mint-form-btn:hover:not(:disabled) {
-    background-color: #218838;
+    background: #218838;
 }
 
 .open-mint-form-btn:disabled {
-    background-color: #ccc;
+    background: #6c757d;
     cursor: not-allowed;
     opacity: 0.7;
 }
 
-/* Main content area */
-.mint-content {
-    width: 100%;
-}
-
-/* Welcome section */
-.welcome-section h3 {
-    color: #333;
-    font-size: 1.5rem;
-    margin-bottom: 1rem;
-    font-weight: 600;
-}
-
-.welcome-section p {
-    color: #666;
-    line-height: 1.6;
-    margin-bottom: 1rem;
-}
-
-/* Content placeholder */
-.content-placeholder {
-    margin-top: 2rem;
-    padding: 2rem;
-    background: #f8f9fa;
-    border-radius: 8px;
-    border: 2px dashed #dee2e6;
-    text-align: center;
-}
-
-.content-placeholder p {
-    color: #6c757d;
-    font-style: italic;
-    margin: 0.5rem 0;
-}
-
-/* Mint intro section */
-.mint-intro {
-    background: white;
-    padding: 32px;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    text-align: center;
-    margin-bottom: 24px;
-}
-
-.mint-welcome h3 {
-    color: #333;
-    font-size: 1.5rem;
-    margin-bottom: 1rem;
-    font-weight: 600;
-}
-
-.mint-welcome p {
-    color: #666;
-    font-size: 1rem;
-    margin-bottom: 2rem;
-    line-height: 1.5;
-}
-
-.lets-mint-btn {
-    background-color: #28a745;
-    color: white;
-    padding: 12px 24px;
-    border: none;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.lets-mint-btn:hover:not(:disabled) {
-    background-color: #218838;
-}
-
-.lets-mint-btn:disabled {
-    background-color: #ccc;
-    cursor: not-allowed;
-    opacity: 0.7;
-}
-
-/* No profile warning */
 .no-profile-warning {
-    background-color: #fff3cd;
-    border: 1px solid #ffc107;
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
     border-radius: 6px;
     padding: 12px;
     margin-top: 16px;
@@ -144,144 +50,29 @@
     font-size: 14px;
 }
 
-/* Modal styles for mint form */
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-    padding: 20px;
-    box-sizing: border-box;
-}
-
-.modal-content {
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-    max-width: 900px;
+.mint-content {
     width: 100%;
-    max-height: 90vh;
-    overflow-y: auto;
-    position: relative;
-    animation: modalFadeIn 0.3s ease-out;
 }
 
-.modal-header {
+.header-section {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 20px 24px;
-    border-bottom: 1px solid #dee2e6;
-    background-color: #f8f9fa;
-    border-radius: 12px 12px 0 0;
+    margin-bottom: 20px;
 }
 
-.modal-header h3 {
-    margin: 0;
+.header-section h2 {
     color: #333;
-    font-size: 1.5rem;
+    font-size: 1.8rem;
     font-weight: 600;
-}
-
-.modal-close-btn {
-    background: none;
-    border: none;
-    font-size: 24px;
-    color: #6c757d;
-    cursor: pointer;
-    padding: 0;
-    width: 30px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 4px;
-    transition: all 0.2s ease;
-}
-
-.modal-close-btn:hover {
-    background-color: #e9ecef;
-    color: #495057;
-}
-
-.modal-body {
-    padding: 0;
-}
-
-.modal-body .mint-form {
     margin: 0;
-    padding: 24px;
-    background: transparent;
-    box-shadow: none;
-}
-
-/* Modal animation */
-@keyframes modalFadeIn {
-    from {
-        opacity: 0;
-        transform: scale(0.9);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
-}
-
-/* Prevent body scrolling when modal is open */
-body.modal-open {
-    overflow: hidden;
-}
-
-/* Button group container */
-.button-group-container {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-top: 20px;
-    padding: 0;
+    gap: 8px;
 }
 
-.start-minting-container {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-}
-
-.start-minting-btn {
-    background-color: #28a745;
-    color: white;
-    padding: 12px 24px;
-    border: none;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    min-width: 120px;
-}
-
-.start-minting-btn:hover:not(:disabled) {
-    background-color: #218838;
-}
-
-.start-minting-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.close-button-container {
-    display: flex;
-    justify-content: flex-end;
-}
-
-.close-form-btn {
-    background-color: #6c757d;
+.refresh-btn {
+    background: #17a2b8;
     color: white;
     padding: 8px 16px;
     border: none;
@@ -289,58 +80,265 @@ body.modal-open {
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
-.close-form-btn:hover {
-    background-color: #5a6268;
+.refresh-btn:hover:not(:disabled) {
+    background: #138496;
 }
 
-/* Responsive design */
-@media (max-width: 768px) {
-    .modal-overlay {
-        padding: 10px;
-    }
-    
-    .modal-content {
-        max-height: 95vh;
-    }
-    
-    .modal-header {
-        padding: 16px 20px;
-    }
-    
-    .modal-header h3 {
-        font-size: 1.3rem;
-    }
-    
-    .modal-body .mint-form {
-        padding: 20px;
-    }
-    
-    .mint-page {
-        padding: 16px;
-    }
-    
-    .mint-content {
-        padding: 24px 20px;
-    }
-    
-    .mint-intro {
-        padding: 24px 16px;
-    }
+.refresh-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.welcome-state {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: #666;
+}
+
+.loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    text-align: center;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+    color: #666;
+    margin: 0;
+}
+
+.empty-state {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem;
+    text-align: center;
+}
+
+.empty-message {
+    color: #888;
+    font-style: italic;
+}
+
+.records-container {
+    margin-top: 2rem;
+}
+
+.memo-cards {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 16px;
+    padding: 16px;
+    width: 100%;
+}
+
+.pagination-top,
+.pagination-bottom {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+}
+
+.pagination-top {
+    margin-bottom: 20px;
+}
+
+.pagination-bottom {
+    margin-top: 30px;
+}
+
+.pagination-btn {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    background: white;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    background: #f8f9fa;
+    border-color: #adb5bd;
+}
+
+.pagination-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: #f8f9fa;
+    color: #6c757d;
+}
+
+.pagination-info {
+    margin: 0 15px;
+    font-size: 0.9em;
+    color: #666;
+}
+
+.page-number-btn {
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 14px;
+    background: white;
+    color: #333;
+}
+
+.page-number-btn:hover {
+    background: #f8f9fa;
+    border-color: #adb5bd;
+}
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 8px;
+    max-width: 90vw;
+    max-height: 90vh;
+    overflow: auto;
+    position: relative;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: #333;
+    font-size: 1.25rem;
+}
+
+.modal-close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #6c757d;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+}
+
+.modal-close-btn:hover {
+    background: #f8f9fa;
+    color: #333;
+}
+
+.modal-body {
+    padding: 20px 24px;
 }
 
 @media (max-width: 480px) {
-    .modal-overlay {
-        padding: 5px;
+    .mint-page {
+        padding: 12px;
     }
     
-    .modal-header h3 {
-        font-size: 1.2rem;
+    .mint-actions {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
     }
     
-    .modal-body .mint-form {
+    .header-section {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+    
+    .header-section h2 {
+        font-size: 1.5rem;
+    }
+    
+    .refresh-btn {
+        align-self: flex-end;
+        font-size: 13px;
+        padding: 6px 12px;
+    }
+    
+    .memo-cards {
+        padding: 0;
+        gap: 8px;
+    }
+    
+    .pagination-top,
+    .pagination-bottom {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .pagination-info {
+        margin: 0 8px;
+        font-size: 0.8em;
+    }
+    
+    .pagination-btn {
+        padding: 6px 10px;
+        font-size: 13px;
+    }
+    
+    .page-number-btn {
+        padding: 5px 8px;
+        font-size: 13px;
+    }
+    
+    .modal-content {
+        max-width: 95vw;
+        margin: 10px;
+    }
+    
+    .modal-header,
+    .modal-body {
         padding: 16px;
     }
-} 
+}
+
+@media (min-width: 481px) {
+    .memo-cards {
+        justify-content: flex-start;
+    }
+}

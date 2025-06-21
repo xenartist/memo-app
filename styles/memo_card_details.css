@@ -122,11 +122,10 @@
 
 .detail-burn-btn:hover {
     background: #c82333;
-    transform: translateY(-2px);
 }
 
 .detail-burn-btn:active {
-    transform: translateY(0);
+    background: #bd2130;
 }
 
 .no-details {

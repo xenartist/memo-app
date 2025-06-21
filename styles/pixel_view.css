@@ -2,10 +2,11 @@
 
 /* Pixel art editor container */
 .pixel-art-editor {
-    margin: 32px 0;
+    margin: 20px 0;
     padding: 16px;
-    background: #f8f8f8;
+    border: 1px solid #e0e0e0;
     border-radius: 8px;
+    background: #fafafa;
 }
 
 .pixel-art-header {
@@ -13,6 +14,7 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 16px;
+    gap: 16px;
 }
 
 /* Import button for pixel art */
@@ -25,7 +27,6 @@
     font-size: 14px;
     height: fit-content;
     margin: 0;
-    transition: all 0.2s ease;
     cursor: pointer;
 }
 
@@ -63,7 +64,6 @@
     aspect-ratio: 1;
     background: white;
     border: 1px solid #eee;
-    transition: background-color 0.1s ease;
     cursor: pointer;
 }
 
