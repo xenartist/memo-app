@@ -47,7 +47,6 @@
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
     position: static;
     display: inline-block;
 }
@@ -164,7 +163,6 @@
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
     min-width: 120px;
 }
 
@@ -186,7 +184,6 @@
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
     margin-right: auto;
 }
 
@@ -198,26 +195,26 @@
 .storage-status {
     margin: 10px 0;
     padding: 8px 12px;
-    background-color: #f8f9fa;
-    border: 1px solid #e9ecef;
     border-radius: 4px;
-    font-size: 13px;
-    color: #6c757d;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .storage-info {
-    font-family: monospace;
+    color: #666;
 }
 
 .storage-status.warning {
     background-color: #fff3cd;
-    border-color: #ffc107;
+    border: 1px solid #ffc107;
     color: #856404;
 }
 
 .storage-status.full {
     background-color: #f8d7da;
-    border-color: #dc3545;
+    border: 1px solid #f5c6cb;
     color: #721c24;
 }
 
@@ -226,47 +223,47 @@
     margin-top: 16px;
     padding: 16px;
     background-color: #f8f9fa;
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
+    border-radius: 6px;
+    border-left: 4px solid #007bff;
 }
 
 .auto-progress {
-    margin-bottom: 12px;
+    margin-top: 12px;
 }
 
 .progress-text {
-    display: block;
+    font-size: 14px;
+    color: #666;
     margin-bottom: 8px;
-    font-weight: 500;
-    color: #495057;
+    display: flex;
+    justify-content: space-between;
 }
 
 .progress-bar {
     width: 100%;
-    height: 20px;
+    height: 8px;
     background-color: #e9ecef;
-    border-radius: 10px;
+    border-radius: 4px;
     overflow: hidden;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
 }
 
 .progress-fill {
     height: 100%;
     background-color: #007bff;
-    transition: width 0.3s ease;
-    border-radius: 10px;
+    border-radius: 4px;
+    width: 0%;
 }
 
 .stop-auto-btn {
     background-color: #dc3545;
     color: white;
-    border: none;
     padding: 8px 16px;
+    border: none;
     border-radius: 4px;
-    cursor: pointer;
     font-size: 14px;
     font-weight: 500;
-    transition: background-color 0.2s ease;
+    cursor: pointer;
 }
 
 .stop-auto-btn:hover {
@@ -281,83 +278,6 @@
     background-color: #6c757d;
     cursor: not-allowed;
     opacity: 0.65;
-}
-
-/* Loading states */
-.loading-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem;
-    text-align: center;
-}
-
-.loading-spinner {
-    width: 40px;
-    height: 40px;
-    border: 4px solid #f3f3f3;
-    border-top: 4px solid #3498db;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin-bottom: 1rem;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-.loading-text {
-    color: #666;
-    margin: 0;
-}
-
-.error-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem;
-    text-align: center;
-}
-
-.error-message {
-    color: #dc3545;
-    margin-bottom: 1rem;
-}
-
-.error-message.warning {
-    color: #856404;
-    background-color: #fff3cd;
-    border: 1px solid #ffc107;
-    padding: 8px 12px;
-    border-radius: 4px;
-}
-
-.retry-button {
-    background-color: #007bff;
-    color: white;
-    padding: 8px 16px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-}
-
-.retry-button:hover {
-    background-color: #0056b3;
-}
-
-.empty-state {
-    text-align: center;
-    padding: 2rem;
-    color: #6c757d;
-}
-
-.empty-message {
-    font-style: italic;
-    margin: 0;
 }
 
 /* Minting progress */

@@ -51,30 +51,6 @@
     }
 }
 
-/* Error and warning states */
-.error-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem;
-    text-align: center;
-}
-
-.retry-button {
-    background-color: #3498db;
-    color: white;
-    border: none;
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.3s;
-}
-
-.retry-button:hover {
-    background-color: #2980b9;
-}
-
 /* Warning messages */
 .no-profile-warning {
     margin-top: 10px;

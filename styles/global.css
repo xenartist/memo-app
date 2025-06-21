@@ -57,7 +57,6 @@ body.modal-open {
     cursor: pointer;
     border-radius: 4px;
     font-size: 14px;
-    transition: all 0.2s ease;
 }
 
 .pagination-btn:hover:not(:disabled) {
@@ -91,7 +90,6 @@ body.modal-open {
     cursor: pointer;
     border-radius: 4px;
     font-size: 14px;
-    transition: all 0.2s ease;
     background: white;
     color: #333;
 }
@@ -142,7 +140,6 @@ body.modal-open {
     font-size: 16px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -215,6 +212,109 @@ body.modal-open {
     margin-top: 2rem;
 }
 
+/* ==================== public error handling styles ==================== */
+/* Error container and messages - public styles */
+.error-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    text-align: center;
+}
+
+.error-message {
+    color: #dc3545;
+    margin-bottom: 1rem;
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin: 0;
+}
+
+.error-message.success {
+    color: #28a745;
+    background-color: #d4edda;
+    border: 1px solid #c3e6cb;
+}
+
+.error-message.warning {
+    color: #856404;
+    background-color: #fff3cd;
+    border: 1px solid #ffc107;
+}
+
+.error-message.error {
+    color: #721c24;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+}
+
+.error-message:not(:empty) {
+    display: block;
+    margin-bottom: 1rem;
+}
+
+.error-message:empty {
+    display: none;
+}
+
+.retry-button {
+    background-color: #007bff;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.retry-button:hover {
+    background-color: #0056b3;
+}
+
+/* ==================== public warning messages styles ==================== */
+/* No-profile warning - public styles */
+.no-profile-warning {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 16px;
+    color: #856404;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.no-profile-warning p {
+    margin: 0;
+    font-size: 14px;
+}
+
+/* ==================== public memo cards container styles ==================== */
+/* Memo cards container - public styles */
+.memo-cards {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 16px;
+    margin-top: 20px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .memo-cards {
+        justify-content: center;
+        gap: 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    .memo-cards {
+        gap: 8px;
+    }
+}
+
 /* ==================== public header section styles ==================== */
 /* Header section - public styles */
 .header-section {
@@ -251,7 +351,8 @@ body.modal-open {
     }
 }
 
-/* global modal styles */
+/* ==================== global modal styles ==================== */
+/* Modal styles - public styles */
 .modal-overlay {
     position: fixed;
     top: 0;

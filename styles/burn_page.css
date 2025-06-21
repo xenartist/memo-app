@@ -1,37 +1,38 @@
-/* Burn Page 专用样式 - 参考 mint page 布局 */
+/* Burn Page */
 .burn-page {
-    padding: 24px;
+    padding: 20px;
     width: 100%;
     box-sizing: border-box;
     background: #f6f6f6;
     min-height: 100vh;
 }
 
-/* Page Header - 与 mint-page-header 相似 */
+/* Page Header */
 .burn-page-header {
-    margin-bottom: 24px;
+    margin-bottom: 30px;
 }
 
 .burn-page-header h2 {
-    color: #dc3545;
-    font-size: 2.2rem;
-    margin-bottom: 1rem;
+    color: #333;
+    font-size: 2rem;
     font-weight: 600;
-    text-align: center;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
-/* Actions Section - 与 mint-actions 相似 */
+/* Actions Section */
 .burn-actions {
     display: flex;
-    justify-content: flex-start;
+    justify-content: space-between;
     align-items: center;
-    gap: 16px;
-    margin-bottom: 2rem;
+    margin-bottom: 20px;
     flex-wrap: wrap;
 }
 
 .open-burn-form-btn {
-    background: linear-gradient(135deg, #dc3545, #c82333);
+    background: #dc3545;
     color: white;
     border: none;
     padding: 12px 24px;
@@ -39,7 +40,6 @@
     font-size: 1rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s ease;
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -47,8 +47,7 @@
 }
 
 .open-burn-form-btn:hover:not(:disabled) {
-    background: linear-gradient(135deg, #c82333, #bd2130);
-    transform: translateY(-2px);
+    background: #c82333;
     box-shadow: 0 4px 16px rgba(220, 53, 69, 0.4);
 }
 
@@ -56,21 +55,15 @@
     background: #6c757d;
     cursor: not-allowed;
     opacity: 0.6;
-    transform: none;
     box-shadow: none;
 }
 
-/* Main Content Area - 移除白色背景框，参考 mint-content */
+/* Main Content Area */
 .burn-content {
     width: 100%;
-    /* 移除背景色、圆角、阴影等 */
-    /* background: white;
-    border-radius: 12px;
-    padding: 24px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1); */
 }
 
-/* Header Section - 标题和刷新按钮的布局 */
+/* Header Section */
 .burn-content .header-section {
     display: flex;
     justify-content: space-between;
@@ -88,33 +81,6 @@
     display: flex;
     align-items: center;
     gap: 8px;
-}
-
-/* Refresh Button - 放在右上角 */
-.burn-content .refresh-btn {
-    background: #28a745;
-    color: white;
-    padding: 8px 16px;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.9rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.burn-content .refresh-btn:hover:not(:disabled) {
-    background: #218838;
-    transform: translateY(-1px);
-}
-
-.burn-content .refresh-btn:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-    transform: none;
 }
 
 /* Warning Messages */
@@ -287,8 +253,7 @@
 }
 
 /* Focus and Accessibility */
-.open-burn-form-btn:focus,
-.burn-content .refresh-btn:focus {
+.open-burn-form-btn:focus {
     outline: 2px solid #007bff;
     outline-offset: 2px;
 } 
