@@ -308,7 +308,7 @@ pub fn BurnPage(
                             <div class="empty-state">
                                 <p class="empty-message">
                                     <i class="fas fa-fire" style="margin-right: 8px;"></i>
-                                    "No burn records found. Start by burning your first MEMO token!"
+                                    "No burn records found. Start by burning your first MEMO!"
                                 </p>
                             </div>
                         }

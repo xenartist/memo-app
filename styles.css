@@ -2378,64 +2378,6 @@ body.modal-open {
     background-color: #5a6268;
 }
 
-/* Burn Page Styles */
-.burn-page {
-    padding: 24px;
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.burn-page-header {
-    text-align: center;
-    margin-bottom: 2rem;
-}
-
-.burn-page-header h2 {
-    color: #dc3545;
-    font-size: 2.5rem;
-    margin-bottom: 1rem;
-    font-weight: 700;
-}
-
-.burn-page-header p {
-    color: #666;
-    font-size: 1.1rem;
-}
-
-.burn-content {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 400px;
-}
-
-.coming-soon-message {
-    text-align: center;
-    padding: 3rem 2rem;
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    max-width: 500px;
-    width: 100%;
-}
-
-.coming-soon-message h3 {
-    color: #333;
-    font-size: 1.5rem;
-    margin-bottom: 1rem;
-    font-weight: 600;
-}
-
-.coming-soon-message p {
-    color: #666;
-    font-size: 1rem;
-    line-height: 1.5;
-}
-
-.icon {
-    margin-bottom: 1rem;
-}
-
 /* Memo Card Hover Actions */
 .memo-card {
     position: relative;
@@ -2514,16 +2456,12 @@ body.modal-open {
 /* Ensure memo card has enough bottom space for buttons */
 .memo-card {
     padding-bottom: 50px; /* Add extra space at bottom for hover buttons */
+    min-height: 320px; /* Make cards slightly taller to accommodate hover buttons */
 }
 
 /* Adjust memo-info to not overlap with action buttons */
 .memo-info {
     margin-bottom: 10px;
-}
-
-/* Make cards slightly taller to accommodate hover buttons */
-.memo-card {
-    min-height: 320px;
 }
 
 /* Responsive adjustments */

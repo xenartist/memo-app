@@ -1,4 +1,4 @@
-/* Burn Page 专用样式 */
+/* Burn Page 专用样式 - 参考 mint page 布局 */
 .burn-page {
     padding: 24px;
     width: 100%;
@@ -7,10 +7,9 @@
     min-height: 100vh;
 }
 
-/* Page Header */
+/* Page Header - 与 mint-page-header 相似 */
 .burn-page-header {
-    text-align: center;
-    margin-bottom: 2rem;
+    margin-bottom: 24px;
 }
 
 .burn-page-header h2 {
@@ -18,20 +17,10 @@
     font-size: 2.2rem;
     margin-bottom: 1rem;
     font-weight: 600;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
+    text-align: center;
 }
 
-.burn-page-header p {
-    color: #666;
-    font-size: 1.1rem;
-    margin: 0;
-    line-height: 1.5;
-}
-
-/* Actions Section */
+/* Actions Section - 与 mint-actions 相似 */
 .burn-actions {
     display: flex;
     justify-content: flex-start;
@@ -55,7 +44,6 @@
     align-items: center;
     gap: 8px;
     box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
-    text-decoration: none;
 }
 
 .open-burn-form-btn:hover:not(:disabled) {
@@ -72,12 +60,38 @@
     box-shadow: none;
 }
 
-.open-burn-form-btn:active:not(:disabled) {
-    transform: translateY(0);
+/* Main Content Area - 移除白色背景框，参考 mint-content */
+.burn-content {
+    width: 100%;
+    /* 移除背景色、圆角、阴影等 */
+    /* background: white;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1); */
 }
 
-/* Refresh Button */
-.burn-page .refresh-btn {
+/* Header Section - 标题和刷新按钮的布局 */
+.burn-content .header-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.burn-content .header-section h2 {
+    color: #333;
+    font-size: 1.8rem;
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Refresh Button - 放在右上角 */
+.burn-content .refresh-btn {
     background: #28a745;
     color: white;
     padding: 8px 16px;
@@ -92,44 +106,15 @@
     gap: 6px;
 }
 
-.burn-page .refresh-btn:hover:not(:disabled) {
+.burn-content .refresh-btn:hover:not(:disabled) {
     background: #218838;
     transform: translateY(-1px);
 }
 
-.burn-page .refresh-btn:disabled {
+.burn-content .refresh-btn:disabled {
     opacity: 0.7;
     cursor: not-allowed;
     transform: none;
-}
-
-/* Content Area */
-.burn-content {
-    background: white;
-    border-radius: 12px;
-    padding: 24px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-    min-height: 400px;
-}
-
-/* Header Section in Content */
-.burn-content .header-section {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-    gap: 16px;
-}
-
-.burn-content .header-section h3 {
-    color: #333;
-    font-size: 1.3rem;
-    font-weight: 600;
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: 8px;
 }
 
 /* Warning Messages */
@@ -246,10 +231,6 @@
         padding: 16px;
     }
     
-    .burn-content {
-        padding: 16px;
-    }
-    
     .burn-actions {
         flex-direction: column;
         align-items: stretch;
@@ -266,6 +247,11 @@
     .burn-content .header-section {
         flex-direction: column;
         align-items: flex-start;
+        gap: 12px;
+    }
+    
+    .burn-content .header-section h2 {
+        font-size: 1.5rem;
     }
 }
 
@@ -278,10 +264,6 @@
         font-size: 1.6rem;
     }
     
-    .burn-content {
-        padding: 12px;
-    }
-    
     .burn-page .welcome-state,
     .burn-page .loading-container,
     .burn-page .empty-state {
@@ -291,6 +273,10 @@
     .open-burn-form-btn {
         padding: 10px 20px;
         font-size: 0.9rem;
+    }
+    
+    .burn-content .header-section h2 {
+        font-size: 1.3rem;
     }
 }
 
@@ -302,7 +288,7 @@
 
 /* Focus and Accessibility */
 .open-burn-form-btn:focus,
-.burn-page .refresh-btn:focus {
+.burn-content .refresh-btn:focus {
     outline: 2px solid #007bff;
     outline-offset: 2px;
 } 
