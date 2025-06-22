@@ -1,6 +1,9 @@
 use leptos::*;
 use crate::pages::memo_card::MemoDetails;
 use crate::pages::pixel_view::PixelView;
+use web_sys::window;
+use wasm_bindgen_futures::spawn_local;
+use gloo_timers::future::TimeoutFuture;
 
 #[component]
 pub fn MemoCardDetails(
@@ -14,6 +17,9 @@ pub fn MemoCardDetails(
     /// custom close callback (optional)
     #[prop(optional)] on_close: Option<Callback<()>>,
 ) -> impl IntoView {
+    
+    // copy status
+    let (show_copied, set_show_copied) = create_signal(false);
     
     // format timestamp function
     let format_timestamp = move |timestamp: i64| -> String {
@@ -38,6 +44,23 @@ pub fn MemoCardDetails(
         }
         // can close modal after burn
         // handle_close();
+    };
+
+    // copy signature to clipboard
+    let copy_signature = move |signature: String| {
+        if let Some(window) = window() {
+            let clipboard = window.navigator().clipboard();
+            let _ = clipboard.write_text(&signature);
+            
+            // show copied success message
+            set_show_copied.set(true);
+            
+            // hide copied success message after 1.5 seconds
+            spawn_local(async move {
+                TimeoutFuture::new(1500).await;
+                set_show_copied.set(false);
+            });
+        }
     };
 
     view! {
@@ -123,15 +146,38 @@ pub fn MemoCardDetails(
                                             </div>
                                         </div>
 
-                                        // Signature
+                                        // Signature - add copy button
                                         <div class="detail-section">
                                             <h4 class="detail-label">
                                                 <i class="fas fa-signature"></i>
                                                 "Signature:"
                                             </h4>
                                             <div class="detail-value">
-                                                <div class="signature-text">
-                                                    {details.signature.clone()}
+                                                <div class="signature-container">
+                                                    <div class="signature-text">
+                                                        {details.signature.clone()}
+                                                    </div>
+                                                    <div class="copy-container">
+                                                        <button
+                                                            class="copy-button"
+                                                            on:click={
+                                                                let sig = details.signature.clone();
+                                                                move |e| {
+                                                                    e.stop_propagation();
+                                                                    copy_signature(sig.clone());
+                                                                }
+                                                            }
+                                                            title="Copy signature to clipboard"
+                                                        >
+                                                            <i class="fas fa-copy"></i>
+                                                        </button>
+                                                        <div 
+                                                            class="copy-tooltip"
+                                                            class:show=move || show_copied.get()
+                                                        >
+                                                            "Copied!"
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -197,4 +243,4 @@ pub fn MemoCardDetails(
             </div>
         </Show>
     }
-} 
+}
