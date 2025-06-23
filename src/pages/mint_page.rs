@@ -389,7 +389,7 @@ pub fn MintPage(
                                                     title=final_title
                                                     image=final_image
                                                     content=content.unwrap_or_else(|| "".to_string())
-                                                    signature=display_signature
+                                                    signature=record.signature.clone()
                                                     pubkey=display_pubkey
                                                     blocktime=blocktime
                                                     on_details_click=Callback::new(move |details: MemoDetails| {

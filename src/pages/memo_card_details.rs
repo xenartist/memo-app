@@ -146,7 +146,7 @@ pub fn MemoCardDetails(
                                             </div>
                                         </div>
 
-                                        // Signature - add copy button
+                                        // Signature - display truncated version, but copy full version
                                         <div class="detail-section">
                                             <h4 class="detail-label">
                                                 <i class="fas fa-signature"></i>
@@ -155,19 +155,27 @@ pub fn MemoCardDetails(
                                             <div class="detail-value">
                                                 <div class="signature-container">
                                                     <div class="signature-text">
-                                                        {details.signature.clone()}
+                                                        {
+                                                            // display truncated signature (first 8 and last 8 characters)
+                                                            let sig = details.signature.clone();
+                                                            if sig.len() >= 16 {
+                                                                format!("{}...{}", &sig[..8], &sig[sig.len()-8..])
+                                                            } else {
+                                                                sig
+                                                            }
+                                                        }
                                                     </div>
                                                     <div class="copy-container">
                                                         <button
                                                             class="copy-button"
                                                             on:click={
-                                                                let sig = details.signature.clone();
+                                                                let sig = details.signature.clone(); // copy full signature
                                                                 move |e| {
                                                                     e.stop_propagation();
                                                                     copy_signature(sig.clone());
                                                                 }
                                                             }
-                                                            title="Copy signature to clipboard"
+                                                            title="Copy full signature to clipboard"
                                                         >
                                                             <i class="fas fa-copy"></i>
                                                         </button>

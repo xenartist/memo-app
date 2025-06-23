@@ -65,6 +65,24 @@ pub fn MemoCard(
             .unwrap_or_else(|| "Unknown".to_string())
     };
 
+    // create display signature in the component
+    let display_signature = if signature.len() >= 16 {
+        format!("{}...{}", &signature[..8], &signature[signature.len()-8..])
+    } else {
+        signature.clone()
+    };
+    
+    // use full signature in MemoDetails
+    let memo_details = MemoDetails {
+        title: title_for_details.clone(),
+        image: image_for_details.clone(),
+        content: content_for_details.clone(),
+        signature: signature.clone(), // use full signature
+        pubkey: pubkey_for_details.clone(),
+        blocktime: blocktime,
+        amount: amount,
+    };
+
     view! {
         <div class=format!("memo-card {}", class_str) node_ref=card_ref>
             // title area
@@ -129,7 +147,7 @@ pub fn MemoCard(
             <div class="memo-info">
                 <div class="memo-info-item">
                     <span class="label">"Signature:"</span>
-                    <span class="value signature">{signature_for_info.clone()}</span>
+                    <span class="value signature">{display_signature}</span>
                 </div>
                 
                 <div class="memo-info-item">
@@ -168,15 +186,7 @@ pub fn MemoCard(
                             // Details button
                             {
                                 let details_cb = details_callback.clone();
-                                let memo_details = MemoDetails {
-                                    title: title_for_details.clone(),
-                                    image: image_for_details.clone(),
-                                    content: content_for_details.clone(),
-                                    signature: signature_for_details.clone(),
-                                    pubkey: pubkey_for_details.clone(),
-                                    blocktime: blocktime,
-                                    amount: amount,
-                                };
+                                let memo_details = memo_details.clone();
                                 move || {
                                     if let Some(details_cb) = details_cb.clone() {
                                         let details_clone = memo_details.clone();
