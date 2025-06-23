@@ -187,6 +187,21 @@ impl RpcConnection {
         let result: serde_json::Value = self.send_request("simulateTransaction", params).await?;
         Ok(result.to_string())
     }
+
+    /// interface: get transaction details by signature
+    /// return full transaction information, including meta, transaction, etc.
+    pub async fn get_transaction_details(&self, signature: &str) -> Result<String, RpcError> {
+        let params = serde_json::json!([
+            signature,
+            {
+                "encoding": "json",
+                "maxSupportedTransactionVersion": 0
+            }
+        ]);
+        
+        let result: serde_json::Value = self.send_request("getTransaction", params).await?;
+        Ok(result.to_string())
+    }
 }
 
 // implement the default trait

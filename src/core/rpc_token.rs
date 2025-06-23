@@ -1304,4 +1304,66 @@ impl RpcConnection {
 
         self.send_request("sendTransaction", params).await
     }
+
+    /// interface: get memo from transaction by signature
+    /// call get_transaction_details in rpc_base.rs, then extract memo
+    /// return raw memo string to caller
+    pub async fn get_transaction_memo(&self, signature: &str) -> Result<Option<String>, RpcError> {
+        // call interface to get transaction details
+        let transaction_details = self.get_transaction_details(signature).await?;
+        
+        // parse JSON to extract memo
+        let tx_data: serde_json::Value = serde_json::from_str(&transaction_details)
+            .map_err(|e| RpcError::Other(format!("Failed to parse transaction details: {}", e)))?;
+        
+        // check if transaction exists
+        if tx_data.is_null() {
+            return Ok(None);
+        }
+        
+        // get transaction instructions
+        let instructions = tx_data
+            .get("transaction")
+            .and_then(|tx| tx.get("message"))
+            .and_then(|msg| msg.get("instructions"))
+            .and_then(|inst| inst.as_array());
+        
+        if let Some(instructions) = instructions {
+            // loop through all instructions, find memo instruction
+            for instruction in instructions {
+                // check if it is memo program instruction
+                if let Some(program_id_index) = instruction.get("programIdIndex").and_then(|v| v.as_u64()) {
+                    // get account list
+                    if let Some(accounts) = tx_data
+                        .get("transaction")
+                        .and_then(|tx| tx.get("message"))
+                        .and_then(|msg| msg.get("accountKeys"))
+                        .and_then(|keys| keys.as_array())
+                    {
+                        // check if the account corresponding to program_id_index is memo program
+                        if let Some(program_account) = accounts.get(program_id_index as usize) {
+                            if let Some(program_id) = program_account.as_str() {
+                                // Memo program ID (support new and old versions)
+                                if program_id == "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr" ||
+                                   program_id == "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo" {
+                                    // extract memo data
+                                    if let Some(data) = instruction.get("data").and_then(|d| d.as_str()) {
+                                        // memo data is usually base64 encoded, need to decode
+                                        if let Ok(decoded_bytes) = base64::decode(data) {
+                                            if let Ok(memo_string) = String::from_utf8(decoded_bytes) {
+                                                return Ok(Some(memo_string));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // if no memo found, return None
+        Ok(None)
+    }
 } 
