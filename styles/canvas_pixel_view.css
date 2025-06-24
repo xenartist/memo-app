@@ -1,0 +1,177 @@
+/* Canvas Pixel View Component Styles */
+
+/* Canvas pixel grid */
+.canvas-pixel-grid {
+    border: 1px solid #ccc;
+    background: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+}
+
+.canvas-pixel-grid.editable {
+    cursor: crosshair;
+}
+
+.canvas-pixel-grid.editable:hover {
+    border-color: #007bff;
+}
+
+.canvas-pixel-grid.disabled {
+    cursor: default;
+    opacity: 0.8;
+}
+
+/* Canvas pixel grid in memo cards - remove borders */
+.memo-card .canvas-pixel-grid {
+    border: none;
+    box-shadow: none;
+}
+
+/* Canvas pixel grid in details modal - remove borders */
+.details-modal .canvas-pixel-grid {
+    border: none;
+    box-shadow: none;
+}
+
+/* Pixel art editor container (inherited from original) */
+.pixel-art-editor {
+    margin: 20px 0;
+    padding: 16px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fafafa;
+}
+
+.pixel-art-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    gap: 16px;
+}
+
+/* Import button for pixel art (inherited from original) */
+.import-btn {
+    background-color: #007bff;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    height: fit-content;
+    margin: 0;
+    cursor: pointer;
+}
+
+.import-btn:hover:not(:disabled) {
+    background-color: #0056b3;
+}
+
+.import-btn:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.import-btn.hidden {
+    display: none;
+}
+
+/* Pixel loading state (inherited from original) */
+.pixel-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 128px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    color: #666;
+    font-size: 14px;
+}
+
+.pixel-loading i {
+    margin-right: 8px;
+}
+
+/* Pixel art container in memo cards (inherited from original) */
+.pixel-art-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 16px;
+    background: #f5f5f5;
+    border-radius: 4px;
+    padding: 8px;
+}
+
+/* Pixel string information display (inherited from original) */
+.pixel-string-info {
+    margin-top: 16px;
+    padding: 12px;
+    background: #f8f9fa;
+    border-radius: 6px;
+}
+
+.string-display {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.string-length {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pixel-string-info .label {
+    color: #666;
+    font-size: 14px;
+}
+
+.pixel-string-info .value {
+    font-family: monospace;
+    color: #333;
+    font-size: 14px;
+    background: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid #e0e0e0;
+}
+
+/* Responsive design for canvas pixel grid */
+@media (max-width: 768px) {
+    .pixel-art-editor {
+        margin: 16px 0;
+        padding: 12px;
+    }
+    
+    .pixel-art-header {
+        flex-direction: column;
+        gap: 12px;
+        align-items: stretch;
+    }
+    
+    .import-btn {
+        width: 100%;
+    }
+    
+    .form-right .canvas-pixel-grid {
+        max-width: 100%;
+    }
+}
+
+/* Animation for canvas updates */
+.canvas-pixel-grid {
+    transition: border-color 0.2s ease;
+}
+
+/* High DPI display support */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    .canvas-pixel-grid {
+        image-rendering: pixelated;
+    }
+} 

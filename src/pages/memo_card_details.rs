@@ -1,9 +1,10 @@
 use leptos::*;
+use crate::pages::canvas_pixel_view::CanvasPixelView;
 use crate::pages::memo_card::MemoDetails;
-use crate::pages::pixel_view::PixelView;
-use web_sys::window;
-use wasm_bindgen_futures::spawn_local;
+use crate::core::session::Session;
 use gloo_timers::future::TimeoutFuture;
+use wasm_bindgen_futures::spawn_local;
+use web_sys::window;
 
 #[component]
 pub fn MemoCardDetails(
@@ -17,8 +18,6 @@ pub fn MemoCardDetails(
     /// custom close callback (optional)
     #[prop(optional)] on_close: Option<Callback<()>>,
 ) -> impl IntoView {
-    
-    // copy status
     let (show_copied, set_show_copied) = create_signal(false);
     
     // format timestamp function
@@ -42,8 +41,7 @@ pub fn MemoCardDetails(
         if let Some(callback) = &on_burn_click {
             callback.call(signature);
         }
-        // can close modal after burn
-        // handle_close();
+        handle_close();
     };
 
     // copy signature to clipboard
@@ -102,33 +100,36 @@ pub fn MemoCardDetails(
                                             </h4>
                                             <div class="detail-value">
                                                 <div class="detail-image">
-                                                    {if let Some(ref image_data) = details.image {
-                                                        if image_data.starts_with("http") || image_data.starts_with("data:") {
-                                                            view! {
-                                                                <img 
-                                                                    src={image_data.clone()}
-                                                                    alt="Memory Image"
-                                                                    class="detail-image-display"
-                                                                />
-                                                            }.into_view()
+                                                    {
+                                                        if let Some(image_data) = details.image.clone() {
+                                                            if image_data.starts_with("http") || image_data.starts_with("data:") {
+                                                                view! {
+                                                                    <img 
+                                                                        src={image_data}
+                                                                        alt="Memory Image"
+                                                                        class="detail-image-display"
+                                                                    />
+                                                                }.into_view()
+                                                            } else {
+                                                                view! {
+                                                                    <div class="detail-pixel-art">
+                                                                        <CanvasPixelView
+                                                                            art={image_data}
+                                                                            size=200
+                                                                            editable=false
+                                                                            show_grid=false
+                                                                        />
+                                                                    </div>
+                                                                }.into_view()
+                                                            }
                                                         } else {
                                                             view! {
-                                                                <div class="detail-pixel-art">
-                                                                    <PixelView
-                                                                        art={image_data.clone()}
-                                                                        size=200
-                                                                        editable=false
-                                                                    />
+                                                                <div class="no-image-placeholder">
+                                                                    <p>"No image"</p>
                                                                 </div>
                                                             }.into_view()
                                                         }
-                                                    } else {
-                                                        view! {
-                                                            <div class="no-image-placeholder">
-                                                                <p>"No image"</p>
-                                                            </div>
-                                                        }.into_view()
-                                                    }}
+                                                    }
                                                 </div>
                                             </div>
                                         </div>
@@ -214,6 +215,25 @@ pub fn MemoCardDetails(
                                             </div>
                                         </div>
 
+                                        // Amount (新增，原有结构中包含这个字段)
+                                        {move || {
+                                            if let Some(amount_value) = details.amount {
+                                                view! {
+                                                    <div class="detail-section">
+                                                        <h4 class="detail-label">
+                                                            <i class="fas fa-coins"></i>
+                                                            "Amount:"
+                                                        </h4>
+                                                        <div class="detail-value">
+                                                            {format!("{:.2} tokens", amount_value)}
+                                                        </div>
+                                                    </div>
+                                                }.into_view()
+                                            } else {
+                                                view! { <div></div> }.into_view()
+                                            }
+                                        }}
+
                                         // Burn button (only show if callback is provided)
                                         {move || {
                                             if on_burn_click.is_some() {
@@ -251,4 +271,17 @@ pub fn MemoCardDetails(
             </div>
         </Show>
     }
+}
+
+fn format_timestamp(timestamp: i64) -> String {
+    use js_sys::Date;
+    let date = Date::new(&wasm_bindgen::JsValue::from_f64(timestamp as f64 * 1000.0));
+    format!("{}/{}/{} {}:{}:{}", 
+        date.get_month() + 1,
+        date.get_date(),
+        date.get_full_year(),
+        date.get_hours(),
+        date.get_minutes(),
+        date.get_seconds()
+    )
 }
