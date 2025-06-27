@@ -86,20 +86,13 @@ pub fn MintForm(
         memo_value.to_string()
     };
 
-    // Single mint function (extracted for reuse)
+    // Single mint function (simplified for 1-token mint)
     let perform_single_mint = move |memo_json: String| async move {
-        // record the total_minted number before mint
-        let pre_mint_total = session.with_untracked(|s| {
-            s.get_user_profile()
-                .map(|profile| profile.total_minted)
-                .unwrap_or(0)
-        });
-
         // use the new session.mint() method
         let mut session_update = session.get_untracked();
         match session_update.mint(&memo_json).await {
             Ok(signature) => {
-                log::info!("Mint transaction sent: {}", signature);
+                log::info!("Mint transaction confirmed: {}", signature);
                 
                 // async save mint record
                 let signature_for_storage = signature.clone();
@@ -122,38 +115,33 @@ pub fn MintForm(
                     }
                 });
                 
-                // display the waiting status and countdown
-                for i in (1..=30).rev() {
-                    set_minting_status.set(format!("Transaction confirmed! Updating data... {}s", i));
-                    TimeoutFuture::new(1_000).await;
-                }
+                // 🚀 simplified: contract always mints exactly 1 token now
+                set_minting_status.set("Mint successful! Updating profile...".to_string());
                 
-                set_minting_status.set("Finalizing...".to_string());
-                
-                // re-fetch and update user profile
+                // re-fetch user profile to get updated total
                 match session_update.fetch_and_cache_user_profile().await {
                     Ok(Some(updated_profile)) => {
-                        // calculate the actual minted number
-                        let tokens_minted = updated_profile.total_minted.saturating_sub(pre_mint_total);
-                        
                         // update the profile in session and mark balance update needed
                         session.update(|s| {
                             s.set_user_profile(Some(updated_profile.clone()));
                             s.mark_balance_update_needed();
                         });
                         
-                        Ok((signature, tokens_minted, updated_profile.total_minted))
+                        // 🎯 always return 1 token minted (contract behavior)
+                        Ok((signature, 1u64, updated_profile.total_minted))
                     },
                     Ok(None) => {
                         // even if profile fetch fails, mark balance update needed
                         session.update(|s| s.mark_balance_update_needed());
-                        Err(format!("Profile not found"))
+                        // still return successful mint with 1 token
+                        Ok((signature, 1u64, 0u64))
                     },
                     Err(e) => {
-                        log::error!("Failed to refresh user profile after mint: {}", e);
+                        log::warn!("Profile refresh failed after successful mint: {}", e);
                         // even if profile fetch fails, mark balance update needed
                         session.update(|s| s.mark_balance_update_needed());
-                        Err(format!("Profile refresh error: {}", e))
+                        // still return successful mint with 1 token
+                        Ok((signature, 1u64, 0u64))
                     }
                 }
             },
@@ -377,7 +365,7 @@ pub fn MintForm(
                         // Wait before next mint (only if not the last one)
                         if count == 0 || current_round < count {
                             set_minting_status.set(format!("Waiting for next mint... (Success: {}, Errors: {})", success_count, error_count));
-                            TimeoutFuture::new(30_000).await; // 30 second interval between mints
+                            TimeoutFuture::new(10_000).await; // 10 second interval between mints (faster with new contract)
                         }
                     }
                     
@@ -506,7 +494,7 @@ pub fn MintForm(
                                                 prop:disabled=is_minting
                                             />
                                             <div class="auto-mode-info">
-                                                <small>"Auto mode will mint repeatedly with 30-second intervals between transactions"</small>
+                                                <small>"Auto mode will mint repeatedly with 10-second intervals between transactions"</small>
                                             </div>
                                         </div>
                                     }
