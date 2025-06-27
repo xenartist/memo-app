@@ -365,7 +365,7 @@ pub fn MintForm(
                         // Wait before next mint (only if not the last one)
                         if count == 0 || current_round < count {
                             set_minting_status.set(format!("Waiting for next mint... (Success: {}, Errors: {})", success_count, error_count));
-                            TimeoutFuture::new(10_000).await; // 10 second interval between mints (faster with new contract)
+                            TimeoutFuture::new(30_000).await; // 30 second interval between mints
                         }
                     }
                     
