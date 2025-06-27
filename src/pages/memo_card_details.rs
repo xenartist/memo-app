@@ -1,5 +1,5 @@
 use leptos::*;
-use crate::pages::canvas_pixel_view::CanvasPixelView;
+use crate::pages::pixel_view::PixelView;
 use crate::pages::memo_card::MemoDetails;
 use crate::core::session::Session;
 use gloo_timers::future::TimeoutFuture;
@@ -113,7 +113,7 @@ pub fn MemoCardDetails(
                                                             } else {
                                                                 view! {
                                                                     <div class="detail-pixel-art">
-                                                                        <CanvasPixelView
+                                                                        <PixelView
                                                                             art={image_data}
                                                                             size=200
                                                                             editable=false

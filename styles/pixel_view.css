@@ -1,7 +1,7 @@
-/* Canvas Pixel View Component Styles */
+/* Pixel View Component Styles */
 
-/* Canvas pixel grid */
-.canvas-pixel-grid {
+/* Pixel grid (Canvas-based) */
+.pixel-grid {
     border: 1px solid #ccc;
     background: white;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
@@ -10,32 +10,32 @@
     image-rendering: crisp-edges;
 }
 
-.canvas-pixel-grid.editable {
+.pixel-grid.editable {
     cursor: crosshair;
 }
 
-.canvas-pixel-grid.editable:hover {
+.pixel-grid.editable:hover {
     border-color: #007bff;
 }
 
-.canvas-pixel-grid.disabled {
+.pixel-grid.disabled {
     cursor: default;
     opacity: 0.8;
 }
 
-/* Canvas pixel grid in memo cards - remove borders */
-.memo-card .canvas-pixel-grid {
+/* Pixel grid in memo cards - remove borders */
+.memo-card .pixel-grid {
     border: none;
     box-shadow: none;
 }
 
-/* Canvas pixel grid in details modal - remove borders */
-.details-modal .canvas-pixel-grid {
+/* Pixel grid in details modal - remove borders */
+.details-modal .pixel-grid {
     border: none;
     box-shadow: none;
 }
 
-/* Pixel art editor container (inherited from original) */
+/* Pixel art editor container */
 .pixel-art-editor {
     margin: 20px 0;
     padding: 16px;
@@ -52,7 +52,7 @@
     gap: 16px;
 }
 
-/* Import button for pixel art (inherited from original) */
+/* Import button for pixel art */
 .import-btn {
     background-color: #007bff;
     color: white;
@@ -79,7 +79,7 @@
     display: none;
 }
 
-/* Pixel loading state (inherited from original) */
+/* Pixel loading state */
 .pixel-loading {
     display: flex;
     align-items: center;
@@ -95,7 +95,7 @@
     margin-right: 8px;
 }
 
-/* Pixel art container in memo cards (inherited from original) */
+/* Pixel art container in memo cards */
 .pixel-art-container {
     display: flex;
     justify-content: center;
@@ -106,7 +106,7 @@
     padding: 8px;
 }
 
-/* Pixel string information display (inherited from original) */
+/* Pixel string information display */
 .pixel-string-info {
     margin-top: 16px;
     padding: 12px;
@@ -142,7 +142,7 @@
     border: 1px solid #e0e0e0;
 }
 
-/* Responsive design for canvas pixel grid */
+/* Responsive design for pixel grid */
 @media (max-width: 768px) {
     .pixel-art-editor {
         margin: 16px 0;
@@ -159,19 +159,19 @@
         width: 100%;
     }
     
-    .form-right .canvas-pixel-grid {
+    .form-right .pixel-grid {
         max-width: 100%;
     }
 }
 
-/* Animation for canvas updates */
-.canvas-pixel-grid {
+/* Animation for grid updates */
+.pixel-grid {
     transition: border-color 0.2s ease;
 }
 
 /* High DPI display support */
 @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
-    .canvas-pixel-grid {
+    .pixel-grid {
         image-rendering: pixelated;
     }
 } 

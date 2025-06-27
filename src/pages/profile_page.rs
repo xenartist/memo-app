@@ -23,7 +23,7 @@ use solana_sdk::signature::Keypair;
 use hex;
 use crate::core::wallet::{derive_keypair_from_seed, get_default_derivation_path};
 use gloo_timers;
-use crate::pages::canvas_pixel_view::CanvasPixelView;
+use crate::pages::pixel_view::PixelView;
 
 #[derive(Clone, Copy, PartialEq)]
 enum ProfileFormState {
@@ -443,7 +443,7 @@ fn ProfileForm(
                     });
                     
                     view! {
-                        <CanvasPixelView
+                        <PixelView
                             art=art_string
                             size=256
                             editable=is_editable

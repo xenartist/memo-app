@@ -1,5 +1,5 @@
 use leptos::*;
-use crate::pages::canvas_pixel_view::CanvasPixelView;
+use crate::pages::pixel_view::PixelView;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
 
@@ -125,7 +125,7 @@ pub fn MemoCard(
                         } else {
                             // 🔄 pixel art encoded
                             view! {
-                                <LazyCanvasPixelView
+                                <LazyPixelView
                                     art={image_data.clone()}
                                     size=128
                                 />
@@ -242,9 +242,9 @@ pub fn MemoCard(
     }
 }
 
-// 🔄 lazy loading Canvas version
+// lazy loading pixel view
 #[component]
-pub fn LazyCanvasPixelView(
+pub fn LazyPixelView(
     art: String,
     size: u32,
 ) -> impl IntoView {
@@ -266,7 +266,7 @@ pub fn LazyCanvasPixelView(
         {move || {
             if is_loaded.get() {
                 view! {
-                    <CanvasPixelView
+                    <PixelView
                         art={art_signal.get()}
                         size=size
                         editable=false

@@ -5,7 +5,7 @@ use wasm_bindgen::{JsCast, JsValue};
 use crate::core::pixel::Pixel;
 
 #[component]
-pub fn CanvasPixelView(
+pub fn PixelView(
     #[prop(into)] art: String,
     #[prop(optional)] size: Option<u32>,
     #[prop(optional)] editable: bool,
@@ -144,7 +144,7 @@ pub fn CanvasPixelView(
             node_ref=canvas_ref
             width=display_size
             height=display_size
-            class="canvas-pixel-grid"
+            class="pixel-grid"
             class:editable=editable
             class:disabled=(!editable)
             style=format!(

@@ -9,7 +9,7 @@ pub mod burn_form;
 pub mod mint_page;
 pub mod mint_form;
 pub mod log_view;
-mod canvas_pixel_view;
+mod pixel_view;
 
 pub use main_page::MainPage;
 pub use home_page::HomePage;
@@ -22,4 +22,4 @@ pub use burn_form::{BurnForm};
 pub use mint_page::MintPage;
 pub use mint_form::{MintForm, MintingMode, GridSize};
 pub use log_view::*;
-pub use canvas_pixel_view::CanvasPixelView;
+pub use pixel_view::PixelView;
