@@ -2,7 +2,7 @@ use leptos::*;
 use crate::core::session::Session;
 use crate::core::pixel::Pixel;
 use crate::core::storage_mint::get_mint_storage;
-use crate::pages::pixel_view::PixelView;
+use crate::pages::canvas_pixel_view::CanvasPixelView;
 use web_sys::{HtmlInputElement, File, FileReader, Event, ProgressEvent, window};
 use wasm_bindgen::{JsCast, closure::Closure};
 use js_sys::Uint8Array;
@@ -620,10 +620,11 @@ pub fn MintForm(
                                     let display_size = 320;
                                     
                                     view! {
-                                        <PixelView
+                                        <CanvasPixelView
                                             art=art_string
                                             size=display_size
                                             editable=true
+                                            show_grid=true
                                             on_click=click_handler
                                         />
                                     }

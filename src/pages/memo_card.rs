@@ -1,5 +1,5 @@
 use leptos::*;
-use crate::pages::pixel_view::PixelView;
+use crate::pages::canvas_pixel_view::CanvasPixelView;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
 
@@ -123,9 +123,9 @@ pub fn MemoCard(
                                 />
                             }.into_view()
                         } else {
-                            // pixel art encoded - use lazy loading PixelView
+                            // 🔄 pixel art encoded
                             view! {
-                                <LazyPixelView
+                                <LazyCanvasPixelView
                                     art={image_data.clone()}
                                     size=128
                                 />
@@ -242,9 +242,9 @@ pub fn MemoCard(
     }
 }
 
-// lazy loading PixelView component
+// 🔄 lazy loading Canvas version
 #[component]
-pub fn LazyPixelView(
+pub fn LazyCanvasPixelView(
     art: String,
     size: u32,
 ) -> impl IntoView {
@@ -256,8 +256,8 @@ pub fn LazyPixelView(
     // async decode, add delay to avoid blocking UI
     create_effect(move |_| {
         spawn_local(async move {
-            // add delay, give UI time to render placeholder
-            TimeoutFuture::new(200).await;
+            // Canvas rendering is fast, can shorten delay
+            TimeoutFuture::new(50).await;
             set_is_loaded.set(true);
         });
     });
@@ -266,17 +266,18 @@ pub fn LazyPixelView(
         {move || {
             if is_loaded.get() {
                 view! {
-                    <PixelView
+                    <CanvasPixelView
                         art={art_signal.get()}
                         size=size
                         editable=false
+                        show_grid=false
                     />
                 }.into_view()
             } else {
                 view! {
                     <div class="pixel-loading" style="display: flex; align-items: center; justify-content: center; height: 128px; color: #666; background-color: #f8f9fa; border-radius: 6px;">
                         <i class="fas fa-spinner fa-spin" style="margin-right: 8px;"></i>
-                        <span>"Decoding..."</span>
+                        <span>"Loading..."</span>
                     </div>
                 }.into_view()
             }
