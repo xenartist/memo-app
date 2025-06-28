@@ -1300,9 +1300,9 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
-    async fn test_get_transaction_memo() {
+    async fn test_get_transaction_memo_with_info() {
         print_separator();
-        log_info("Starting get_transaction_memo test");
+        log_info("Starting get_transaction_memo test with signer and timestamp");
 
         match load_test_wallet() {
             Ok((pubkey, _)) => {
@@ -1311,7 +1311,6 @@ mod tests {
                 let rpc = RpcConnection::new();
                 log_info(&format!("Using RPC endpoint: {}", "https://rpc.testnet.x1.xyz"));
 
-                // use specific transaction signature for testing
                 let test_signature = "5mwGX4aAT3zgZ2XsafE8TdWR14o9VSTFQGi4MDvaya3HQo8UbSATiW4T95V7j49JLzAFbZSKSL3GzpXVQMHSawUS";
                 log_info(&format!("Testing transaction signature: {}", test_signature));
 
@@ -1320,29 +1319,31 @@ mod tests {
                         print_separator();
                         
                         match memo_result {
-                            Some(memo_string) => {
-                                log_success("Successfully retrieved memo from transaction");
-                                log_info(&format!("Memo length: {} bytes", memo_string.len()));
-                                log_info("Raw memo content:");
+                            Some(memo_info) => {
+                                log_success("Successfully retrieved memo info from transaction");
                                 
-                                // display memo content with proper formatting
-                                if memo_string.len() <= 200 {
-                                    log_info(&format!("Full memo: {}", memo_string));
+                                log_info("==== TRANSACTION MEMO INFO ====");
+                                log_info(&format!("Signer: {}", memo_info.signer));
+                                log_info(&format!("Timestamp: {} ({})", memo_info.timestamp, format_timestamp(memo_info.timestamp)));
+                                log_info(&format!("Memo length: {} bytes", memo_info.memo.len()));
+                                
+                                // Display memo content with proper formatting
+                                if memo_info.memo.len() <= 200 {
+                                    log_info(&format!("Full memo: {}", memo_info.memo));
                                 } else {
-                                    log_info(&format!("Memo preview (first 200 chars): {}...", &memo_string[..200]));
-                                    log_info(&format!("Memo preview (last 100 chars): ...{}", &memo_string[memo_string.len()-100..]));
+                                    log_info(&format!("Memo preview (first 200 chars): {}...", &memo_info.memo[..200]));
                                 }
 
-                                // try to parse as JSON to analyze structure
-                                match serde_json::from_str::<serde_json::Value>(&memo_string) {
+                                // Try to parse memo as JSON to analyze structure
+                                match serde_json::from_str::<serde_json::Value>(&memo_info.memo) {
                                     Ok(memo_json) => {
                                         print_separator();
                                         log_info("Memo is valid JSON, analyzing structure:");
                                         log_json("Parsed Memo JSON", &memo_json);
                                         
-                                        // analyze memo type
+                                        // Analyze memo type
                                         if memo_json.get("title").is_some() || memo_json.get("image").is_some() || memo_json.get("content").is_some() {
-                                            log_info("Memo type: Appears to be a MINT transaction memo (contains title/image/content)");
+                                            log_info("Memo type: MINT transaction memo (contains title/image/content)");
                                             
                                             if let Some(title) = memo_json.get("title").and_then(|v| v.as_str()) {
                                                 log_info(&format!("  Title: {}", title));
@@ -1354,14 +1355,15 @@ mod tests {
                                                 log_info(&format!("  Image type: {}", 
                                                     if image.starts_with("data:") { "Base64 encoded" }
                                                     else if image.starts_with("http") { "URL" }
+                                                    else if image.starts_with("c:") { "Compressed pixel art" }
                                                     else { "Custom format" }
                                                 ));
                                             }
                                         } else if memo_json.get("signature").is_some() && memo_json.get("message").is_some() {
-                                            log_info("Memo type: Appears to be a BURN transaction memo (contains signature/message)");
+                                            log_info("Memo type: BURN transaction memo (contains signature/message)");
                                             
-                                            if let Some(signature) = memo_json.get("signature").and_then(|v| v.as_str()) {
-                                                log_info(&format!("  Referenced signature: {}", signature));
+                                            if let Some(sig) = memo_json.get("signature").and_then(|v| v.as_str()) {
+                                                log_info(&format!("  Referenced signature: {}", sig));
                                             }
                                             if let Some(message) = memo_json.get("message").and_then(|v| v.as_str()) {
                                                 log_info(&format!("  Burn message: {}", message));
@@ -1371,21 +1373,15 @@ mod tests {
                                         }
                                     },
                                     Err(_) => {
-                                        log_info("Memo is not JSON format - appears to be plain text");
                                         log_info("Memo type: Plain text memo");
                                     }
                                 }
 
                                 print_separator();
-                                log_success("get_transaction_memo test completed successfully");
+                                log_success("get_transaction_memo with complete info test completed successfully");
                             },
                             None => {
                                 log_info("No memo found in this transaction");
-                                log_info("This could mean:");
-                                log_info("1. The transaction does not contain a memo instruction");
-                                log_info("2. The transaction uses a different memo program");
-                                log_info("3. The memo instruction has no data");
-                                
                                 print_separator();
                                 log_success("get_transaction_memo test completed (no memo found)");
                             }
@@ -1393,12 +1389,7 @@ mod tests {
                     },
                     Err(e) => {
                         print_separator();
-                        log_error(&format!("Failed to get transaction memo: {}", e));
-                        log_error("This might be due to:");
-                        log_error("1. Transaction signature does not exist");
-                        log_error("2. Network connectivity issues");
-                        log_error("3. RPC endpoint limitations");
-                        log_error("4. Transaction is too old and pruned");
+                        log_error(&format!("Failed to get transaction memo info: {}", e));
                         panic!("get_transaction_memo test failed");
                     }
                 }
@@ -1407,115 +1398,6 @@ mod tests {
                 print_separator();
                 log_error(&format!("Failed to load test wallet: {}", e));
                 panic!("Failed to load wallet");
-            }
-        }
-    }
-
-    #[wasm_bindgen_test]
-    async fn test_get_transaction_memo_from_logs() {
-        print_separator();
-        log_info("Starting get_transaction_memo test (searching in logs)");
-
-        match load_test_wallet() {
-            Ok((pubkey, _)) => {
-                log_info(&format!("Test wallet public key: {}", pubkey));
-
-                let rpc = RpcConnection::new();
-                log_info(&format!("Using RPC endpoint: {}", "https://rpc.testnet.x1.xyz"));
-
-                let test_signature = "5mwGX4aAT3zgZ2XsafE8TdWR14o9VSTFQGi4MDvaya3HQo8UbSATiW4T95V7j49JLzAFbZSKSL3GzpXVQMHSawUS";
-                log_info(&format!("Testing transaction signature: {}", test_signature));
-
-                // Get transaction details and search in logs
-                match rpc.get_transaction_details(test_signature).await {
-                    Ok(tx_details) => {
-                        log_info("Raw transaction details received");
-                        
-                        match serde_json::from_str::<serde_json::Value>(&tx_details) {
-                            Ok(tx_data) => {
-                                log_info("Successfully parsed transaction JSON");
-                                
-                                // Look for log messages
-                                if let Some(log_messages) = tx_data
-                                    .get("meta")
-                                    .and_then(|meta| meta.get("logMessages"))
-                                    .and_then(|logs| logs.as_array())
-                                {
-                                    log_info(&format!("Found {} log messages:", log_messages.len()));
-                                    
-                                    for (i, log_message) in log_messages.iter().enumerate() {
-                                        if let Some(log_str) = log_message.as_str() {
-                                            log_info(&format!("  [{}]: {}", i, 
-                                                if log_str.len() > 100 { 
-                                                    format!("{}...", &log_str[..100]) 
-                                                } else { 
-                                                    log_str.to_string() 
-                                                }
-                                            ));
-                                            
-                                            if log_str.starts_with("Program log: Memo") {
-                                                log_success("FOUND MEMO LOG MESSAGE!");
-                                                log_info(&format!("Full memo log: {}", log_str));
-                                                
-                                                // Extract memo content
-                                                if let Some(memo_start) = log_str.find("): ") {
-                                                    let memo_content = &log_str[memo_start + 3..];
-                                                    log_info(&format!("Raw memo content: {}", memo_content));
-                                                    
-                                                    // Try to unescape JSON
-                                                    match serde_json::from_str::<String>(memo_content) {
-                                                        Ok(unescaped_memo) => {
-                                                            log_success("Successfully unescaped memo!");
-                                                            log_info(&format!("Unescaped memo length: {}", unescaped_memo.len()));
-                                                            log_info(&format!("Unescaped memo: {}", unescaped_memo));
-                                                        },
-                                                        Err(e) => {
-                                                            log_info(&format!("Memo is not JSON-escaped: {}", e));
-                                                            let cleaned_memo = memo_content.trim_matches('"');
-                                                            log_info(&format!("Cleaned memo: {}", cleaned_memo));
-                                                        }
-                                                    }
-                                                }
-                                                
-                                                // Test the actual function
-                                                print_separator();
-                                                log_info("Testing get_transaction_memo function:");
-                                                match rpc.get_transaction_memo(test_signature).await {
-                                                    Ok(Some(function_memo)) => {
-                                                        log_success("get_transaction_memo function works!");
-                                                        log_info(&format!("Function returned memo length: {}", function_memo.len()));
-                                                        log_info(&format!("Function memo preview: {}...", 
-                                                            &function_memo[..std::cmp::min(100, function_memo.len())]));
-                                                    },
-                                                    Ok(None) => {
-                                                        log_error("Function returned None but we found memo manually");
-                                                    },
-                                                    Err(e) => {
-                                                        log_error(&format!("Function returned error: {}", e));
-                                                    }
-                                                }
-                                                return;
-                                            }
-                                        }
-                                    }
-                                    
-                                    log_error("No memo log message found");
-                                } else {
-                                    log_error("No log messages found in meta");
-                                }
-                            },
-                            Err(e) => {
-                                log_error(&format!("Failed to parse JSON: {}", e));
-                            }
-                        }
-                    },
-                    Err(e) => {
-                        log_error(&format!("Failed to get transaction details: {}", e));
-                    }
-                }
-            },
-            Err(e) => {
-                log_error(&format!("Failed to load test wallet: {}", e));
             }
         }
     }

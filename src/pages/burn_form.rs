@@ -64,13 +64,22 @@ pub fn BurnForm(
         wasm_bindgen_futures::spawn_local(async move {
             let rpc = RpcConnection::new();
             
-            // Get the memo from the transaction
+            // Get the memo info from the transaction
             match rpc.get_transaction_memo(&signature).await {
-                Ok(Some(memo_string)) => {
-                    log::info!("Found memo in transaction: {}", memo_string);
+                Ok(Some(memo_info)) => {
+                    log::info!("Found memo in transaction: {}", memo_info.memo);
+                    log::info!("Transaction signer: {}", memo_info.signer);
+                    log::info!("Transaction timestamp: {}", memo_info.timestamp);
                     
                     // Parse memo content
-                    let (title, image, content) = parse_memo_content(&memo_string);
+                    let (title, image, content) = parse_memo_content(&memo_info.memo);
+                    
+                    // Format signer address (first 8 and last 8 characters)
+                    let display_pubkey = if memo_info.signer.len() >= 16 {
+                        format!("{}...{}", &memo_info.signer[..8], &memo_info.signer[memo_info.signer.len()-8..])
+                    } else {
+                        memo_info.signer.clone()
+                    };
                     
                     // Create MemoDetails with real data
                     let memo_details = MemoDetails {
@@ -78,8 +87,8 @@ pub fn BurnForm(
                         image,
                         content: content.or_else(|| Some("No content available".to_string())),
                         signature: signature.clone(),
-                        pubkey: "Loading...".to_string(), // We could get this if needed
-                        blocktime: 0, // We could get this if needed  
+                        pubkey: display_pubkey,
+                        blocktime: memo_info.timestamp,
                         amount: None,
                     };
 

@@ -18,6 +18,13 @@ use serde_json::json;
 // public constant definitions
 pub struct ProgramConfig;
 
+#[derive(Debug, Clone)]
+pub struct TransactionMemoInfo {
+    pub memo: String,
+    pub signer: String,
+    pub timestamp: i64,  // blocktime in seconds
+} 
+
 impl ProgramConfig {
     // main program ID
     pub const PROGRAM_ID: &'static str = "TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw";
@@ -1305,14 +1312,14 @@ impl RpcConnection {
         self.send_request("sendTransaction", params).await
     }
 
-    /// interface: get memo from transaction by signature
-    /// call get_transaction_details in rpc_base.rs, then extract memo
-    /// return raw memo string to caller
-    pub async fn get_transaction_memo(&self, signature: &str) -> Result<Option<String>, RpcError> {
+    /// interface: get memo from transaction by signature along with signer and timestamp
+    /// call get_transaction_details in rpc_base.rs, then extract memo, signer, and timestamp
+    /// return TransactionMemoInfo to caller
+    pub async fn get_transaction_memo(&self, signature: &str) -> Result<Option<TransactionMemoInfo>, RpcError> {
         // call interface to get transaction details
         let transaction_details = self.get_transaction_details(signature).await?;
         
-        // parse JSON to extract memo
+        // parse JSON to extract memo and other info
         let tx_data: serde_json::Value = serde_json::from_str(&transaction_details)
             .map_err(|e| RpcError::Other(format!("Failed to parse transaction details: {}", e)))?;
         
@@ -1321,7 +1328,24 @@ impl RpcConnection {
             return Ok(None);
         }
         
-        // get log messages from meta
+        // extract timestamp from meta.blockTime
+        let timestamp = tx_data
+            .get("blockTime")
+            .and_then(|bt| bt.as_i64())
+            .unwrap_or(0);
+        
+        // extract signer (first account that signed the transaction)
+        let signer = tx_data
+            .get("transaction")
+            .and_then(|tx| tx.get("message"))
+            .and_then(|msg| msg.get("accountKeys"))
+            .and_then(|keys| keys.as_array())
+            .and_then(|accounts| accounts.first())
+            .and_then(|first_account| first_account.as_str())
+            .unwrap_or("Unknown")
+            .to_string();
+        
+        // get memo content from log messages
         let log_messages = tx_data
             .get("meta")
             .and_then(|meta| meta.get("logMessages"))
@@ -1338,16 +1362,19 @@ impl RpcConnection {
                             let memo_content = &log_str[memo_start + 3..]; // skip "): "
                             
                             // the memo content might be JSON-escaped, so we need to unescape it
-                            match serde_json::from_str::<String>(memo_content) {
-                                Ok(unescaped_memo) => {
-                                    return Ok(Some(unescaped_memo));
-                                },
+                            let memo = match serde_json::from_str::<String>(memo_content) {
+                                Ok(unescaped_memo) => unescaped_memo,
                                 Err(_) => {
                                     // if it's not JSON-escaped, return as is (minus quotes if present)
-                                    let cleaned_memo = memo_content.trim_matches('"');
-                                    return Ok(Some(cleaned_memo.to_string()));
+                                    memo_content.trim_matches('"').to_string()
                                 }
-                            }
+                            };
+                            
+                            return Ok(Some(TransactionMemoInfo {
+                                memo,
+                                signer,
+                                timestamp,
+                            }));
                         }
                     }
                 }
@@ -1357,4 +1384,5 @@ impl RpcConnection {
         // if no memo found, return None
         Ok(None)
     }
-} 
+}
+
