@@ -22,9 +22,59 @@ pub enum MintingMode {
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum GridSize {
+    Size8,
+    Size16,
     Size32,
     Size64,
     Size96,
+    Size128,
+    Size256,
+    Size512,
+    Size1024,
+}
+
+impl GridSize {
+    pub fn to_size(self) -> usize {
+        match self {
+            GridSize::Size8 => 8,
+            GridSize::Size16 => 16,
+            GridSize::Size32 => 32,
+            GridSize::Size64 => 64,
+            GridSize::Size96 => 96,
+            GridSize::Size128 => 128,
+            GridSize::Size256 => 256,
+            GridSize::Size512 => 512,
+            GridSize::Size1024 => 1024,
+        }
+    }
+
+    pub fn to_display_string(self) -> &'static str {
+        match self {
+            GridSize::Size8 => "8x8",
+            GridSize::Size16 => "16x16",
+            GridSize::Size32 => "32x32",
+            GridSize::Size64 => "64x64",
+            GridSize::Size96 => "96x96",
+            GridSize::Size128 => "128x128",
+            GridSize::Size256 => "256x256",
+            GridSize::Size512 => "512x512",
+            GridSize::Size1024 => "1024x1024",
+        }
+    }
+
+    pub fn all_sizes() -> Vec<Self> {
+        vec![
+            GridSize::Size8,
+            GridSize::Size16,
+            GridSize::Size32,
+            GridSize::Size64,
+            GridSize::Size96,
+            GridSize::Size128,
+            GridSize::Size256,
+            GridSize::Size512,
+            GridSize::Size1024,
+        ]
+    }
 }
 
 #[component]
@@ -57,11 +107,7 @@ pub fn MintForm(
 
     // when the size changes, recreate the pixel art
     create_effect(move |_| {
-        let size = match grid_size.get() {
-            GridSize::Size32 => 32,
-            GridSize::Size64 => 64,
-            GridSize::Size96 => 96,
-        };
+        let size = grid_size.get().to_size();
         set_pixel_art.set(Pixel::new_with_size(size));
     });
 
@@ -181,11 +227,7 @@ pub fn MintForm(
                         let array = Uint8Array::new(&buffer);
                         let data = array.to_vec();
                         
-                        let size = match current_grid_size {
-                            GridSize::Size32 => 32,
-                            GridSize::Size64 => 64,
-                            GridSize::Size96 => 96,
-                        };
+                        let size = current_grid_size.to_size();
                         
                         match Pixel::from_image_data_with_size(&data, size) {
                             Ok(new_art) => {
@@ -292,11 +334,7 @@ pub fn MintForm(
                             // clear the form
                             set_title_text.set(String::new());
                             set_content_text.set(String::new());
-                            set_pixel_art.set(Pixel::new_with_size(match grid_size.get_untracked() {
-                                GridSize::Size32 => 32,
-                                GridSize::Size64 => 64,
-                                GridSize::Size96 => 96,
-                            }));
+                            set_pixel_art.set(Pixel::new_with_size(grid_size.get_untracked().to_size()));
 
                             if let Some(ref callback) = on_mint_success {
                                 callback(signature, tokens_minted, total_minted);
@@ -365,7 +403,7 @@ pub fn MintForm(
                         // Wait before next mint (only if not the last one)
                         if count == 0 || current_round < count {
                             set_minting_status.set(format!("Waiting for next mint... (Success: {}, Errors: {})", success_count, error_count));
-                            TimeoutFuture::new(30_000).await; // 30 second interval between mints
+                            TimeoutFuture::new(30_000).await; // 30 second interval between mints (reduce RPC pressure)
                         }
                     }
                     
@@ -494,7 +532,7 @@ pub fn MintForm(
                                                 prop:disabled=is_minting
                                             />
                                             <div class="auto-mode-info">
-                                                <small>"Auto mode will mint repeatedly with 10-second intervals between transactions"</small>
+                                                <small>"Auto mode will mint repeatedly with 30-second intervals between transactions"</small>
                                             </div>
                                         </div>
                                     }
@@ -542,36 +580,20 @@ pub fn MintForm(
                             <div class="form-group">
                                 <label>"Grid Size"</label>
                                 <div class="grid-size-group">
-                                    <label class="radio-label">
-                                        <input 
-                                            type="radio"
-                                            name="grid-size"
-                                            checked=move || grid_size.get() == GridSize::Size32
-                                            on:change=move |_| set_grid_size.set(GridSize::Size32)
-                                            prop:disabled=is_minting
-                                        />
-                                        <span class="radio-text">"32x32"</span>
-                                    </label>
-                                    <label class="radio-label">
-                                        <input 
-                                            type="radio"
-                                            name="grid-size"
-                                            checked=move || grid_size.get() == GridSize::Size64
-                                            on:change=move |_| set_grid_size.set(GridSize::Size64)
-                                            prop:disabled=is_minting
-                                        />
-                                        <span class="radio-text">"64x64"</span>
-                                    </label>
-                                    <label class="radio-label">
-                                        <input 
-                                            type="radio"
-                                            name="grid-size"
-                                            checked=move || grid_size.get() == GridSize::Size96
-                                            on:change=move |_| set_grid_size.set(GridSize::Size96)
-                                            prop:disabled=is_minting
-                                        />
-                                        <span class="radio-text">"96x96"</span>
-                                    </label>
+                                    {GridSize::all_sizes().into_iter().map(|size| {
+                                        view! {
+                                            <label class="radio-label">
+                                                <input 
+                                                    type="radio"
+                                                    name="grid-size"
+                                                    checked=move || grid_size.get() == size
+                                                    on:change=move |_| set_grid_size.set(size)
+                                                    prop:disabled=is_minting
+                                                />
+                                                <span class="radio-text">{size.to_display_string()}</span>
+                                            </label>
+                                        }
+                                    }).collect::<Vec<_>>()}
                                 </div>
                             </div>
 
@@ -579,12 +601,8 @@ pub fn MintForm(
                                 <div class="pixel-art-header">
                                     <label>
                                         {move || {
-                                            let size = match grid_size.get() {
-                                                GridSize::Size32 => "32x32",
-                                                GridSize::Size64 => "64x64",
-                                                GridSize::Size96 => "96x96",
-                                            };
-                                            format!("Image ({} Pixel Art)", size)
+                                            let size = grid_size.get().to_display_string();
+                                            format!("Image ({} pixels)", size)
                                         }}
                                     </label>
                                     <button 

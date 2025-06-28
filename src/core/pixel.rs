@@ -129,9 +129,24 @@ impl Pixel {
         println!("Input string length: {}, total_bits: {}", s.len(), total_bits);
         
         let size = match total_bits {
-            1026..=1029 => (32, 32),    // 32x32: 171 * 6 = 1026
-            4092..=4098 => (64, 64),    // 64x64: 683 * 6 = 4098
-            9210..=9216 => (96, 96),    // 96x96: 1536 * 6 = 9216
+            // 8x8: 64 pixels, need 11 chars (66 bits)
+            60..=72 => (8, 8),
+            // 16x16: 256 pixels, need 43 chars (258 bits)  
+            252..=264 => (16, 16),
+            // 32x32: 1024 pixels, need 171 chars (1026 bits)
+            1020..=1032 => (32, 32),
+            // 64x64: 4096 pixels, need 683 chars (4098 bits)
+            4092..=4104 => (64, 64),
+            // 96x96: 9216 pixels, need 1536 chars (9216 bits)
+            9210..=9222 => (96, 96),
+            // 128x128: 16384 pixels, need 2731 chars (16386 bits)
+            16380..=16392 => (128, 128),
+            // 256x256: 65536 pixels, need 10923 chars (65538 bits)
+            65532..=65544 => (256, 256),
+            // 512x512: 262144 pixels, need 43691 chars (262146 bits)
+            262140..=262152 => (512, 512),
+            // 1024x1024: 1048576 pixels, need 174763 chars (1048578 bits)
+            1048572..=1048584 => (1024, 1024),
             _ => {
                 println!("Unexpected total bits: {}", total_bits);
                 return None
@@ -167,10 +182,10 @@ impl Pixel {
         Some(pixel)
     }
 
-    // modify the image import method, support specified size
+    // modify the image import method, support larger sizes
     pub fn from_image_data_with_size(data: &[u8], size: usize) -> Result<Self, String> {
-        if size > 96 {
-            return Err("Maximum supported size is 96x96".to_string());
+        if size > 1024 {
+            return Err("Maximum supported size is 1024x1024".to_string());
         }
 
         // Load image from bytes
