@@ -1321,40 +1321,31 @@ impl RpcConnection {
             return Ok(None);
         }
         
-        // get transaction instructions
-        let instructions = tx_data
-            .get("transaction")
-            .and_then(|tx| tx.get("message"))
-            .and_then(|msg| msg.get("instructions"))
-            .and_then(|inst| inst.as_array());
+        // get log messages from meta
+        let log_messages = tx_data
+            .get("meta")
+            .and_then(|meta| meta.get("logMessages"))
+            .and_then(|logs| logs.as_array());
         
-        if let Some(instructions) = instructions {
-            // loop through all instructions, find memo instruction
-            for instruction in instructions {
-                // check if it is memo program instruction
-                if let Some(program_id_index) = instruction.get("programIdIndex").and_then(|v| v.as_u64()) {
-                    // get account list
-                    if let Some(accounts) = tx_data
-                        .get("transaction")
-                        .and_then(|tx| tx.get("message"))
-                        .and_then(|msg| msg.get("accountKeys"))
-                        .and_then(|keys| keys.as_array())
-                    {
-                        // check if the account corresponding to program_id_index is memo program
-                        if let Some(program_account) = accounts.get(program_id_index as usize) {
-                            if let Some(program_id) = program_account.as_str() {
-                                // Memo program ID (support new and old versions)
-                                if program_id == "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr" ||
-                                   program_id == "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo" {
-                                    // extract memo data
-                                    if let Some(data) = instruction.get("data").and_then(|d| d.as_str()) {
-                                        // memo data is usually base64 encoded, need to decode
-                                        if let Ok(decoded_bytes) = base64::decode(data) {
-                                            if let Ok(memo_string) = String::from_utf8(decoded_bytes) {
-                                                return Ok(Some(memo_string));
-                                            }
-                                        }
-                                    }
+        if let Some(logs) = log_messages {
+            // loop through all log messages, find memo log
+            for log_message in logs {
+                if let Some(log_str) = log_message.as_str() {
+                    // look for "Program log: Memo" pattern
+                    if log_str.starts_with("Program log: Memo") {
+                        // extract memo content after "Program log: Memo (len XXX): "
+                        if let Some(memo_start) = log_str.find("): ") {
+                            let memo_content = &log_str[memo_start + 3..]; // skip "): "
+                            
+                            // the memo content might be JSON-escaped, so we need to unescape it
+                            match serde_json::from_str::<String>(memo_content) {
+                                Ok(unescaped_memo) => {
+                                    return Ok(Some(unescaped_memo));
+                                },
+                                Err(_) => {
+                                    // if it's not JSON-escaped, return as is (minus quotes if present)
+                                    let cleaned_memo = memo_content.trim_matches('"');
+                                    return Ok(Some(cleaned_memo.to_string()));
                                 }
                             }
                         }

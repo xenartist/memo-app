@@ -1,5 +1,6 @@
 use leptos::*;
 use crate::core::session::Session;
+use crate::core::rpc_base::RpcConnection;
 use crate::pages::memo_card_details::MemoCardDetails;
 use crate::pages::memo_card::MemoDetails;
 
@@ -21,7 +22,35 @@ pub fn BurnForm(
     let (show_details_modal, set_show_details_modal) = create_signal(false);
     let (current_memo_details, set_current_memo_details) = create_signal(Option::<MemoDetails>::None);
 
-    // Load memo details with dummy data
+    // Parse memo JSON to extract structured data
+    let parse_memo_content = |memo_string: &str| -> (Option<String>, Option<String>, Option<String>) {
+        match serde_json::from_str::<serde_json::Value>(memo_string) {
+            Ok(memo_json) => {
+                // Try to extract structured memo data (for mint transactions)
+                let title = memo_json.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let image = memo_json.get("image").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let content = memo_json.get("content").and_then(|v| v.as_str()).map(|s| s.to_string());
+                
+                // If it's a burn memo (has signature and message fields)
+                if memo_json.get("signature").is_some() && memo_json.get("message").is_some() {
+                    let burn_message = memo_json.get("message").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    return (
+                        Some("Burn Transaction".to_string()),
+                        None, // burn transactions don't have images
+                        burn_message
+                    );
+                }
+                
+                (title, image, content)
+            }
+            Err(_) => {
+                // If it's not JSON, treat as plain text content
+                (None, None, Some(memo_string.to_string()))
+            }
+        }
+    };
+
+    // Load memo details from blockchain
     let load_memo_details = move || {
         let signature = signature_input.get().trim().to_string();
         if signature.is_empty() {
@@ -33,23 +62,42 @@ pub fn BurnForm(
         set_error_message.set(String::new());
 
         wasm_bindgen_futures::spawn_local(async move {
-            gloo_timers::future::TimeoutFuture::new(1500).await;
+            let rpc = RpcConnection::new();
+            
+            // Get the memo from the transaction
+            match rpc.get_transaction_memo(&signature).await {
+                Ok(Some(memo_string)) => {
+                    log::info!("Found memo in transaction: {}", memo_string);
+                    
+                    // Parse memo content
+                    let (title, image, content) = parse_memo_content(&memo_string);
+                    
+                    // Create MemoDetails with real data
+                    let memo_details = MemoDetails {
+                        title: title.or_else(|| Some("MEMO Transaction".to_string())),
+                        image,
+                        content: content.or_else(|| Some("No content available".to_string())),
+                        signature: signature.clone(),
+                        pubkey: "Loading...".to_string(), // We could get this if needed
+                        blocktime: 0, // We could get this if needed  
+                        amount: None,
+                    };
 
-            // Create dummy MemoDetails for the loaded MEMO
-            let memo_details = MemoDetails {
-                title: Some("Test MEMO Token".to_string()),
-                image: Some("data:image/png;base64,test".to_string()), // dummy image data
-                content: Some("This is a test MEMO token with some content for burning demonstration.".to_string()),
-                signature: signature,
-                pubkey: "BurnTestAddress1234567890".to_string(),
-                blocktime: 1700000000, // timestamp
-                amount: Some(100.0),
-            };
-
-            set_current_memo_details.set(Some(memo_details));
-            set_show_details_modal.set(true); // Show the details modal
-            set_is_loading.set(false);
-            set_error_message.set("✅ MEMO information loaded successfully".to_string());
+                    set_current_memo_details.set(Some(memo_details));
+                    set_show_details_modal.set(true);
+                    set_is_loading.set(false);
+                    set_error_message.set("✅ MEMO information loaded successfully".to_string());
+                }
+                Ok(None) => {
+                    set_is_loading.set(false);
+                    set_error_message.set("❌ No MEMO data found in this transaction".to_string());
+                }
+                Err(e) => {
+                    log::error!("Failed to get memo from transaction: {}", e);
+                    set_is_loading.set(false);
+                    set_error_message.set(format!("❌ Error loading MEMO: {}", e));
+                }
+            }
         });
     };
 
@@ -57,7 +105,7 @@ pub fn BurnForm(
     let handle_burn_from_details = Callback::new(move |signature: String| {
         log::info!("Burn initiated from details for signature: {}", signature);
         
-        // Simulate burn process
+        // Simulate burn process (this would be replaced with actual burn logic)
         wasm_bindgen_futures::spawn_local(async move {
             gloo_timers::future::TimeoutFuture::new(2000).await;
             
@@ -67,7 +115,7 @@ pub fn BurnForm(
             
             // Call the success callback if provided
             if let Some(callback) = on_burn_success {
-                callback.call((signature, 100)); // dummy amount
+                callback.call((signature, 100)); // dummy amount for now
             }
         });
     });
