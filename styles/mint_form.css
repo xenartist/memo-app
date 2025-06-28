@@ -68,9 +68,57 @@
 
 /* Minting mode selection */
 .minting-mode-group {
-    display: flex;
-    gap: 24px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 3px 6px; 
     margin-top: 8px;
+    max-width: 200px; 
+}
+
+.minting-mode-group .radio-label {
+    display: flex;
+    align-items: center;
+    gap: 2px; 
+    cursor: pointer;
+    font-size: 14px;
+    white-space: nowrap;
+    justify-content: flex-start;
+    padding: 3px 2px;
+    border-radius: 3px;
+    transition: background-color 0.2s ease;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.minting-mode-group .radio-label:hover {
+    background-color: #f8f9fa;
+}
+
+.minting-mode-group .radio-label input[type="radio"] {
+    margin: 0;
+    cursor: pointer;
+    scale: 0.8; 
+    flex-shrink: 0;
+    width: 14px; 
+    height: 14px;
+}
+
+.minting-mode-group .radio-label input[type="radio"]:checked + .radio-text {
+    color: #007bff;
+    font-weight: 500;
+}
+
+.minting-mode-group .radio-text {
+    font-size: 14px;
+    color: #333;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: calc(100% - 16px);
+    flex: 1;
+    min-width: 0;
 }
 
 .radio-label {
@@ -455,14 +503,25 @@ input:disabled {
     }
     
     .grid-size-group .radio-label {
-        font-size: 12px;
-        padding: 3px 2px;
-        gap: 2px;
+        font-size: 13px;
+        padding: 2px 1px;
     }
     
     .grid-size-group .radio-text {
-        font-size: 12px;
-        max-width: calc(100% - 14px);
+        font-size: 13px;
+    }
+    
+    .minting-mode-group {
+        max-width: 180px;
+    }
+    
+    .minting-mode-group .radio-label {
+        font-size: 13px;
+        padding: 2px 1px;
+    }
+    
+    .minting-mode-group .radio-text {
+        font-size: 13px;
     }
 }
 
@@ -489,5 +548,19 @@ input:disabled {
     
     .form-layout {
         gap: 1rem;
+    }
+    
+    .minting-mode-group {
+        max-width: 160px;
+        gap: 2px 4px;
+    }
+    
+    .minting-mode-group .radio-label {
+        font-size: 12px;
+        padding: 2px 1px;
+    }
+    
+    .minting-mode-group .radio-text {
+        font-size: 12px;
     }
 } 
