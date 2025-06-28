@@ -94,7 +94,7 @@
 .grid-size-group {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    gap: 2px 4px;
+    gap: 3px 6px;
     margin-top: 8px;
     max-width: 100%;
 }
@@ -102,12 +102,12 @@
 .grid-size-group .radio-label {
     display: flex;
     align-items: center;
-    gap: 1px;
+    gap: 2px;
     cursor: pointer;
-    font-size: 11px;
+    font-size: 14px;
     white-space: nowrap;
     justify-content: flex-start;
-    padding: 2px 1px;
+    padding: 3px 2px;
     border-radius: 3px;
     transition: background-color 0.2s ease;
     min-width: 0;
@@ -123,10 +123,10 @@
 .grid-size-group .radio-label input[type="radio"] {
     margin: 0;
     cursor: pointer;
-    scale: 0.7;
+    scale: 0.8;
     flex-shrink: 0;
-    width: 12px;
-    height: 12px;
+    width: 14px;
+    height: 14px;
 }
 
 .grid-size-group .radio-label input[type="radio"]:checked + .radio-text {
@@ -135,21 +135,14 @@
 }
 
 .grid-size-group .radio-text {
-    font-size: 11px;
+    font-size: 14px;
     color: #333;
     line-height: 1.2;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: calc(100% - 14px);
+    max-width: calc(100% - 16px);
     flex: 1;
     min-width: 0;
-}
-
-.grid-size-group .radio-label:nth-child(6) .radio-text,
-.grid-size-group .radio-label:nth-child(7) .radio-text,
-.grid-size-group .radio-label:nth-child(8) .radio-text,
-.grid-size-group .radio-label:nth-child(9) .radio-text {
-    font-size: 10px;
 }
 
 /* Form layout - two column design */
@@ -420,16 +413,16 @@ input:disabled {
     
     .grid-size-group {
         grid-template-columns: repeat(3, 1fr);
-        gap: 3px 6px;
+        gap: 4px 8px;
     }
     
     .grid-size-group .radio-label {
-        font-size: 12px;
+        font-size: 13px;
         padding: 3px 2px;
     }
     
     .grid-size-group .radio-text {
-        font-size: 12px;
+        font-size: 13px;
         max-width: calc(100% - 16px);
     }
 }
@@ -462,13 +455,13 @@ input:disabled {
     }
     
     .grid-size-group .radio-label {
-        font-size: 11px;
+        font-size: 12px;
         padding: 3px 2px;
         gap: 2px;
     }
     
     .grid-size-group .radio-text {
-        font-size: 11px;
+        font-size: 12px;
         max-width: calc(100% - 14px);
     }
 }
@@ -480,7 +473,7 @@ input:disabled {
     }
     
     .grid-size-group .radio-label {
-        font-size: 12px;
+        font-size: 13px;
         padding: 4px 3px;
         gap: 2px;
     }
@@ -490,7 +483,7 @@ input:disabled {
     }
     
     .grid-size-group .radio-text {
-        font-size: 12px;
+        font-size: 13px;
         max-width: calc(100% - 16px);
     }
     
