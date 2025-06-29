@@ -3,6 +3,7 @@ use crate::core::session::Session;
 use crate::core::rpc_base::RpcConnection;
 use crate::pages::memo_card_details::MemoCardDetails;
 use crate::pages::memo_card::MemoDetails;
+use crate::pages::burn_onchain::BurnOptions;
 
 #[component]
 pub fn BurnForm(
@@ -67,29 +68,23 @@ pub fn BurnForm(
             // Get the memo info from the transaction
             match rpc.get_transaction_memo(&signature).await {
                 Ok(Some(memo_info)) => {
-                    log::info!("Found memo in transaction: {}", memo_info.memo);
-                    log::info!("Transaction signer: {}", memo_info.signer);
-                    log::info!("Transaction timestamp: {}", memo_info.timestamp);
-                    
-                    // Parse memo content
                     let (title, image, content) = parse_memo_content(&memo_info.memo);
                     
-                    // Format signer address (first 8 and last 8 characters)
-                    let display_pubkey = if memo_info.signer.len() >= 16 {
+                    // Format signer address to show first 8 and last 8 characters
+                    let formatted_signer = if memo_info.signer.len() >= 16 {
                         format!("{}...{}", &memo_info.signer[..8], &memo_info.signer[memo_info.signer.len()-8..])
                     } else {
                         memo_info.signer.clone()
                     };
                     
-                    // Create MemoDetails with real data
                     let memo_details = MemoDetails {
-                        title: title.or_else(|| Some("MEMO Transaction".to_string())),
+                        title,
                         image,
-                        content: content.or_else(|| Some("No content available".to_string())),
+                        content,
                         signature: signature.clone(),
-                        pubkey: display_pubkey,
+                        pubkey: formatted_signer,
                         blocktime: memo_info.timestamp,
-                        amount: None,
+                        amount: None, // We don't have amount info from memo
                     };
 
                     set_current_memo_details.set(Some(memo_details));
@@ -111,10 +106,25 @@ pub fn BurnForm(
     };
 
     // Handle burn callback from MemoCardDetails
-    let handle_burn_from_details = Callback::new(move |signature: String| {
-        log::info!("Burn initiated from details for signature: {}", signature);
+    let handle_burn_from_details = Callback::new(move |(signature, burn_options): (String, BurnOptions)| {
+        log::info!("Burn choice made from burn form for signature: {}, options: {:?}", signature, burn_options);
         
-        // Simulate burn process (this would be replaced with actual burn logic)
+        // handle different burn options combinations
+        if burn_options.personal_collection && burn_options.global_glory_board {
+            log::info!("Burning to both personal collection and global glory board: {}", signature);
+            // TODO: implement logic to add to both personal collection and global glory board
+        } else if burn_options.personal_collection {
+            log::info!("Burning to personal collection only: {}", signature);
+            // TODO: implement logic to add to personal collection
+        } else if burn_options.global_glory_board {
+            log::info!("Burning to global glory board only: {}", signature);
+            // TODO: implement logic to add to global glory board
+        } else {
+            log::info!("Regular burn (no special options): {}", signature);
+            // TODO: implement regular burn logic
+        }
+        
+        // simulate burn completion, call success callback
         wasm_bindgen_futures::spawn_local(async move {
             gloo_timers::future::TimeoutFuture::new(2000).await;
             
@@ -122,7 +132,7 @@ pub fn BurnForm(
             set_show_details_modal.set(false);
             set_error_message.set("✅ Burn transaction completed successfully".to_string());
             
-            // Call the success callback if provided
+            // call the success callback if provided
             if let Some(callback) = on_burn_success {
                 callback.call((signature, 100)); // dummy amount for now
             }
@@ -174,46 +184,47 @@ pub fn BurnForm(
                                 >
                                     {move || {
                                         if is_loading.get() {
-                                            "Loading..."
+                                            view! {
+                                                <span>
+                                                    <i class="fas fa-spinner fa-spin"></i>
+                                                    " Loading..."
+                                                </span>
+                                            }
                                         } else {
-                                            "Load MEMO"
+                                            view! {
+                                                <span>
+                                                    <i class="fas fa-search"></i>
+                                                    " Load MEMO"
+                                                </span>
+                                            }
                                         }
                                     }}
                                 </button>
                             </div>
                         </div>
+
+                        // Status message
+                        <Show when=move || !error_message.get().is_empty()>
+                            <div class="status-message" class:error=move || error_message.get().starts_with("❌") class:success=move || error_message.get().starts_with("✅")>
+                                {error_message}
+                            </div>
+                        </Show>
                     </div>
 
-                    // Loading indicator
-                    <Show when=move || is_loading.get()>
-                        <div class="loading-status">
-                            <i class="fas fa-spinner fa-spin"></i>
-                            " Loading MEMO information from blockchain..."
+                    // Show loading state when searching for memo
+                    <Show when=move || is_loading.get() && current_memo_details.get().is_none()>
+                        <div class="loading-placeholder">
+                            <div class="loading-content">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <p>"Loading MEMO details from blockchain..."</p>
+                            </div>
                         </div>
                     </Show>
-
-                    // Error/Success messages
-                    {move || {
-                        let message = error_message.get();
-                        if !message.is_empty() {
-                            view! {
-                                <div class="error-message" 
-                                    class:success=message.contains("✅")
-                                    class:error=message.contains("❌")
-                                    class:warning=message.contains("⚠️")
-                                >
-                                    {message}
-                                </div>
-                            }
-                        } else {
-                            view! { <div></div> }
-                        }
-                    }}
-
-                    // Instructions when no memo loaded
-                    <Show when=move || !is_loading.get() && current_memo_details.get().is_none()>
-                        <div class="instructions">
-                            <div class="instruction-content">
+                    
+                    // Show helper text when no signature is entered
+                    <Show when=move || signature_input.get().trim().is_empty() && !is_loading.get() && current_memo_details.get().is_none()>
+                        <div class="helper-text">
+                            <div class="helper-content">
                                 <i class="fas fa-info-circle"></i>
                                 <p>"Enter a transaction signature above and click 'Load MEMO' to view the MEMO details and burn it."</p>
                             </div>
@@ -235,7 +246,7 @@ pub fn BurnForm(
                 show_modal=show_details_modal.into()
                 set_show_modal=set_show_details_modal
                 memo_details=current_memo_details.into()
-                on_burn_click=handle_burn_from_details
+                on_burn_choice=handle_burn_from_details
                 on_close=handle_details_close
             />
         </div>

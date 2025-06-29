@@ -6,6 +6,7 @@ use gloo_timers::future::TimeoutFuture;
 use crate::pages::mint_form::MintForm;
 use crate::pages::memo_card::{MemoCard, MemoDetails};
 use crate::pages::memo_card_details::MemoCardDetails;
+use crate::pages::burn_onchain::BurnOptions;
 use std::rc::Rc;
 
 #[component]
@@ -510,15 +511,28 @@ pub fn MintPage(
                 show_modal=show_details_modal.into()
                 set_show_modal=set_show_details_modal
                 memo_details=current_memo_details.into()
-                on_burn_click=Callback::new(move |signature: String| {
-                    log::info!("Burn clicked from details component for signature: {}", signature);
-                    // TODO: implement burn
-                    // can close details modal after burn
-                    set_show_details_modal.set(false);
+                on_burn_choice=Callback::new(move |(signature, burn_options): (String, BurnOptions)| {
+                    log::info!("Burn choice made for signature: {}, options: {:?}", signature, burn_options);
+                    
+                    // handle different burn options combinations
+                    if burn_options.personal_collection && burn_options.global_glory_board {
+                        log::info!("Burning to both personal collection and global glory board: {}", signature);
+                        // TODO: implement logic to add to both personal collection and global glory board
+                    } else if burn_options.personal_collection {
+                        log::info!("Burning to personal collection only: {}", signature);
+                        // TODO: implement logic to add to personal collection
+                    } else if burn_options.global_glory_board {
+                        log::info!("Burning to global glory board only: {}", signature);
+                        // TODO: implement logic to add to global glory board
+                    } else {
+                        log::info!("Regular burn (no special options): {}", signature);
+                        // TODO: implement regular burn logic
+                    }
+                    
+                    // close details dialog is handled in MemoCardDetails
                 })
                 on_close=Callback::new(move |_| {
                     log::info!("Details modal closed");
-                    // can add extra close logic here
                 })
             />
         </div>

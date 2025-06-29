@@ -1,6 +1,7 @@
 use leptos::*;
 use crate::pages::pixel_view::PixelView;
 use crate::pages::memo_card::MemoDetails;
+use crate::pages::burn_onchain::{BurnOnchain, BurnOptions};
 use crate::core::session::Session;
 use gloo_timers::future::TimeoutFuture;
 use wasm_bindgen_futures::spawn_local;
@@ -13,12 +14,16 @@ pub fn MemoCardDetails(
     set_show_modal: WriteSignal<bool>,
     /// current details
     memo_details: ReadSignal<Option<MemoDetails>>,
-    /// burn button callback (optional)
-    #[prop(optional)] on_burn_click: Option<Callback<String>>,
+    /// burn button callback (optional) - update to handle burn choice callback
+    #[prop(optional)] on_burn_choice: Option<Callback<(String, BurnOptions)>>,
     /// custom close callback (optional)
     #[prop(optional)] on_close: Option<Callback<()>>,
 ) -> impl IntoView {
     let (show_copied, set_show_copied) = create_signal(false);
+    
+    // add state for BurnOnchain dialog
+    let (show_burn_onchain, set_show_burn_onchain) = create_signal(false);
+    let (burn_signature, set_burn_signature) = create_signal(String::new());
     
     // format timestamp function
     let format_timestamp = move |timestamp: i64| -> String {
@@ -36,12 +41,24 @@ pub fn MemoCardDetails(
         }
     };
 
-    // handle burn button click
+    // handle burn button click - update to open BurnOnchain dialog
     let handle_burn = move |signature: String| {
-        if let Some(callback) = &on_burn_click {
-            callback.call(signature);
+        set_burn_signature.set(signature);
+        set_show_burn_onchain.set(true);
+    };
+
+    // handle burn choice from BurnOnchain component
+    let handle_burn_choice = move |signature: String, burn_options: BurnOptions| {
+        if let Some(callback) = &on_burn_choice {
+            callback.call((signature, burn_options));
         }
-        handle_close();
+        set_show_burn_onchain.set(false);
+        handle_close(); // also close details dialog
+    };
+
+    // handle burn onchain close
+    let handle_burn_onchain_close = move |_: ()| {
+        set_show_burn_onchain.set(false);
     };
 
     // copy signature to clipboard
@@ -81,130 +98,138 @@ pub fn MemoCardDetails(
                             if let Some(details) = memo_details.get() {
                                 view! {
                                     <div class="memo-details-content">
-                                        // Title
-                                        <div class="detail-section">
-                                            <h4 class="detail-label">
-                                                <i class="fas fa-pencil"></i>
-                                                "Title:"
-                                            </h4>
-                                            <div class="detail-value">
-                                                {details.title.clone().unwrap_or_else(|| "Memory".to_string())}
-                                            </div>
-                                        </div>
+                                        // Title section
+                                        {move || {
+                                            if let Some(ref title) = details.title {
+                                                view! {
+                                                    <div class="detail-section">
+                                                        <h4 class="detail-label">
+                                                            <i class="fas fa-heading"></i>
+                                                            "Title:"
+                                                        </h4>
+                                                        <div class="detail-value">{title.clone()}</div>
+                                                    </div>
+                                                }.into_view()
+                                            } else {
+                                                view! { <div></div> }.into_view()
+                                            }
+                                        }}
 
-                                        // Image
-                                        <div class="detail-section">
-                                            <h4 class="detail-label">
-                                                <i class="fas fa-image"></i>
-                                                "Image:"
-                                            </h4>
-                                            <div class="detail-value">
-                                                <div class="detail-image">
-                                                    {
-                                                        if let Some(image_data) = details.image.clone() {
-                                                            if image_data.starts_with("http") || image_data.starts_with("data:") {
-                                                                view! {
-                                                                    <img 
-                                                                        src={image_data}
-                                                                        alt="Memory Image"
-                                                                        class="detail-image-display"
-                                                                    />
-                                                                }.into_view()
-                                                            } else {
-                                                                view! {
-                                                                    <div class="detail-pixel-art">
-                                                                        <PixelView
-                                                                            art={image_data}
-                                                                            size=200
-                                                                            editable=false
-                                                                            show_grid=false
-                                                                        />
-                                                                    </div>
-                                                                }.into_view()
-                                                            }
-                                                        } else {
-                                                            view! {
-                                                                <div class="no-image-placeholder">
-                                                                    <p>"No image"</p>
-                                                                </div>
-                                                            }.into_view()
-                                                        }
-                                                    }
-                                                </div>
-                                            </div>
-                                        </div>
+                                        // Image section
+                                        {move || {
+                                            if let Some(ref image) = details.image {
+                                                if image.starts_with("http") || image.starts_with("data:image") {
+                                                    view! {
+                                                        <div class="detail-section">
+                                                            <h4 class="detail-label">
+                                                                <i class="fas fa-image"></i>
+                                                                "Image:"
+                                                            </h4>
+                                                            <div class="detail-value">
+                                                                <img src={image.clone()} alt="MEMO Image" class="detail-image" />
+                                                            </div>
+                                                        </div>
+                                                    }.into_view()
+                                                } else {
+                                                    // pixel art encoded
+                                                    view! {
+                                                        <div class="detail-section">
+                                                            <h4 class="detail-label">
+                                                                <i class="fas fa-palette"></i>
+                                                                "Pixel Art:"
+                                                            </h4>
+                                                            <div class="detail-value">
+                                                                <PixelView
+                                                                    art={image.clone()}
+                                                                    size=256
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    }.into_view()
+                                                }
+                                            } else {
+                                                view! {
+                                                    <div class="detail-section">
+                                                        <h4 class="detail-label">
+                                                            <i class="fas fa-image"></i>
+                                                            "Image:"
+                                                        </h4>
+                                                        <div class="detail-value">
+                                                            <div class="no-image-placeholder">
+                                                                <p>"No image available"</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                }.into_view()
+                                            }
+                                        }}
 
-                                        // Content
-                                        <div class="detail-section">
-                                            <h4 class="detail-label">
-                                                <i class="fas fa-file-text"></i>
-                                                "Content:"
-                                            </h4>
-                                            <div class="detail-value">
-                                                <div class="content-text">
-                                                    {details.content.clone().unwrap_or_else(|| "No content".to_string())}
-                                                </div>
-                                            </div>
-                                        </div>
+                                        // Content section
+                                        {move || {
+                                            if let Some(ref content) = details.content {
+                                                if !content.trim().is_empty() {
+                                                    view! {
+                                                        <div class="detail-section">
+                                                            <h4 class="detail-label">
+                                                                <i class="fas fa-file-text"></i>
+                                                                "Content:"
+                                                            </h4>
+                                                            <div class="detail-value content-text">{content.clone()}</div>
+                                                        </div>
+                                                    }.into_view()
+                                                } else {
+                                                    view! { <div></div> }.into_view()
+                                                }
+                                            } else {
+                                                view! { <div></div> }.into_view()
+                                            }
+                                        }}
 
-                                        // Signature - display truncated version, but copy full version
+                                        // Signature section
                                         <div class="detail-section">
                                             <h4 class="detail-label">
                                                 <i class="fas fa-signature"></i>
                                                 "Signature:"
                                             </h4>
-                                            <div class="detail-value">
-                                                <div class="signature-container">
-                                                    <div class="signature-text">
-                                                        {
-                                                            // display truncated signature (first 8 and last 8 characters)
+                                            <div class="detail-value signature-container">
+                                                <span class="signature-text">{details.signature.clone()}</span>
+                                                <div class="copy-container">
+                                                    <button 
+                                                        class="copy-button"
+                                                        on:click={
                                                             let sig = details.signature.clone();
-                                                            if sig.len() >= 16 {
-                                                                format!("{}...{}", &sig[..8], &sig[sig.len()-8..])
-                                                            } else {
-                                                                sig
-                                                            }
+                                                            move |_| copy_signature(sig.clone())
                                                         }
-                                                    </div>
-                                                    <div class="copy-container">
-                                                        <button
-                                                            class="copy-button"
-                                                            on:click={
-                                                                let sig = details.signature.clone(); // copy full signature
-                                                                move |e| {
-                                                                    e.stop_propagation();
-                                                                    copy_signature(sig.clone());
-                                                                }
-                                                            }
-                                                            title="Copy full signature to clipboard"
-                                                        >
-                                                            <i class="fas fa-copy"></i>
-                                                        </button>
-                                                        <div 
-                                                            class="copy-tooltip"
-                                                            class:show=move || show_copied.get()
-                                                        >
-                                                            "Copied!"
-                                                        </div>
+                                                        title="Copy signature"
+                                                    >
+                                                        <i class="fas fa-copy"></i>
+                                                    </button>
+                                                    <div class="copy-tooltip" class:show=show_copied>
+                                                        "Copied!"
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
 
-                                        // From
+                                        // From section
                                         <div class="detail-section">
                                             <h4 class="detail-label">
                                                 <i class="fas fa-user"></i>
                                                 "From:"
                                             </h4>
                                             <div class="detail-value">
-                                                <div class="pubkey-text">
-                                                    {details.pubkey.clone()}
-                                                </div>
+                                                {
+                                                    let pubkey = details.pubkey.clone();
+                                                    if pubkey.len() >= 16 {
+                                                        format!("{}...{}", &pubkey[..8], &pubkey[pubkey.len()-8..])
+                                                    } else {
+                                                        pubkey
+                                                    }
+                                                }
                                             </div>
                                         </div>
 
-                                        // Time
+                                        // Time section
                                         <div class="detail-section">
                                             <h4 class="detail-label">
                                                 <i class="fas fa-clock"></i>
@@ -215,7 +240,7 @@ pub fn MemoCardDetails(
                                             </div>
                                         </div>
 
-                                        // Amount (新增，原有结构中包含这个字段)
+                                        // Amount section
                                         {move || {
                                             if let Some(amount_value) = details.amount {
                                                 view! {
@@ -235,8 +260,8 @@ pub fn MemoCardDetails(
                                         }}
 
                                         // Burn button (only show if callback is provided)
-                                        {move || {
-                                            if on_burn_click.is_some() {
+                                        {
+                                            if on_burn_choice.is_some() {
                                                 let sig = details.signature.clone();
                                                 view! {
                                                     <div class="detail-actions">
@@ -255,7 +280,7 @@ pub fn MemoCardDetails(
                                             } else {
                                                 view! { <div></div> }.into_view()
                                             }
-                                        }}
+                                        }
                                     </div>
                                 }.into_view()
                             } else {
@@ -270,6 +295,17 @@ pub fn MemoCardDetails(
                 </div>
             </div>
         </Show>
+
+        // BurnOnchain dialog
+        <BurnOnchain
+            show_modal=show_burn_onchain.into()
+            set_show_modal=set_show_burn_onchain
+            signature=burn_signature.into()
+            on_burn_choice=Callback::new(move |(sig, burn_options): (String, BurnOptions)| {
+                handle_burn_choice(sig, burn_options);
+            })
+            on_close=Callback::new(handle_burn_onchain_close)
+        />
     }
 }
 
