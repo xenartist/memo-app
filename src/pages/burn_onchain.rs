@@ -3,15 +3,15 @@ use wasm_bindgen::JsCast;
 
 #[derive(Clone, Debug)]
 pub struct BurnOptions {
-    pub personal_collection: bool,  // burn to personal on-chain collection
-    pub global_glory_board: bool,   // burn to global glory board
+    pub personal_collection: bool,        // burn to personal onchain collection
+    pub global_glory_collection: bool,    // burn to global glory onchain collection
 }
 
 impl BurnOptions {
     pub fn new() -> Self {
         Self {
             personal_collection: false,
-            global_glory_board: false,
+            global_glory_collection: false,
         }
     }
 }
@@ -30,7 +30,7 @@ pub fn BurnOnchain(
 ) -> impl IntoView {
     // State for selected options (using checkboxes instead of radio)
     let (personal_collection_checked, set_personal_collection_checked) = create_signal(false);
-    let (global_glory_board_checked, set_global_glory_board_checked) = create_signal(false);
+    let (global_glory_collection_checked, set_global_glory_collection_checked) = create_signal(false);
 
     // Handle backdrop click to close modal
     let handle_backdrop_click = move |ev: ev::MouseEvent| {
@@ -59,7 +59,7 @@ pub fn BurnOnchain(
         let sig = signature.get();
         let burn_options = BurnOptions {
             personal_collection: personal_collection_checked.get(),
-            global_glory_board: global_glory_board_checked.get(),
+            global_glory_collection: global_glory_collection_checked.get(),
         };
         
         if let Some(callback) = on_burn_choice {
@@ -94,7 +94,7 @@ pub fn BurnOnchain(
                     </p>
 
                     <div class="burn-options">
-                        // Personal on-chain collection option
+                        // Personal onchain collection option
                         <label class="burn-option">
                             <input 
                                 type="checkbox"
@@ -108,19 +108,19 @@ pub fn BurnOnchain(
                                     <i class="fas fa-archive"></i>
                                 </div>
                                 <div class="option-text">
-                                    <div class="option-title">"Personal On-Chain Collection"</div>
-                                    <div class="option-desc">"Add to your personal burn history with detailed records"</div>
+                                    <div class="option-title">"Personal Onchain Collection"</div>
+                                    <div class="option-desc">"Add to your personal onchain burn history with detailed records"</div>
                                 </div>
                             </div>
                         </label>
 
-                        // Global glory board option
+                        // Global glory onchain collection option
                         <label class="burn-option">
                             <input 
                                 type="checkbox"
-                                checked=global_glory_board_checked
+                                checked=global_glory_collection_checked
                                 on:change=move |ev| {
-                                    set_global_glory_board_checked.set(event_target_checked(&ev));
+                                    set_global_glory_collection_checked.set(event_target_checked(&ev));
                                 }
                             />
                             <div class="option-content">
@@ -128,8 +128,8 @@ pub fn BurnOnchain(
                                     <i class="fas fa-trophy"></i>
                                 </div>
                                 <div class="option-text">
-                                    <div class="option-title">"Global Glory Board"</div>
-                                    <div class="option-desc">"Compete on the global leaderboard (requires ≥420 MEMO tokens)"</div>
+                                    <div class="option-title">"Global Glory Onchain Collection"</div>
+                                    <div class="option-desc">"Add to the global onchain collection (requires ≥420 MEMO tokens)"</div>
                                 </div>
                             </div>
                         </label>
@@ -143,7 +143,15 @@ pub fn BurnOnchain(
                         </p>
                         <p class="info-note">
                             <i class="fas fa-trophy"></i>
-                            " Global Glory Board requires at least 420 MEMO tokens to participate."
+                            " Global Glory Onchain Collection requires at least 420 MEMO tokens to participate."
+                        </p>
+                        <p class="info-note">
+                            <i class="fas fa-database"></i>
+                            " Without Personal Onchain Collection: records are saved locally only (latest 100 records)."
+                        </p>
+                        <p class="info-note">
+                            <i class="fas fa-link"></i>
+                            " Without Global Glory Onchain Collection: records are saved to onchain latest burns only (latest 69 records)."
                         </p>
                     </div>
                 </div>

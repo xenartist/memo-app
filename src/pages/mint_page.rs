@@ -514,16 +514,16 @@ pub fn MintPage(
                 on_burn_choice=Callback::new(move |(signature, burn_options): (String, BurnOptions)| {
                     log::info!("Burn choice made for signature: {}, options: {:?}", signature, burn_options);
                     
-                    // handle different burn options combinations
-                    if burn_options.personal_collection && burn_options.global_glory_board {
-                        log::info!("Burning to both personal collection and global glory board: {}", signature);
-                        // TODO: implement logic to add to both personal collection and global glory board
+                    // process burn options combinations
+                    if burn_options.personal_collection && burn_options.global_glory_collection {
+                        log::info!("Burning to both personal onchain collection and global glory onchain collection: {}", signature);
+                        // TODO: implement logic to add to both personal onchain collection and global glory onchain collection
                     } else if burn_options.personal_collection {
-                        log::info!("Burning to personal collection only: {}", signature);
-                        // TODO: implement logic to add to personal collection
-                    } else if burn_options.global_glory_board {
-                        log::info!("Burning to global glory board only: {}", signature);
-                        // TODO: implement logic to add to global glory board
+                        log::info!("Burning to personal onchain collection only: {}", signature);
+                        // TODO: implement logic to add to personal onchain collection
+                    } else if burn_options.global_glory_collection {
+                        log::info!("Burning to global glory onchain collection only: {}", signature);
+                        // TODO: implement logic to add to global glory onchain collection
                     } else {
                         log::info!("Regular burn (no special options): {}", signature);
                         // TODO: implement regular burn logic
