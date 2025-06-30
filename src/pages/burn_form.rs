@@ -203,7 +203,7 @@ pub fn BurnForm(
                             </div>
                         </div>
 
-                        // Status message
+                        // Status message - only show when there is a message
                         <Show when=move || !error_message.get().is_empty()>
                             <div class="status-message" class:error=move || error_message.get().starts_with("❌") class:success=move || error_message.get().starts_with("✅")>
                                 {error_message}
@@ -221,8 +221,8 @@ pub fn BurnForm(
                         </div>
                     </Show>
                     
-                    // Show helper text when no signature is entered
-                    <Show when=move || signature_input.get().trim().is_empty() && !is_loading.get() && current_memo_details.get().is_none()>
+                    // always show helper text, unless loading or already has results
+                    <Show when=move || !is_loading.get() && current_memo_details.get().is_none() && error_message.get().is_empty()>
                         <div class="helper-text">
                             <div class="helper-content">
                                 <i class="fas fa-info-circle"></i>
