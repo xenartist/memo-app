@@ -104,7 +104,7 @@ pub fn MemoCardDetails(
                                                 view! {
                                                     <div class="detail-section">
                                                         <h4 class="detail-label">
-                                                            <i class="fas fa-heading"></i>
+                                                            <i class="fas fa-pencil"></i>
                                                             "Title:"
                                                         </h4>
                                                         <div class="detail-value">{title.clone()}</div>
