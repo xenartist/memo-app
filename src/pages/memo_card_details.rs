@@ -14,10 +14,16 @@ pub fn MemoCardDetails(
     set_show_modal: WriteSignal<bool>,
     /// current details
     memo_details: ReadSignal<Option<MemoDetails>>,
+    /// session for signing transactions
+    session: RwSignal<Session>,
     /// burn button callback (optional) - update to handle burn choice callback
     #[prop(optional)] on_burn_choice: Option<Callback<(String, BurnOptions)>>,
     /// custom close callback (optional)
     #[prop(optional)] on_close: Option<Callback<()>>,
+    /// burn success callback (optional)
+    #[prop(optional)] on_burn_success: Option<Callback<(String, u64)>>,
+    /// burn error callback (optional)
+    #[prop(optional)] on_burn_error: Option<Callback<String>>,
 ) -> impl IntoView {
     let (show_copied, set_show_copied) = create_signal(false);
     
@@ -301,10 +307,17 @@ pub fn MemoCardDetails(
             show_modal=show_burn_onchain.into()
             set_show_modal=set_show_burn_onchain
             signature=burn_signature.into()
+            session=session
             on_burn_choice=Callback::new(move |(sig, burn_options): (String, BurnOptions)| {
                 handle_burn_choice(sig, burn_options);
             })
             on_close=Callback::new(handle_burn_onchain_close)
+            on_burn_success=on_burn_success.unwrap_or_else(|| {
+                Callback::new(|_: (String, u64)| {})
+            })
+            on_burn_error=on_burn_error.unwrap_or_else(|| {
+                Callback::new(|_: String| {})
+            })
         />
     }
 }

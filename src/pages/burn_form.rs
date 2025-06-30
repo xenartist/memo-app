@@ -246,8 +246,15 @@ pub fn BurnForm(
                 show_modal=show_details_modal.into()
                 set_show_modal=set_show_details_modal
                 memo_details=current_memo_details.into()
+                session=session
                 on_burn_choice=handle_burn_from_details
                 on_close=handle_details_close
+                on_burn_success=on_burn_success.unwrap_or_else(|| {
+                    Callback::new(|_: (String, u64)| {})
+                })
+                on_burn_error=on_burn_error.unwrap_or_else(|| {
+                    Callback::new(|_: String| {})
+                })
             />
         </div>
     }

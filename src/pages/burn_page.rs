@@ -407,7 +407,7 @@ pub fn BurnPage(
                 show_modal=show_details_modal.into()
                 set_show_modal=set_show_details_modal
                 memo_details=current_memo_details.into()
-                // Note: no on_burn_click for already burned items
+                session=session
                 on_close=Callback::new(move |_| {
                     log::info!("Burn details modal closed");
                 })

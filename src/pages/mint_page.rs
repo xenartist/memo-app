@@ -506,30 +506,15 @@ pub fn MintPage(
                 </div>
             </Show>
 
-            // use new details modal component
+            // use details modal component (with burn button for mint records)
             <MemoCardDetails 
                 show_modal=show_details_modal.into()
                 set_show_modal=set_show_details_modal
                 memo_details=current_memo_details.into()
+                session=session
                 on_burn_choice=Callback::new(move |(signature, burn_options): (String, BurnOptions)| {
-                    log::info!("Burn choice made for signature: {}, options: {:?}", signature, burn_options);
-                    
-                    // process burn options combinations
-                    if burn_options.personal_collection && burn_options.global_glory_collection {
-                        log::info!("Burning to both personal onchain collection and global glory onchain collection: {}", signature);
-                        // TODO: implement logic to add to both personal onchain collection and global glory onchain collection
-                    } else if burn_options.personal_collection {
-                        log::info!("Burning to personal onchain collection only: {}", signature);
-                        // TODO: implement logic to add to personal onchain collection
-                    } else if burn_options.global_glory_collection {
-                        log::info!("Burning to global glory onchain collection only: {}", signature);
-                        // TODO: implement logic to add to global glory onchain collection
-                    } else {
-                        log::info!("Regular burn (no special options): {}", signature);
-                        // TODO: implement regular burn logic
-                    }
-                    
-                    // close details dialog is handled in MemoCardDetails
+                    log::info!("Burn choice made from mint page for signature: {}, options: {:?}", signature, burn_options);
+                    // TODO: implement burn handling logic if needed
                 })
                 on_close=Callback::new(move |_| {
                     log::info!("Details modal closed");

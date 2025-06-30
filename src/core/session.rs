@@ -451,6 +451,70 @@ impl Session {
             }
         }
     }
+
+    // burn tokens using message and signature - internal handle all key operations
+    pub async fn burn(&mut self, amount: u64, message: &str, signature: &str) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        // internal get and handle keypair
+        let seed = self.get_seed()?;
+        let seed_bytes = hex::decode(&seed)
+            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
+        
+        let seed_array: [u8; 64] = seed_bytes.try_into()
+            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
+
+        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
+            &seed_array,
+            crate::core::wallet::get_default_derivation_path()
+        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
+
+        let keypair_bytes = keypair.to_bytes().to_vec();
+
+        // call RPC burn method
+        let rpc = RpcConnection::new();
+        let result = rpc.burn(amount, message, signature, &keypair_bytes).await
+            .map_err(|e| SessionError::InvalidData(format!("Burn failed: {}", e)))?;
+
+        // mark that balances need to be updated after successful burn
+        self.mark_balance_update_needed();
+        
+        Ok(result)
+    }
+
+    // burn with history - for future use
+    pub async fn burn_with_history(&mut self, amount: u64, message: &str, signature: &str) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        // internal get and handle keypair
+        let seed = self.get_seed()?;
+        let seed_bytes = hex::decode(&seed)
+            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
+        
+        let seed_array: [u8; 64] = seed_bytes.try_into()
+            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
+
+        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
+            &seed_array,
+            crate::core::wallet::get_default_derivation_path()
+        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
+
+        let keypair_bytes = keypair.to_bytes().to_vec();
+
+        // call RPC burn_with_history method
+        let rpc = RpcConnection::new();
+        let result = rpc.burn_with_history(amount, message, signature, &keypair_bytes).await
+            .map_err(|e| SessionError::InvalidData(format!("Burn with history failed: {}", e)))?;
+
+        // mark that balances need to be updated after successful burn
+        self.mark_balance_update_needed();
+        
+        Ok(result)
+    }
 }
 
 // implement Drop trait to ensure session data is properly cleaned up
