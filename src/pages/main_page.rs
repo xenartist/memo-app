@@ -252,7 +252,7 @@ pub fn MainPage(
 
                 <div class="content">
                     <div style=move || if current_menu.get() == MenuItem::Home { "display: block;" } else { "display: none;" }>
-                        <HomePage/>
+                        <HomePage session=session/>
                     </div>
                     <div style=move || if current_menu.get() == MenuItem::Mint { "display: block;" } else { "display: none;" }>
                         <MintPage session=session/>

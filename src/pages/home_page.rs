@@ -1,100 +1,247 @@
 use leptos::*;
 use crate::core::cache::{BurnRecord, get_latest_burn_shard, refresh_latest_burn_shard};
-use crate::pages::memo_card::MemoCard;
-use wasm_bindgen_futures::spawn_local;
+use crate::pages::memo_card::{MemoCard, MemoDetails};
+use crate::pages::memo_card_details::MemoCardDetails;
+use crate::pages::burn_onchain::{BurnOnchain, BurnOptions};
 use gloo_timers::future::TimeoutFuture;
-use gloo_timers::future::sleep;
-use std::time::Duration;
-use wasm_bindgen::JsCast;
+use wasm_bindgen_futures::spawn_local;
+use crate::core::rpc_base::RpcConnection;
+use crate::core::session::Session;
+
+// BurnRecordWithImage component, handle async memo loading
+#[component]
+pub fn BurnRecordWithImage(
+    burn_record: BurnRecord,
+    session: RwSignal<Session>,
+) -> impl IntoView {
+    let (memo_data, set_memo_data) = create_signal(None::<(Option<String>, Option<String>, Option<String>)>); // (title, image, content)
+    let (is_loading_memo, set_is_loading_memo) = create_signal(true);
+    
+    // async load memo data
+    let signature_clone = burn_record.signature.clone();
+    create_effect(move |_| {
+        let signature = signature_clone.clone();
+        spawn_local(async move {
+            // get transaction memo
+            let rpc = RpcConnection::new();
+            match rpc.get_transaction_memo(&signature).await {
+                Ok(Some(memo_info)) => {
+                    // parse memo JSON
+                    let (title, image, content) = parse_memo_json(&memo_info.memo);
+                    set_memo_data.set(Some((title, image, content)));
+                    log::info!("Successfully loaded memo for signature: {}", signature);
+                }
+                Ok(None) => {
+                    log::info!("No memo found for signature: {}", signature);
+                    set_memo_data.set(Some((None, None, None)));
+                }
+                Err(e) => {
+                    log::error!("Failed to get memo for {}: {}", signature, e);
+                    set_memo_data.set(Some((None, None, None)));
+                }
+            }
+            set_is_loading_memo.set(false);
+        });
+    });
+    
+    // format data for display
+    let display_pubkey = if burn_record.pubkey.len() >= 8 {
+        format!("{}...{}", &burn_record.pubkey[..4], &burn_record.pubkey[burn_record.pubkey.len()-4..])
+    } else {
+        burn_record.pubkey.clone()
+    };
+    
+    let display_signature = if burn_record.signature.len() >= 16 {
+        format!("{}...{}", &burn_record.signature[..8], &burn_record.signature[burn_record.signature.len()-8..])
+    } else {
+        burn_record.signature.clone()
+    };
+    
+    let amount_tokens = burn_record.amount as f64 / 1_000_000_000.0;
+
+    // MemoCardDetails modal states
+    let (show_details_modal, set_show_details_modal) = create_signal(false);
+    let (current_memo_details, set_current_memo_details) = create_signal(None::<MemoDetails>);
+    
+    // BurnOnchain modal states  
+    let (show_burn_onchain, set_show_burn_onchain) = create_signal(false);
+    let (burn_signature, set_burn_signature) = create_signal(String::new());
+    
+    view! {
+        <>
+            {move || {
+                let (title, image, content) = memo_data.get().unwrap_or((None, None, None));
+                
+                // if still loading, show loading card
+                if is_loading_memo.get() {
+                    view! {
+                        <div class="memo-card loading">
+                            <div class="memo-header">
+                                <h4 class="memo-title">"Loading..."</h4>
+                            </div>
+                            <div class="memo-image-container">
+                                <div class="memo-image-placeholder">
+                                    <i class="fas fa-spinner fa-spin"></i>
+                                    <span>"Loading memo..."</span>
+                                </div>
+                            </div>
+                            <div class="memo-info">
+                                <div class="memo-info-item">
+                                    <span class="label">"Signature:"</span>
+                                    <span class="value signature">{display_signature.clone()}</span>
+                                </div>
+                                <div class="memo-info-item">
+                                    <span class="label">"From:"</span>
+                                    <span class="value pubkey">{display_pubkey.clone()}</span>
+                                </div>
+                            </div>
+                        </div>
+                    }.into_view()
+                } else {
+                    // loading completed, show real MemoCard
+                    view! {
+                        <MemoCard
+                            title=title.unwrap_or_else(|| "Burn Memory".to_string())
+                            image=image.unwrap_or_else(|| {
+                                // default burn placeholder image
+                                "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjZmZlNmU2Ii8+Cjx0ZXh0IHg9IjMyIiB5PSIzNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjZGM2MjY4Ij5CdXJuPC90ZXh0Pgo8L3N2Zz4K".to_string()
+                            })  // ✅ convert Option<String> to String
+                            content=content.unwrap_or_else(|| "".to_string())
+                            signature=burn_record.signature.clone()
+                            pubkey=display_pubkey.clone()
+                            blocktime=burn_record.blocktime
+                            amount=amount_tokens
+                            on_details_click=Callback::new(move |details: MemoDetails| {
+                                log::info!("Details clicked for burn signature: {}", details.signature);
+                                set_current_memo_details.set(Some(details));
+                                set_show_details_modal.set(true);
+                            })
+                            on_burn_click=Callback::new(move |signature: String| {
+                                log::info!("Burn clicked for signature: {}", signature);
+                                set_burn_signature.set(signature);
+                                set_show_burn_onchain.set(true);
+                            })
+                        />
+                    }.into_view()
+                }
+            }}
+            
+            // MemoCardDetails Modal
+            <MemoCardDetails 
+                show_modal=show_details_modal.into()
+                set_show_modal=set_show_details_modal
+                memo_details=current_memo_details.into()
+                session=session
+                on_burn_choice=Callback::new(move |(signature, burn_options): (String, BurnOptions)| {
+                    log::info!("Burn choice made from home page for signature: {}, options: {:?}", signature, burn_options);
+                    // TODO: implement burn processing logic
+                })
+                on_close=Callback::new(move |_| {
+                    log::info!("Details modal closed from home page");
+                })
+            />
+            
+            // BurnOnchain Modal
+            <BurnOnchain
+                show_modal=show_burn_onchain.into()
+                set_show_modal=set_show_burn_onchain
+                signature=burn_signature.into()
+                session=session
+                on_burn_choice=Callback::new(move |(sig, burn_options): (String, BurnOptions)| {
+                    log::info!("Burn onchain choice made for signature: {}, options: {:?}", sig, burn_options);
+                    // TODO: implement burn processing logic
+                })
+                on_close=Callback::new(move |_| {
+                    log::info!("Burn onchain modal closed");
+                    set_show_burn_onchain.set(false);
+                })
+            />
+        </>
+    }
+}
+
+// parse memo JSON, extract title, image, content
+fn parse_memo_json(memo_json: &str) -> (Option<String>, Option<String>, Option<String>) {
+    match serde_json::from_str::<serde_json::Value>(memo_json) {
+        Ok(json) => {
+            let title = json.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let image = json.get("image").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let content = json.get("content").and_then(|v| v.as_str()).map(|s| s.to_string());
+            (title, image, content)
+        }
+        Err(e) => {
+            log::warn!("Failed to parse memo JSON: {}", e);
+            (None, None, None)
+        }
+    }
+}
 
 #[component]
 pub fn HomePage(
+    session: RwSignal<Session>,
 ) -> impl IntoView {
-    // pagination related signals
+    // state for burn records
     let (all_burn_records, set_all_burn_records) = create_signal(Vec::<BurnRecord>::new());
-    let (current_page, set_current_page) = create_signal(1usize);
-    let (page_size, _set_page_size) = create_signal(10usize); // show 10 cards per page
-    let (total_records, set_total_records) = create_signal(0usize);
     let (is_loading, set_is_loading) = create_signal(false);
     let (error_message, set_error_message) = create_signal(String::new());
     let (is_initial_load, set_is_initial_load) = create_signal(true);
-
-    // calculate records for current page
+    
+    // pagination state
+    let (current_page, set_current_page) = create_signal(1usize);
+    let (total_records, set_total_records) = create_signal(0usize);
+    const RECORDS_PER_PAGE: usize = 12;
+    
+    // pagination helper functions
+    let get_total_pages = move || {
+        let total = total_records.get();
+        (total + RECORDS_PER_PAGE - 1) / RECORDS_PER_PAGE
+    };
+    
     let get_current_page_records = move || {
-        let all_records = all_burn_records.get();
+        let records = all_burn_records.get();
         let page = current_page.get();
-        let size = page_size.get();
-        let start_idx = (page - 1) * size;
-        let end_idx = std::cmp::min(start_idx + size, all_records.len());
+        let start_idx = (page - 1) * RECORDS_PER_PAGE;
+        let end_idx = (start_idx + RECORDS_PER_PAGE).min(records.len());
         
-        if start_idx < all_records.len() {
-            all_records[start_idx..end_idx].to_vec()
+        if start_idx < records.len() {
+            records[start_idx..end_idx].to_vec()
         } else {
             Vec::new()
         }
     };
-
-    // calculate total pages
-    let get_total_pages = move || {
-        let total = total_records.get();
-        let size = page_size.get();
-        if total == 0 {
-            1
-        } else {
-            ((total as f64) / (size as f64)).ceil() as usize
-        }
-    };
-
-    // pagination control functions
-    let go_to_page = move |page: usize| {
-        let max_page = get_total_pages();
-        if page >= 1 && page <= max_page {
-            set_current_page.set(page);
-            
-            // scroll to top of page
-            if let Some(window) = web_sys::window() {
-                window.scroll_to_with_x_and_y(0.0, 0.0);
-            }
-        }
-    };
-
+    
     let handle_prev_page = move |_| {
-        let current = current_page.get();
-        if current > 1 {
-            go_to_page(current - 1);
+        if current_page.get() > 1 {
+            set_current_page.update(|p| *p -= 1);
         }
     };
-
+    
     let handle_next_page = move |_| {
-        let current = current_page.get();
-        let max_page = get_total_pages();
-        if current < max_page {
-            go_to_page(current + 1);
+        let total_pages = get_total_pages();
+        if current_page.get() < total_pages {
+            set_current_page.update(|p| *p += 1);
+        }
+    };
+    
+    let go_to_page = move |page: usize| {
+        let total_pages = get_total_pages();
+        if page > 0 && page <= total_pages {
+            set_current_page.set(page);
         }
     };
 
-    // format timestamp
-    let format_timestamp = |timestamp: i64| -> String {
-        let date = js_sys::Date::new(&(timestamp as f64 * 1000.0).into());
-        date.to_locale_string("en-US", &js_sys::Object::new()).as_string().unwrap_or_else(|| "Unknown".to_string())
-    };
-
-    // silent refresh data (without changing loading state, keeping existing UI)
+    // silent refresh data (without changing loading state)
     let silent_refresh = move || {
         spawn_local(async move {
-            // give UI time to render
             TimeoutFuture::new(50).await;
             
-            // Use the new cache system instead of session
             match get_latest_burn_shard().await {
                 Ok(records) => {
-                    // only update display when successfully getting data
                     let total_count = records.len();
                     set_all_burn_records.set(records);
                     set_total_records.set(total_count);
                     set_error_message.set(String::new());
                     
-                    // after first load, update state
                     if is_initial_load.get_untracked() {
                         set_is_initial_load.set(false);
                     }
@@ -102,7 +249,6 @@ pub fn HomePage(
                     log::info!("Silently updated {} burn records", total_count);
                 }
                 Err(e) => {
-                    // only show error on first load, subsequent silent refresh failures do not affect UI
                     if is_initial_load.get_untracked() {
                         set_error_message.set(format!("Failed to load burn records: {}", e));
                         set_is_initial_load.set(false);
@@ -120,14 +266,12 @@ pub fn HomePage(
         spawn_local(async move {
             TimeoutFuture::new(100).await;
             
-            // Use the new cache system to force refresh
             match refresh_latest_burn_shard().await {
                 Ok(new_records) => {
                     let total_count = new_records.len();
                     set_all_burn_records.set(new_records);
                     set_total_records.set(total_count);
                     set_error_message.set(String::new());
-                    // reset to first page when refreshing
                     set_current_page.set(1);
                     log::info!("Successfully refreshed {} burn records", total_count);
                 }
@@ -141,7 +285,7 @@ pub fn HomePage(
         });
     };
 
-    // silent refresh when page loads (without affecting existing UI)
+    // silent refresh when page loads
     create_effect(move |_| {
         silent_refresh();
     });
@@ -152,7 +296,6 @@ pub fn HomePage(
                 <div class="header-section" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <h2>
                         "Latest Burns"
-                        // show pagination info
                         <Show when=move || { total_records.get() > 0 }>
                             <span style="font-size: 0.8em; color: #666; margin-left: 10px;">
                                 {move || format!("({} total records)", total_records.get())}
@@ -202,7 +345,6 @@ pub fn HomePage(
                     let is_initial = is_initial_load.get();
                     
                     if all_records.is_empty() && is_initial {
-                        // only show loading when first loading and no data
                         view! {
                             <div class="loading-container">
                                 <div class="loading-spinner"></div>
@@ -210,7 +352,6 @@ pub fn HomePage(
                             </div>
                         }
                     } else if all_records.is_empty() && !is_initial {
-                        // not first load, but no data
                         view! {
                             <div class="empty-state">
                                 <p class="empty-message">
@@ -220,7 +361,6 @@ pub fn HomePage(
                             </div>
                         }
                     } else {
-                        // show cards when there is data
                         view! {
                             <div class="records-container">
                                 // pagination controls (top)
@@ -250,39 +390,16 @@ pub fn HomePage(
                                     </div>
                                 </Show>
 
-                                // memo cards - only show current page data
+                                // memo cards - use new BurnRecordWithImage component
                                 <div class="memo-cards">
                                     <For
                                         each=move || get_current_page_records()
                                         key=|record| format!("{}_{}", record.blocktime, record.signature)
                                         children=move |record| {
-                                            // format pubkey (display first 4 and last 4 characters)
-                                            let display_pubkey = if record.pubkey.len() >= 8 {
-                                                format!("{}...{}", &record.pubkey[..4], &record.pubkey[record.pubkey.len()-4..])
-                                            } else {
-                                                record.pubkey.clone()
-                                            };
-                                            
-                                            // format signature (display first 8 and last 8 characters)
-                                            let display_signature = if record.signature.len() >= 16 {
-                                                format!("{}...{}", &record.signature[..8], &record.signature[record.signature.len()-8..])
-                                            } else {
-                                                record.signature.clone()
-                                            };
-                                            
-                                            // convert amount to tokens (from lamports)
-                                            let amount_tokens = record.amount as f64 / 1_000_000_000.0;
-                                            
-                                            // generate a placeholder image URL  
-                                            let placeholder_image = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjZjBmMGYwIi8+Cjx0ZXh0IHg9IjMyIiB5PSIzNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjNjY2Ij5CdXJuPC90ZXh0Pgo8L3N2Zz4K";
-                                            
                                             view! {
-                                                <MemoCard
-                                                    image=placeholder_image.to_string()
-                                                    signature=display_signature
-                                                    pubkey=display_pubkey
-                                                    blocktime=record.blocktime
-                                                    amount=amount_tokens
+                                                <BurnRecordWithImage 
+                                                    burn_record=record 
+                                                    session=session
                                                 />
                                             }
                                         }
@@ -308,7 +425,6 @@ pub fn HomePage(
                                                 let total = get_total_pages();
                                                 let mut pages = Vec::new();
                                                 
-                                                // page display logic: always show page 1, pages around current, and last page
                                                 let start = if current <= 3 { 1 } else { current - 2 };
                                                 let end = if current + 2 >= total { total } else { current + 2 };
                                                 
