@@ -6,7 +6,7 @@ use gloo_timers::future::TimeoutFuture;
 use crate::pages::mint_form::MintForm;
 use crate::pages::memo_card::{MemoCard, MemoDetails};
 use crate::pages::memo_card_details::MemoCardDetails;
-use crate::pages::burn_onchain::BurnOptions;
+use crate::pages::burn_onchain::{BurnOptions, BurnOnchain};
 use std::rc::Rc;
 
 #[component]
@@ -22,6 +22,10 @@ pub fn MintPage(
     // add signal to control details modal visibility
     let (show_details_modal, set_show_details_modal) = create_signal(false);
     let (current_memo_details, set_current_memo_details) = create_signal(Option::<MemoDetails>::None);
+    
+    // ✅ add burn onchain related states
+    let (show_burn_onchain, set_show_burn_onchain) = create_signal(false);
+    let (burn_signature, set_burn_signature) = create_signal(String::new());
     
     // pagination related signals
     let (all_mint_records, set_all_mint_records) = create_signal(Vec::<MintRecord>::new());
@@ -400,7 +404,9 @@ pub fn MintPage(
                                                     })
                                                     on_burn_click=Callback::new(move |signature: String| {
                                                         log::info!("Burn clicked for signature: {}", signature);
-                                                        // TODO: implement burn
+                                                        // ✅ pop up burn onchain dialog
+                                                        set_burn_signature.set(signature);
+                                                        set_show_burn_onchain.set(true);
                                                     })
                                                 />
                                             }
@@ -518,6 +524,22 @@ pub fn MintPage(
                 })
                 on_close=Callback::new(move |_| {
                     log::info!("Details modal closed");
+                })
+            />
+
+            // ✅ add BurnOnchain Modal
+            <BurnOnchain
+                show_modal=show_burn_onchain.into()
+                set_show_modal=set_show_burn_onchain
+                signature=burn_signature.into()
+                session=session
+                on_burn_choice=Callback::new(move |(sig, burn_options): (String, BurnOptions)| {
+                    log::info!("Burn onchain choice made from mint page for signature: {}, options: {:?}", sig, burn_options);
+                    // burn success, no need to refresh mint records
+                })
+                on_close=Callback::new(move |_| {
+                    log::info!("Burn onchain modal closed from mint page");
+                    set_show_burn_onchain.set(false);
                 })
             />
         </div>
