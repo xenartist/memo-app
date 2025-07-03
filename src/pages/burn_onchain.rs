@@ -3,6 +3,7 @@ use wasm_bindgen::JsCast;
 use crate::core::session::{Session, SessionError};
 use crate::core::rpc_token::ProgramConfig;
 use crate::core::storage_burn::get_burn_storage;
+use crate::pages::memo_card::MemoDetails;
 use wasm_bindgen_futures::spawn_local;
 
 #[derive(Clone, Debug)]
@@ -27,6 +28,8 @@ pub fn BurnOnchain(
     set_show_modal: WriteSignal<bool>,
     /// transaction signature to burn
     signature: ReadSignal<String>,
+    /// ✅ memo details information
+    memo_details: ReadSignal<Option<MemoDetails>>,
     /// session for signing transactions
     session: RwSignal<Session>,
     /// callback when user makes a choice
@@ -78,6 +81,9 @@ pub fn BurnOnchain(
             global_glory_collection: global_glory_collection_checked.get(),
         };
         
+        // ✅ get memo details information
+        let memo_details_value = memo_details.get();
+        
         set_is_burning.set(true);
         set_burn_error.set(String::new());
         
@@ -86,7 +92,8 @@ pub fn BurnOnchain(
         let error_callback = on_burn_error;
         
         spawn_local(async move {
-            let result = perform_burn(sig.clone(), burn_options, session_clone).await;
+            // ✅ pass memo_details_value to perform_burn
+            let result = perform_burn(sig.clone(), burn_options, memo_details_value, session_clone).await;
             
             match result {
                 Ok((transaction_sig, amount)) => {
@@ -129,9 +136,40 @@ pub fn BurnOnchain(
 
                 // Content
                 <div class="burn-onchain-body">
-                    <p class="description">
-                        "Select your burn options (you can choose multiple):"
-                    </p>
+                    // ✅ fix: ensure if/else returns the same container type
+                    <div class="burn-description">
+                        {move || {
+                            if let Some(details) = memo_details.get() {
+                                view! {
+                                    <>
+                                        <div class="burn-memo-preview">
+                                            <p class="description">
+                                                "You are about to burn this memo:"
+                                            </p>
+                                            <div class="memo-preview-info">
+                                                <div class="preview-item">
+                                                    <span class="label">"Title: "</span>
+                                                    <span class="value">{details.title.unwrap_or_else(|| "Untitled".to_string())}</span>
+                                                </div>
+                                                <div class="preview-item">
+                                                    <span class="label">"Signature: "</span>
+                                                    <span class="value">{details.signature}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                }
+                            } else {
+                                view! {
+                                    <>
+                                        <p class="description">
+                                            "Select your burn options:"
+                                        </p>
+                                    </>
+                                }
+                            }
+                        }}
+                    </div>
 
                     <div class="burn-options">
                         // Personal onchain collection option
@@ -237,10 +275,11 @@ pub fn BurnOnchain(
     }
 }
 
-// 🎯 修正的Burn执行函数
+// ✅ modify perform_burn function, add memo_details parameter
 async fn perform_burn(
     signature: String, 
-    burn_options: BurnOptions, 
+    burn_options: BurnOptions,
+    memo_details: Option<MemoDetails>,  // ✅ add memo_details parameter
     session: RwSignal<Session>
 ) -> Result<(String, u64), String> {
     // Calculate burn amount based on options
@@ -257,6 +296,17 @@ async fn perform_burn(
     log::info!("  - Amount: {} lamports ({} tokens)", amount, amount / 1_000_000_000);
     log::info!("  - Personal Collection: {}", burn_options.personal_collection);
     log::info!("  - Global Glory Collection: {}", burn_options.global_glory_collection);
+    
+    // ✅ record memo details information
+    if let Some(ref details) = memo_details {
+        log::info!("  - Memo Title: {:?}", details.title);
+        log::info!("  - Memo Pubkey: {}", details.pubkey);
+        log::info!("  - Memo Blocktime: {}", details.blocktime);
+        log::info!("  - Has Image: {}", details.image.is_some());
+        log::info!("  - Has Content: {}", details.content.is_some());
+    } else {
+        log::warn!("  - No memo details provided");
+    }
 
     // Create burn message
     let burn_message = if burn_options.personal_collection && burn_options.global_glory_collection {
@@ -269,24 +319,24 @@ async fn perform_burn(
         "Regular burn transaction"
     };
 
-    // 🎯 正确的方式：直接调用session的异步burn方法
+    // 🎯 correct way: directly call session's async burn method
     let transaction_signature = {
         let mut session_data = session.get();
         
         if burn_options.personal_collection {
-            // TODO: 未来支持burn_with_history
+            // TODO: future support burn_with_history
             session_data.burn(amount, burn_message, &signature).await
         } else {
             session_data.burn(amount, burn_message, &signature).await
         }
     }.map_err(|e| format!("Session burn failed: {}", e))?;
 
-    // 更新session状态（标记余额需要更新）
+    // update session state (mark balance needs update)
     session.update(|s| s.mark_balance_update_needed());
 
     log::info!("✅ Burn transaction submitted: {}", transaction_signature);
 
-    // Create memo JSON for storage
+    // create memo JSON for storage
     let memo_json = serde_json::json!({
         "signature": signature,
         "message": burn_message,

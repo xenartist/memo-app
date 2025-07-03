@@ -14,50 +14,54 @@ pub fn BurnRecordWithImage(
     burn_record: BurnRecord,
     session: RwSignal<Session>,
 ) -> impl IntoView {
-    let (memo_data, set_memo_data) = create_signal(None::<(Option<String>, Option<String>, Option<String>)>); // (title, image, content)
+    let (memo_data, set_memo_data) = create_signal(None::<(Option<String>, Option<String>, Option<String>)>);
     let (is_loading_memo, set_is_loading_memo) = create_signal(true);
     
-    // async load memo data
-    let signature_clone = burn_record.signature.clone();
+    // ✅ clone values needed before create_effect
+    let signature_for_effect = burn_record.signature.clone();
+    let signature_for_display = burn_record.signature.clone();
+    let pubkey_for_display = burn_record.pubkey.clone();
+    let blocktime = burn_record.blocktime;
+    let amount = burn_record.amount;
+    
+    // ✅ async load memo data effect - use cloned signature
     create_effect(move |_| {
-        let signature = signature_clone.clone();
-        spawn_local(async move {
-            // get transaction memo
+        let signature = signature_for_effect.clone();
+        wasm_bindgen_futures::spawn_local(async move {
             let rpc = RpcConnection::new();
             match rpc.get_transaction_memo(&signature).await {
                 Ok(Some(memo_info)) => {
-                    // parse memo JSON
                     let (title, image, content) = parse_memo_json(&memo_info.memo);
                     set_memo_data.set(Some((title, image, content)));
-                    log::info!("Successfully loaded memo for signature: {}", signature);
+                    set_is_loading_memo.set(false);
                 }
                 Ok(None) => {
-                    log::info!("No memo found for signature: {}", signature);
+                    log::warn!("No memo found for signature: {}", signature);
                     set_memo_data.set(Some((None, None, None)));
+                    set_is_loading_memo.set(false);
                 }
                 Err(e) => {
-                    log::error!("Failed to get memo for {}: {}", signature, e);
+                    log::error!("Failed to load memo for signature {}: {}", signature, e);
                     set_memo_data.set(Some((None, None, None)));
+                    set_is_loading_memo.set(false);
                 }
             }
-            set_is_loading_memo.set(false);
         });
     });
     
-    // format data for display
-    let display_pubkey = if burn_record.pubkey.len() >= 8 {
-        format!("{}...{}", &burn_record.pubkey[..4], &burn_record.pubkey[burn_record.pubkey.len()-4..])
+    // ✅ use pre-cloned values
+    let display_signature = if signature_for_display.len() >= 16 {
+        format!("{}...{}", &signature_for_display[..8], &signature_for_display[signature_for_display.len()-8..])
     } else {
-        burn_record.pubkey.clone()
+        signature_for_display.clone()
+    };
+    let display_pubkey = if pubkey_for_display.len() >= 16 {
+        format!("{}...{}", &pubkey_for_display[..8], &pubkey_for_display[pubkey_for_display.len()-8..])
+    } else {
+        pubkey_for_display.clone()
     };
     
-    let display_signature = if burn_record.signature.len() >= 16 {
-        format!("{}...{}", &burn_record.signature[..8], &burn_record.signature[burn_record.signature.len()-8..])
-    } else {
-        burn_record.signature.clone()
-    };
-    
-    let amount_tokens = burn_record.amount as f64 / 1_000_000_000.0;
+    let amount_tokens = amount as f64 / 1_000_000_000.0;
 
     // MemoCardDetails modal states
     let (show_details_modal, set_show_details_modal) = create_signal(false);
@@ -66,6 +70,46 @@ pub fn BurnRecordWithImage(
     // BurnOnchain modal states  
     let (show_burn_onchain, set_show_burn_onchain) = create_signal(false);
     let (burn_signature, set_burn_signature) = create_signal(String::new());
+    
+    // ✅ define callbacks outside view to avoid nested move closure
+    let on_details_callback = {
+        let set_current_memo_details = set_current_memo_details.clone();
+        let set_show_details_modal = set_show_details_modal.clone();
+        Callback::new(move |details: MemoDetails| {
+            log::info!("Details clicked for burn signature: {}", details.signature);
+            set_current_memo_details.set(Some(details));
+            set_show_details_modal.set(true);
+        })
+    };
+    
+    let on_burn_callback = {
+        let signature_for_burn = signature_for_display.clone();
+        let display_pubkey_clone = display_pubkey.clone();
+        let set_burn_signature = set_burn_signature.clone();
+        let set_current_memo_details = set_current_memo_details.clone();
+        let set_show_burn_onchain = set_show_burn_onchain.clone();
+        
+        Callback::new(move |signature: String| {
+            log::info!("Burn clicked for signature: {}", signature);
+            
+            set_burn_signature.set(signature.clone());
+            
+            // get current memo data
+            let (title, image, content) = memo_data.get_untracked().unwrap_or((None, None, None));
+            let memo_details = MemoDetails {
+                title,
+                image,
+                content,
+                signature: signature_for_burn.clone(),
+                pubkey: display_pubkey_clone.clone(),
+                blocktime,
+                amount: Some(amount_tokens),
+            };
+            set_current_memo_details.set(Some(memo_details));
+            
+            set_show_burn_onchain.set(true);
+        })
+    };
     
     view! {
         <>
@@ -105,22 +149,14 @@ pub fn BurnRecordWithImage(
                             image=image.unwrap_or_else(|| {
                                 // default burn placeholder image
                                 "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjZmZlNmU2Ii8+Cjx0ZXh0IHg9IjMyIiB5PSIzNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjZGM2MjY4Ij5CdXJuPC90ZXh0Pgo8L3N2Zz4K".to_string()
-                            })  // ✅ convert Option<String> to String
+                            })
                             content=content.unwrap_or_else(|| "".to_string())
-                            signature=burn_record.signature.clone()
+                            signature=signature_for_display.clone()
                             pubkey=display_pubkey.clone()
-                            blocktime=burn_record.blocktime
+                            blocktime=blocktime
                             amount=amount_tokens
-                            on_details_click=Callback::new(move |details: MemoDetails| {
-                                log::info!("Details clicked for burn signature: {}", details.signature);
-                                set_current_memo_details.set(Some(details));
-                                set_show_details_modal.set(true);
-                            })
-                            on_burn_click=Callback::new(move |signature: String| {
-                                log::info!("Burn clicked for signature: {}", signature);
-                                set_burn_signature.set(signature);
-                                set_show_burn_onchain.set(true);
-                            })
+                            on_details_click=on_details_callback  // ✅ use predefined callback
+                            on_burn_click=on_burn_callback        // ✅ use predefined callback
                         />
                     }.into_view()
                 }
@@ -146,6 +182,7 @@ pub fn BurnRecordWithImage(
                 show_modal=show_burn_onchain.into()
                 set_show_modal=set_show_burn_onchain
                 signature=burn_signature.into()
+                memo_details=current_memo_details.into()
                 session=session
                 on_burn_choice=Callback::new(move |(sig, burn_options): (String, BurnOptions)| {
                     log::info!("Burn onchain choice made for signature: {}, options: {:?}", sig, burn_options);

@@ -382,9 +382,16 @@ pub fn MintPage(
                                             // convert timestamp (milliseconds) to seconds for blocktime format
                                             let blocktime = (record.timestamp / 1000.0) as i64;
                                             
+                                            // ✅ clone values that need to be used multiple times
+                                            let title_for_card = title.clone();
+                                            let image_for_card = image.clone();
+                                            let content_for_card = content.clone();
+                                            let display_pubkey_for_card = display_pubkey.clone();
+                                            let record_signature = record.signature.clone();
+                                            
                                             // handle title and image, convert to String type
-                                            let final_title = title.clone().unwrap_or_else(|| "Memory".to_string());
-                                            let final_image = image.clone().unwrap_or_else(|| {
+                                            let final_title = title_for_card.unwrap_or_else(|| "Memory".to_string());
+                                            let final_image = image_for_card.unwrap_or_else(|| {
                                                 // default placeholder image for mint records
                                                 "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjZTZmN2ZmIi8+Cjx0ZXh0IHg9IjMyIiB5PSIzNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjNGY4NmY3Ij5NaW50PC90ZXh0Pgo8L3N2Zz4K".to_string()
                                             });
@@ -393,9 +400,9 @@ pub fn MintPage(
                                                 <MemoCard
                                                     title=final_title
                                                     image=final_image
-                                                    content=content.unwrap_or_else(|| "".to_string())
-                                                    signature=record.signature.clone()
-                                                    pubkey=display_pubkey
+                                                    content=content_for_card.unwrap_or_else(|| "".to_string())
+                                                    signature=record_signature.clone()
+                                                    pubkey=display_pubkey_for_card.clone()
                                                     blocktime=blocktime
                                                     on_details_click=Callback::new(move |details: MemoDetails| {
                                                         log::info!("Details clicked for signature: {}", details.signature);
@@ -404,8 +411,21 @@ pub fn MintPage(
                                                     })
                                                     on_burn_click=Callback::new(move |signature: String| {
                                                         log::info!("Burn clicked for signature: {}", signature);
-                                                        // ✅ pop up burn onchain dialog
-                                                        set_burn_signature.set(signature);
+                                                        
+                                                        // ✅ use cloned values to build MemoDetails
+                                                        set_burn_signature.set(signature.clone());
+                                                        
+                                                        let memo_details = MemoDetails {
+                                                            title: title.clone(),
+                                                            image: image.clone(), 
+                                                            content: content.clone(),
+                                                            signature: record_signature.clone(),
+                                                            pubkey: display_pubkey.clone(),
+                                                            blocktime,
+                                                            amount: None, // mint records might not have amount info
+                                                        };
+                                                        set_current_memo_details.set(Some(memo_details));
+                                                        
                                                         set_show_burn_onchain.set(true);
                                                     })
                                                 />
@@ -532,6 +552,7 @@ pub fn MintPage(
                 show_modal=show_burn_onchain.into()
                 set_show_modal=set_show_burn_onchain
                 signature=burn_signature.into()
+                memo_details=current_memo_details.into()
                 session=session
                 on_burn_choice=Callback::new(move |(sig, burn_options): (String, BurnOptions)| {
                     log::info!("Burn onchain choice made from mint page for signature: {}, options: {:?}", sig, burn_options);

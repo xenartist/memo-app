@@ -307,6 +307,7 @@ pub fn MemoCardDetails(
             show_modal=show_burn_onchain.into()
             set_show_modal=set_show_burn_onchain
             signature=burn_signature.into()
+            memo_details=memo_details
             session=session
             on_burn_choice=Callback::new(move |(sig, burn_options): (String, BurnOptions)| {
                 handle_burn_choice(sig, burn_options);
