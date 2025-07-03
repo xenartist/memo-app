@@ -335,22 +335,27 @@ pub fn BurnPage(
                                             // convert timestamp (milliseconds) to seconds for blocktime format
                                             let blocktime = (record.timestamp / 1000.0) as i64;
                                             
+                                            // ✅ convert amount to tokens
+                                            let amount_tokens = record.amount as f64 / 1_000_000_000.0;
+                                            
                                             // handle title and image, convert to String type
-                                            let final_title = title.clone().unwrap_or_else(|| format!("Burned {} MEMO", record.amount));
+                                            let final_title = title.clone().unwrap_or_else(|| format!("Burned {} MEMO", amount_tokens));
+                                            
+                                            // ✅ use real pixel art data, not placeholder SVG
                                             let final_image = image.clone().unwrap_or_else(|| {
-                                                // default placeholder image for burn records
-                                                "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjZmZlNmU2Ii8+Cjx0ZXh0IHg9IjMyIiB5PSIzNiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjZGMzNTQ1Ij5CdXJuPC90ZXh0Pgo8L3N2Zz4K".to_string()
+                                                // if no image data, use simple placeholder, not complex SVG
+                                                "".to_string()  // empty string will make MemoCard show default placeholder
                                             });
                                             
                                             view! {
                                                 <MemoCard
                                                     title=final_title
-                                                    image=final_image
+                                                    image=final_image  // ✅ here pass the pixel art encoded string
                                                     content=content.unwrap_or_else(|| "".to_string())
                                                     signature=display_signature
                                                     pubkey="Burned".to_string()
                                                     blocktime=blocktime
-                                                    amount=record.amount as f64
+                                                    amount=amount_tokens  // ✅ use converted token amount
                                                     class="burned-memo-card"
                                                     on_details_click=Callback::new(move |details: MemoDetails| {
                                                         log::info!("Details clicked for burned signature: {}", details.signature);
