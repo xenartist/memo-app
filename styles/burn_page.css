@@ -256,4 +256,85 @@
 .open-burn-form-btn:focus {
     outline: 2px solid #007bff;
     outline-offset: 2px;
+}
+
+/* Reset Storage Button */
+.reset-storage-btn {
+    transition: all 0.2s ease;
+}
+
+.reset-storage-btn:hover:not(:disabled) {
+    background: #c82333 !important;
+    border-color: #bd2130 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
+}
+
+.reset-storage-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Reset Message */
+.reset-message {
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.reset-message.success {
+    animation: slideDown 0.3s ease-out, pulse 0.5s ease-in-out 0.3s;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+}
+
+/* Reset Confirmation Modal */
+.modal-overlay {
+    animation: fadeIn 0.2s ease-out;
+}
+
+.reset-confirm-modal {
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.reset-confirm-modal button {
+    transition: all 0.2s ease;
+}
+
+.reset-confirm-modal .cancel-btn:hover {
+    background: #5a6268 !important;
+}
+
+.reset-confirm-modal .confirm-btn:hover {
+    background: #c82333 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
 } 

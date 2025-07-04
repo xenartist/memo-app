@@ -292,23 +292,36 @@ async fn perform_burn(
     };
     
     log::info!("🔥 Starting burn process:");
-    log::info!("  - Signature: {}", signature);
+    log::info!("  - Original Mint Signature: {}", signature);
     log::info!("  - Amount: {} lamports ({} tokens)", amount, amount / 1_000_000_000);
     log::info!("  - Personal Collection: {}", burn_options.personal_collection);
     log::info!("  - Global Glory Collection: {}", burn_options.global_glory_collection);
     
-    // ✅ record memo details information
-    if let Some(ref details) = memo_details {
+    // ✅ prepare memo information
+    let mint_memo_json = if let Some(ref details) = memo_details {
         log::info!("  - Memo Title: {:?}", details.title);
         log::info!("  - Memo Pubkey: {}", details.pubkey);
         log::info!("  - Memo Blocktime: {}", details.blocktime);
         log::info!("  - Has Image: {}", details.image.is_some());
         log::info!("  - Has Content: {}", details.content.is_some());
+        
+        // build mint memo JSON
+        serde_json::json!({
+            "title": details.title,
+            "image": details.image,
+            "content": details.content
+        }).to_string()
     } else {
         log::warn!("  - No memo details provided");
-    }
+        // empty memo information
+        serde_json::json!({
+            "title": null,
+            "image": null,
+            "content": null
+        }).to_string()
+    };
 
-    // Create burn message
+    // create burn message
     let burn_message = if burn_options.personal_collection && burn_options.global_glory_collection {
         "Burned for both personal onchain collection and global glory onchain collection"
     } else if burn_options.personal_collection {
@@ -319,12 +332,12 @@ async fn perform_burn(
         "Regular burn transaction"
     };
 
-    // 🎯 correct way: directly call session's async burn method
+    // 🎯 correct way: directly call session's async burn method (burn_with_history)
     let transaction_signature = {
         let mut session_data = session.get();
         
         if burn_options.personal_collection {
-            // TODO: future support burn_with_history
+            // TODO: future support burn_with_history 
             session_data.burn(amount, burn_message, &signature).await
         } else {
             session_data.burn(amount, burn_message, &signature).await
@@ -336,19 +349,15 @@ async fn perform_burn(
 
     log::info!("✅ Burn transaction submitted: {}", transaction_signature);
 
-    // create memo JSON for storage
-    let memo_json = serde_json::json!({
-        "signature": signature,
-        "message": burn_message,
-        "personal_collection": burn_options.personal_collection,
-        "global_glory_collection": burn_options.global_glory_collection,
-        "transaction_signature": transaction_signature
-    }).to_string();
-
-    // Save to local storage
+    // ✅ use new save interface
     let burn_storage = get_burn_storage();
-    burn_storage.save_burn_record_async(&transaction_signature, &memo_json, amount).await
-        .map_err(|e| format!("Failed to save burn record: {}", e))?;
+    burn_storage.save_burn_record_async(
+        &transaction_signature,    // burn signature
+        &signature,               // original mint signature
+        Some(burn_message),       // burn message
+        &mint_memo_json,         // original mint memo information
+        amount
+    ).await.map_err(|e| format!("Failed to save burn record: {}", e))?;
 
     log::info!("✅ Burn record saved to local storage");
 

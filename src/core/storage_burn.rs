@@ -4,11 +4,12 @@ use wasm_bindgen_futures::spawn_local;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BurnRecord {
-    pub signature: String,
-    pub memo_json: String,
-    pub amount: u64,
-    pub timestamp: f64,
-    pub id: String,
+    pub signature: String,        // burn signature
+    pub burn_memo_json: String,   // burn memo information (contains original mint signature and message)
+    pub mint_memo_json: String,   // original mint memo information (title, image, content)
+    pub amount: u64,              // burned token amount
+    pub timestamp: f64,           // timestamp
+    pub id: String,               // burn signature
 }
 
 /// Burn record storage manager
@@ -28,32 +29,68 @@ impl BurnStorage {
         }
     }
 
-    /// Save burn record (async version)
-    pub async fn save_burn_record_async(&self, signature: &str, memo_json: &str, amount: u64) -> Result<(), StorageError> {
+    /// Save burn record (async version) - updated parameters
+    pub async fn save_burn_record_async(
+        &self, 
+        burn_signature: &str,          // burn signature
+        original_mint_signature: &str, // original mint signature  
+        burn_message: Option<&str>,    // burn message (optional)
+        mint_memo_json: &str,          // original mint memo information (title, image, content)
+        amount: u64
+    ) -> Result<(), StorageError> {
+        // build burn_memo_json
+        let mut burn_memo = serde_json::json!({
+            "original_mint_signature": original_mint_signature
+        });
+        
+        if let Some(message) = burn_message {
+            burn_memo["message"] = serde_json::Value::String(message.to_string());
+        }
+        
         let record = BurnRecord {
-            signature: signature.to_string(),
-            memo_json: memo_json.to_string(),
+            signature: burn_signature.to_string(),
+            burn_memo_json: burn_memo.to_string(),
+            mint_memo_json: mint_memo_json.to_string(),
             amount,
             timestamp: js_sys::Date::now(),
-            id: signature.to_string(),
+            id: burn_signature.to_string(),
         };
         
         self.base.save_record(record, |r| r.signature.clone()).await
     }
 
-    /// Save burn record (sync interface, internal async handling)
-    pub fn save_burn_record(&self, signature: &str, memo_json: &str, amount: u64) -> Result<(), StorageError> {
-        let signature = signature.to_string();
-        let memo_json = memo_json.to_string();
+    /// Save burn record (sync interface, internal async handling) - updated parameters
+    pub fn save_burn_record(
+        &self, 
+        burn_signature: &str,
+        original_mint_signature: &str,
+        burn_message: Option<&str>,
+        mint_memo_json: &str,
+        amount: u64
+    ) -> Result<(), StorageError> {
+        let burn_signature = burn_signature.to_string();
+        let original_mint_signature = original_mint_signature.to_string();
+        let burn_message = burn_message.map(|s| s.to_string());
+        let mint_memo_json = mint_memo_json.to_string();
         let base = self.base.clone();
         
         spawn_local(async move {
+            // build burn_memo_json
+            let mut burn_memo = serde_json::json!({
+                "original_mint_signature": original_mint_signature
+            });
+            
+            if let Some(message) = burn_message {
+                burn_memo["message"] = serde_json::Value::String(message);
+            }
+            
             let record = BurnRecord {
-                signature: signature.clone(),
-                memo_json,
+                signature: burn_signature.clone(),
+                burn_memo_json: burn_memo.to_string(),
+                mint_memo_json,
                 amount,
                 timestamp: js_sys::Date::now(),
-                id: signature,
+                id: burn_signature,
             };
             
             if let Err(e) = base.save_record(record, |r| r.signature.clone()).await {

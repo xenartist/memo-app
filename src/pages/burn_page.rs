@@ -33,6 +33,11 @@ pub fn BurnPage(
     // add a signal to control whether to start loading memo cards
     let (should_load_cards, set_should_load_cards) = create_signal(false);
 
+    // ✅ add reset related state
+    let (is_resetting, set_is_resetting) = create_signal(false);
+    let (show_reset_confirm, set_show_reset_confirm) = create_signal(false);
+    let (reset_message, set_reset_message) = create_signal(String::new());
+
     // calculate records for current page
     let get_current_page_records = move || {
         let all_records = all_burn_records.get();
@@ -193,18 +198,59 @@ pub fn BurnPage(
         set_current_page.set(1); // reset to first page
     };
 
-    // parse memo JSON to extract title and image
-    let parse_memo_json = |memo_json: &str| -> (Option<String>, Option<String>, Option<String>) {
-        match serde_json::from_str::<serde_json::Value>(memo_json) {
-            Ok(memo) => {
-                let title = memo.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let image = memo.get("image").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let content = memo.get("content").and_then(|v| v.as_str()).map(|s| s.to_string());
+    // ✅ add reset storage function
+    let handle_reset_storage = move |_| {
+        set_show_reset_confirm.set(true);
+    };
+    
+    // ✅ confirm reset function
+    let handle_confirm_reset = move |_| {
+        set_is_resetting.set(true);
+        set_show_reset_confirm.set(false);
+        set_reset_message.set(String::new());
+        
+        spawn_local(async move {
+            let burn_storage = get_burn_storage();
+            match burn_storage.clear_all_records().await {
+                Ok(_) => {
+                    log::info!("✅ Successfully cleared all burn records");
+                    set_reset_message.set("✅ Storage cleared successfully! All burn records have been deleted.".to_string());
+                    
+                    // 清空当前页面的记录显示
+                    set_all_burn_records.set(Vec::new());
+                    set_total_records.set(0);
+                    set_current_page.set(1);
+                    set_records_error.set(String::new());
+                }
+                Err(e) => {
+                    log::error!("❌ Failed to clear burn records: {}", e);
+                    set_reset_message.set(format!("❌ Failed to clear storage: {}", e));
+                }
+            }
+            set_is_resetting.set(false);
+        });
+    };
+    
+    // ✅ cancel reset function
+    let handle_cancel_reset = move |_| {
+        set_show_reset_confirm.set(false);
+    };
+
+    // ✅ update parse_memo_json function name, specifically parse mint_memo_json
+    fn parse_mint_memo_json(mint_memo_json: &str) -> (Option<String>, Option<String>, Option<String>) {
+        match serde_json::from_str::<serde_json::Value>(mint_memo_json) {
+            Ok(json) => {
+                let title = json.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let image = json.get("image").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let content = json.get("content").and_then(|v| v.as_str()).map(|s| s.to_string());
                 (title, image, content)
             }
-            Err(_) => (None, None, None)
+            Err(e) => {
+                log::warn!("Failed to parse mint memo JSON: {}", e);
+                (None, None, None)
+            }
         }
-    };
+    }
 
     view! {
         <div class="burn-page">
@@ -240,27 +286,55 @@ pub fn BurnPage(
                             </span>
                         </Show>
                     </h2>
-                    <button 
-                        class="refresh-btn"
-                        on:click=handle_refresh_records
-                        prop:disabled=move || is_loading_records.get()
-                    >
-                        {move || if is_loading_records.get() {
-                            view! {
-                                <>
-                                    <i class="fas fa-sync-alt fa-spin"></i>
-                                    " Refreshing..."
-                                </>
-                            }
-                        } else {
-                            view! {
-                                <>
-                                    <i class="fas fa-sync-alt"></i>
-                                    " Refresh"
-                                </>
-                            }
-                        }}
-                    </button>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        // Refresh button
+                        <button 
+                            class="refresh-btn"
+                            on:click=handle_refresh_records
+                            prop:disabled=move || is_loading_records.get()
+                        >
+                            {move || if is_loading_records.get() {
+                                view! {
+                                    <>
+                                        <i class="fas fa-sync-alt fa-spin"></i>
+                                        " Refreshing..."
+                                    </>
+                                }
+                            } else {
+                                view! {
+                                    <>
+                                        <i class="fas fa-sync-alt"></i>
+                                        " Refresh"
+                                    </>
+                                }
+                            }}
+                        </button>
+                        
+                        // ✅ Reset Storage button
+                        <button 
+                            class="reset-storage-btn"
+                            style="background: #dc3545; color: white; border: 1px solid #dc3545; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9em;"
+                            on:click=handle_reset_storage
+                            prop:disabled=move || is_resetting.get() || is_loading_records.get()
+                            title="Clear all burn records from local storage"
+                        >
+                            {move || if is_resetting.get() {
+                                view! {
+                                    <>
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        " Clearing..."
+                                    </>
+                                }
+                            } else {
+                                view! {
+                                    <>
+                                        <i class="fas fa-trash-alt"></i>
+                                        " Reset Storage"
+                                    </>
+                                }
+                            }}
+                        </button>
+                    </div>
                 </div>
 
                 // error message display
@@ -277,6 +351,19 @@ pub fn BurnPage(
                         view! { <div></div> }
                     }
                 }}
+
+                // ✅ Reset success/error message display
+                <Show when=move || !reset_message.get().is_empty()>
+                    <div class="reset-message" style="margin-bottom: 16px; padding: 12px; border-radius: 4px;"
+                         class:success=move || reset_message.get().starts_with("✅")
+                         class:error=move || reset_message.get().starts_with("❌")
+                         style:background=move || if reset_message.get().starts_with("✅") { "#d4edda" } else { "#f8d7da" }
+                         style:border=move || if reset_message.get().starts_with("✅") { "1px solid #28a745" } else { "1px solid #dc3545" }
+                         style:color=move || if reset_message.get().starts_with("✅") { "#155724" } else { "#721c24" }
+                    >
+                        {reset_message}
+                    </div>
+                </Show>
 
                 {move || {
                     let all_records = all_burn_records.get();
@@ -329,8 +416,8 @@ pub fn BurnPage(
                                                 record.signature.clone()
                                             };
                                             
-                                            // parse memo JSON to get title, image, and content
-                                            let (title, image, content) = parse_memo_json(&record.memo_json);
+                                            // ✅ use new field name to parse mint memo JSON
+                                            let (title, image, content) = parse_mint_memo_json(&record.mint_memo_json);
                                             
                                             // convert timestamp (milliseconds) to seconds for blocktime format
                                             let blocktime = (record.timestamp / 1000.0) as i64;
@@ -417,6 +504,51 @@ pub fn BurnPage(
                     log::info!("Burn details modal closed");
                 })
             />
+
+            // ✅ Reset confirm dialog
+            <Show when=move || show_reset_confirm.get()>
+                <div class="modal-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; justify-content: center; align-items: center;">
+                    <div class="reset-confirm-modal" style="background: white; border-radius: 8px; padding: 24px; max-width: 400px; width: 90%; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                        <div class="modal-header" style="text-align: center; margin-bottom: 20px;">
+                            <i class="fas fa-exclamation-triangle" style="font-size: 2em; color: #dc3545; margin-bottom: 10px;"></i>
+                            <h3 style="margin: 0; color: #dc3545;">"Confirm Reset Storage"</h3>
+                        </div>
+                        
+                        <div class="modal-body" style="margin-bottom: 24px;">
+                            <p style="margin: 0 0 16px 0; text-align: center; color: #333;">
+                                "Are you sure you want to clear all burn records from local storage?"
+                            </p>
+                            <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 12px; font-size: 0.9em; color: #6c757d;">
+                                <strong>"Warning:"</strong>
+                                <ul style="margin: 8px 0 0 0; padding-left: 20px;">
+                                    <li>"This action cannot be undone"</li>
+                                    <li>"All locally stored burn history will be permanently deleted"</li>
+                                    <li>"This only affects local storage, not blockchain records"</li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <div class="modal-footer" style="display: flex; gap: 12px; justify-content: center;">
+                            <button 
+                                class="cancel-btn"
+                                style="background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;"
+                                on:click=handle_cancel_reset
+                            >
+                                <i class="fas fa-times"></i>
+                                " Cancel"
+                            </button>
+                            <button 
+                                class="confirm-btn"
+                                style="background: #dc3545; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;"
+                                on:click=handle_confirm_reset
+                            >
+                                <i class="fas fa-trash-alt"></i>
+                                " Clear All Records"
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </Show>
         </div>
     }
 } 
