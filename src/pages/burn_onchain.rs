@@ -142,20 +142,33 @@ pub fn BurnOnchain(
                             if let Some(details) = memo_details.get() {
                                 view! {
                                     <>
-                                        <div class="burn-memo-preview">
-                                            <p class="description">
-                                                "You are about to burn this memo:"
-                                            </p>
-                                            <div class="memo-preview-info">
-                                                <div class="preview-item">
-                                                    <span class="label">"Title: "</span>
-                                                    <span class="value">{details.title.unwrap_or_else(|| "Untitled".to_string())}</span>
-                                                </div>
-                                                <div class="preview-item">
-                                                    <span class="label">"Signature: "</span>
-                                                    <span class="value">{details.signature}</span>
-                                                </div>
-                                            </div>
+                                        <div class="burn-memo-summary compact">
+                                            {move || {
+                                                view! {
+                                                    <>
+                                                        {details.title.as_ref().map(|title| {
+                                                            view! {
+                                                                <div class="memo-item title">
+                                                                    <span class="label">"Title:"</span>
+                                                                    <span class="value">{title.clone()}</span>
+                                                                </div>
+                                                            }
+                                                        })}
+                                                        
+                                                        <div class="memo-item signature">
+                                                            <span class="label">"Signature:"</span>
+                                                            <span class="value">{
+                                                                let sig = details.signature.clone();
+                                                                if sig.len() >= 16 {
+                                                                    format!("{}...{}", &sig[..8], &sig[sig.len()-8..])
+                                                                } else {
+                                                                    sig
+                                                                }
+                                                            }</span>
+                                                        </div>
+                                                    </>
+                                                }
+                                            }}
                                         </div>
                                     </>
                                 }

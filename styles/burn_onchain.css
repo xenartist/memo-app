@@ -311,4 +311,100 @@
 
 .fa-spin {
     animation: spin 1s linear infinite;
+}
+
+/* Memo Summary in Burn Options Dialog */
+.burn-memo-summary {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 12px;
+    margin: 12px 0 20px 0;
+    font-size: 0.9em;
+}
+
+.burn-memo-summary .memo-title {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 8px;
+}
+
+.burn-memo-summary .memo-title .label {
+    font-weight: 600;
+    color: #495057;
+    min-width: 60px;
+    margin-right: 8px;
+}
+
+.burn-memo-summary .memo-title .value {
+    color: #212529;
+    flex: 1;
+    word-wrap: break-word;
+}
+
+.burn-memo-summary .memo-signature {
+    display: flex;
+    align-items: flex-start;
+}
+
+.burn-memo-summary .memo-signature .label {
+    font-weight: 600;
+    color: #495057;
+    min-width: 60px;
+    margin-right: 8px;
+}
+
+.burn-memo-summary .memo-signature .value {
+    color: #6c757d;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.85em;
+    word-break: break-all;
+    flex: 1;
+}
+
+/* Alternative compact layout */
+.burn-memo-summary.compact {
+    padding: 10px;
+}
+
+.burn-memo-summary.compact .memo-item {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px;
+    align-items: start;
+    margin-bottom: 6px;
+}
+
+.burn-memo-summary.compact .memo-item:last-child {
+    margin-bottom: 0;
+}
+
+.burn-memo-summary.compact .memo-item .label {
+    font-weight: 600;
+    color: #495057;
+    font-size: 0.85em;
+}
+
+.burn-memo-summary.compact .memo-item .value {
+    font-size: 0.85em;
+    word-wrap: break-word;
+    color: #212529;
+}
+
+.burn-memo-summary.compact .memo-item.signature .value {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    color: #6c757d;
+    font-size: 0.8em;
+}
+
+/* Responsive design for burn memo summary */
+@media (max-width: 600px) {
+    .burn-memo-summary {
+        padding: 10px;
+        font-size: 0.85em;
+    }
+    
+    .burn-memo-summary .memo-signature .value {
+        font-size: 0.8em;
+    }
 } 
