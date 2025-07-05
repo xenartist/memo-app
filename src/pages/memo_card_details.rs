@@ -25,7 +25,9 @@ pub fn MemoCardDetails(
     /// burn error callback (optional)
     #[prop(optional)] on_burn_error: Option<Callback<String>>,
 ) -> impl IntoView {
-    let (show_copied, set_show_copied) = create_signal(false);
+    // ✅ create independent state for each copy button
+    let (show_copied_mint, set_show_copied_mint) = create_signal(false);
+    let (show_copied_burn, set_show_copied_burn) = create_signal(false);
     
     // add state for BurnOnchain dialog
     let (show_burn_onchain, set_show_burn_onchain) = create_signal(false);
@@ -67,19 +69,35 @@ pub fn MemoCardDetails(
         set_show_burn_onchain.set(false);
     };
 
-    // copy signature to clipboard
-    let copy_signature = move |signature: String| {
+    // ✅ create copy functions for mint and burn signatures
+    let copy_mint_signature = move |signature: String| {
         if let Some(window) = window() {
             let clipboard = window.navigator().clipboard();
             let _ = clipboard.write_text(&signature);
             
-            // show copied success message
-            set_show_copied.set(true);
+            // show copied success message for mint signature
+            set_show_copied_mint.set(true);
             
             // hide copied success message after 1.5 seconds
             spawn_local(async move {
                 TimeoutFuture::new(1500).await;
-                set_show_copied.set(false);
+                set_show_copied_mint.set(false);
+            });
+        }
+    };
+
+    let copy_burn_signature = move |signature: String| {
+        if let Some(window) = window() {
+            let clipboard = window.navigator().clipboard();
+            let _ = clipboard.write_text(&signature);
+            
+            // show copied success message for burn signature
+            set_show_copied_burn.set(true);
+            
+            // hide copied success message after 1.5 seconds
+            spawn_local(async move {
+                TimeoutFuture::new(1500).await;
+                set_show_copied_burn.set(false);
             });
         }
     };
@@ -208,13 +226,14 @@ pub fn MemoCardDetails(
                                                         class="copy-button"
                                                         on:click={
                                                             let sig = details.signature.clone();
-                                                            move |_| copy_signature(sig.clone())
+                                                            move |_| copy_mint_signature(sig.clone())
                                                         }
                                                         title="Copy mint signature"
                                                     >
                                                         <i class="fas fa-copy"></i>
                                                     </button>
-                                                    <div class="copy-tooltip" class:show=show_copied>
+                                                    // ✅ use independent state
+                                                    <div class="copy-tooltip" class:show=show_copied_mint>
                                                         "Copied!"
                                                     </div>
                                                 </div>
@@ -236,13 +255,14 @@ pub fn MemoCardDetails(
                                                                 class="copy-button"
                                                                 on:click={
                                                                     let sig = burn_sig.clone();
-                                                                    move |_| copy_signature(sig.clone())
+                                                                    move |_| copy_burn_signature(sig.clone())
                                                                 }
                                                                 title="Copy burn signature"
                                                             >
                                                                 <i class="fas fa-copy"></i>
                                                             </button>
-                                                            <div class="copy-tooltip" class:show=show_copied>
+                                                            // ✅ use independent state
+                                                            <div class="copy-tooltip" class:show=show_copied_burn>
                                                                 "Copied!"
                                                             </div>
                                                         </div>
