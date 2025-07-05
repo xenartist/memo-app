@@ -101,6 +101,7 @@ pub fn BurnRecordWithImage(
                 image,
                 content,
                 signature: signature_for_burn.clone(),
+                burn_signature: None,
                 pubkey: display_pubkey_clone.clone(),
                 blocktime,
                 amount: Some(amount_tokens),

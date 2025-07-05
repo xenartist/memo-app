@@ -102,6 +102,10 @@ pub fn MemoCardDetails(
                     <div class="modal-body">
                         {move || {
                             if let Some(details) = memo_details.get() {
+                                // ✅ clone values that might be used multiple times
+                                let has_burn_signature = details.burn_signature.is_some();
+                                let burn_signature_clone = details.burn_signature.clone();
+                                
                                 view! {
                                     <div class="memo-details-content">
                                         // Title section
@@ -191,11 +195,11 @@ pub fn MemoCardDetails(
                                             }
                                         }}
 
-                                        // Signature section
+                                        // Signature (Mint) section
                                         <div class="detail-section">
                                             <h4 class="detail-label">
                                                 <i class="fas fa-signature"></i>
-                                                "Signature:"
+                                                {if has_burn_signature { "Signature (Mint):" } else { "Signature:" }}
                                             </h4>
                                             <div class="detail-value signature-container">
                                                 <span class="signature-text">{details.signature.clone()}</span>
@@ -206,7 +210,7 @@ pub fn MemoCardDetails(
                                                             let sig = details.signature.clone();
                                                             move |_| copy_signature(sig.clone())
                                                         }
-                                                        title="Copy signature"
+                                                        title="Copy mint signature"
                                                     >
                                                         <i class="fas fa-copy"></i>
                                                     </button>
@@ -216,6 +220,38 @@ pub fn MemoCardDetails(
                                                 </div>
                                             </div>
                                         </div>
+
+                                        // ✅ Burn Signature section (only show when burn_signature is present)
+                                        {if let Some(burn_sig) = burn_signature_clone {
+                                            view! {
+                                                <div class="detail-section">
+                                                    <h4 class="detail-label">
+                                                        <i class="fas fa-fire"></i>
+                                                        "Signature (Burn):"
+                                                    </h4>
+                                                    <div class="detail-value signature-container">
+                                                        <span class="signature-text">{burn_sig.clone()}</span>
+                                                        <div class="copy-container">
+                                                            <button 
+                                                                class="copy-button"
+                                                                on:click={
+                                                                    let sig = burn_sig.clone();
+                                                                    move |_| copy_signature(sig.clone())
+                                                                }
+                                                                title="Copy burn signature"
+                                                            >
+                                                                <i class="fas fa-copy"></i>
+                                                            </button>
+                                                            <div class="copy-tooltip" class:show=show_copied>
+                                                                "Copied!"
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            }.into_view()
+                                        } else {
+                                            view! { <div></div> }.into_view()
+                                        }}
 
                                         // From section
                                         <div class="detail-section">

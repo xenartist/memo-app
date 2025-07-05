@@ -82,9 +82,10 @@ pub fn BurnForm(
                         image,
                         content,
                         signature: signature.clone(),
+                        burn_signature: None,
                         pubkey: formatted_signer,
                         blocktime: memo_info.timestamp,
-                        amount: None, // We don't have amount info from memo
+                        amount: None,
                     };
 
                     set_current_memo_details.set(Some(memo_details));

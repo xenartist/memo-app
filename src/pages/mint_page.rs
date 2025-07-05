@@ -420,6 +420,7 @@ pub fn MintPage(
                                                             image: image.clone(), 
                                                             content: content.clone(),
                                                             signature: record_signature.clone(),
+                                                            burn_signature: None,
                                                             pubkey: display_pubkey.clone(),
                                                             blocktime,
                                                             amount: None, // mint records might not have amount info

@@ -10,6 +10,7 @@ pub struct MemoDetails {
     pub image: Option<String>,
     pub content: Option<String>,
     pub signature: String,
+    pub burn_signature: Option<String>,
     pub pubkey: String,
     pub blocktime: i64,
     pub amount: Option<f64>,
@@ -77,7 +78,8 @@ pub fn MemoCard(
         title: title_for_details.clone(),
         image: image_for_details.clone(),
         content: content_for_details.clone(),
-        signature: signature.clone(), // use full signature
+        signature: signature.clone(),     // mint signature
+        burn_signature: None,             // ✅ for normal memo card, this value is None
         pubkey: pubkey_for_details.clone(),
         blocktime: blocktime,
         amount: amount,

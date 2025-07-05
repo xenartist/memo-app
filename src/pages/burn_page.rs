@@ -236,7 +236,22 @@ pub fn BurnPage(
         set_show_reset_confirm.set(false);
     };
 
-    // ✅ update parse_memo_json function name, specifically parse mint_memo_json
+    // ✅ parse burn_memo_json to get original_mint_signature
+    fn parse_burn_memo_json(burn_memo_json: &str) -> Option<String> {
+        match serde_json::from_str::<serde_json::Value>(burn_memo_json) {
+            Ok(json) => {
+                json.get("original_mint_signature")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            }
+            Err(e) => {
+                log::warn!("Failed to parse burn memo JSON: {}", e);
+                None
+            }
+        }
+    }
+
+    // ✅ parse mint_memo_json to get title, image, content
     fn parse_mint_memo_json(mint_memo_json: &str) -> (Option<String>, Option<String>, Option<String>) {
         match serde_json::from_str::<serde_json::Value>(mint_memo_json) {
             Ok(json) => {
@@ -409,14 +424,14 @@ pub fn BurnPage(
                                         each=move || get_current_page_records()
                                         key=|record| format!("{}_{}", record.timestamp as i64, record.signature)
                                         children=move |record| {
-                                            // format signature (display first 8 and last 8 characters)
-                                            let display_signature = if record.signature.len() >= 16 {
-                                                format!("{}...{}", &record.signature[..8], &record.signature[record.signature.len()-8..])
-                                            } else {
-                                                record.signature.clone()
-                                            };
+                                            // ✅ burn signature (current burn operation signature)
+                                            let burn_signature = record.signature.clone();
                                             
-                                            // ✅ use new field name to parse mint memo JSON
+                                            // ✅ parse burn_memo_json to get original_mint_signature  
+                                            let mint_signature = parse_burn_memo_json(&record.burn_memo_json)
+                                                .unwrap_or_else(|| "Unknown".to_string());
+                                            
+                                            // ✅ parse mint memo JSON to get title, image, content
                                             let (title, image, content) = parse_mint_memo_json(&record.mint_memo_json);
                                             
                                             // convert timestamp (milliseconds) to seconds for blocktime format
@@ -430,22 +445,23 @@ pub fn BurnPage(
                                             
                                             // ✅ use real pixel art data, not placeholder SVG
                                             let final_image = image.clone().unwrap_or_else(|| {
-                                                // if no image data, use simple placeholder, not complex SVG
                                                 "".to_string()  // empty string will make MemoCard show default placeholder
                                             });
                                             
                                             view! {
                                                 <MemoCard
                                                     title=final_title
-                                                    image=final_image  // ✅ here pass the pixel art encoded string
+                                                    image=final_image
                                                     content=content.unwrap_or_else(|| "".to_string())
-                                                    signature=display_signature
+                                                    signature=mint_signature.clone()  // ✅ pass mint signature
                                                     pubkey="Burned".to_string()
                                                     blocktime=blocktime
-                                                    amount=amount_tokens  // ✅ use converted token amount
+                                                    amount=amount_tokens
                                                     class="burned-memo-card"
-                                                    on_details_click=Callback::new(move |details: MemoDetails| {
-                                                        log::info!("Details clicked for burned signature: {}", details.signature);
+                                                    on_details_click=Callback::new(move |mut details: MemoDetails| {
+                                                        // ✅ set burn_signature
+                                                        details.burn_signature = Some(burn_signature.clone());
+                                                        log::info!("Details clicked for burned signature: {}", burn_signature);
                                                         set_current_memo_details.set(Some(details));
                                                         set_show_details_modal.set(true);
                                                     })
