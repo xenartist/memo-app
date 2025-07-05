@@ -5,6 +5,7 @@ use crate::core::rpc_token::ProgramConfig;
 use crate::core::storage_burn::get_burn_storage;
 use crate::pages::memo_card::MemoDetails;
 use wasm_bindgen_futures::spawn_local;
+use gloo_timers::future::TimeoutFuture;
 
 #[derive(Clone, Debug)]
 pub struct BurnOptions {
@@ -92,6 +93,9 @@ pub fn BurnOnchain(
         let error_callback = on_burn_error;
         
         spawn_local(async move {
+            // ✅ add short delay, let UI have time to update state, avoid lag
+            TimeoutFuture::new(100).await;
+            
             // ✅ pass memo_details_value to perform_burn
             let result = perform_burn(sig.clone(), burn_options, memo_details_value, session_clone).await;
             
