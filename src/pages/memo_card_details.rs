@@ -7,6 +7,15 @@ use gloo_timers::future::TimeoutFuture;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
 
+// formats signature display
+fn format_signature_display(signature: &str) -> String {
+    if signature.len() >= 24 {
+        format!("{}...{}", &signature[..12], &signature[signature.len()-12..])
+    } else {
+        signature.to_string()
+    }
+}
+
 #[component]
 pub fn MemoCardDetails(
     /// control modal visibility
@@ -220,7 +229,7 @@ pub fn MemoCardDetails(
                                                 {if has_burn_signature { "Signature (Mint):" } else { "Signature:" }}
                                             </h4>
                                             <div class="detail-value signature-container">
-                                                <span class="signature-text">{details.signature.clone()}</span>
+                                                <span class="signature-text">{format_signature_display(&details.signature)}</span>
                                                 <div class="copy-container">
                                                     <button 
                                                         class="copy-button"
@@ -249,7 +258,7 @@ pub fn MemoCardDetails(
                                                         "Signature (Burn):"
                                                     </h4>
                                                     <div class="detail-value signature-container">
-                                                        <span class="signature-text">{burn_sig.clone()}</span>
+                                                        <span class="signature-text">{format_signature_display(&burn_sig)}</span>
                                                         <div class="copy-container">
                                                             <button 
                                                                 class="copy-button"
