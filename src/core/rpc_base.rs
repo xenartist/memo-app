@@ -4,6 +4,7 @@ use wasm_bindgen_futures::JsFuture;
 use web_sys::{Request, RequestInit, RequestMode, Response};
 use std::fmt;
 use gloo_utils::format::JsValueSerdeExt;
+use js_sys::{Date, Math};
 
 // error type
 #[derive(Debug, Deserialize)]
@@ -72,6 +73,48 @@ impl RpcConnection {
         }
     }
 
+    /// generate unique request id, use crypto random number first, time stamp as fallback
+    fn generate_request_id() -> u64 {
+        // try to use crypto API
+        if let Some(crypto_id) = Self::try_crypto_random() {
+            crypto_id
+        } else {
+            // fallback to time stamp scheme
+            Self::fallback_timestamp_random()
+        }
+    }
+    
+    /// use crypto.getRandomValues to generate high quality random number
+    fn try_crypto_random() -> Option<u64> {
+        let window = web_sys::window()?;
+        let crypto = window.crypto().ok()?;
+        
+        // create 8 byte array to store random number
+        let mut buffer = [0u8; 8];
+        
+        // use get_random_values_with_u8_array, pass mutable reference
+        if crypto.get_random_values_with_u8_array(&mut buffer).is_ok() {
+            // convert 8 bytes to u64
+            let mut result = 0u64;
+            for &byte in buffer.iter() {
+                result = (result << 8) | (byte as u64);
+            }
+            
+            // ensure it is a positive number (remove the highest bit sign)
+            Some(result & 0x7FFFFFFFFFFFFFFF)
+        } else {
+            None
+        }
+    }
+    
+    /// fallback scheme: time stamp + Math.random()
+    fn fallback_timestamp_random() -> u64 {
+        let timestamp = Date::now() as u64;
+        let random_part = (Math::random() * 10000.0) as u64;
+        let timestamp_part = timestamp % 10_000_000_000;
+        timestamp_part * 10000 + random_part
+    }
+
     pub async fn send_request<T, R>(&self, method: &str, params: T) -> Result<R, RpcError>
     where
         T: Serialize,
@@ -79,7 +122,7 @@ impl RpcConnection {
     {
         let request = RpcRequest {
             jsonrpc: "2.0".to_string(),
-            id: 1,
+            id: Self::generate_request_id(),
             method: method.to_string(),
             params,
         };
