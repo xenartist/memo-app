@@ -245,6 +245,19 @@ impl RpcConnection {
         let result: serde_json::Value = self.send_request("getTransaction", params).await?;
         Ok(result.to_string())
     }
+
+    /// interface: get signatures for address
+    /// returns confirmed transaction signatures that include the given address
+    pub async fn get_signatures_for_address(&self, address: &str, options: Option<serde_json::Value>) -> Result<String, RpcError> {
+        let params = if let Some(opts) = options {
+            serde_json::json!([address, opts])
+        } else {
+            serde_json::json!([address])
+        };
+        
+        let result: serde_json::Value = self.send_request("getSignaturesForAddress", params).await?;
+        Ok(result.to_string())
+    }
 }
 
 // implement the default trait
