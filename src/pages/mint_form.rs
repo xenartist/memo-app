@@ -431,6 +431,25 @@ pub fn MintForm(
 
     view! {
         <div class=format!("mint-form-component {}", class_str)>
+            // Add the header with title and close button
+            <div class="mint-form-header">
+                <h3 class="mint-form-title">"Engrave Memories & Mint MEMO Tokens"</h3>
+                <button
+                    type="button"
+                    class="mint-form-close-btn"
+                    on:click=move |_| {
+                        on_close_signal.with_untracked(|cb_opt| {
+                            if let Some(callback) = cb_opt.as_ref() {
+                                callback();
+                            }
+                        });
+                    }
+                    title="Close"
+                >
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
             // only show minting form when user has profile
             <Show when=move || session.get().has_user_profile()>
                 <form class="mint-form" on:submit=move |ev: SubmitEvent| {
@@ -708,7 +727,7 @@ pub fn MintForm(
                                     {message}
                                 </div>
                                 
-                                // Show countdown and close button when success countdown is active
+                                // Show countdown when success countdown is active
                                 {move || {
                                     if is_success_countdown_active.get() {
                                         let countdown = success_countdown.get();
@@ -717,24 +736,6 @@ pub fn MintForm(
                                                 <span class="countdown-text">
                                                     {format!("Auto close countdown: {} seconds", countdown)}
                                                 </span>
-                                                <button
-                                                    type="button"
-                                                    class="close-success-btn"
-                                                    on:click=move |_| {
-                                                        set_is_success_countdown_active.set(false);
-                                                        // Access the on_close function through the signal
-                                                        on_close_signal.with_untracked(|cb_opt| {
-                                                            if let Some(callback) = cb_opt.as_ref() {
-                                                                callback();
-                                                            } else {
-                                                                // Fallback if no on_close is provided
-                                                                set_error_message.set(String::new());
-                                                            }
-                                                        });
-                                                    }
-                                                >
-                                                    "Close"
-                                                </button>
                                             </div>
                                         }
                                     } else {

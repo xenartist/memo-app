@@ -564,3 +564,52 @@ input:disabled {
         font-size: 12px;
     }
 } 
+
+/* Mint Form Header */
+.mint-form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px 16px 24px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f8f9fa;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+}
+
+.mint-form-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mint-form-close-btn {
+    background: none;
+    border: none;
+    font-size: 16px;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+}
+
+.mint-form-close-btn:hover {
+    background-color: #f3f4f6;
+    color: #374151;
+}
+
+/* Adjust the form content to account for the header */
+.mint-form-component .mint-form {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+} 

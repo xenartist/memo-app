@@ -514,9 +514,6 @@ pub fn MintPage(
                     }
                 }>
                     <div class="mint-form-container">
-                        <button class="close-mint-form-btn" on:click=move |_| set_show_mint_form.set(false)>
-                            <i class="fas fa-times"></i>
-                        </button>
                         <MintForm
                             session=session
                             class="mint-form-in-modal"
