@@ -121,6 +121,9 @@ pub fn MintForm(
     // Re-add the detailed minting status signal
     let (minting_status, set_minting_status) = create_signal(String::new());
 
+    // --- NEW: Manual signal to control immediate UI state on submit ---
+    let (is_submitting, set_is_submitting) = create_signal(false);
+
     // when the size changes, recreate the pixel art
     create_effect(move |_| {
         let size = grid_size.get().to_size();
@@ -281,6 +284,7 @@ pub fn MintForm(
         let start_countdown_to_close = start_countdown_to_close.clone();
         move |_| {
             if let Some(result) = single_mint_action.value().get() {
+                set_is_submitting.set(false); // <-- Reset on completion
                 set_minting_status.set(String::new()); // Clear status when done
                 match result {
                     Ok((signature, tokens_minted, total_minted)) => {
@@ -317,6 +321,7 @@ pub fn MintForm(
         let start_countdown_to_close = start_countdown_to_close.clone();
         move |_| {
             if let Some((rounds, successes, errors)) = auto_mint_action.value().get() {
+                set_is_submitting.set(false); // <-- Reset on completion
                 set_minting_status.set(String::new()); // Clear status when done
                 let message = if errors == 0 && successes > 0 {
                     format!("✅ Auto minting finished: {} rounds completed, {} successful, {} failed", rounds, successes, errors)
@@ -431,33 +436,43 @@ pub fn MintForm(
                 <form class="mint-form" on:submit=move |ev: SubmitEvent| {
                     ev.prevent_default();
 
-                    // This small delay prevents the UI from lagging on click.
+                    // --- Imitating the successful pattern from burn_onchain.rs ---
+
+                    // 1. Get data and update UI state immediately (synchronous part)
+                    let mode = minting_mode.get_untracked();
+                    let is_pending = match mode {
+                        MintingMode::Manual => single_mint_action.pending().get(),
+                        MintingMode::Auto => auto_mint_action.pending().get(),
+                    };
+                    if is_pending { return; }
+
+                    let title = title_text.get_untracked();
+                    let content = content_text.get_untracked();
+                    let pixel_data = pixel_art.get_untracked().to_optimal_string();
+                    let memo_json = create_combined_memo(&title, &content, &pixel_data);
+
+                    // Validation
+                    if title.trim().is_empty() && content.trim().is_empty() && pixel_data.is_empty() {
+                        set_error_message.set("❌ Please enter at least one field (title, content, or create pixel art)".to_string());
+                        return;
+                    }
+                    if memo_json.len() < 69 || memo_json.len() > 700 {
+                        set_error_message.set(format!("❌ Invalid content length: {}. Must be between 69 and 700.", memo_json.len()));
+                        return;
+                    }
+
+                    // This is the key: set status *before* spawning the async block.
+                    set_is_submitting.set(true); // <-- Set manual pending state immediately
+                    set_minting_status.set("Preparing to mint...".to_string());
+                    set_error_message.set(String::new());
+
+
+                    // 2. Spawn the async logic which includes the delay.
                     spawn_local(async move {
-                        TimeoutFuture::new(50).await;
+                        // Delay is inside the async block.
+                        TimeoutFuture::new(100).await;
                         
-                        // Prevent re-submission while an action is pending
-                        let is_pending = single_mint_action.pending().get() || auto_mint_action.pending().get();
-                        if is_pending { return; }
-
-                        // Get form values
-                        let title = title_text.get_untracked();
-                        let content = content_text.get_untracked();
-                        let pixel_data = pixel_art.get_untracked().to_optimal_string();
-                        let memo_json = create_combined_memo(&title, &content, &pixel_data);
-
-                        // Validation
-                        if title.trim().is_empty() && content.trim().is_empty() && pixel_data.is_empty() {
-                            set_error_message.set("❌ Please enter at least one field (title, content, or create pixel art)".to_string());
-                            return;
-                        }
-                        if memo_json.len() < 69 || memo_json.len() > 700 {
-                            set_error_message.set(format!("❌ Invalid content length: {}. Must be between 69 and 700.", memo_json.len()));
-                            return;
-                        }
-                        
-                        let mode = minting_mode.get_untracked();
-                        set_minting_status.set("Preparing to mint...".to_string());
-                        
+                        // Dispatch the correct action based on the mode captured earlier.
                         match mode {
                             MintingMode::Manual => {
                                 single_mint_action.dispatch(memo_json);
@@ -735,7 +750,8 @@ pub fn MintForm(
                             type="submit"
                             class="start-minting-btn"
                             prop:disabled=move || {
-                                let is_pending = single_mint_action.pending().get() || auto_mint_action.pending().get();
+                                // Now also depends on the manual signal
+                                let is_pending = single_mint_action.pending().get() || auto_mint_action.pending().get() || is_submitting.get();
                                 is_pending ||
                                 !session.get().has_user_profile() ||
                                 {
@@ -748,7 +764,8 @@ pub fn MintForm(
                             }
                         >
                             {move || {
-                                let is_pending = single_mint_action.pending().get() || auto_mint_action.pending().get();
+                                // Now also depends on the manual signal
+                                let is_pending = single_mint_action.pending().get() || auto_mint_action.pending().get() || is_submitting.get();
                                 if is_pending {
                                     "Minting...".to_string()
                                 } else {
