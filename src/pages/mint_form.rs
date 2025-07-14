@@ -482,7 +482,7 @@ pub fn MintForm(
 
                     // This is the key: set status *before* spawning the async block.
                     set_is_submitting.set(true); // <-- Set manual pending state immediately
-                    set_minting_status.set("Preparing to mint...".to_string());
+                    set_minting_status.set("Sending mint transaction...".to_string());
                     set_error_message.set(String::new());
 
 

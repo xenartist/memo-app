@@ -61,6 +61,7 @@ impl Default for SessionConfig {
     }
 }
 
+#[derive(Clone)]
 pub struct Session {
     // session config
     config: SessionConfig,
@@ -81,25 +82,6 @@ pub struct Session {
     token_balance: f64,
     // balance update trigger
     balance_update_needed: bool,
-}
-
-impl Clone for Session {
-    fn clone(&self) -> Self {
-        Self {
-            config: self.config.clone(),
-            start_time: self.start_time,
-            encrypted_seed: self.encrypted_seed.clone(),
-            session_key: self.session_key.as_ref().map(|secret| {
-                Secret::new(secret.expose_secret().clone())
-            }),
-            ui_locked: self.ui_locked,
-            user_profile: self.user_profile.clone(),
-            cached_pubkey: self.cached_pubkey.clone(),
-            sol_balance: self.sol_balance,
-            token_balance: self.token_balance,
-            balance_update_needed: self.balance_update_needed,
-        }
-    }
 }
 
 impl Session {
