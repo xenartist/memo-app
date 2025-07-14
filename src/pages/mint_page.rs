@@ -2,6 +2,7 @@ use leptos::*;
 use crate::core::session::Session;
 use crate::core::storage_mint::{get_mint_storage, MintRecord};
 use wasm_bindgen_futures::spawn_local;
+use wasm_bindgen::JsCast; // <-- 添加这个 use
 use gloo_timers::future::TimeoutFuture;
 use crate::pages::mint_form::MintForm;
 use crate::pages::memo_card::{MemoCard, MemoDetails};
@@ -502,33 +503,27 @@ pub fn MintPage(
             
             // Modal overlay for mint form
             <Show when=move || show_mint_form.get()>
-                <div class="modal-overlay" on:click=move |_| set_show_mint_form.set(false)>
-                    <div class="modal-content" on:click=|e| e.stop_propagation()>
-                        <div class="modal-header">
-                            <h3>"Engrave Memories & Mint MEMO Tokens"</h3>
-                            <button 
-                                class="modal-close-btn"
-                                on:click=move |_| set_show_mint_form.set(false)
-                                title="Close"
-                            >
-                                "×"
-                            </button>
-                        </div>
-                        
-                        <div class="modal-body">
-                            {
-                                let success_cb = on_mint_success.clone();
-                                let error_cb = on_mint_error.clone();
-                                
-                                view! {
-                                    <MintForm 
-                                        session=session 
-                                        on_mint_success=success_cb
-                                        on_mint_error=error_cb
-                                    />
-                                }
+                <div class="modal-overlay" on:click=move |ev| {
+                    // if click on overlay itself, close the form
+                    if let Some(target) = ev.target() {
+                        if let Ok(element) = target.dyn_into::<web_sys::Element>() {
+                            if element.class_list().contains("modal-overlay") {
+                                set_show_mint_form.set(false);
                             }
-                        </div>
+                        }
+                    }
+                }>
+                    <div class="mint-form-container">
+                        <button class="close-mint-form-btn" on:click=move |_| set_show_mint_form.set(false)>
+                            <i class="fas fa-times"></i>
+                        </button>
+                        <MintForm
+                            session=session
+                            class="mint-form-in-modal"
+                            on_mint_success=on_mint_success.clone()
+                            on_mint_error=on_mint_error.clone()
+                            on_close=Rc::new(move || set_show_mint_form.set(false))
+                        />
                     </div>
                 </div>
             </Show>
