@@ -33,10 +33,6 @@ impl MintConfig {
     pub const MIN_MEMO_LENGTH: usize = 69;
     pub const MAX_MEMO_LENGTH: usize = 800;
     
-    // Process mint instruction discriminator (this would come from the Anchor IDL)
-    // For now using a placeholder - you'll need to get the actual discriminator from the contract
-    pub const PROCESS_MINT_DISCRIMINATOR: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 0]; // TODO: Replace with actual discriminator
-    
     // Compute budget configuration
     pub const COMPUTE_UNIT_BUFFER: f64 = 1.1; // 10% buffer
 }
