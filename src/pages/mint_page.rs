@@ -95,25 +95,17 @@ pub fn MintPage(
     view! {
         <div class="mint-page">
             <div class="mint-page-header">
-                <h1>"New Mint Contract"</h1>
+                <h1>
+                    <i class="fas fa-coins"></i>
+                    "New Mint Contract"
+                </h1>
                 <p>"Mint tokens using the new memo mint contract"</p>
             </div>
             
             <div class="mint-content">
-                <div class="mint-controls" style="text-align: center; padding: 2rem;">
+                <div class="mint-controls">
                     <button 
                         class="mint-button"
-                        style="
-                            padding: 1rem 2rem;
-                            font-size: 1.2rem;
-                            background: linear-gradient(135deg, #28a745, #20c997);
-                            color: white;
-                            border: none;
-                            border-radius: 8px;
-                            cursor: pointer;
-                            transition: all 0.3s ease;
-                            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-                        "
                         disabled=move || start_minting.pending().get() || is_submitting.get()
                         on:click=move |_| {
                             // 1. immediately update UI state (sync)
@@ -130,14 +122,24 @@ pub fn MintPage(
                         {move || {
                             let is_pending = start_minting.pending().get() || is_submitting.get();
                             if is_pending {
-                                "Minting... 🔄"
+                                view! {
+                                    <>
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        "Minting..."
+                                    </>
+                                }.into_view()
                             } else {
-                                "Start Minting 🚀"
+                                view! {
+                                    <>
+                                        <i class="fas fa-rocket"></i>
+                                        "Start Minting"
+                                    </>
+                                }.into_view()
                             }
                         }}
                     </button>
                     
-                    <div style="margin-top: 1rem; font-size: 0.9rem; color: #666;">
+                    <div class="mint-description">
                         "This will generate a random JSON memo (69-800 bytes) and mint tokens"
                     </div>
                 </div>
@@ -147,16 +149,8 @@ pub fn MintPage(
                     let status = minting_status.get();
                     if !status.is_empty() {
                         view! {
-                            <div class="minting-progress" style="
-                                text-align: center;
-                                padding: 1rem;
-                                margin: 1rem auto;
-                                max-width: 600px;
-                                background: #f8f9fa;
-                                border-radius: 8px;
-                                border: 1px solid #dee2e6;
-                            ">
-                                <i class="fas fa-spinner fa-spin" style="margin-right: 8px; color: #28a745;"></i>
+                            <div class="minting-progress">
+                                <i class="fas fa-spinner fa-spin"></i>
                                 <span>{status}</span>
                             </div>
                         }.into_view()
@@ -166,19 +160,16 @@ pub fn MintPage(
                 }}
                 
                 // Show results
-                <div class="mint-results" style="max-width: 600px; margin: 2rem auto; padding: 0 1rem;">
+                <div class="mint-results">
                     {move || {
                         if let Some(error) = error_message.get() {
                             view! {
-                                <div class="error-message" style="
-                                    background: #f8d7da;
-                                    color: #721c24;
-                                    padding: 1rem;
-                                    border-radius: 8px;
-                                    margin-bottom: 1rem;
-                                    border: 1px solid #f5c6cb;
-                                ">
-                                    <strong>"Error: "</strong> {error}
+                                <div class="error-message">
+                                    <strong>
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                        "Error:"
+                                    </strong>
+                                    <div>{error}</div>
                                 </div>
                             }.into_view()
                         } else {
@@ -189,15 +180,12 @@ pub fn MintPage(
                     {move || {
                         if let Some(signature) = last_result.get() {
                             view! {
-                                <div class="success-message" style="
-                                    background: #d4edda;
-                                    color: #155724;
-                                    padding: 1rem;
-                                    border-radius: 8px;
-                                    border: 1px solid #c3e6cb;
-                                ">
-                                    <strong>"✅ Mint Successful!"</strong>
-                                    <div style="margin-top: 0.5rem; font-family: monospace; word-break: break-all;">
+                                <div class="success-message">
+                                    <strong>
+                                        <i class="fas fa-check-circle"></i>
+                                        "Mint Successful!"
+                                    </strong>
+                                    <div class="transaction-id">
                                         "Transaction: " {signature}
                                     </div>
                                 </div>

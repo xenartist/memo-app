@@ -1,54 +1,247 @@
-/* Mint Page Styles - simple version */
+/* Mint Page Styles - New Contract Version */
 
-/* Mint button styles */
-.open-mint-form-btn {
-    background: #28a745;
+/* Main container */
+.mint-page {
+    padding: 24px;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+/* Page header */
+.mint-page-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.mint-page-header h1 {
+    color: #333;
+    font-size: 2rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.mint-page-header p {
+    color: #666;
+    font-size: 1rem;
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* Main content area */
+.mint-content {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+/* Mint controls section */
+.mint-controls {
+    text-align: center;
+    padding: 3rem 2rem;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+/* Main mint button - consistent with project style */
+.mint-button {
+    background: linear-gradient(135deg, #28a745, #20c997);
     color: white;
-    padding: 12px 24px;
+    padding: 1rem 2rem;
     border: none;
-    border-radius: 6px;
-    font-size: 16px;
+    border-radius: 8px;
+    font-size: 1.2rem;
     font-weight: 500;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 8px rgba(40, 167, 69, 0.2);
+    min-width: 180px;
+    justify-content: center;
 }
 
-.open-mint-form-btn:hover:not(:disabled) {
-    background: #218838;
+.mint-button:hover:not(:disabled) {
+    background: linear-gradient(135deg, #218838, #1e7e34);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(40, 167, 69, 0.3);
 }
 
-.open-mint-form-btn:disabled {
+.mint-button:disabled {
     background: #6c757d;
     cursor: not-allowed;
     opacity: 0.7;
+    transform: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-/* Mint button container */
-.mint-actions {
-    margin-bottom: 20px;
+.mint-button i {
+    font-size: 1.1rem;
 }
 
-/* No user configuration warning */
-.no-profile-warning {
-    background: #fff3cd;
-    border: 1px solid #ffeaa7;
-    border-radius: 6px;
-    padding: 12px;
-    margin-top: 16px;
-    color: #856404;
+/* Button description text */
+.mint-description {
+    margin-top: 1rem;
+    font-size: 0.9rem;
+    color: #666;
+    line-height: 1.4;
 }
 
-.no-profile-warning p {
-    margin: 0;
-    font-size: 14px;
+/* Minting progress indicator */
+.minting-progress {
+    text-align: center;
+    padding: 1.5rem;
+    margin: 1rem auto;
+    max-width: 600px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.minting-progress i {
+    color: #28a745;
+    font-size: 1.1rem;
+}
+
+.minting-progress span {
+    color: #333;
+    font-weight: 500;
+}
+
+/* Results section */
+.mint-results {
+    max-width: 600px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+}
+
+/* Success message */
+.success-message {
+    background: #d4edda;
+    color: #155724;
+    padding: 1.5rem;
+    border-radius: 8px;
+    border: 1px solid #c3e6cb;
+    margin-bottom: 1rem;
+}
+
+.success-message strong {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+}
+
+.transaction-id {
+    margin-top: 0.5rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    word-break: break-all;
+    background: rgba(255, 255, 255, 0.3);
+    padding: 8px;
+    border-radius: 4px;
+}
+
+/* Error message */
+.error-message {
+    background: #f8d7da;
+    color: #721c24;
+    padding: 1.5rem;
+    border-radius: 8px;
+    border: 1px solid #f5c6cb;
+    margin-bottom: 1rem;
+}
+
+.error-message strong {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1.1rem;
 }
 
 /* Responsive design */
-@media (max-width: 480px) {
-    .open-mint-form-btn {
-        font-size: 14px;
-        padding: 10px 20px;
+@media (max-width: 768px) {
+    .mint-page {
+        padding: 16px;
     }
+    
+    .mint-page-header h1 {
+        font-size: 1.5rem;
+    }
+    
+    .mint-controls {
+        padding: 2rem 1rem;
+    }
+    
+    .mint-button {
+        font-size: 1rem;
+        padding: 0.8rem 1.5rem;
+        min-width: 160px;
+    }
+    
+    .mint-results {
+        padding: 0 0.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .mint-page {
+        padding: 12px;
+    }
+    
+    .mint-page-header h1 {
+        font-size: 1.3rem;
+        flex-direction: column;
+        gap: 5px;
+    }
+    
+    .mint-controls {
+        padding: 1.5rem 0.5rem;
+    }
+    
+    .mint-button {
+        font-size: 0.9rem;
+        padding: 0.7rem 1.2rem;
+        min-width: 140px;
+    }
+    
+    .minting-progress {
+        padding: 1rem;
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .success-message,
+    .error-message {
+        padding: 1rem;
+    }
+    
+    .transaction-id {
+        font-size: 0.8rem;
+    }
+}
+
+/* Animation for spinning icons */
+@keyframes fa-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.fa-spin {
+    animation: fa-spin 1s infinite linear;
+}
+
+/* Focus states for accessibility */
+.mint-button:focus {
+    outline: 2px solid #007bff;
+    outline-offset: 2px;
 }
