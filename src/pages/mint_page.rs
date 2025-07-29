@@ -1,6 +1,8 @@
 use leptos::*;
 use crate::core::session::Session;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::spawn_local;
+use gloo_timers::future::TimeoutFuture;
 use rand::Rng;
 
 // Generate random JSON memo between 69-800 bytes
@@ -49,13 +51,13 @@ pub fn MintPage(
     let (minting, set_minting) = create_signal(false);
     let (last_result, set_last_result) = create_signal::<Option<String>>(None);
     let (error_message, set_error_message) = create_signal::<Option<String>>(None);
+    let (minting_status, set_minting_status) = create_signal(String::new());
+    
+    // --- Manual signal to control immediate UI state on submit ---
+    let (is_submitting, set_is_submitting) = create_signal(false);
 
     let start_minting = create_action(move |_: &()| {
         async move {
-            set_minting.set(true);
-            set_error_message.set(None);
-            set_last_result.set(None);
-            
             // Generate random memo
             let memo = generate_random_memo();
             log::info!("Generated memo with length: {} bytes", memo.len());
@@ -79,8 +81,14 @@ pub fn MintPage(
                     set_error_message.set(Some(format!("Mint failed: {}", e)));
                 }
             }
-            
-            set_minting.set(false);
+        }
+    });
+
+    // --- Effect for action result handling ---
+    create_effect(move |_| {
+        if let Some(result) = start_minting.value().get() {
+            set_is_submitting.set(false); // reset manual state
+            set_minting_status.set(String::new()); // clear status
         }
     });
 
@@ -106,15 +114,26 @@ pub fn MintPage(
                             transition: all 0.3s ease;
                             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
                         "
-                        disabled=move || minting.get()
+                        disabled=move || start_minting.pending().get() || is_submitting.get()
                         on:click=move |_| {
-                            start_minting.dispatch(());
+                            // 1. immediately update UI state (sync)
+                            set_is_submitting.set(true);
+                            set_minting_status.set("Minting in progress...".to_string());
+                            
+                            // 2. async delay execution (give UI time to update)
+                            spawn_local(async move {
+                                TimeoutFuture::new(100).await; // 100ms delay
+                                start_minting.dispatch(());
+                            });
                         }
                     >
-                        {move || if minting.get() {
-                            "Minting... 🔄"
-                        } else {
-                            "Start Minting 🚀"
+                        {move || {
+                            let is_pending = start_minting.pending().get() || is_submitting.get();
+                            if is_pending {
+                                "Minting... 🔄"
+                            } else {
+                                "Start Minting 🚀"
+                            }
                         }}
                     </button>
                     
@@ -122,6 +141,29 @@ pub fn MintPage(
                         "This will generate a random JSON memo (69-800 bytes) and mint tokens"
                     </div>
                 </div>
+                
+                // Show minting status
+                {move || {
+                    let status = minting_status.get();
+                    if !status.is_empty() {
+                        view! {
+                            <div class="minting-progress" style="
+                                text-align: center;
+                                padding: 1rem;
+                                margin: 1rem auto;
+                                max-width: 600px;
+                                background: #f8f9fa;
+                                border-radius: 8px;
+                                border: 1px solid #dee2e6;
+                            ">
+                                <i class="fas fa-spinner fa-spin" style="margin-right: 8px; color: #28a745;"></i>
+                                <span>{status}</span>
+                            </div>
+                        }.into_view()
+                    } else {
+                        view! { <div></div> }.into_view()
+                    }
+                }}
                 
                 // Show results
                 <div class="mint-results" style="max-width: 600px; margin: 2rem auto; padding: 0 1rem;">
