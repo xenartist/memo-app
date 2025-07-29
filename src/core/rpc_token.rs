@@ -381,7 +381,7 @@ impl RpcConnection {
         self.get_account_info(&latest_burn_shard_pda.to_string(), Some("base64")).await
     }
 
-    pub async fn mint(
+    pub async fn mint_legacy(
         &self,
         memo: &str,
         keypair_bytes: &[u8],

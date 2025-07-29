@@ -9,6 +9,7 @@ pub mod storage_base;
 pub mod storage_mint;
 pub mod storage_burn;
 pub mod transaction;
+pub mod rpc_mint;
 
 #[cfg(test)]
 pub mod rpc_tests;

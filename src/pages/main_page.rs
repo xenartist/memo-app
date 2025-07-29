@@ -5,6 +5,7 @@ use crate::pages::home_page::HomePage;
 use crate::pages::profile_page::ProfilePage;
 use crate::pages::settings_page::SettingsPage;
 use crate::pages::mint_page::MintPage;
+use crate::pages::mint_page_legacy::MintPage as MintPageLegacy;
 use crate::pages::burn_page::BurnPage;
 use crate::pages::log_view::{LogView, add_log_entry};
 
@@ -18,6 +19,7 @@ use serde_json;
 enum MenuItem {
     Home,
     Mint,
+    MintLegacy,
     Burn,
     Profile,
     Settings,
@@ -226,6 +228,14 @@ pub fn MainPage(
                     </div>
                     <div 
                         class="menu-item"
+                        class:active=move || current_menu.get() == MenuItem::MintLegacy
+                        on:click=move |_| set_current_menu.set(MenuItem::MintLegacy)
+                    >
+                        <i class="fas fa-history"></i>
+                        <span>"Mint (legacy)"</span>
+                    </div>
+                    <div 
+                        class="menu-item"
                         class:active=move || current_menu.get() == MenuItem::Burn
                         on:click=move |_| set_current_menu.set(MenuItem::Burn)
                     >
@@ -256,6 +266,9 @@ pub fn MainPage(
                     </div>
                     <div style=move || if current_menu.get() == MenuItem::Mint { "display: block;" } else { "display: none;" }>
                         <MintPage session=session/>
+                    </div>
+                    <div style=move || if current_menu.get() == MenuItem::MintLegacy { "display: block;" } else { "display: none;" }>
+                        <MintPageLegacy session=session/>
                     </div>
                     <div style=move || if current_menu.get() == MenuItem::Burn { "display: block;" } else { "display: none;" }>
                         <BurnPage session=session/>
