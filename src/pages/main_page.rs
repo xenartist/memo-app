@@ -166,8 +166,8 @@ pub fn MainPage(
         }
     };
 
-    // current selected menu item
-    let (current_menu, set_current_menu) = create_signal(MenuItem::Home);
+    // current selected menu item - changed default from Home to Mint
+    let (current_menu, set_current_menu) = create_signal(MenuItem::Mint);
 
     view! {
         <div class="main-page">
@@ -213,6 +213,8 @@ pub fn MainPage(
 
             <div class="main-content">
                 <div class="sidebar">
+                    // Temporarily commented out Home menu item for release
+                    /*
                     <div 
                         class="menu-item" 
                         class:active=move || current_menu.get() == MenuItem::Home
@@ -221,6 +223,7 @@ pub fn MainPage(
                         <i class="fas fa-home"></i>
                         <span>"Home"</span>
                     </div>
+                    */
                     <div 
                         class="menu-item"
                         class:active=move || current_menu.get() == MenuItem::Mint
@@ -229,7 +232,7 @@ pub fn MainPage(
                         <i class="fas fa-hammer"></i>
                         <span>"Mint"</span>
                     </div>
-                    // Temporarily commented out for release - only showing Home and Mint
+                    // Temporarily commented out for release - only showing Mint
                     /*
                     <div 
                         class="menu-item"
