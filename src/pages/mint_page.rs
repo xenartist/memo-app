@@ -6,6 +6,13 @@ use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
 use rand::Rng;
 
+// Mint mode enumeration
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MintMode {
+    Manual,
+    Auto,
+}
+
 // Supply tier configuration
 #[derive(Debug, Clone)]
 pub struct SupplyTier {
@@ -200,10 +207,15 @@ pub fn SupplyProgressBar() -> impl IntoView {
 pub fn MintPage(
     session: RwSignal<Session>
 ) -> impl IntoView {
-    let (minting, set_minting) = create_signal(false);
     let (last_result, set_last_result) = create_signal::<Option<String>>(None);
     let (error_message, set_error_message) = create_signal::<Option<String>>(None);
     let (minting_status, set_minting_status) = create_signal(String::new());
+    
+    // Mint mode and settings
+    let (mint_mode, set_mint_mode) = create_signal(MintMode::Manual);
+    let (auto_mint_count, set_auto_mint_count) = create_signal(0u32); // 0 = infinite
+    let (auto_mint_current, set_auto_mint_current) = create_signal(0u32);
+    let (auto_mint_running, set_auto_mint_running) = create_signal(false);
     
     // --- Manual signal to control immediate UI state on submit ---
     let (is_submitting, set_is_submitting) = create_signal(false);
@@ -236,11 +248,81 @@ pub fn MintPage(
         }
     });
 
+    // Auto mint logic
+    let auto_mint_loop = create_action(move |_: &()| {
+        let target_count = auto_mint_count.get();
+        async move {
+            // UI state is already set, so we don't need to set it again here
+            // set_auto_mint_running.set(true); // This is now done in the click handler
+            set_auto_mint_current.set(0);
+            
+            let mut current_count = 0u32;
+            let mut should_continue = true;
+            
+            while should_continue {
+                // Check if we should stop
+                if !auto_mint_running.get() {
+                    break;
+                }
+                
+                // Update status
+                if target_count == 0 {
+                    set_minting_status.set(format!("Auto minting... (#{} - infinite)", current_count + 1));
+                } else {
+                    set_minting_status.set(format!("Auto minting... ({}/{})", current_count + 1, target_count));
+                }
+                
+                // Generate random memo
+                let memo = generate_random_memo();
+                log::info!("Auto mint #{}: Generated memo with length: {} bytes", current_count + 1, memo.len());
+                
+                // Call session mint_new_contract
+                let result = session.with(|s| s.clone()).mint(&memo).await;
+                
+                match result {
+                    Ok(signature) => {
+                        log::info!("Auto mint #{} successful: {}", current_count + 1, signature);
+                        set_last_result.set(Some(format!("#{}: {}", current_count + 1, signature)));
+                        
+                        // Update session to trigger balance refresh
+                        session.update(|s| {
+                            s.mark_balance_update_needed();
+                        });
+                        
+                        current_count += 1;
+                        set_auto_mint_current.set(current_count);
+                        
+                        // Check if we've reached the target count (if not infinite)
+                        if target_count > 0 && current_count >= target_count {
+                            should_continue = false;
+                        }
+                        
+                        // Add delay between mints (2 seconds)
+                        if should_continue {
+                            TimeoutFuture::new(2000).await;
+                        }
+                    },
+                    Err(e) => {
+                        log::error!("Auto mint #{} failed: {}", current_count + 1, e);
+                        set_error_message.set(Some(format!("Auto mint #{} failed: {}", current_count + 1, e)));
+                        should_continue = false;
+                    }
+                }
+            }
+            
+            set_auto_mint_running.set(false);
+            set_minting_status.set(String::new());
+            log::info!("Auto minting completed. Total mints: {}", current_count);
+        }
+    });
+
     // --- Effect for action result handling ---
     create_effect(move |_| {
         if let Some(result) = start_minting.value().get() {
             set_is_submitting.set(false); // reset manual state
-            set_minting_status.set(String::new()); // clear status
+            if mint_mode.get() == MintMode::Manual {
+                set_minting_status.set(String::new()); // clear status for manual mode
+            }
         }
     });
 
@@ -258,44 +340,220 @@ pub fn MintPage(
             <SupplyProgressBar />
             
             <div class="mint-content">
-                <div class="mint-controls">
-                    <button 
-                        class="mint-button"
-                        disabled=move || start_minting.pending().get() || is_submitting.get()
-                        on:click=move |_| {
-                            // 1. immediately update UI state (sync)
-                            set_is_submitting.set(true);
-                            set_minting_status.set("Minting in progress...".to_string());
-                            
-                            // 2. async delay execution (give UI time to update)
-                            spawn_local(async move {
-                                TimeoutFuture::new(100).await; // 100ms delay
-                                start_minting.dispatch(());
-                            });
+                // Mint mode selection
+                <div class="mint-mode-section">
+                    <h3>
+                        <i class="fas fa-cog"></i>
+                        "Mint Mode"
+                    </h3>
+                    
+                    <div class="mint-mode-options">
+                        <label class="mint-mode-option">
+                            <input 
+                                type="radio" 
+                                name="mint_mode"
+                                checked=move || mint_mode.get() == MintMode::Manual
+                                disabled=move || {
+                                    let is_auto_running = auto_mint_running.get();
+                                    let is_manual_pending = start_minting.pending().get() || is_submitting.get();
+                                    is_auto_running || is_manual_pending
+                                }
+                                on:change=move |_| {
+                                    set_mint_mode.set(MintMode::Manual);
+                                    // Stop auto mining if running
+                                    set_auto_mint_running.set(false);
+                                }
+                            />
+                            <span class="mint-mode-label">
+                                <i class="fas fa-hand-pointer"></i>
+                                "Manual"
+                            </span>
+                            <span class="mint-mode-description">"Click to mint once"</span>
+                        </label>
+                        
+                        <label class="mint-mode-option">
+                            <input 
+                                type="radio" 
+                                name="mint_mode"
+                                checked=move || mint_mode.get() == MintMode::Auto
+                                disabled=move || {
+                                    let is_auto_running = auto_mint_running.get();
+                                    let is_manual_pending = start_minting.pending().get() || is_submitting.get();
+                                    is_auto_running || is_manual_pending
+                                }
+                                on:change=move |_| {
+                                    set_mint_mode.set(MintMode::Auto);
+                                }
+                            />
+                            <span class="mint-mode-label">
+                                <i class="fas fa-robot"></i>
+                                "Auto"
+                            </span>
+                            <span class="mint-mode-description">"Automatically mint multiple times"</span>
+                        </label>
+                    </div>
+                    
+                    // Auto mint count setting
+                    {move || {
+                        if mint_mode.get() == MintMode::Auto {
+                            view! {
+                                <div class="auto-mint-settings">
+                                    <label class="auto-count-label">
+                                        "Number of mints (0 = infinite):"
+                                        <input 
+                                            type="number"
+                                            min="0"
+                                            max="1000"
+                                            class="auto-count-input"
+                                            prop:value=move || auto_mint_count.get().to_string()
+                                            disabled=move || {
+                                                let is_auto_running = auto_mint_running.get();
+                                                let is_manual_pending = start_minting.pending().get() || is_submitting.get();
+                                                is_auto_running || is_manual_pending
+                                            }
+                                            on:input=move |ev| {
+                                                let value = event_target_value(&ev);
+                                                if let Ok(count) = value.parse::<u32>() {
+                                                    set_auto_mint_count.set(count);
+                                                }
+                                            }
+                                        />
+                                    </label>
+                                    <div class="auto-mint-info">
+                                        {move || {
+                                            let count = auto_mint_count.get();
+                                            if count == 0 {
+                                                "Will mint continuously until stopped or insufficient balance".to_string()
+                                            } else {
+                                                format!("Will mint {} times automatically", count)
+                                            }
+                                        }}
+                                    </div>
+                                </div>
+                            }.into_view()
+                        } else {
+                            view! { <div></div> }.into_view()
                         }
-                    >
-                        {move || {
-                            let is_pending = start_minting.pending().get() || is_submitting.get();
-                            if is_pending {
-                                view! {
-                                    <>
-                                        <i class="fas fa-spinner fa-spin"></i>
-                                        "Minting..."
-                                    </>
-                                }.into_view()
-                            } else {
-                                view! {
-                                    <>
-                                        <i class="fas fa-rocket"></i>
-                                        "Start Minting"
-                                    </>
-                                }.into_view()
-                            }
-                        }}
-                    </button>
+                    }}
+                </div>
+                
+                <div class="mint-controls">
+                    {move || {
+                        let mode = mint_mode.get();
+                        let is_auto_running = auto_mint_running.get();
+                        let is_manual_pending = start_minting.pending().get() || is_submitting.get();
+                        
+                        if mode == MintMode::Manual {
+                            view! {
+                                <button 
+                                    class="mint-button"
+                                    disabled=move || is_manual_pending || is_auto_running
+                                    on:click=move |_| {
+                                        // 1. immediately update UI state (sync)
+                                        set_is_submitting.set(true);
+                                        set_minting_status.set("Minting in progress...".to_string());
+                                        
+                                        // 2. async delay execution (give UI time to update)
+                                        spawn_local(async move {
+                                            TimeoutFuture::new(100).await; // 100ms delay
+                                            start_minting.dispatch(());
+                                        });
+                                    }
+                                >
+                                    {move || {
+                                        if is_manual_pending {
+                                            view! {
+                                                <>
+                                                    <i class="fas fa-spinner fa-spin"></i>
+                                                    "Minting..."
+                                                </>
+                                            }.into_view()
+                                        } else {
+                                            view! {
+                                                <>
+                                                    <i class="fas fa-rocket"></i>
+                                                    "Start Minting"
+                                                </>
+                                            }.into_view()
+                                        }
+                                    }}
+                                </button>
+                            }.into_view()
+                        } else {
+                            // Auto mode
+                            view! {
+                                <div class="auto-mint-controls">
+                                    <button 
+                                        class="mint-button"
+                                        class:mint-button-stop=is_auto_running
+                                        disabled=is_manual_pending
+                                        on:click=move |_| {
+                                            if is_auto_running {
+                                                // Stop auto minting
+                                                set_auto_mint_running.set(false);
+                                                set_minting_status.set(String::new());
+                                            } else {
+                                                // Start auto minting - apply same UI responsiveness pattern as manual mode
+                                                // 1. immediately update UI state (sync)
+                                                set_auto_mint_running.set(true);
+                                                set_minting_status.set("Starting auto minting...".to_string());
+                                                
+                                                // 2. async delay execution (give UI time to update)
+                                                spawn_local(async move {
+                                                    TimeoutFuture::new(100).await; // 100ms delay
+                                                    auto_mint_loop.dispatch(());
+                                                });
+                                            }
+                                        }
+                                    >
+                                        {move || {
+                                            if is_auto_running {
+                                                view! {
+                                                    <>
+                                                        <i class="fas fa-stop"></i>
+                                                        "Stop Auto Minting"
+                                                    </>
+                                                }.into_view()
+                                            } else {
+                                                view! {
+                                                    <>
+                                                        <i class="fas fa-play"></i>
+                                                        "Start Auto Minting"
+                                                    </>
+                                                }.into_view()
+                                            }
+                                        }}
+                                    </button>
+                                    
+                                    {move || {
+                                        if is_auto_running {
+                                            let current = auto_mint_current.get();
+                                            let total = auto_mint_count.get();
+                                            view! {
+                                                <div class="auto-mint-progress">
+                                                    {if total == 0 {
+                                                        format!("Completed: {}", current)
+                                                    } else {
+                                                        format!("Progress: {}/{}", current, total)
+                                                    }}
+                                                </div>
+                                            }.into_view()
+                                        } else {
+                                            view! { <div></div> }.into_view()
+                                        }
+                                    }}
+                                </div>
+                            }.into_view()
+                        }
+                    }}
                     
                     <div class="mint-description">
-                        "This will generate a random JSON memo (69-800 bytes) and mint tokens"
+                        {move || {
+                            match mint_mode.get() {
+                                MintMode::Manual => "This will generate a random JSON memo (69-800 bytes) and mint tokens once".to_string(),
+                                MintMode::Auto => "This will automatically mint tokens multiple times with a 2-second delay between each mint".to_string(),
+                            }
+                        }}
                     </div>
                 </div>
                 

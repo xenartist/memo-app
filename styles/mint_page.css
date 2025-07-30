@@ -406,3 +406,216 @@
         font-size: 0.65rem;
     }
 }
+
+/* Mint Mode Section */
+.mint-mode-section {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+}
+
+.mint-mode-section h3 {
+    color: #333;
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0 0 1rem 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mint-mode-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.mint-mode-option {
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: #f8f9fa;
+}
+
+.mint-mode-option:hover {
+    border-color: #28a745;
+    background: #f0f8f0;
+}
+
+.mint-mode-option:has(input[type="radio"]:disabled) {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: #f8f9fa;
+    border-color: #dee2e6;
+}
+
+.mint-mode-option:has(input[type="radio"]:disabled):hover {
+    border-color: #dee2e6;
+    background: #f8f9fa;
+}
+
+.mint-mode-option input[type="radio"]:disabled {
+    cursor: not-allowed;
+}
+
+.mint-mode-option:has(input[type="radio"]:disabled) .mint-mode-label,
+.mint-mode-option:has(input[type="radio"]:disabled) .mint-mode-description {
+    color: #999;
+}
+
+.mint-mode-option input[type="radio"] {
+    margin-bottom: 0.5rem;
+    transform: scale(1.2);
+}
+
+.mint-mode-option input[type="radio"]:checked {
+    accent-color: #28a745;
+}
+
+.mint-mode-option:has(input[type="radio"]:checked) {
+    border-color: #28a745;
+    background: #e8f5e8;
+}
+
+.mint-mode-label {
+    font-weight: 600;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0.25rem;
+}
+
+.mint-mode-description {
+    font-size: 0.9rem;
+    color: #666;
+    line-height: 1.4;
+}
+
+/* Auto Mint Settings */
+.auto-mint-settings {
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+}
+
+.auto-count-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    font-weight: 500;
+    color: #333;
+}
+
+.auto-count-input {
+    padding: 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1rem;
+    max-width: 120px;
+}
+
+.auto-count-input:focus {
+    outline: none;
+    border-color: #28a745;
+    box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.2);
+}
+
+.auto-count-input:disabled {
+    background: #f8f9fa;
+    color: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.auto-mint-info {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+    color: #666;
+    font-style: italic;
+}
+
+/* Auto Mint Controls */
+.auto-mint-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+.mint-button-stop {
+    background: linear-gradient(135deg, #dc3545, #c82333) !important;
+}
+
+.mint-button-stop:hover:not(:disabled) {
+    background: linear-gradient(135deg, #c82333, #a71e2a) !important;
+}
+
+.auto-mint-progress {
+    padding: 0.5rem 1rem;
+    background: #e8f5e8;
+    border: 1px solid #28a745;
+    border-radius: 4px;
+    font-weight: 500;
+    color: #155724;
+    font-size: 0.9rem;
+}
+
+/* Responsive adjustments for mint mode */
+@media (max-width: 768px) {
+    .mint-mode-options {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+    
+    .mint-mode-section {
+        margin: 1.5rem 0;
+        padding: 1rem;
+    }
+    
+    .auto-mint-settings {
+        padding: 0.75rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .mint-mode-section h3 {
+        font-size: 1rem;
+        flex-direction: column;
+        gap: 4px;
+    }
+    
+    .mint-mode-option {
+        padding: 0.75rem;
+    }
+    
+    .mint-mode-label {
+        font-size: 0.9rem;
+    }
+    
+    .mint-mode-description {
+        font-size: 0.8rem;
+    }
+    
+    .auto-count-label {
+        font-size: 0.9rem;
+    }
+    
+    .auto-count-input {
+        font-size: 0.9rem;
+        padding: 0.4rem;
+    }
+    
+    .auto-mint-progress {
+        font-size: 0.8rem;
+        padding: 0.4rem 0.8rem;
+    }
+}
