@@ -30,7 +30,7 @@ impl ProgramConfig {
     pub const PROGRAM_ID: &'static str = "TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw";
     
     // token mint address
-    pub const TOKEN_MINT: &'static str = "MEM69mjnKAMxgqwosg5apfYNk2rMuV26FR9THDfT3Q7";
+    pub const TOKEN_MINT: &'static str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
     
     // PDA Seeds
     pub const USER_PROFILE_SEED: &'static [u8] = b"user_profile";

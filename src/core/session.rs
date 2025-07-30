@@ -375,7 +375,7 @@ impl Session {
         let pubkey = self.get_public_key()?;
         let rpc = RpcConnection::new();
         
-        const TOKEN_MINT: &str = "MEM69mjnKAMxgqwosg5apfYNk2rMuV26FR9THDfT3Q7";
+        const TOKEN_MINT: &str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
 
         // get token balance
         match rpc.get_token_balance(&pubkey, TOKEN_MINT).await {

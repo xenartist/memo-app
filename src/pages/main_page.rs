@@ -35,7 +35,7 @@ pub fn MainPage(
     let (show_copied, set_show_copied) = create_signal(false);
     
     // token address
-    const TOKEN_MINT: &str = "MEM69mjnKAMxgqwosg5apfYNk2rMuV26FR9THDfT3Q7";
+    const TOKEN_MINT: &str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
     
     // get wallet address from session
     let wallet_address = move || {
@@ -172,9 +172,12 @@ pub fn MainPage(
     view! {
         <div class="main-page">
             <div class="top-bar">
+                // Temporarily commented out profile info for release
+                /*
                 <div class="user-info">
                     <span class="profile-status">{profile_status}</span>
                 </div>
+                */
                 <div class="wallet-address">
                     <span class="token-balance">{move || format!("{:.2} MEMO", token_balance())}</span>
                     <span class="balance">{move || format!("{:.4} SOL", sol_balance())}</span>
@@ -226,6 +229,8 @@ pub fn MainPage(
                         <i class="fas fa-hammer"></i>
                         <span>"Mint"</span>
                     </div>
+                    // Temporarily commented out for release - only showing Home and Mint
+                    /*
                     <div 
                         class="menu-item"
                         class:active=move || current_menu.get() == MenuItem::MintLegacy
@@ -258,6 +263,7 @@ pub fn MainPage(
                         <i class="fas fa-cog"></i>
                         <span>"Settings"</span>
                     </div>
+                    */
                 </div>
 
                 <div class="content">
@@ -267,6 +273,8 @@ pub fn MainPage(
                     <div style=move || if current_menu.get() == MenuItem::Mint { "display: block;" } else { "display: none;" }>
                         <MintPage session=session/>
                     </div>
+                    // Temporarily commented out for release - only showing Home and Mint content
+                    /*
                     <div style=move || if current_menu.get() == MenuItem::MintLegacy { "display: block;" } else { "display: none;" }>
                         <MintPageLegacy session=session/>
                     </div>
@@ -279,6 +287,7 @@ pub fn MainPage(
                     <div style=move || if current_menu.get() == MenuItem::Settings { "display: block;" } else { "display: none;" }>
                         <SettingsPage/>
                     </div>
+                    */
                 </div>
             </div>
 
