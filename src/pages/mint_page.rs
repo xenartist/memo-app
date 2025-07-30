@@ -328,13 +328,7 @@ pub fn MintPage(
 
     view! {
         <div class="mint-page">
-            <div class="mint-page-header">
-                <h1>
-                    <i class="fas fa-coins"></i>
-                    "New Mint Contract"
-                </h1>
-                <p>"Mint tokens using the new memo mint contract"</p>
-            </div>
+            // Remove the mint-page-header section entirely
             
             // Add the supply progress bar here
             <SupplyProgressBar />
