@@ -1,0 +1,454 @@
+/* Login Components Styles */
+
+/* Base login container */
+.login-container {
+  background-color: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  text-align: center;
+  max-width: 480px;
+  width: 90%;
+  margin: 0 auto;
+}
+
+/* App title */
+.app-title {
+  margin-bottom: 2rem;
+  color: #333;
+  font-size: 2rem;
+}
+
+/* Button groups */
+.button-group {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+/* Wallet buttons */
+.wallet-btn {
+  padding: 0.8rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background-color: #4CAF50;
+  color: white;
+}
+
+.wallet-btn:hover {
+  background-color: #45a049;
+}
+
+.wallet-btn.import-wallet {
+  background-color: #2196F3;
+}
+
+.wallet-btn.import-wallet:hover {
+  background-color: #1976D2;
+}
+
+.wallet-btn.edit-mode {
+  background-color: #6c757d;
+}
+
+.wallet-btn.edit-mode:hover {
+  background-color: #5a6268;
+}
+
+.wallet-btn.disabled,
+.wallet-btn:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Mnemonic display */
+.mnemonic-display {
+  background-color: #f8f9fa;
+  padding: 1.5rem;
+  border-radius: 4px;
+  margin: 1.5rem auto;
+  word-wrap: break-word;
+  font-family: monospace;
+  font-size: 1.1rem;
+  line-height: 1.6;
+  max-width: 400px;
+  word-break: break-word;
+}
+
+/* Form inputs */
+textarea,
+input[type="password"] {
+  width: 100%;
+  max-width: 400px;
+  margin: 1rem auto;
+  padding: 1rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 1rem;
+  resize: vertical;
+  display: block;
+}
+
+.mnemonic-textarea {
+  width: 100%;
+  min-height: 100px;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 1rem;
+  resize: vertical;
+  margin: 1rem 0;
+}
+
+/* Headers */
+h2 {
+  color: #333;
+  margin-bottom: 1.5rem;
+}
+
+.header-with-back {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+  position: relative;
+}
+
+.header-with-back h2 {
+  width: 100%;
+  text-align: center;
+  margin: 0;
+}
+
+/* Back button */
+.back-btn {
+  position: absolute;
+  left: 0;
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: 14px;
+  transition: color 0.2s;
+}
+
+.back-btn:hover {
+  color: #333;
+}
+
+/* Word count selector */
+.word-count-selector {
+  margin: 1.5rem 0;
+  text-align: center;
+}
+
+.radio-group {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.radio-group label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.radio-group input[type="radio"] {
+  cursor: pointer;
+}
+
+.word-count-hint {
+  color: #666;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+/* Word verification */
+.word-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 20px 0;
+  padding: 15px;
+  background-color: #f5f5f5;
+  border-radius: 8px;
+}
+
+.word-button {
+  min-width: 100px;
+  min-height: 40px;
+  width: 100%;
+  padding: 10px;
+  border: 2px solid #4CAF50;
+  border-radius: 4px;
+  background-color: white;
+  cursor: pointer;
+  font-size: 14px;
+  color: #333;
+}
+
+.word-button:hover {
+  background-color: #e8f5e9;
+}
+
+.verify-instruction {
+  color: #666;
+  margin: 15px 0;
+  font-size: 1.1rem;
+}
+
+.current-word-index {
+  font-size: 1.2rem;
+  color: #2196F3;
+  margin: 15px 0;
+  font-weight: bold;
+}
+
+.progress-bar {
+  margin-top: 20px;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+/* Error messages */
+.error-message {
+  padding: 12px;
+  border-radius: 6px;
+  margin: 16px 0;
+  font-size: 14px;
+  text-align: center;
+  display: none;
+}
+
+.error-message:not(:empty) {
+  display: block;
+}
+
+.error-message:not(.success) {
+  background-color: #fff3f3;
+  color: #dc3545;
+}
+
+.error-message.success {
+  background-color: #f3fff3;
+  color: #28a745;
+}
+
+/* Advanced options */
+.advanced-options {
+  margin-bottom: 20px;
+  text-align: left;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.warning-text {
+  margin-top: 8px;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+/* Form sections */
+.section-title {
+  font-size: 1rem;
+  color: #333;
+  margin-bottom: 10px;
+  text-align: left;
+  font-weight: 600;
+}
+
+.passphrase-section {
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: #fff3e0;
+  border-radius: 4px;
+}
+
+.password-section {
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+}
+
+.input-group {
+  margin-bottom: 15px;
+}
+
+.input-group input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.mnemonic-input-section {
+  margin: 1.5rem 0;
+}
+
+.instruction-text {
+  color: #666;
+  margin-bottom: 1rem;
+  text-align: left;
+}
+
+/* Wallet info */
+.wallet-info {
+  margin: 2rem 0;
+  padding: 1.5rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.address-container {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+}
+
+.wallet-address {
+  font-family: monospace;
+  font-size: 1rem;
+  color: #1a73e8;
+  user-select: all;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.info-text {
+  color: #666;
+  font-size: 0.9rem;
+  margin-top: 1rem;
+}
+
+/* Security tips */
+.security-tips {
+  margin-top: 2rem;
+}
+
+.security-tips ul {
+  list-style-type: none;
+  padding-left: 0;
+}
+
+.security-tips li {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+  position: relative;
+}
+
+.security-tips li:before {
+  content: "•";
+  color: #1a73e8;
+  position: absolute;
+  left: 0;
+}
+
+/* Reset functionality */
+.reset-link {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.reset-link a {
+  color: #ff4444;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.reset-link a:hover {
+  text-decoration: underline;
+}
+
+.reset-confirm-dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.reset-confirm-content {
+  background: white;
+  padding: 24px;
+  border-radius: 8px;
+  max-width: 400px;
+  width: 90%;
+}
+
+.cancel-btn {
+  padding: 8px 16px;
+  border: 1px solid #ccc;
+  background: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.reset-btn {
+  padding: 8px 16px;
+  background: #ff4444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.reset-btn:hover {
+  background: #ff2222;
+}
+
+/* Loading states */
+.initializing-status,
+.encrypting-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 16px 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.initializing-status i,
+.encrypting-status i {
+  color: #007bff;
+}
+
+/* Disabled inputs */
+input:disabled {
+  background-color: #f8f9fa;
+  color: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.8;
+} 

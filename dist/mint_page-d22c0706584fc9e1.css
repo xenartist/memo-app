@@ -1,0 +1,647 @@
+/* Mint Page Styles - New Contract Version */
+
+/* Main container */
+.mint-page {
+    padding: 24px;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+/* Page header */
+.mint-page-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.mint-page-header h1 {
+    color: #333;
+    font-size: 2rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.mint-page-header p {
+    color: #666;
+    font-size: 1rem;
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* Main content area */
+.mint-content {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+/* Mint controls section */
+.mint-controls {
+    text-align: center;
+    padding: 3rem 2rem;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+/* Main mint button - consistent with project style */
+.mint-button {
+    background: linear-gradient(135deg, #28a745, #20c997);
+    color: white;
+    padding: 1rem 2rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 1.2rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 8px rgba(40, 167, 69, 0.2);
+    min-width: 180px;
+    justify-content: center;
+}
+
+.mint-button:hover:not(:disabled) {
+    background: linear-gradient(135deg, #218838, #1e7e34);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(40, 167, 69, 0.3);
+}
+
+.mint-button:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.7;
+    transform: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.mint-button i {
+    font-size: 1.1rem;
+}
+
+/* Button description text */
+.mint-description {
+    margin-top: 1rem;
+    font-size: 0.9rem;
+    color: #666;
+    line-height: 1.4;
+}
+
+/* Minting progress indicator */
+.minting-progress {
+    text-align: center;
+    padding: 1.5rem;
+    margin: 1rem auto;
+    max-width: 600px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.minting-progress i {
+    color: #28a745;
+    font-size: 1.1rem;
+}
+
+.minting-progress span {
+    color: #333;
+    font-weight: 500;
+}
+
+/* Results section */
+.mint-results {
+    max-width: 600px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+}
+
+/* Success message */
+.success-message {
+    background: #d4edda;
+    color: #155724;
+    padding: 1.5rem;
+    border-radius: 8px;
+    border: 1px solid #c3e6cb;
+    margin-bottom: 1rem;
+}
+
+.success-message strong {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+}
+
+.transaction-id {
+    margin-top: 0.5rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    word-break: break-all;
+    background: rgba(255, 255, 255, 0.3);
+    padding: 8px;
+    border-radius: 4px;
+}
+
+/* Error message */
+.error-message {
+    background: #f8d7da;
+    color: #721c24;
+    padding: 1.5rem;
+    border-radius: 8px;
+    border: 1px solid #f5c6cb;
+    margin-bottom: 1rem;
+}
+
+.error-message strong {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1.1rem;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .mint-page {
+        padding: 16px;
+    }
+    
+    .mint-page-header h1 {
+        font-size: 1.5rem;
+    }
+    
+    .mint-controls {
+        padding: 2rem 1rem;
+    }
+    
+    .mint-button {
+        font-size: 1rem;
+        padding: 0.8rem 1.5rem;
+        min-width: 160px;
+    }
+    
+    .mint-results {
+        padding: 0 0.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .mint-page {
+        padding: 12px;
+    }
+    
+    .mint-page-header h1 {
+        font-size: 1.3rem;
+        flex-direction: column;
+        gap: 5px;
+    }
+    
+    .mint-controls {
+        padding: 1.5rem 0.5rem;
+    }
+    
+    .mint-button {
+        font-size: 0.9rem;
+        padding: 0.7rem 1.2rem;
+        min-width: 140px;
+    }
+    
+    .minting-progress {
+        padding: 1rem;
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .success-message,
+    .error-message {
+        padding: 1rem;
+    }
+    
+    .transaction-id {
+        font-size: 0.8rem;
+    }
+}
+
+/* Animation for spinning icons */
+@keyframes fa-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.fa-spin {
+    animation: fa-spin 1s infinite linear;
+}
+
+/* Focus states for accessibility */
+.mint-button:focus {
+    outline: 2px solid #007bff;
+    outline-offset: 2px;
+}
+
+/* Token Supply Progress Bar */
+.supply-progress-container {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+}
+
+.supply-progress-header {
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.supply-progress-header h3 {
+    color: #333;
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.supply-progress-header p {
+    color: #666;
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.supply-progress-track {
+    position: relative;
+    height: 24px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    border: 1px solid #dee2e6;
+    overflow: hidden;
+    margin-bottom: 1rem;
+}
+
+.supply-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #28a745, #20c997);
+    border-radius: 12px;
+    transition: width 0.5s ease;
+    position: relative;
+}
+
+.supply-progress-markers {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+}
+
+.supply-progress-marker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(255, 255, 255, 0.8);
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.2);
+}
+
+.supply-progress-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: #666;
+    margin-top: 0.5rem;
+}
+
+.supply-progress-label {
+    text-align: center;
+    flex: 1;
+    padding: 0 4px;
+}
+
+.supply-current-info {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+}
+
+.supply-info-item {
+    text-align: center;
+}
+
+.supply-info-label {
+    font-size: 0.8rem;
+    color: #666;
+    margin-bottom: 0.25rem;
+}
+
+.supply-info-value {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #333;
+}
+
+.supply-loading {
+    text-align: center;
+    padding: 1rem;
+    color: #666;
+    font-style: italic;
+}
+
+.supply-error {
+    text-align: center;
+    padding: 1rem;
+    color: #dc3545;
+    background: #f8d7da;
+    border-radius: 6px;
+    border: 1px solid #f5c6cb;
+}
+
+/* Responsive adjustments for progress bar */
+@media (max-width: 768px) {
+    .supply-progress-container {
+        margin: 1.5rem 0;
+        padding: 1rem;
+    }
+    
+    .supply-progress-labels {
+        font-size: 0.7rem;
+    }
+    
+    .supply-current-info {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .supply-progress-container {
+        margin: 1rem 0;
+        padding: 0.75rem;
+    }
+    
+    .supply-progress-header h3 {
+        font-size: 1rem;
+        flex-direction: column;
+        gap: 4px;
+    }
+    
+    .supply-progress-track {
+        height: 20px;
+    }
+    
+    .supply-progress-labels {
+        font-size: 0.65rem;
+    }
+}
+
+/* Mint Mode Section */
+.mint-mode-section {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+}
+
+.mint-mode-section h3 {
+    color: #333;
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0 0 1rem 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mint-mode-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+/* Update mint mode styles for horizontal layout */
+.mint-mode-option {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 1rem;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: #f8f9fa;
+}
+
+.mint-mode-option:hover {
+    border-color: #28a745;
+    background: #f0f8f0;
+}
+
+.mint-mode-option:has(input[type="radio"]:disabled) {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: #f8f9fa;
+    border-color: #dee2e6;
+}
+
+.mint-mode-option:has(input[type="radio"]:disabled):hover {
+    border-color: #dee2e6;
+    background: #f8f9fa;
+}
+
+.mint-mode-option input[type="radio"]:disabled {
+    cursor: not-allowed;
+}
+
+.mint-mode-option:has(input[type="radio"]:disabled) .mint-mode-label,
+.mint-mode-option:has(input[type="radio"]:disabled) .mint-mode-description {
+    color: #999;
+}
+
+.mint-mode-radio-line {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+.mint-mode-option input[type="radio"] {
+    margin: 0;
+    transform: scale(1.2);
+    flex-shrink: 0;
+}
+
+.mint-mode-option input[type="radio"]:checked {
+    accent-color: #28a745;
+}
+
+.mint-mode-option:has(input[type="radio"]:checked) {
+    border-color: #28a745;
+    background: #e8f5e8;
+}
+
+.mint-mode-label {
+    font-weight: 600;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.mint-mode-description {
+    font-size: 0.85rem;
+    color: #666;
+    line-height: 1.4;
+    margin-left: 0.5rem;
+}
+
+/* Auto Mint Settings */
+.auto-mint-settings {
+    padding: 0.75rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+}
+
+/* Auto count line layout */
+.auto-count-line {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.auto-count-input {
+    padding: 0.4rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    width: 80px;
+    flex-shrink: 0;
+}
+
+.auto-count-input:focus {
+    outline: none;
+    border-color: #28a745;
+    box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.2);
+}
+
+.auto-count-input:disabled {
+    background: #f8f9fa;
+    color: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.auto-mint-info {
+    font-size: 0.8rem;
+    color: #666;
+    font-style: italic;
+    margin: 0;
+}
+
+/* Auto Mint Controls */
+.auto-mint-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+.mint-button-stop {
+    background: linear-gradient(135deg, #dc3545, #c82333) !important;
+}
+
+.mint-button-stop:hover:not(:disabled) {
+    background: linear-gradient(135deg, #c82333, #a71e2a) !important;
+}
+
+.auto-mint-progress {
+    padding: 0.5rem 1rem;
+    background: #e8f5e8;
+    border: 1px solid #28a745;
+    border-radius: 4px;
+    font-weight: 500;
+    color: #155724;
+    font-size: 0.9rem;
+}
+
+/* Responsive adjustments for mint mode */
+@media (max-width: 768px) {
+    .mint-mode-options {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+    
+    .mint-mode-section {
+        margin: 1.5rem 0;
+        padding: 1rem;
+    }
+    
+    .auto-mint-settings {
+        padding: 0.75rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .mint-mode-section h3 {
+        font-size: 1rem;
+        flex-direction: column;
+        gap: 4px;
+    }
+    
+    .mint-mode-option {
+        padding: 0.75rem;
+    }
+    
+    .mint-mode-radio-line {
+        gap: 0.3rem;
+    }
+    
+    .mint-mode-label {
+        font-size: 0.85rem;
+        gap: 3px;
+    }
+    
+    .mint-mode-description {
+        font-size: 0.75rem;
+        margin-left: 0.3rem;
+    }
+    
+    .auto-count-line {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .auto-count-input {
+        width: 60px;
+        font-size: 0.8rem;
+        padding: 0.3rem;
+    }
+    
+    .auto-count-label {
+        font-size: 0.8rem;
+    }
+    
+    .auto-mint-info {
+        font-size: 0.7rem;
+        margin-top: 0;
+    }
+}

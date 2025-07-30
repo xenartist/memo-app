@@ -1,0 +1,308 @@
+/* Memo Card Component Styles */
+
+/* Basic card styles */
+.memo-card {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px;
+    background: white;
+    max-width: 350px;
+    position: relative;
+    padding-bottom: 50px; /* Reserve space for hover buttons */
+    min-height: 320px; /* Ensure card has enough height for hover buttons */
+}
+
+.memo-card:hover {
+
+}
+
+/* Card header */
+.memo-header {
+    margin-bottom: 12px;
+    border-bottom: 1px solid #f1f3f4;
+    padding-bottom: 8px;
+}
+
+.memo-title {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #333;
+    text-align: center;
+}
+
+/* Image container */
+.memo-image-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 16px;
+    min-height: 128px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.memo-image {
+    max-width: 128px;
+    max-height: 128px;
+    border-radius: 4px;
+    object-fit: cover;
+}
+
+.memo-image-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 128px;
+    background-color: #f8f9fa;
+    border: 2px dashed #dee2e6;
+    border-radius: 6px;
+    color: #6c757d;
+    font-size: 14px;
+}
+
+.memo-image-placeholder i {
+    font-size: 24px;
+    margin-bottom: 8px;
+}
+
+.pixel-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 128px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    color: #666;
+    font-size: 14px;
+}
+
+.pixel-loading i {
+    margin-right: 8px;
+}
+
+/* Pixel Art container */
+.pixel-art-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 16px;
+    background: #f5f5f5;
+    border-radius: 4px;
+    padding: 8px;
+}
+
+/* Pixel Grid styles in Memo Card - remove borders */
+.memo-card .pixel-grid {
+    border: none;
+    padding: 0;
+}
+
+.memo-card .pixel {
+    border: none;
+}
+
+.memo-card .pixel.black {
+    border: none;
+    background: black;
+}
+
+/* Card info area */
+.memo-info {
+    font-size: 14px;
+    margin-bottom: 10px; /* Avoid overlap with hover buttons */
+}
+
+.memo-info-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+    gap: 8px;
+}
+
+.memo-info-item:last-child {
+    margin-bottom: 0;
+}
+
+.memo-info .label {
+    font-weight: 500;
+    color: #6c757d;
+    min-width: 70px;
+    flex-shrink: 0;
+}
+
+.memo-info .value {
+    color: #333;
+    word-break: break-all;
+    text-align: right;
+    flex: 1;
+}
+
+.memo-info .signature,
+.memo-info .pubkey {
+    font-family: monospace;
+    font-size: 12px;
+    color: #666;
+}
+
+.memo-info .blocktime {
+    color: #888;
+    font-size: 12px;
+}
+
+.memo-info .amount {
+    font-weight: 600;
+    color: #dc3545;
+}
+
+/* Legacy style compatibility */
+.memo-info > div {
+    margin: 4px 0;
+    word-break: break-all;
+}
+
+.signature, .pubkey {
+    font-family: monospace;
+    color: #666;
+}
+
+.blocktime {
+    color: #888;
+}
+
+.amount {
+    font-weight: bold;
+    color: #333;
+}
+
+/* Different card type styles */
+.memo-card.mint-card {
+    border-left: 4px solid #28a745;
+}
+
+.memo-card.burn-card {
+    border-left: 4px solid #dc3545;
+}
+
+/* Card hover action buttons */
+.memo-card-actions {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    right: 10px;
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    opacity: 0;
+    background: white;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+}
+
+.memo-card:hover .memo-card-actions {
+    opacity: 1;
+}
+
+.action-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    flex: 1;
+    justify-content: center;
+}
+
+.action-btn:hover {
+}
+
+.details-btn {
+    background: #007bff;
+    color: white;
+}
+
+.details-btn:hover {
+    background: #0056b3;
+}
+
+.burn-btn {
+    background: #dc3545;
+    color: white;
+}
+
+.burn-btn:hover {
+    background: #c82333;
+}
+
+.action-btn i {
+    font-size: 12px;
+}
+
+/* Memo Cards Container */
+.memo-cards {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 16px;
+    padding: 16px;
+    width: 100%;
+}
+
+/* Responsive design */
+@media (max-width: 480px) {
+    .memo-card {
+        margin: 8px auto;
+        max-width: calc(100% - 16px);
+    }
+    
+    .memo-info-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+    
+    .memo-info .value {
+        text-align: left;
+    }
+    
+    .memo-cards {
+        padding: 0;
+    }
+    
+    .memo-card-actions {
+        bottom: 5px;
+        left: 5px;
+        right: 5px;
+        padding: 6px;
+    }
+    
+    .action-btn {
+        padding: 5px 8px;
+        font-size: 12px;
+        gap: 4px;
+    }
+    
+    .action-btn span {
+        display: none; /* Hide text on mobile, show only icons */
+    }
+}
+
+@media (min-width: 481px) {
+    .memo-cards {
+        justify-content: flex-start;
+    }
+    
+    .memo-card {
+        width: 380px;
+        flex-grow: 0;
+    }
+} 

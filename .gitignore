@@ -1,4 +1,3 @@
-/dist/
 /target/
 /Cargo.lock
 /test-keypair/memo-test-keypair.json
