@@ -1,6 +1,7 @@
 use leptos::*;
 use crate::core::rpc_base::RpcConnection;
 use crate::core::session::Session;
+use crate::core::constants::TOKEN_MINT;
 use crate::pages::home_page::HomePage;
 use crate::pages::profile_page::ProfilePage;
 use crate::pages::settings_page::SettingsPage;
@@ -34,8 +35,7 @@ pub fn MainPage(
     
     let (show_copied, set_show_copied) = create_signal(false);
     
-    // token address
-    const TOKEN_MINT: &str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
+    // Now using global constant - no need to define locally
     
     // get wallet address from session
     let wallet_address = move || {

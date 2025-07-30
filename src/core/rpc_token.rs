@@ -1,4 +1,5 @@
 use super::rpc_base::{RpcConnection, RpcError};
+use super::constants::TOKEN_MINT;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use solana_sdk::{
@@ -29,8 +30,8 @@ impl ProgramConfig {
     // main program ID
     pub const PROGRAM_ID: &'static str = "TD8dwXKKg7M3QpWa9mQQpcvzaRasDU1MjmQWqZ9UZiw";
     
-    // token mint address
-    pub const TOKEN_MINT: &'static str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
+    // token mint address - now using global constant
+    pub const TOKEN_MINT: &'static str = TOKEN_MINT;
     
     // PDA Seeds
     pub const USER_PROFILE_SEED: &'static [u8] = b"user_profile";

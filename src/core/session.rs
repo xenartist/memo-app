@@ -2,6 +2,7 @@ use serde::{Serialize, Deserialize};
 use std::time::{Duration, SystemTime};
 use crate::core::encrypt;
 use crate::core::rpc_base::{RpcConnection, RpcError};
+use crate::core::constants::TOKEN_MINT;
 use web_sys::js_sys::Date;
 use secrecy::{Secret, ExposeSecret};
 use zeroize::Zeroize;
@@ -375,8 +376,7 @@ impl Session {
         let pubkey = self.get_public_key()?;
         let rpc = RpcConnection::new();
         
-        const TOKEN_MINT: &str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
-
+        // Now using global constant instead of local definition
         // get token balance
         match rpc.get_token_balance(&pubkey, TOKEN_MINT).await {
             Ok(token_result) => {
