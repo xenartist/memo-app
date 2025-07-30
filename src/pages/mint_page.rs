@@ -44,6 +44,44 @@ impl SupplyTier {
         1_000_000_000_000_000_000 // 1T as reasonable max for progress bar
     }
     
+    // calculate progress percentage for visual effect
+    fn calculate_visual_progress_percentage(supply: u64) -> f64 {
+        // define visual breakpoints, make the left range look bigger
+        let visual_breakpoints = [
+            (0u64, 0.0f64),                           // 0% 
+            (100_000_000_000_000u64, 50.0f64),        // 50% - 0-100M tier gets 50% space
+            (1_000_000_000_000_000u64, 75.0f64),      // 75% - 100M-1B tier gets 25% space  
+            (10_000_000_000_000_000u64, 87.0f64),     // 87% - 1B-10B tier gets 12% space
+            (100_000_000_000_000_000u64, 95.0f64),    // 95% - 10B-100B tier gets 8% space
+            (1_000_000_000_000_000_000u64, 100.0f64), // 100% - 100B-1T tier gets 5% space
+        ];
+        
+        // find current supply in which interval
+        for i in 0..visual_breakpoints.len() - 1 {
+            let (lower_supply, lower_percent) = visual_breakpoints[i];
+            let (upper_supply, upper_percent) = visual_breakpoints[i + 1];
+            
+            if supply >= lower_supply && supply <= upper_supply {
+                if upper_supply == lower_supply {
+                    return lower_percent;
+                }
+                
+                // linear interpolation in the interval
+                let ratio = (supply - lower_supply) as f64 / (upper_supply - lower_supply) as f64;
+                return lower_percent + ratio * (upper_percent - lower_percent);
+            }
+        }
+        
+        // if out of range, return 100%
+        100.0
+    }
+    
+    // calculate visual position for marker
+    fn calculate_visual_marker_position(tier_max: u64) -> f64 {
+        Self::calculate_visual_progress_percentage(tier_max)
+    }
+    
+    // keep the original linear calculation method as backup
     fn calculate_progress_percentage(supply: u64) -> f64 {
         let max_supply = Self::get_total_max_supply();
         (supply as f64 / max_supply as f64 * 100.0).min(100.0)
@@ -143,7 +181,7 @@ pub fn SupplyProgressBar() -> impl IntoView {
                         </div>
                     }.into_view()
                 } else if let Some((supply, tier)) = supply_info.get() {
-                    let progress = SupplyTier::calculate_progress_percentage(supply);
+                    let progress = SupplyTier::calculate_visual_progress_percentage(supply);
                     let tiers = SupplyTier::get_tiers();
                     let supply_tokens = supply as f64 / 1_000_000.0; // Convert to tokens (6 decimals)
                     
@@ -156,7 +194,7 @@ pub fn SupplyProgressBar() -> impl IntoView {
                                 ></div>
                                 <div class="supply-progress-markers">
                                     {tiers.iter().take(5).enumerate().map(|(i, tier)| {
-                                        let marker_position = SupplyTier::calculate_progress_percentage(tier.max);
+                                        let marker_position = SupplyTier::calculate_visual_marker_position(tier.max);
                                         view! {
                                             <div 
                                                 class="supply-progress-marker"
