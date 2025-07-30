@@ -343,47 +343,51 @@ pub fn MintPage(
                     
                     <div class="mint-mode-options">
                         <label class="mint-mode-option">
-                            <input 
-                                type="radio" 
-                                name="mint_mode"
-                                checked=move || mint_mode.get() == MintMode::Manual
-                                disabled=move || {
-                                    let is_auto_running = auto_mint_running.get();
-                                    let is_manual_pending = start_minting.pending().get() || is_submitting.get();
-                                    is_auto_running || is_manual_pending
-                                }
-                                on:change=move |_| {
-                                    set_mint_mode.set(MintMode::Manual);
-                                    // Stop auto mining if running
-                                    set_auto_mint_running.set(false);
-                                }
-                            />
-                            <span class="mint-mode-label">
-                                <i class="fas fa-hand-pointer"></i>
-                                "Manual"
-                            </span>
-                            <span class="mint-mode-description">"Click to mint once"</span>
+                            <div class="mint-mode-radio-line">
+                                <input 
+                                    type="radio" 
+                                    name="mint_mode"
+                                    checked=move || mint_mode.get() == MintMode::Manual
+                                    disabled=move || {
+                                        let is_auto_running = auto_mint_running.get();
+                                        let is_manual_pending = start_minting.pending().get() || is_submitting.get();
+                                        is_auto_running || is_manual_pending
+                                    }
+                                    on:change=move |_| {
+                                        set_mint_mode.set(MintMode::Manual);
+                                        // Stop auto mining if running
+                                        set_auto_mint_running.set(false);
+                                    }
+                                />
+                                <span class="mint-mode-label">
+                                    <i class="fas fa-hand-pointer"></i>
+                                    "Manual"
+                                </span>
+                                <span class="mint-mode-description">"(Click to mint once)"</span>
+                            </div>
                         </label>
                         
                         <label class="mint-mode-option">
-                            <input 
-                                type="radio" 
-                                name="mint_mode"
-                                checked=move || mint_mode.get() == MintMode::Auto
-                                disabled=move || {
-                                    let is_auto_running = auto_mint_running.get();
-                                    let is_manual_pending = start_minting.pending().get() || is_submitting.get();
-                                    is_auto_running || is_manual_pending
-                                }
-                                on:change=move |_| {
-                                    set_mint_mode.set(MintMode::Auto);
-                                }
-                            />
-                            <span class="mint-mode-label">
-                                <i class="fas fa-robot"></i>
-                                "Auto"
-                            </span>
-                            <span class="mint-mode-description">"Automatically mint multiple times"</span>
+                            <div class="mint-mode-radio-line">
+                                <input 
+                                    type="radio" 
+                                    name="mint_mode"
+                                    checked=move || mint_mode.get() == MintMode::Auto
+                                    disabled=move || {
+                                        let is_auto_running = auto_mint_running.get();
+                                        let is_manual_pending = start_minting.pending().get() || is_submitting.get();
+                                        is_auto_running || is_manual_pending
+                                    }
+                                    on:change=move |_| {
+                                        set_mint_mode.set(MintMode::Auto);
+                                    }
+                                />
+                                <span class="mint-mode-label">
+                                    <i class="fas fa-robot"></i>
+                                    "Auto"
+                                </span>
+                                <span class="mint-mode-description">"(Automatically mint multiple times)"</span>
+                            </div>
                         </label>
                     </div>
                     
@@ -392,8 +396,7 @@ pub fn MintPage(
                         if mint_mode.get() == MintMode::Auto {
                             view! {
                                 <div class="auto-mint-settings">
-                                    <label class="auto-count-label">
-                                        "Number of mints (0 = infinite):"
+                                    <div class="auto-count-line">
                                         <input 
                                             type="number"
                                             min="0"
@@ -412,16 +415,17 @@ pub fn MintPage(
                                                 }
                                             }
                                         />
-                                    </label>
-                                    <div class="auto-mint-info">
-                                        {move || {
-                                            let count = auto_mint_count.get();
-                                            if count == 0 {
-                                                "Will mint continuously until stopped or insufficient balance".to_string()
-                                            } else {
-                                                format!("Will mint {} times automatically", count)
-                                            }
-                                        }}
+                                        <span class="auto-count-label">"Number of mints (0 = infinite):"</span>
+                                        <span class="auto-mint-info">
+                                            {move || {
+                                                let count = auto_mint_count.get();
+                                                if count == 0 {
+                                                    "Will mint continuously until stopped or insufficient balance".to_string()
+                                                } else {
+                                                    format!("Will mint {} times automatically", count)
+                                                }
+                                            }}
+                                        </span>
                                     </div>
                                 </div>
                             }.into_view()
