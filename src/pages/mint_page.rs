@@ -248,7 +248,7 @@ pub fn MintPage(
         }
     });
 
-    // Auto mint logic
+    // Auto mint loop logic
     let auto_mint_loop = create_action(move |_: &()| {
         let target_count = auto_mint_count.get();
         async move {
@@ -258,6 +258,7 @@ pub fn MintPage(
             
             let mut current_count = 0u32;
             let mut should_continue = true;
+            const MAX_RETRIES: u32 = 3; // Maximum retry attempts
             
             while should_continue {
                 // Check if we should stop
@@ -276,36 +277,73 @@ pub fn MintPage(
                 let memo = generate_random_memo();
                 log::info!("Auto mint #{}: Generated memo with length: {} bytes", current_count + 1, memo.len());
                 
-                // Call session mint_new_contract
-                let result = session.with(|s| s.clone()).mint(&memo).await;
+                // Retry logic for minting
+                let mut retry_count = 0;
+                let mut mint_successful = false;
                 
-                match result {
-                    Ok(signature) => {
-                        log::info!("Auto mint #{} successful: {}", current_count + 1, signature);
-                        set_last_result.set(Some(format!("#{}: {}", current_count + 1, signature)));
-                        
-                        // Update session to trigger balance refresh
-                        session.update(|s| {
-                            s.mark_balance_update_needed();
-                        });
-                        
-                        current_count += 1;
-                        set_auto_mint_current.set(current_count);
-                        
-                        // Check if we've reached the target count (if not infinite)
-                        if target_count > 0 && current_count >= target_count {
-                            should_continue = false;
-                        }
-                        
-                        // Add delay between mints (2 seconds)
-                        if should_continue {
-                            TimeoutFuture::new(2000).await;
-                        }
-                    },
-                    Err(e) => {
-                        log::error!("Auto mint #{} failed: {}", current_count + 1, e);
-                        set_error_message.set(Some(format!("Auto mint #{} failed: {}", current_count + 1, e)));
+                while retry_count <= MAX_RETRIES && !mint_successful {
+                    // Check if we should stop during retries
+                    if !auto_mint_running.get() {
                         should_continue = false;
+                        break;
+                    }
+                    
+                    // Update status for retry attempts
+                    if retry_count > 0 {
+                        if target_count == 0 {
+                            set_minting_status.set(format!("Auto minting... (#{} - infinite) - Retry {}/{}", 
+                                current_count + 1, retry_count, MAX_RETRIES));
+                        } else {
+                            set_minting_status.set(format!("Auto minting... ({}/{}) - Retry {}/{}", 
+                                current_count + 1, target_count, retry_count, MAX_RETRIES));
+                        }
+                    }
+                    
+                    // Call session mint_new_contract
+                    let result = session.with(|s| s.clone()).mint(&memo).await;
+                    
+                    match result {
+                        Ok(signature) => {
+                            log::info!("Auto mint #{} successful: {}", current_count + 1, signature);
+                            set_last_result.set(Some(format!("#{}: {}", current_count + 1, signature)));
+                            
+                            // Update session to trigger balance refresh
+                            session.update(|s| {
+                                s.mark_balance_update_needed();
+                            });
+                            
+                            current_count += 1;
+                            set_auto_mint_current.set(current_count);
+                            mint_successful = true;
+                            
+                            // Check if we've reached the target count (if not infinite)
+                            if target_count > 0 && current_count >= target_count {
+                                should_continue = false;
+                            }
+                            
+                            // Add delay between mints (2 seconds)
+                            if should_continue {
+                                TimeoutFuture::new(2000).await;
+                            }
+                        },
+                        Err(e) => {
+                            retry_count += 1;
+                            log::warn!("Auto mint #{} attempt {} failed: {}", current_count + 1, retry_count, e);
+                            
+                            if retry_count > MAX_RETRIES {
+                                // All retries exhausted
+                                log::error!("Auto mint #{} failed after {} attempts: {}", current_count + 1, MAX_RETRIES, e);
+                                set_error_message.set(Some(format!("Auto mint #{} failed after {} retry attempts: {}", 
+                                    current_count + 1, MAX_RETRIES, e)));
+                                should_continue = false;
+                            } else {
+                                // Wait before retry with exponential backoff (1s, 2s, 4s)
+                                let retry_delay = 1000 * (1 << (retry_count - 1)); // 1000ms, 2000ms, 4000ms
+                                log::info!("Retrying auto mint #{} in {}ms (attempt {}/{})", 
+                                    current_count + 1, retry_delay, retry_count + 1, MAX_RETRIES + 1);
+                                TimeoutFuture::new(retry_delay).await;
+                            }
+                        }
                     }
                 }
             }
