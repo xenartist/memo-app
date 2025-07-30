@@ -281,4 +281,37 @@ impl RpcConnection {
         
         Ok(result)
     }
+
+    /// Get the current supply of the mint token
+    /// 
+    /// # Returns
+    /// The current supply as u64 (in lamports)
+    pub async fn get_token_supply(&self) -> Result<u64, RpcError> {
+        let mint = MintConfig::get_token_mint()?;
+        
+        let params = serde_json::json!([
+            mint.to_string(),
+            {
+                "commitment": "confirmed"
+            }
+        ]);
+        
+        log::info!("Getting token supply for mint: {}", mint);
+        
+        let result: serde_json::Value = self.send_request("getTokenSupply", params).await?;
+        
+        // Parse the supply from the response
+        if let Some(supply_str) = result.get("value")
+            .and_then(|v| v.get("amount"))
+            .and_then(|a| a.as_str()) 
+        {
+            let supply = supply_str.parse::<u64>()
+                .map_err(|e| RpcError::Other(format!("Failed to parse supply as u64: {}", e)))?;
+            
+            log::info!("Current token supply: {} lamports", supply);
+            Ok(supply)
+        } else {
+            Err(RpcError::Other("Failed to extract supply from response".to_string()))
+        }
+    }
 }

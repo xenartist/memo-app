@@ -1,9 +1,47 @@
 use leptos::*;
 use crate::core::session::Session;
+use crate::core::rpc_base::RpcConnection;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
 use rand::Rng;
+
+// Supply tier configuration
+#[derive(Debug, Clone)]
+pub struct SupplyTier {
+    pub min: u64,
+    pub max: u64,
+    pub reward: f64,
+    pub label: String,
+}
+
+impl SupplyTier {
+    fn get_tiers() -> Vec<SupplyTier> {
+        vec![
+            SupplyTier { min: 0, max: 100_000_000_000_000, reward: 1.0, label: "0-100M".to_string() },
+            SupplyTier { min: 100_000_000_000_000, max: 1_000_000_000_000_000, reward: 0.1, label: "100M-1B".to_string() },
+            SupplyTier { min: 1_000_000_000_000_000, max: 10_000_000_000_000_000, reward: 0.01, label: "1B-10B".to_string() },
+            SupplyTier { min: 10_000_000_000_000_000, max: 100_000_000_000_000_000, reward: 0.001, label: "10B-100B".to_string() },
+            SupplyTier { min: 100_000_000_000_000_000, max: 1_000_000_000_000_000_000, reward: 0.0001, label: "100B-1T".to_string() },
+            SupplyTier { min: 1_000_000_000_000_000_000, max: u64::MAX, reward: 0.000001, label: "1T+".to_string() },
+        ]
+    }
+    
+    fn get_current_tier(supply: u64) -> SupplyTier {
+        Self::get_tiers().into_iter()
+            .find(|tier| supply >= tier.min && supply < tier.max)
+            .unwrap_or_else(|| Self::get_tiers().last().unwrap().clone())
+    }
+    
+    fn get_total_max_supply() -> u64 {
+        1_000_000_000_000_000_000 // 1T as reasonable max for progress bar
+    }
+    
+    fn calculate_progress_percentage(supply: u64) -> f64 {
+        let max_supply = Self::get_total_max_supply();
+        (supply as f64 / max_supply as f64 * 100.0).min(100.0)
+    }
+}
 
 // Generate random JSON memo between 69-800 bytes
 fn generate_random_memo() -> String {
@@ -42,6 +80,120 @@ fn generate_random_memo() -> String {
     }
     
     memo
+}
+
+#[component]
+pub fn SupplyProgressBar() -> impl IntoView {
+    let (supply_info, set_supply_info) = create_signal::<Option<(u64, SupplyTier)>>(None);
+    let (loading, set_loading) = create_signal(true);
+    let (error, set_error) = create_signal::<Option<String>>(None);
+
+    // Fetch supply information on component mount
+    create_effect(move |_| {
+        spawn_local(async move {
+            set_loading.set(true);
+            set_error.set(None);
+            
+            let rpc = RpcConnection::new();
+            match rpc.get_token_supply().await {
+                Ok(supply) => {
+                    let tier = SupplyTier::get_current_tier(supply);
+                    set_supply_info.set(Some((supply, tier)));
+                    set_loading.set(false);
+                },
+                Err(e) => {
+                    log::error!("Failed to fetch token supply: {}", e);
+                    set_error.set(Some(format!("Failed to load supply data: {}", e)));
+                    set_loading.set(false);
+                }
+            }
+        });
+    });
+
+    view! {
+        <div class="supply-progress-container">
+            <div class="supply-progress-header">
+                <h3>
+                    <i class="fas fa-chart-line"></i>
+                    "Token Supply Progress"
+                </h3>
+                <p>"Current mining tier based on total supply"</p>
+            </div>
+
+            {move || {
+                if loading.get() {
+                    view! {
+                        <div class="supply-loading">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            " Loading supply data..."
+                        </div>
+                    }.into_view()
+                } else if let Some(err) = error.get() {
+                    view! {
+                        <div class="supply-error">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            " " {err}
+                        </div>
+                    }.into_view()
+                } else if let Some((supply, tier)) = supply_info.get() {
+                    let progress = SupplyTier::calculate_progress_percentage(supply);
+                    let tiers = SupplyTier::get_tiers();
+                    let supply_tokens = supply as f64 / 1_000_000.0; // Convert to tokens (6 decimals)
+                    
+                    view! {
+                        <div>
+                            <div class="supply-progress-track">
+                                <div 
+                                    class="supply-progress-fill"
+                                    style:width=format!("{}%", progress)
+                                ></div>
+                                <div class="supply-progress-markers">
+                                    {tiers.iter().take(5).enumerate().map(|(i, tier)| {
+                                        let marker_position = SupplyTier::calculate_progress_percentage(tier.max);
+                                        view! {
+                                            <div 
+                                                class="supply-progress-marker"
+                                                style:left=format!("{}%", marker_position)
+                                            ></div>
+                                        }
+                                    }).collect::<Vec<_>>()}
+                                </div>
+                            </div>
+                            
+                            <div class="supply-progress-labels">
+                                {tiers.iter().map(|tier| {
+                                    view! {
+                                        <div class="supply-progress-label">
+                                            {tier.label.clone()}
+                                            <br/>
+                                            {format!("{} token", tier.reward)}
+                                        </div>
+                                    }
+                                }).collect::<Vec<_>>()}
+                            </div>
+
+                            <div class="supply-current-info">
+                                <div class="supply-info-item">
+                                    <div class="supply-info-label">"Current Supply"</div>
+                                    <div class="supply-info-value">
+                                        {format!("{:.2}M tokens", supply_tokens / 1_000_000.0)}
+                                    </div>
+                                </div>
+                                <div class="supply-info-item">
+                                    <div class="supply-info-label">"Current Reward"</div>
+                                    <div class="supply-info-value">
+                                        {format!("{} token", tier.reward)}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }.into_view()
+                } else {
+                    view! { <div></div> }.into_view()
+                }
+            }}
+        </div>
+    }
 }
 
 #[component]
@@ -101,6 +253,9 @@ pub fn MintPage(
                 </h1>
                 <p>"Mint tokens using the new memo mint contract"</p>
             </div>
+            
+            // Add the supply progress bar here
+            <SupplyProgressBar />
             
             <div class="mint-content">
                 <div class="mint-controls">
