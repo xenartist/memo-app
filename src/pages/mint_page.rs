@@ -648,14 +648,6 @@ pub fn MintPage(
                         }
                     }}
                     
-                    <div class="mint-description">
-                        {move || {
-                            match mint_mode.get() {
-                                MintMode::Manual => "This will generate a random JSON memo (69-800 bytes) and mint tokens once".to_string(),
-                                MintMode::Auto => "This will automatically mint tokens multiple times with a 2-second delay between each mint".to_string(),
-                            }
-                        }}
-                    </div>
                 </div>
                 
                 // Show minting status

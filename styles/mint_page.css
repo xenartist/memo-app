@@ -42,8 +42,7 @@
 /* Mint controls section */
 .mint-controls {
     text-align: center;
-    padding: 3rem 2rem;
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    padding: 1rem 0;
 }
 
 /* Main mint button - consistent with project style */
