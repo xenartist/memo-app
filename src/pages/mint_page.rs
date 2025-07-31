@@ -258,6 +258,25 @@ pub fn MintPage(
     // --- Manual signal to control immediate UI state on submit ---
     let (is_submitting, set_is_submitting) = create_signal(false);
 
+    // Helper function to check XNT balance before minting
+    let check_balance_before_mint = move || -> Result<(), String> {
+        let current_session = session.get();
+        let sol_balance = current_session.get_sol_balance();
+        
+        if sol_balance <= 0.0 {
+            let wallet_address = current_session.get_public_key()
+                .unwrap_or_else(|_| "Unknown".to_string());
+            
+            Err(format!(
+                "Insufficient XNT balance. Your current balance is {} XNT. Please deposit XNT to your wallet address: {}",
+                sol_balance,
+                wallet_address
+            ))
+        } else {
+            Ok(())
+        }
+    };
+
     let start_minting = create_action(move |_: &()| {
         async move {
             // Generate random memo
@@ -523,6 +542,15 @@ pub fn MintPage(
                                     class="mint-button"
                                     disabled=move || is_manual_pending || is_auto_running
                                     on:click=move |_| {
+                                        // Check balance before minting
+                                        if let Err(error_msg) = check_balance_before_mint() {
+                                            set_error_message.set(Some(error_msg));
+                                            return;
+                                        }
+                                        
+                                        // Clear any previous errors
+                                        set_error_message.set(None);
+                                        
                                         // 1. immediately update UI state (sync)
                                         set_is_submitting.set(true);
                                         set_minting_status.set("Minting in progress...".to_string());
@@ -567,6 +595,15 @@ pub fn MintPage(
                                                 set_auto_mint_running.set(false);
                                                 set_minting_status.set(String::new());
                                             } else {
+                                                // Check balance before starting auto minting
+                                                if let Err(error_msg) = check_balance_before_mint() {
+                                                    set_error_message.set(Some(error_msg));
+                                                    return;
+                                                }
+                                                
+                                                // Clear any previous errors
+                                                set_error_message.set(None);
+                                                
                                                 // Start auto minting - apply same UI responsiveness pattern as manual mode
                                                 // 1. immediately update UI state (sync)
                                                 set_auto_mint_running.set(true);
