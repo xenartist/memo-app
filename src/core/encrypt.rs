@@ -41,8 +41,8 @@ fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], EncryptError> {
         Version::V0x13,
         Params::new(
             // These parameters can be adjusted based on security requirements and performance
-            32 * 1024, // Memory cost
-            2,         // Iterations
+            64 * 1024, // Memory cost
+            3,         // Iterations
             1,         // Parallelism
             Some(32),  // Output length (32 bytes = 256 bits)
         )
