@@ -638,17 +638,7 @@ pub fn MintPage(
                                     
                                     {move || {
                                         if is_auto_running {
-                                            let current = auto_mint_current.get();
-                                            let total = auto_mint_count.get();
-                                            view! {
-                                                <div class="auto-mint-progress">
-                                                    {if total == 0 {
-                                                        format!("Completed: {}", current)
-                                                    } else {
-                                                        format!("Progress: {}/{}", current, total)
-                                                    }}
-                                                </div>
-                                            }.into_view()
+                                            view! { <div></div> }.into_view()
                                         } else {
                                             view! { <div></div> }.into_view()
                                         }
