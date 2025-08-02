@@ -72,6 +72,26 @@ pub struct ChatStatistics {
     pub groups: Vec<ChatGroupInfo>,
 }
 
+/// Represents a single chat message/memo in a group
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub signature: String,      // Transaction signature
+    pub sender: String,         // Sender's public key
+    pub message: String,        // The memo content
+    pub timestamp: i64,         // Block time
+    pub slot: u64,             // Slot number
+    pub memo_amount: u64,      // Amount of MEMO tokens burned for this message
+}
+
+/// Response containing chat messages for a group
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessagesResponse {
+    pub group_id: u64,
+    pub messages: Vec<ChatMessage>,
+    pub total_found: usize,
+    pub has_more: bool,        // Indicates if there are more messages available
+}
+
 impl RpcConnection {
     /// Get global chat statistics from the memo-chat contract
     /// 
@@ -438,5 +458,135 @@ impl RpcConnection {
         }
         
         Ok(groups)
+    }
+    
+    /// Get chat messages for a specific group
+    /// 
+    /// # Parameters
+    /// * `group_id` - The ID of the chat group
+    /// * `limit` - Maximum number of messages to fetch (default: 20)
+    /// * `before` - Optional signature to fetch messages before this one (for pagination)
+    /// 
+    /// # Returns
+    /// Chat messages for the group, ordered from oldest to newest
+    pub async fn get_chat_messages(
+        &self,
+        group_id: u64,
+        limit: Option<usize>,
+        before: Option<String>
+    ) -> Result<ChatMessagesResponse, RpcError> {
+        let limit = limit.unwrap_or(20);
+        
+        // Get the PDA for this group
+        let (group_pda, _) = ChatConfig::get_chat_group_pda(group_id)?;
+        
+        log::info!("Fetching chat messages for group {} (PDA: {})", group_id, group_pda);
+        
+        // Build the parameters for getSignaturesForAddress
+        let mut params = serde_json::json!([
+            group_pda.to_string(),
+            {
+                "limit": limit,
+                "commitment": "finalized"
+            }
+        ]);
+        
+        // Add 'before' parameter if provided for pagination
+        if let Some(before_sig) = before {
+            params[1]["before"] = serde_json::Value::String(before_sig);
+        }
+        
+        // Get transaction signatures with memo information for this group's PDA
+        let signatures: Vec<serde_json::Value> = self.send_request("getSignaturesForAddress", params).await?;
+        
+        if signatures.is_empty() {
+            return Ok(ChatMessagesResponse {
+                group_id,
+                messages: vec![],
+                total_found: 0,
+                has_more: false,
+            });
+        }
+        
+        // Parse chat messages directly from the signatures response
+        let mut messages = Vec::new();
+        
+        for sig_info in &signatures {
+            // Skip if there's an error in the transaction
+            if !sig_info["err"].is_null() {
+                continue;
+            }
+            
+            // Extract required fields
+            let signature = sig_info["signature"]
+                .as_str()
+                .unwrap_or("Unknown")
+                .to_string();
+            
+            // Debug log the raw blockTime value
+            log::info!("Raw blockTime value: {:?}", sig_info["blockTime"]);
+            
+            let block_time = sig_info["blockTime"]
+                .as_i64()
+                .unwrap_or_else(|| {
+                    log::warn!("Failed to parse blockTime for signature {}, raw value: {:?}", signature, sig_info["blockTime"]);
+                    0
+                });
+            
+            log::info!("Parsed blockTime: {} for signature: {}", block_time, signature);
+            
+            let slot = sig_info["slot"]
+                .as_u64()
+                .unwrap_or(0);
+            
+            // Extract memo content
+            if let Some(memo_str) = sig_info["memo"].as_str() {
+                // Parse the memo format: "[length] message"
+                // We want to extract only the message content, ignoring the length prefix
+                let memo_content = if let Some(bracket_end) = memo_str.find(']') {
+                    if bracket_end + 2 < memo_str.len() {
+                        // Skip the "] " part and get the actual message
+                        memo_str[bracket_end + 2..].to_string()
+                    } else {
+                        // If there's no content after the bracket, use empty string
+                        String::new()
+                    }
+                } else {
+                    // If there's no bracket format, use the entire string
+                    memo_str.to_string()
+                };
+                
+                // Skip empty messages
+                if memo_content.trim().is_empty() {
+                    continue;
+                }
+                
+                log::info!("Creating message with timestamp: {}, content: {}", block_time, memo_content);
+                
+                messages.push(ChatMessage {
+                    signature,
+                    sender: String::new(), // Use empty string instead of "Unknown"
+                    message: memo_content,
+                    timestamp: block_time,
+                    slot,
+                    memo_amount: 0, // Set to 0 since the bracket number is message length, not burned amount
+                });
+            }
+        }
+        
+        // Sort messages by timestamp from oldest to newest (ascending order)
+        messages.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+        
+        let has_more = signatures.len() == limit;
+        let total_found = messages.len();
+        
+        log::info!("Found {} chat messages for group {}, sorted oldest to newest", total_found, group_id);
+        
+        Ok(ChatMessagesResponse {
+            group_id,
+            messages,
+            total_found,
+            has_more,
+        })
     }
 }
