@@ -529,7 +529,8 @@
     line-height: 1.4;
     outline: none;
     transition: border-color 0.2s;
-    width: 100%; /* Ensure input takes full available width */
+    min-width: 1000px;
+    width: 100%;
 }
 
 .message-input:focus {
@@ -628,6 +629,7 @@
     .message-input {
         font-size: 16px;
         min-height: 45px;
+        min-width: 0;
     }
     
     .send-button {
