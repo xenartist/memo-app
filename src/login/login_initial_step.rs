@@ -7,7 +7,7 @@ pub fn InitialStep(
 ) -> impl IntoView {
     view! {
         <div class="login-container">
-            <h1 class="app-title">"Memo App"</h1>
+            <h1 class="app-title">"MEMO Engraves Memories Onchain"</h1>
             <div class="button-group">
                 <button 
                     class="wallet-btn new-wallet" 

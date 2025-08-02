@@ -12,7 +12,7 @@ fn main() {
 
     wasm_logger::init(wasm_logger::Config::default());
 
-    log::info!("Starting Memo App");
+    log::info!("Starting MEMO Engraves Memories Onchain");
 
     mount_to_body(|| {
         view! {

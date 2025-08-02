@@ -64,7 +64,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     view! {
         <div class="chat-page">
             <div class="page-header">
-                <h1>"Memo Chat"</h1>
+                <h1><i class="fas fa-comments"></i>" Memo Chat"</h1>
                 <p class="page-description">
                     "View and interact with memo-chat groups on the blockchain"
                 </p>
@@ -114,18 +114,6 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
 
 #[component]
 fn OverviewStats(stats: ChatStatistics) -> impl IntoView {
-    let avg_memos_per_group = if stats.valid_groups > 0 {
-        stats.total_memos as f64 / stats.valid_groups as f64
-    } else {
-        0.0
-    };
-
-    let avg_burned_per_group = if stats.valid_groups > 0 {
-        (stats.total_burned_tokens / 1_000_000) as f64 / stats.valid_groups as f64
-    } else {
-        0.0
-    };
-
     view! {
         <div class="overview-stats">
             <h2>"Chat Groups Overview"</h2>
@@ -142,51 +130,11 @@ fn OverviewStats(stats: ChatStatistics) -> impl IntoView {
                 
                 <div class="stat-card">
                     <div class="stat-icon">
-                        <i class="fas fa-check-circle"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3>{stats.valid_groups}</h3>
-                        <p>"Active Groups"</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon">
                         <i class="fas fa-comments"></i>
                     </div>
                     <div class="stat-content">
                         <h3>{stats.total_memos}</h3>
                         <p>"Total Memos"</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-fire"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3>{format!("{:.2}", stats.total_burned_tokens as f64 / 1_000_000.0)}</h3>
-                        <p>"Total Burned (MEMO)"</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-chart-line"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3>{format!("{:.1}", avg_memos_per_group)}</h3>
-                        <p>"Avg Memos/Group"</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-coins"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3>{format!("{:.2}", avg_burned_per_group)}</h3>
-                        <p>"Avg Burned/Group"</p>
                     </div>
                 </div>
             </div>
@@ -205,7 +153,7 @@ fn GroupsList(groups: Vec<ChatGroupInfo>) -> impl IntoView {
 
     view! {
         <div class="groups-list">
-            <h2>"Chat Groups" <span class="group-count">({groups_signal.get().len()})</span></h2>
+            <h2>"Chat Groups"</h2>
             
             <Show
                 when=move || !groups_signal.get().is_empty()
