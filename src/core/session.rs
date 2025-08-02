@@ -2,7 +2,7 @@ use serde::{Serialize, Deserialize};
 use std::time::{Duration, SystemTime};
 use crate::core::encrypt;
 use crate::core::rpc_base::{RpcConnection, RpcError};
-use crate::core::constants::TOKEN_MINT;
+use crate::core::rpc_mint::MintConfig;
 use web_sys::js_sys::Date;
 use secrecy::{Secret, ExposeSecret};
 use zeroize::Zeroize;
@@ -378,7 +378,7 @@ impl Session {
         
         // Now using global constant instead of local definition
         // get token balance
-        match rpc.get_token_balance(&pubkey, TOKEN_MINT).await {
+        match rpc.get_token_balance(&pubkey, MintConfig::TOKEN_MINT).await {
             Ok(token_result) => {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&token_result) {
                     if let Some(accounts) = json.get("value").and_then(|v| v.as_array()) {

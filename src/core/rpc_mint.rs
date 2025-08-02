@@ -1,5 +1,4 @@
 use super::rpc_base::{RpcConnection, RpcError};
-use super::constants::TOKEN_MINT;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use solana_sdk::{
@@ -22,7 +21,7 @@ impl MintConfig {
     pub const MINT_PROGRAM_ID: &'static str = "A31a17bhgQyRQygeZa1SybytjbCdjMpu6oPr9M3iQWzy";
     
     // Authorized mint token address - now using global constant
-    pub const TOKEN_MINT: &'static str = TOKEN_MINT;
+    pub const TOKEN_MINT: &'static str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
     
     // Token 2022 Program ID
     pub const TOKEN_2022_PROGRAM_ID: &'static str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
