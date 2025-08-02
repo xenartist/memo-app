@@ -127,6 +127,52 @@ fn generate_random_memo() -> String {
     memo
 }
 
+// Format supply display with proper units and thousand separators
+fn format_supply_display(supply_tokens: f64) -> String {
+    // add thousand separators helper function
+    fn add_thousand_separators(num: f64, decimal_places: usize) -> String {
+        let formatted = format!("{:.prec$}", num, prec = decimal_places);
+        let parts: Vec<&str> = formatted.split('.').collect();
+        let integer_part = parts[0];
+        let decimal_part = if parts.len() > 1 { parts[1] } else { "" };
+        
+        // add thousand separators to integer part
+        let mut result = String::new();
+        let chars: Vec<char> = integer_part.chars().collect();
+        for (i, ch) in chars.iter().enumerate() {
+            if i > 0 && (chars.len() - i) % 3 == 0 {
+                result.push(',');
+            }
+            result.push(*ch);
+        }
+        
+        // if there is decimal part and not all zeros, add decimal part
+        if !decimal_part.is_empty() && !decimal_part.chars().all(|c| c == '0') {
+            result.push('.');
+            result.push_str(decimal_part.trim_end_matches('0'));
+        }
+        
+        result
+    }
+    
+    if supply_tokens < 1_000_000.0 {
+        // less than 1M, show full value
+        format!("{} tokens", add_thousand_separators(supply_tokens, 0))
+    } else if supply_tokens < 1_000_000_000.0 {
+        // less than 1B, more than 1M, show value and unit M
+        let millions = supply_tokens / 1_000_000.0;
+        format!("{}M tokens", add_thousand_separators(millions, 2))
+    } else if supply_tokens < 1_000_000_000_000.0 {
+        // less than 1T, more than 1B, show value and unit B
+        let billions = supply_tokens / 1_000_000_000.0;
+        format!("{}B tokens", add_thousand_separators(billions, 2))
+    } else {
+        // more than 1T, show value and unit T
+        let trillions = supply_tokens / 1_000_000_000_000.0;
+        format!("{}T tokens", add_thousand_separators(trillions, 2))
+    }
+}
+
 #[component]
 pub fn SupplyProgressBar() -> impl IntoView {
     let (supply_info, set_supply_info) = create_signal::<Option<(u64, SupplyTier)>>(None);
@@ -221,7 +267,7 @@ pub fn SupplyProgressBar() -> impl IntoView {
                                 <div class="supply-info-item">
                                     <div class="supply-info-label">"Current Supply"</div>
                                     <div class="supply-info-value">
-                                        {format!("{:.2}M tokens", supply_tokens / 1_000_000.0)}
+                                        {format_supply_display(supply_tokens)}
                                     </div>
                                 </div>
                                 <div class="supply-info-item">
