@@ -2,6 +2,7 @@ use leptos::*;
 use crate::core::session::Session;
 use crate::core::rpc_base::RpcConnection;
 use crate::core::rpc_chat::{ChatStatistics, ChatGroupInfo, ChatMessage, ChatMessagesResponse};
+use crate::core::rpc_mint::MintConfig;
 use crate::pages::log_view::add_log_entry;
 use wasm_bindgen_futures::spawn_local;
 
@@ -25,6 +26,9 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     let (message_input, set_message_input) = create_signal(String::new());
     let (sending, set_sending) = create_signal(false);
 
+    // Current mint reward state
+    let (current_mint_reward, set_current_mint_reward) = create_signal::<Option<String>>(None);
+
     // Load chat statistics on component mount
     spawn_local(async move {
         set_loading.set(true);
@@ -47,6 +51,21 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         }
         
         set_loading.set(false);
+    });
+
+    // Load current mint reward
+    spawn_local(async move {
+        let rpc = RpcConnection::new();
+        match rpc.get_current_mint_reward_formatted().await {
+            Ok(reward) => {
+                set_current_mint_reward.set(Some(reward));
+            },
+            Err(e) => {
+                log::warn!("Failed to get current mint reward: {}", e);
+                // Use default if unable to fetch
+                set_current_mint_reward.set(Some("+1.000000 MEMO".to_string()));
+            }
+        }
     });
 
     // Function to enter a chat room
@@ -254,7 +273,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                                     each=move || messages.get()
                                                     key=|message| message.signature.clone()
                                                     children=move |message: ChatMessage| {
-                                                        view! { <MessageItem message=message/> }
+                                                        view! { <MessageItem message=message current_mint_reward=current_mint_reward/> }
                                                     }
                                                 />
                                             </div>
@@ -534,7 +553,7 @@ fn GroupCard(group: ChatGroupInfo, enter_chat_room: impl Fn(u64) + 'static + Cop
 }
 
 #[component]
-fn MessageItem(message: ChatMessage) -> impl IntoView {
+fn MessageItem(message: ChatMessage, current_mint_reward: ReadSignal<Option<String>>) -> impl IntoView {
     // Store values in variables to make them accessible in closures
     let timestamp = message.timestamp;
     let message_content = message.message.clone();
@@ -569,6 +588,12 @@ fn MessageItem(message: ChatMessage) -> impl IntoView {
             </div>
             <div class="message-content">
                 {message_content}
+            </div>
+            <div class="message-meta">
+                <i class="fas fa-coins"></i>
+                <span class="memo-amount">
+                    {move || current_mint_reward.get().unwrap_or_else(|| "+1.000000 MEMO".to_string())}
+                </span>
             </div>
         </div>
     }
