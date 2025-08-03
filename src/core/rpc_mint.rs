@@ -126,9 +126,34 @@ impl MintConfig {
         tier.reward
     }
     
-    /// Format mint amount for display (with 6 decimal places)
+    /// Format mint amount for display (smart decimal precision)
     pub fn format_mint_reward(amount: f64) -> String {
-        format!("+{:.6} MEMO", amount)
+        // If it's a whole number, don't show decimals
+        if amount.fract() == 0.0 {
+            format!("+{} MEMO", amount as u64)
+        } else if amount >= 1.0 {
+            // For values >= 1, show minimal decimals (remove trailing zeros)
+            let formatted = format!("{}", amount);
+            format!("+{} MEMO", formatted)
+        } else {
+            // For values < 1, show appropriate precision (remove trailing zeros)
+            let formatted = if amount >= 0.1 {
+                format!("{:.1}", amount)
+            } else if amount >= 0.01 {
+                format!("{:.2}", amount)
+            } else if amount >= 0.001 {
+                format!("{:.3}", amount)
+            } else if amount >= 0.0001 {
+                format!("{:.4}", amount)
+            } else if amount >= 0.00001 {
+                format!("{:.5}", amount)
+            } else {
+                format!("{:.6}", amount)
+            };
+            // Remove trailing zeros
+            let trimmed = formatted.trim_end_matches('0').trim_end_matches('.');
+            format!("+{} MEMO", trimmed)
+        }
     }
 
     /// Calculate visual progress percentage for supply progress bar

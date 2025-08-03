@@ -63,7 +63,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
             Err(e) => {
                 log::warn!("Failed to get current mint reward: {}", e);
                 // Use default if unable to fetch
-                set_current_mint_reward.set(Some("+1.000000 MEMO".to_string()));
+                set_current_mint_reward.set(Some("+1 MEMO".to_string()));
             }
         }
     });
@@ -590,11 +590,13 @@ fn MessageItem(message: ChatMessage, current_mint_reward: ReadSignal<Option<Stri
                 {message_content}
             </div>
             <div class="message-meta">
+            <div class="memo-amount">
                 <i class="fas fa-coins"></i>
-                <span class="memo-amount">
-                    {move || current_mint_reward.get().unwrap_or_else(|| "+1.000000 MEMO".to_string())}
+                <span>
+                    {move || current_mint_reward.get().unwrap_or_else(|| "+1 MEMO".to_string())}
                 </span>
             </div>
+        </div>
         </div>
     }
 }
