@@ -298,7 +298,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                     <div class="page-header">
                         <h1><i class="fas fa-comments"></i>" Memo Chat"</h1>
                         <p class="page-description">
-                            "View and interact with memo-chat groups on the blockchain"
+                            "Chat & Mint"
                         </p>
                         <button 
                             class="refresh-button"
@@ -535,15 +535,28 @@ fn GroupCard(group: ChatGroupInfo, enter_chat_room: impl Fn(u64) + 'static + Cop
 
 #[component]
 fn MessageItem(message: ChatMessage) -> impl IntoView {
-    // Store timestamp in a variable to make it accessible in closures
+    // Store values in variables to make them accessible in closures
     let timestamp = message.timestamp;
-    
-    // Since sender is empty and memo_amount is 0, we don't need to display them
     let message_content = message.message.clone();
+    let sender = message.sender.clone();
+    
+    // Helper function to format sender address (first 4 + last 4 chars)
+    let format_sender = move |sender: &str| -> String {
+        if sender.is_empty() {
+            "Anonymous".to_string()
+        } else if sender.len() >= 8 {
+            format!("{}...{}", &sender[..4], &sender[sender.len()-4..])
+        } else {
+            sender.to_string()
+        }
+    };
     
     view! {
         <div class="message-item">
             <div class="message-header">
+                <span class="sender">
+                    {format_sender(&sender)}
+                </span>
                 <span class="timestamp">
                     {move || {
                         if timestamp > 0 {

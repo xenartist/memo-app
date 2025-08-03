@@ -541,36 +541,75 @@ impl RpcConnection {
             
             // Extract memo content
             if let Some(memo_str) = sig_info["memo"].as_str() {
-                // Parse the memo format: "[length] message"
-                // We want to extract only the message content, ignoring the length prefix
-                let memo_content = if let Some(bracket_end) = memo_str.find(']') {
+                // Parse the memo format: "[length] JSON message"
+                // Extract the JSON content after the length prefix
+                let json_content = if let Some(bracket_end) = memo_str.find(']') {
                     if bracket_end + 2 < memo_str.len() {
-                        // Skip the "] " part and get the actual message
+                        // Skip the "] " part and get the JSON content
                         memo_str[bracket_end + 2..].to_string()
                     } else {
-                        // If there's no content after the bracket, use empty string
-                        String::new()
+                        // If there's no content after the bracket, skip this message
+                        continue;
                     }
                 } else {
-                    // If there's no bracket format, use the entire string
+                    // If there's no bracket format, treat the entire string as JSON
                     memo_str.to_string()
                 };
                 
                 // Skip empty messages
-                if memo_content.trim().is_empty() {
+                if json_content.trim().is_empty() {
                     continue;
                 }
                 
-                log::info!("Creating message with timestamp: {}, content: {}", block_time, memo_content);
-                
-                messages.push(ChatMessage {
-                    signature,
-                    sender: String::new(), // Use empty string instead of "Unknown"
-                    message: memo_content,
-                    timestamp: block_time,
-                    slot,
-                    memo_amount: 0, // Set to 0 since the bracket number is message length, not burned amount
-                });
+                // Try to parse the JSON content
+                match serde_json::from_str::<serde_json::Value>(&json_content) {
+                    Ok(json_data) => {
+                        // Check if this is a chat message
+                        if let Some(category) = json_data["category"].as_str() {
+                            if category == "chat" {
+                                let message = json_data["message"]
+                                    .as_str()
+                                    .unwrap_or("")
+                                    .to_string();
+                                    
+                                let sender = json_data["sender"]
+                                    .as_str()
+                                    .unwrap_or("")
+                                    .to_string();
+                                
+                                // Skip empty messages
+                                if message.trim().is_empty() {
+                                    continue;
+                                }
+                                
+                                log::info!("Creating chat message with timestamp: {}, sender: {}, content: {}", 
+                                          block_time, sender, message);
+                                
+                                messages.push(ChatMessage {
+                                    signature,
+                                    sender,
+                                    message,
+                                    timestamp: block_time,
+                                    slot,
+                                    memo_amount: 0, // Set to 0 for now, could be extracted from JSON if needed
+                                });
+                            }
+                        }
+                    },
+                    Err(_) => {
+                        // If JSON parsing fails, treat it as a plain text message (backward compatibility)
+                        log::info!("Creating plain text message with timestamp: {}, content: {}", block_time, json_content);
+                        
+                        messages.push(ChatMessage {
+                            signature,
+                            sender: String::new(), // Empty sender for plain text messages
+                            message: json_content,
+                            timestamp: block_time,
+                            slot,
+                            memo_amount: 0,
+                        });
+                    }
+                }
             }
         }
         
