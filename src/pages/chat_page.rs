@@ -405,8 +405,8 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                             placeholder=move || {
                                                 if sending.get() {
                                                     "Sending, please wait...".to_string()
-                                                } else if session.with(|s| s.get_sol_balance()) < 0.01 {
-                                                    format!("Balance insufficient, sending message requires at least 0.01 SOL (current: {:.4} SOL)", session.with(|s| s.get_sol_balance()))
+                                                } else if session.with(|s| s.get_sol_balance()) < 0.005 {
+                                                    format!("Balance insufficient, sending message requires at least 0.005 SOL (current: {:.4} SOL)", session.with(|s| s.get_sol_balance()))
                                                 } else {
                                                     "Type your message... (Press Enter to send, Shift+Enter for new line)".to_string()
                                                 }
@@ -416,7 +416,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                                 set_message_input.set(event_target_value(&ev));
                                             }
                                             on:keypress=handle_key_press
-                                            disabled=move || sending.get() || session.with(|s| s.get_sol_balance()) < 0.01
+                                            disabled=move || sending.get() || session.with(|s| s.get_sol_balance()) < 0.005
                                         ></textarea>
                                         <button
                                             class="send-button"
@@ -424,13 +424,13 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                             disabled=move || {
                                                 message_input.get().trim().is_empty() || 
                                                 sending.get() || 
-                                                session.with(|s| s.get_sol_balance()) < 0.01
+                                                session.with(|s| s.get_sol_balance()) < 0.005
                                             }
                                             title=move || {
                                                 if sending.get() {
                                                     "Sending...".to_string()
-                                                } else if session.with(|s| s.get_sol_balance()) < 0.01 {
-                                                    format!("Balance insufficient, sending message requires at least 0.01 SOL (current: {:.4} SOL)", session.with(|s| s.get_sol_balance()))
+                                                } else if session.with(|s| s.get_sol_balance()) < 0.005 {
+                                                    format!("Balance insufficient, sending message requires at least 0.005 SOL (current: {:.4} SOL)", session.with(|s| s.get_sol_balance()))
                                                 } else if message_input.get().trim().is_empty() {
                                                     "Please enter message content".to_string()
                                                 } else {
