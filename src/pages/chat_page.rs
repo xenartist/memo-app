@@ -211,7 +211,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                 // Check SOL balance before sending
                 let sol_balance = session.with_untracked(|s| s.get_sol_balance());
                 if sol_balance < 0.01 {
-                    let error_msg = format!("Balance insufficient! Current SOL balance: {:.4}, sending message requires at least 0.01 SOL as transaction fee. Please top up.", sol_balance);
+                    let error_msg = format!("Balance insufficient! Current XNT balance: {:.4}, sending message requires at least 0.01 SOL as transaction fee. Please top up.", sol_balance);
                     add_log_entry("ERROR", &error_msg);
                     set_error_message.set(Some(error_msg));
                     return;
@@ -406,7 +406,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                                 if sending.get() {
                                                     "Sending, please wait...".to_string()
                                                 } else if session.with(|s| s.get_sol_balance()) < 0.005 {
-                                                    format!("Balance insufficient, sending message requires at least 0.005 SOL (current: {:.4} SOL)", session.with(|s| s.get_sol_balance()))
+                                                    format!("Balance insufficient, sending message requires at least 0.005 XNT (current: {:.4} XNT)", session.with(|s| s.get_sol_balance()))
                                                 } else {
                                                     "Type your message... (Press Enter to send, Shift+Enter for new line)".to_string()
                                                 }
@@ -430,7 +430,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                                 if sending.get() {
                                                     "Sending...".to_string()
                                                 } else if session.with(|s| s.get_sol_balance()) < 0.005 {
-                                                    format!("Balance insufficient, sending message requires at least 0.005 SOL (current: {:.4} SOL)", session.with(|s| s.get_sol_balance()))
+                                                    format!("Balance insufficient, sending message requires at least 0.005 XNT (current: {:.4} XNT)", session.with(|s| s.get_sol_balance()))
                                                 } else if message_input.get().trim().is_empty() {
                                                     "Please enter message content".to_string()
                                                 } else {

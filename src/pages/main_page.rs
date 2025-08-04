@@ -110,8 +110,8 @@ pub fn MainPage(
                 session.update(|s| {
                     s.set_balances(session_update.get_sol_balance(), session_update.get_token_balance());
                 });
-                add_log_entry("INFO", &format!("SOL balance: {}", session_update.get_sol_balance()));
-                add_log_entry("INFO", &format!("Token balance: {}", session_update.get_token_balance()));
+                add_log_entry("INFO", &format!("XNT balance: {}", session_update.get_sol_balance()));
+                add_log_entry("INFO", &format!("MEMO balance: {}", session_update.get_token_balance()));
             },
             Err(e) => {
                 log::error!("Failed to fetch initial balances: {}", e);
@@ -181,7 +181,7 @@ pub fn MainPage(
                 */
                 <div class="wallet-address">
                     <span class="token-balance">{move || format!("{:.2} MEMO", token_balance())}</span>
-                    <span class="balance">{move || format!("{:.4} SOL", sol_balance())}</span>
+                    <span class="balance">{move || format!("{:.4} XNT", sol_balance())}</span>
                     <span class="address-label">"Wallet: "</span>
                     <span 
                         class="address-value" 
