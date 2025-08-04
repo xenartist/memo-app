@@ -318,7 +318,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                 <div class="header-left">
                                     <button class="back-button" on:click=back_to_groups>
                                         <i class="fas fa-arrow-left"></i>
-                                        "Back to Groups".to_string()
+                                        "Back to Groups"
                                     </button>
                                 </div>
                                 
@@ -349,7 +349,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                         disabled=move || loading.get()
                                     >
                                         <i class="fas fa-sync-alt"></i>
-                                        "Refresh".to_string()
+                                        "Refresh"
                                     </button>
                                 </div>
                             </div>
@@ -741,12 +741,12 @@ fn MessageItem(message: LocalChatMessage, current_mint_reward: ReadSignal<Option
                                     match status {
                                         MessageStatus::Sending => view! {
                                             <span class="status-sending">
-                                                "Sending".to_string()
+                                                "Sending"
                                             </span>
                                         }.into_view(),
                                         MessageStatus::Sent => view! {
                                             <span class="status-sent">
-                                                "Sent".to_string()
+                                                "Sent"
                                             </span>
                                         }.into_view(),
                                         _ => view! { <div></div> }.into_view(),
