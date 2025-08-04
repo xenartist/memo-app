@@ -455,9 +455,9 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                 // Groups List View (existing code)
                 <div class="groups-list-container">
                     <div class="page-header">
-                        <h1><i class="fas fa-comments"></i>" Memo Chat"</h1>
+                        <h1><i class="fas fa-comments"></i>"Chat & Earn"</h1>
                         <p class="page-description">
-                            "Chat & Mint"
+                            "Decentralized Messaging on X1 Blockchain"
                         </p>
                         <button 
                             class="refresh-button"
@@ -527,7 +527,7 @@ fn OverviewStats(stats: ChatStatistics) -> impl IntoView {
                     </div>
                     <div class="stat-content">
                         <h3>{stats.total_memos}</h3>
-                        <p>"Total Memos"</p>
+                        <p>"Total Messages"</p>
                     </div>
                 </div>
             </div>
@@ -595,7 +595,7 @@ fn GroupCard(group: ChatGroupInfo, enter_chat_room: impl Fn(u64) + 'static + Cop
     let last_memo_formatted = if group.last_memo_time > 0 {
         format_timestamp(group.last_memo_time)
     } else {
-        "No memos yet".to_string()
+        "No messages yet".to_string()
     };
 
     // Handle click to enter chat group
@@ -629,7 +629,7 @@ fn GroupCard(group: ChatGroupInfo, enter_chat_room: impl Fn(u64) + 'static + Cop
             <div class="group-stats">
                 <div class="stat-item">
                     <i class="fas fa-comments"></i>
-                    <span>{move || group_memo_count.get()} " memos"</span>
+                    <span>{move || group_memo_count.get()} " messages"</span>
                 </div>
                 <div class="stat-item">
                     <i class="fas fa-fire"></i>
