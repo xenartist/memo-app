@@ -1,10 +1,11 @@
 use leptos::*;
 use crate::core::session::Session;
 use crate::core::rpc_base::RpcConnection;
-use crate::core::rpc_chat::{ChatStatistics, ChatGroupInfo, ChatMessage, ChatMessagesResponse};
+use crate::core::rpc_chat::{ChatStatistics, ChatGroupInfo, ChatMessage, ChatMessagesResponse, LocalChatMessage, MessageStatus};
 use crate::core::rpc_mint::MintConfig;
 use crate::pages::log_view::add_log_entry;
 use wasm_bindgen_futures::spawn_local;
+use gloo_timers::future::TimeoutFuture;
 
 // Chat page view mode
 #[derive(Clone, PartialEq)]
@@ -22,7 +23,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     
     // Chat room specific states
     let (current_group_info, set_current_group_info) = create_signal::<Option<ChatGroupInfo>>(None);
-    let (messages, set_messages) = create_signal::<Vec<ChatMessage>>(vec![]);
+    let (messages, set_messages) = create_signal::<Vec<LocalChatMessage>>(vec![]);
     let (message_input, set_message_input) = create_signal(String::new());
     let (sending, set_sending) = create_signal(false);
 
@@ -88,7 +89,12 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
             match rpc.get_chat_messages(group_id, Some(20), None).await {
                 Ok(messages_response) => {
                     add_log_entry("INFO", &format!("Loaded {} messages", messages_response.messages.len()));
-                    set_messages.set(messages_response.messages);
+                    // Convert chain messages to local messages
+                    let local_messages: Vec<LocalChatMessage> = messages_response.messages
+                        .into_iter()
+                        .map(LocalChatMessage::from_chain_message)
+                        .collect();
+                    set_messages.set(local_messages);
                     set_error_message.set(None);
                 },
                 Err(e) => {
@@ -145,7 +151,41 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                 match rpc.get_chat_messages(group_id, Some(20), None).await {
                     Ok(messages_response) => {
                         add_log_entry("INFO", &format!("Refreshed {} messages", messages_response.messages.len()));
-                        set_messages.set(messages_response.messages);
+                        // Convert chain messages to local messages, preserving any local pending messages
+                        let current_messages = messages.get();
+                        let mut new_local_messages: Vec<LocalChatMessage> = messages_response.messages
+                            .into_iter()
+                            .map(LocalChatMessage::from_chain_message)
+                            .collect();
+                        
+                        // Add any local pending messages that are not yet on chain
+                        for local_msg in current_messages {
+                            if local_msg.is_local && local_msg.status == MessageStatus::Sending {
+                                // Check if this local message appears in chain messages by comparing content and sender
+                                let found_on_chain = new_local_messages.iter().any(|chain_msg| {
+                                    chain_msg.message.message == local_msg.message.message &&
+                                    chain_msg.message.sender == local_msg.message.sender
+                                });
+                                
+                                if found_on_chain {
+                                    // Update local message to sent status
+                                    if let Some(chain_msg) = new_local_messages.iter_mut().find(|chain_msg| {
+                                        chain_msg.message.message == local_msg.message.message &&
+                                        chain_msg.message.sender == local_msg.message.sender
+                                    }) {
+                                        chain_msg.status = MessageStatus::Sent;
+                                    }
+                                } else {
+                                    // Keep the local pending message
+                                    new_local_messages.push(local_msg);
+                                }
+                            }
+                        }
+                        
+                        // Sort by timestamp
+                        new_local_messages.sort_by(|a, b| a.message.timestamp.cmp(&b.message.timestamp));
+                        
+                        set_messages.set(new_local_messages);
                         set_error_message.set(None);
                     },
                     Err(e) => {
@@ -158,26 +198,91 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         }
     };
 
-    // Handle message sending (placeholder for now)
+    // Handle message sending
     let send_message = move |_ev: web_sys::MouseEvent| {
         let message_text = message_input.get().trim().to_string();
         if message_text.is_empty() {
             return;
         }
         
-        set_sending.set(true);
-        set_message_input.set(String::new());
-        
-        spawn_local(async move {
-            // TODO: Implement actual message sending when you provide the RPC interface
-            add_log_entry("INFO", &format!("TODO: Send message: {}", message_text));
-            
-            // Simulate sending delay
-            gloo_timers::future::TimeoutFuture::new(1000).await;
-            
-            set_sending.set(false);
-            add_log_entry("INFO", "Message sending not yet implemented");
-        });
+        // Get current group ID and user info
+        if let ChatView::ChatRoom(group_id) = current_view.get() {
+            if let Ok(user_pubkey) = session.with_untracked(|s| s.get_public_key()) {
+                // 1. show message on UI immediately
+                let local_message = LocalChatMessage::new_local(
+                    user_pubkey.clone(),
+                    message_text.clone(),
+                    group_id
+                );
+                
+                // add to current message list
+                set_messages.update(|msgs| {
+                    msgs.push(local_message.clone());
+                });
+                
+                // clear input and set sending state
+                set_message_input.set(String::new());
+                set_sending.set(true);
+                
+                // 2. short delay to update UI
+                spawn_local(async move {
+                    TimeoutFuture::new(100).await;
+                    
+                    // 3. actually send message
+                    let result = session.with_untracked(|s| s.clone()).send_chat_message(
+                        group_id,
+                        &message_text,
+                        None, // receiver
+                        None  // reply_to_sig
+                    ).await;
+                    
+                    match result {
+                        Ok(signature) => {
+                            add_log_entry("INFO", &format!("Message sent successfully! Signature: {}", signature));
+                            
+                            // 4. update local message status to sent
+                            set_messages.update(|msgs| {
+                                if let Some(msg) = msgs.iter_mut().find(|m| {
+                                    m.is_local && 
+                                    m.message.message == message_text && 
+                                    m.message.sender == user_pubkey
+                                }) {
+                                    msg.status = MessageStatus::Sent;
+                                    msg.message.signature = signature; // update to real signature
+                                }
+                            });
+                            
+                            // 5. update session balance
+                            session.update_untracked(|s| {
+                                s.mark_balance_update_needed();
+                            });
+                            
+                            add_log_entry("INFO", "Message status updated to Sent");
+                        },
+                        Err(e) => {
+                            add_log_entry("ERROR", &format!("Failed to send message: {}", e));
+                            
+                            // 6. update local message status to failed
+                            set_messages.update(|msgs| {
+                                if let Some(msg) = msgs.iter_mut().find(|m| {
+                                    m.is_local && 
+                                    m.message.message == message_text && 
+                                    m.message.sender == user_pubkey
+                                }) {
+                                    msg.status = MessageStatus::Failed;
+                                }
+                            });
+                        }
+                    }
+                    
+                    set_sending.set(false);
+                });
+            } else {
+                add_log_entry("ERROR", "Failed to get user public key");
+            }
+        } else {
+            add_log_entry("ERROR", "No chat room selected");
+        }
     };
 
     // Handle Enter key in message input
@@ -271,8 +376,8 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                             <div class="messages-list">
                                                 <For
                                                     each=move || messages.get()
-                                                    key=|message| message.signature.clone()
-                                                    children=move |message: ChatMessage| {
+                                                    key=|message| message.message.signature.clone()
+                                                    children=move |message: LocalChatMessage| {
                                                         view! { <MessageItem message=message current_mint_reward=current_mint_reward/> }
                                                     }
                                                 />
@@ -553,11 +658,13 @@ fn GroupCard(group: ChatGroupInfo, enter_chat_room: impl Fn(u64) + 'static + Cop
 }
 
 #[component]
-fn MessageItem(message: ChatMessage, current_mint_reward: ReadSignal<Option<String>>) -> impl IntoView {
+fn MessageItem(message: LocalChatMessage, current_mint_reward: ReadSignal<Option<String>>) -> impl IntoView {
     // Store values in variables to make them accessible in closures
-    let timestamp = message.timestamp;
-    let message_content = message.message.clone();
-    let sender = message.sender.clone();
+    let timestamp = message.message.timestamp;
+    let message_content = message.message.message.clone();
+    let sender = message.message.sender.clone();
+    let status = message.status; // Now we can copy instead of clone
+    let is_local = message.is_local;
     
     // Helper function to format sender address (first 4 + last 4 chars)
     let format_sender = move |sender: &str| -> String {
@@ -571,7 +678,7 @@ fn MessageItem(message: ChatMessage, current_mint_reward: ReadSignal<Option<Stri
     };
     
     view! {
-        <div class="message-item">
+        <div class="message-item" class:message-sending=move || status == MessageStatus::Sending>
             <div class="message-header">
                 <span class="sender">
                     {format_sender(&sender)}
@@ -586,17 +693,45 @@ fn MessageItem(message: ChatMessage, current_mint_reward: ReadSignal<Option<Stri
                     }}
                 </span>
             </div>
-            <div class="message-content">
-                {message_content}
+            <div class="message-content-wrapper">
+                <div class="message-content">
+                    {message_content}
+                </div>
+                // only show status for local messages, and only show Sending and Sent
+                {move || {
+                    if is_local && (status == MessageStatus::Sending || status == MessageStatus::Sent) {
+                        view! {
+                            <div class="message-status-corner">
+                                {
+                                    match status {
+                                        MessageStatus::Sending => view! {
+                                            <span class="status-sending">
+                                                "Sending"
+                                            </span>
+                                        }.into_view(),
+                                        MessageStatus::Sent => view! {
+                                            <span class="status-sent">
+                                                "Sent"
+                                            </span>
+                                        }.into_view(),
+                                        _ => view! { <div></div> }.into_view(),
+                                    }
+                                }
+                            </div>
+                        }.into_view()
+                    } else {
+                        view! { <div></div> }.into_view()
+                    }
+                }}
             </div>
             <div class="message-meta">
-            <div class="memo-amount">
-                <i class="fas fa-coins"></i>
-                <span>
-                    {move || current_mint_reward.get().unwrap_or_else(|| "+1 MEMO".to_string())}
-                </span>
+                <div class="memo-amount">
+                    <i class="fas fa-coins"></i>
+                    <span>
+                        {move || current_mint_reward.get().unwrap_or_else(|| "+1 MEMO".to_string())}
+                    </span>
+                </div>
             </div>
-        </div>
         </div>
     }
 }

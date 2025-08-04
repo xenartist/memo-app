@@ -576,6 +576,52 @@
     animation: spin 1s linear infinite;
 }
 
+/* message content wrapper - for relative positioning */
+.message-content-wrapper {
+    position: relative;
+    margin-bottom: 8px;
+}
+
+/* message status displayed in bottom right corner */
+.message-status-corner {
+    position: absolute;
+    bottom: 4px;
+    right: 8px;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Sending status - red */
+.status-sending {
+    color: #dc3545; /* Bootstrap danger red */
+    background-color: rgba(220, 53, 69, 0.1);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(220, 53, 69, 0.3);
+}
+
+/* Sent status - green */
+.status-sent {
+    color: #28a745; /* Bootstrap success green */
+    background-color: rgba(40, 167, 69, 0.1);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(40, 167, 69, 0.3);
+}
+
+/* when message is sending, the whole message box is slightly transparent */
+.message-item.message-sending {
+    opacity: 0.8;
+}
+
+/* ensure message content has enough right margin, avoid overlapping with status label */
+.message-content {
+    padding-right: 60px; /* leave space for status label */
+    min-height: 20px; /* ensure even short messages have enough height to display status */
+}
+
 /* Responsive Design updates */
 @media (max-width: 768px) {
     .chat-page {
@@ -623,7 +669,7 @@
     }
     
     .input-container {
-        gap: 10px; /* Reduce gap on mobile */
+        gap: 10px; /* reduce gap on mobile */
     }
     
     .message-input {
@@ -689,6 +735,6 @@
     }
     
     .input-container {
-        gap: 8px; /* Smaller gap on very small screens */
+        gap: 8px; /* smaller gap on very small screens */
     }
 } 

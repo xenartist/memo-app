@@ -2,6 +2,18 @@ use super::rpc_base::{RpcConnection, RpcError};
 use serde::{Serialize, Deserialize};
 use std::str::FromStr;
 use solana_sdk::pubkey::Pubkey;
+use solana_sdk::{
+    signature::{Keypair, Signer},
+    instruction::{AccountMeta, Instruction},
+    transaction::Transaction,
+    message::Message,
+    compute_budget::ComputeBudgetInstruction,
+};
+use spl_memo;
+use sha2::{Sha256, Digest};
+use base64;
+use bincode;
+use wasm_bindgen::prelude::*;
 
 /// Memo-Chat contract configuration and constants
 pub struct ChatConfig;
@@ -13,6 +25,19 @@ impl ChatConfig {
     /// PDA Seeds for chat contract
     pub const GLOBAL_COUNTER_SEED: &'static [u8] = b"global_counter";
     pub const CHAT_GROUP_SEED: &'static [u8] = b"chat_group";
+    
+    /// Memo-mint program ID (referenced by chat contract)
+    pub const MEMO_MINT_PROGRAM_ID: &'static str = "A31a17bhgQyRQygeZa1SybytjbCdjMpu6oPr9M3iQWzy";
+    
+    /// Token 2022 Program ID
+    pub const TOKEN_2022_PROGRAM_ID: &'static str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+    
+    /// Authorized MEMO token mint address
+    pub const MEMO_TOKEN_MINT: &'static str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
+    
+    /// Memo validation limits (from contract: 69-800 bytes)
+    pub const MIN_MEMO_LENGTH: usize = 69;
+    pub const MAX_MEMO_LENGTH: usize = 800;
     
     /// Helper functions
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
@@ -36,6 +61,61 @@ impl ChatConfig {
             &[Self::CHAT_GROUP_SEED, &group_id.to_le_bytes()],
             &program_id
         ))
+    }
+    
+    /// Helper to get memo-mint program ID
+    pub fn get_memo_mint_program_id() -> Result<Pubkey, RpcError> {
+        Pubkey::from_str(Self::MEMO_MINT_PROGRAM_ID)
+            .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-mint program ID: {}", e)))
+    }
+    
+    /// Helper to get token mint
+    pub fn get_memo_token_mint() -> Result<Pubkey, RpcError> {
+        Pubkey::from_str(Self::MEMO_TOKEN_MINT)
+            .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo token mint: {}", e)))
+    }
+    
+    /// Helper to get Token 2022 program ID
+    pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
+        Pubkey::from_str(Self::TOKEN_2022_PROGRAM_ID)
+            .map_err(|e| RpcError::InvalidAddress(format!("Invalid Token 2022 program ID: {}", e)))
+    }
+    
+    /// Calculate mint authority PDA (from memo-mint program)
+    pub fn get_mint_authority_pda() -> Result<(Pubkey, u8), RpcError> {
+        let memo_mint_program_id = Self::get_memo_mint_program_id()?;
+        Ok(Pubkey::find_program_address(
+            &[b"mint_authority"],
+            &memo_mint_program_id
+        ))
+    }
+    
+    /// Get send_memo_to_group instruction discriminator
+    pub fn get_send_memo_to_group_discriminator() -> [u8; 8] {
+        let mut hasher = Sha256::new();
+        hasher.update(b"global:send_memo_to_group");
+        let result = hasher.finalize();
+        let mut discriminator = [0u8; 8];
+        discriminator.copy_from_slice(&result[..8]);
+        discriminator
+    }
+    
+    /// Validate memo length
+    pub fn validate_memo_length(memo: &str) -> Result<(), RpcError> {
+        let memo_len = memo.len();
+        if memo_len < Self::MIN_MEMO_LENGTH {
+            return Err(RpcError::InvalidParameter(format!(
+                "Memo too short: {} bytes (minimum: {})", 
+                memo_len, Self::MIN_MEMO_LENGTH
+            )));
+        }
+        if memo_len > Self::MAX_MEMO_LENGTH {
+            return Err(RpcError::InvalidParameter(format!(
+                "Memo too long: {} bytes (maximum: {})", 
+                memo_len, Self::MAX_MEMO_LENGTH
+            )));
+        }
+        Ok(())
     }
 }
 
@@ -90,6 +170,66 @@ pub struct ChatMessagesResponse {
     pub messages: Vec<ChatMessage>,
     pub total_found: usize,
     pub has_more: bool,        // Indicates if there are more messages available
+}
+
+/// Chat message data for sending
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessageData {
+    pub category: String,      // Must be "chat"
+    pub group_id: u64,        // Target group ID
+    pub sender: String,       // Sender's public key
+    pub message: String,      // Message content
+    pub receiver: Option<String>, // Optional receiver public key
+    pub reply_to_sig: Option<String>, // Optional signature to reply to
+}
+
+/// Local message status for UI display
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MessageStatus {
+    Sending,
+    Sent,
+    Failed,
+}
+
+/// Local message for immediate UI display
+#[derive(Debug, Clone)]
+pub struct LocalChatMessage {
+    pub message: ChatMessage,
+    pub status: MessageStatus,
+    pub is_local: bool, // true if this is a local message not yet confirmed on chain
+}
+
+impl LocalChatMessage {
+    /// Create a new local message for immediate UI display
+    pub fn new_local(sender: String, message: String, group_id: u64) -> Self {
+        Self {
+            message: ChatMessage {
+                signature: format!("local_{}", js_sys::Date::now() as u64), // temporary local signature
+                sender,
+                message,
+                timestamp: (js_sys::Date::now() / 1000.0) as i64, // current timestamp
+                slot: 0,
+                memo_amount: 0,
+            },
+            status: MessageStatus::Sending,
+            is_local: true,
+        }
+    }
+    
+    /// Create from chain message
+    pub fn from_chain_message(message: ChatMessage) -> Self {
+        Self {
+            message,
+            status: MessageStatus::Sent,
+            is_local: false,
+        }
+    }
+    
+    /// Update status
+    pub fn with_status(mut self, status: MessageStatus) -> Self {
+        self.status = status;
+        self
+    }
 }
 
 impl RpcConnection {
@@ -627,5 +767,171 @@ impl RpcConnection {
             total_found,
             has_more,
         })
+    }
+
+    /// Send a chat message to a group
+    /// 
+    /// # Parameters
+    /// * `group_id` - The ID of the chat group to send message to
+    /// * `message` - The message content (1-512 characters)
+    /// * `keypair_bytes` - The user's keypair bytes for signing
+    /// * `receiver` - Optional receiver public key for direct messages
+    /// * `reply_to_sig` - Optional signature to reply to
+    /// 
+    /// # Returns
+    /// Transaction signature on success
+    pub async fn send_chat_message(
+        &self,
+        group_id: u64,
+        message: &str,
+        keypair_bytes: &[u8],
+        receiver: Option<String>,
+        reply_to_sig: Option<String>,
+    ) -> Result<String, RpcError> {
+        // Validate message
+        if message.is_empty() {
+            return Err(RpcError::InvalidParameter("Message cannot be empty".to_string()));
+        }
+        if message.len() > 512 {
+            return Err(RpcError::InvalidParameter("Message too long (max 512 characters)".to_string()));
+        }
+        
+        log::info!("Sending chat message to group {}: {} characters", group_id, message.len());
+        
+        // Create keypair from bytes and get pubkey
+        let keypair = Keypair::from_bytes(keypair_bytes)
+            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
+        let user_pubkey = keypair.pubkey();
+        
+        log::info!("Sender pubkey: {}", user_pubkey);
+        
+        // Get contract configuration
+        let chat_program_id = ChatConfig::get_program_id()?;
+        let memo_mint_program_id = ChatConfig::get_memo_mint_program_id()?;
+        let memo_token_mint = ChatConfig::get_memo_token_mint()?;
+        let token_2022_program_id = ChatConfig::get_token_2022_program_id()?;
+        
+        // Calculate chat group PDA
+        let (chat_group_pda, _) = ChatConfig::get_chat_group_pda(group_id)?;
+        
+        // Calculate mint authority PDA
+        let (mint_authority_pda, _) = ChatConfig::get_mint_authority_pda()?;
+        
+        // Calculate user's token account (ATA)
+        let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
+            &user_pubkey,
+            &memo_token_mint,
+            &token_2022_program_id,
+        );
+        
+        log::info!("Chat group PDA: {}", chat_group_pda);
+        log::info!("User token account: {}", user_token_account);
+        log::info!("Mint authority PDA: {}", mint_authority_pda);
+        
+        // Check if user's token account exists
+        let token_account_info = self.get_account_info(&user_token_account.to_string(), Some("base64")).await?;
+        let token_account_info: serde_json::Value = serde_json::from_str(&token_account_info)
+            .map_err(|e| RpcError::Other(format!("Failed to parse token account info: {}", e)))?;
+        
+        // Prepare chat message data
+        let chat_message_data = ChatMessageData {
+            category: "chat".to_string(),
+            group_id,
+            sender: user_pubkey.to_string(),
+            message: message.to_string(),
+            receiver,
+            reply_to_sig,
+        };
+        
+        // Serialize to JSON
+        let json_message = serde_json::to_string(&chat_message_data)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize chat message: {}", e)))?;
+        
+        log::info!("Chat message JSON: {}", json_message);
+        
+        // Validate memo length
+        ChatConfig::validate_memo_length(&json_message)?;
+        
+        // Build instructions
+        let mut instructions = vec![];
+        
+        // Add compute budget instruction
+        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(300_000));
+        
+        // Add memo instruction first (required by contract)
+        instructions.push(spl_memo::build_memo(
+            json_message.as_bytes(),
+            &[&user_pubkey],
+        ));
+        
+        // If token account doesn't exist, create it
+        if token_account_info["value"].is_null() {
+            log::info!("User token account does not exist, creating it...");
+            instructions.push(
+                spl_associated_token_account::instruction::create_associated_token_account_idempotent(
+                    &user_pubkey,           // Funding account (fee payer)
+                    &user_pubkey,           // Wallet address  
+                    &memo_token_mint,       // Mint address
+                    &token_2022_program_id  // Token 2022 program ID
+                )
+            );
+        }
+        
+        // Create send_memo_to_group instruction
+        let mut instruction_data = ChatConfig::get_send_memo_to_group_discriminator().to_vec();
+        instruction_data.extend_from_slice(&group_id.to_le_bytes());
+        
+        let accounts = vec![
+            AccountMeta::new(user_pubkey, true),                    // sender (signer)
+            AccountMeta::new(chat_group_pda, false),               // chat_group
+            AccountMeta::new(memo_token_mint, false),              // mint
+            AccountMeta::new(mint_authority_pda, false),           // mint_authority
+            AccountMeta::new(user_token_account, false),           // sender_token_account
+            AccountMeta::new_readonly(token_2022_program_id, false), // token_program
+            AccountMeta::new_readonly(memo_mint_program_id, false), // memo_mint_program
+            AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false), // instructions sysvar
+        ];
+        
+        let send_memo_instruction = Instruction::new_with_bytes(
+            chat_program_id,
+            &instruction_data,
+            accounts,
+        );
+        
+        instructions.push(send_memo_instruction);
+        
+        // Get recent blockhash
+        let blockhash_response: serde_json::Value = self.send_request("getLatestBlockhash", serde_json::json!([])).await?;
+        let blockhash_str = blockhash_response["value"]["blockhash"]
+            .as_str()
+            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
+        let blockhash = solana_sdk::hash::Hash::from_str(blockhash_str)
+            .map_err(|e| RpcError::Other(format!("Failed to parse blockhash: {}", e)))?;
+        
+        // Create and sign transaction
+        let message = Message::new(&instructions, Some(&user_pubkey));
+        let mut transaction = Transaction::new(&[&keypair], message, blockhash);
+        
+        // Serialize and encode transaction
+        let serialized_transaction = bincode::serialize(&transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?;
+        let encoded_transaction = base64::encode(&serialized_transaction);
+        
+        // Send transaction
+        let send_params = serde_json::json!([
+            encoded_transaction,
+            {
+                "encoding": "base64",
+                "skipPreflight": false,
+                "preflightCommitment": "processed",
+                "maxRetries": 3
+            }
+        ]);
+        
+        log::info!("Sending chat message transaction...");
+        let signature: String = self.send_request("sendTransaction", send_params).await?;
+        
+        log::info!("Chat message sent successfully! Signature: {}", signature);
+        Ok(signature)
     }
 }
