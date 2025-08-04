@@ -208,6 +208,18 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         // Get current group ID and user info
         if let ChatView::ChatRoom(group_id) = current_view.get() {
             if let Ok(user_pubkey) = session.with_untracked(|s| s.get_public_key()) {
+                // Check SOL balance before sending
+                let sol_balance = session.with_untracked(|s| s.get_sol_balance());
+                if sol_balance < 0.01 {
+                    let error_msg = format!("Balance insufficient! Current SOL balance: {:.4}, sending message requires at least 0.01 SOL as transaction fee. Please top up.", sol_balance);
+                    add_log_entry("ERROR", &error_msg);
+                    set_error_message.set(Some(error_msg));
+                    return;
+                }
+                
+                // Clear any previous error messages
+                set_error_message.set(None);
+                
                 // 1. show message on UI immediately
                 let local_message = LocalChatMessage::new_local(
                     user_pubkey.clone(),
@@ -306,7 +318,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                 <div class="header-left">
                                     <button class="back-button" on:click=back_to_groups>
                                         <i class="fas fa-arrow-left"></i>
-                                        "Back to Groups"
+                                        "Back to Groups".to_string()
                                     </button>
                                 </div>
                                 
@@ -337,7 +349,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                         disabled=move || loading.get()
                                     >
                                         <i class="fas fa-sync-alt"></i>
-                                        "Refresh"
+                                        "Refresh".to_string()
                                     </button>
                                 </div>
                             </div>
@@ -390,18 +402,41 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                     <div class="input-container">
                                         <textarea
                                             class="message-input"
-                                            placeholder="Type your message... (Press Enter to send, Shift+Enter for new line)"
+                                            placeholder=move || {
+                                                if sending.get() {
+                                                    "Sending, please wait...".to_string()
+                                                } else if session.with(|s| s.get_sol_balance()) < 0.01 {
+                                                    format!("Balance insufficient, sending message requires at least 0.01 SOL (current: {:.4} SOL)", session.with(|s| s.get_sol_balance()))
+                                                } else {
+                                                    "Type your message... (Press Enter to send, Shift+Enter for new line)".to_string()
+                                                }
+                                            }
                                             prop:value=move || message_input.get()
                                             on:input=move |ev| {
                                                 set_message_input.set(event_target_value(&ev));
                                             }
                                             on:keypress=handle_key_press
-                                            disabled=move || sending.get()
+                                            disabled=move || sending.get() || session.with(|s| s.get_sol_balance()) < 0.01
                                         ></textarea>
                                         <button
                                             class="send-button"
                                             on:click=send_message
-                                            disabled=move || message_input.get().trim().is_empty() || sending.get()
+                                            disabled=move || {
+                                                message_input.get().trim().is_empty() || 
+                                                sending.get() || 
+                                                session.with(|s| s.get_sol_balance()) < 0.01
+                                            }
+                                            title=move || {
+                                                if sending.get() {
+                                                    "Sending...".to_string()
+                                                } else if session.with(|s| s.get_sol_balance()) < 0.01 {
+                                                    format!("Balance insufficient, sending message requires at least 0.01 SOL (current: {:.4} SOL)", session.with(|s| s.get_sol_balance()))
+                                                } else if message_input.get().trim().is_empty() {
+                                                    "Please enter message content".to_string()
+                                                } else {
+                                                    "Send message".to_string()
+                                                }
+                                            }
                                         >
                                             <Show
                                                 when=move || sending.get()
@@ -706,12 +741,12 @@ fn MessageItem(message: LocalChatMessage, current_mint_reward: ReadSignal<Option
                                     match status {
                                         MessageStatus::Sending => view! {
                                             <span class="status-sending">
-                                                "Sending"
+                                                "Sending".to_string()
                                             </span>
                                         }.into_view(),
                                         MessageStatus::Sent => view! {
                                             <span class="status-sent">
-                                                "Sent"
+                                                "Sent".to_string()
                                             </span>
                                         }.into_view(),
                                         _ => view! { <div></div> }.into_view(),

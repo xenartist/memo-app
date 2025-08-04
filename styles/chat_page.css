@@ -540,6 +540,13 @@
 .message-input:disabled {
     background: #f8f9fa;
     color: #6c757d;
+    cursor: not-allowed;
+    border-color: #dc3545; 
+}
+
+.message-input:disabled::placeholder {
+    color: #dc3545;
+    font-weight: 500;
 }
 
 .send-button {
@@ -565,6 +572,11 @@
 .send-button:disabled {
     background: #6c757d;
     cursor: not-allowed;
+}
+
+/* for disabled send button */
+.send-button:disabled:hover {
+    background: #6c757d;
 }
 
 .send-button .spinner {
