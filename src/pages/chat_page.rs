@@ -1,4 +1,6 @@
 use leptos::*;
+use leptos::html::Div;
+use wasm_bindgen::JsCast;
 use crate::core::session::Session;
 use crate::core::rpc_base::RpcConnection;
 use crate::core::rpc_chat::{ChatStatistics, ChatGroupInfo, ChatMessage, ChatMessagesResponse, LocalChatMessage, MessageStatus};
@@ -29,6 +31,23 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
 
     // Current mint reward state
     let (current_mint_reward, set_current_mint_reward) = create_signal::<Option<String>>(None);
+    
+    // Node ref for messages area to enable auto-scroll
+    let messages_area_ref = create_node_ref::<Div>();
+    
+    // Auto-scroll to bottom when messages change
+    create_effect(move |_| {
+        let _ = messages.get(); // Track messages changes
+        
+        // Small delay to ensure DOM is updated
+        spawn_local(async move {
+            TimeoutFuture::new(50).await;
+            
+            if let Some(messages_area) = messages_area_ref.get() {
+                messages_area.set_scroll_top(messages_area.scroll_height());
+            }
+        });
+    });
 
     // Load chat statistics on component mount
     spawn_local(async move {
@@ -365,7 +384,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                             </Show>
                             
                             <div class="chat-container">
-                                <div class="messages-area">
+                                <div class="messages-area" node_ref=messages_area_ref>
                                     <Show
                                         when=move || !loading.get()
                                         fallback=|| view! {
