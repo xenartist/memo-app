@@ -667,7 +667,7 @@ fn GroupCard(group: ChatGroupInfo, enter_chat_room: impl Fn(u64) + 'static + Cop
                     <span>{created_at_formatted}</span>
                 </div>
                 <div class="meta-item">
-                    <label>"Last memo:"</label>
+                    <label>"Last message:"</label>
                     <span>{last_memo_formatted}</span>
                 </div>
                 {
