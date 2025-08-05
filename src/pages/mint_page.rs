@@ -104,11 +104,14 @@ pub fn SupplyProgressBar() -> impl IntoView {
     let (supply_info, set_supply_info) = create_signal::<Option<(u64, SupplyTier)>>(None);
     let (loading, set_loading) = create_signal(true);
     let (error, set_error) = create_signal::<Option<String>>(None);
+    let (timer_active, set_timer_active) = create_signal(false);
 
-    // Fetch supply information on component mount
-    create_effect(move |_| {
+    // fetch supply data
+    let fetch_supply_data = move |is_initial_load: bool| {
         spawn_local(async move {
-            set_loading.set(true);
+            if is_initial_load {
+                set_loading.set(true);
+            }
             set_error.set(None);
             
             let rpc = RpcConnection::new();
@@ -116,6 +119,40 @@ pub fn SupplyProgressBar() -> impl IntoView {
                 Ok((supply, tier)) => {
                     set_supply_info.set(Some((supply, tier)));
                     set_loading.set(false);
+                    
+                    // after first successful fetch, start timer
+                    if !timer_active.get() {
+                        set_timer_active.set(true);
+                        log::info!("Starting supply data auto-refresh timer (10 seconds interval for testing)");
+                        
+                        // start background timer
+                        spawn_local(async move {
+                            loop {
+                                // wait 3600 seconds (1 hour)
+                                TimeoutFuture::new(3600_000).await;
+                                
+                                // check if timer should still run
+                                if !timer_active.get() {
+                                    break;
+                                }
+                                
+                                log::info!("Auto-refreshing supply data...");
+                                
+                                // background update data (no loading state)
+                                let rpc = RpcConnection::new();
+                                match rpc.get_current_supply_tier_info().await {
+                                    Ok((supply, tier)) => {
+                                        set_supply_info.set(Some((supply, tier)));
+                                        log::info!("Supply data auto-refreshed successfully");
+                                    },
+                                    Err(e) => {
+                                        log::warn!("Failed to auto-refresh supply data: {}", e);
+                                        // silent failure, do not update error state, keep current data
+                                    }
+                                }
+                            }
+                        });
+                    }
                 },
                 Err(e) => {
                     log::error!("Failed to fetch token supply: {}", e);
@@ -124,6 +161,17 @@ pub fn SupplyProgressBar() -> impl IntoView {
                 }
             }
         });
+    };
+
+    // fetch data on first load
+    create_effect(move |_| {
+        fetch_supply_data(true); // first load, show loading state
+    });
+
+    // stop timer on component unmount
+    on_cleanup(move || {
+        set_timer_active.set(false);
+        log::info!("Stopped supply data auto-refresh timer");
     });
 
     view! {
