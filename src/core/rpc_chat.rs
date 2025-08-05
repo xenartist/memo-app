@@ -708,11 +708,14 @@ impl RpcConnection {
                         // Check if this is a chat message
                         if let Some(category) = json_data["category"].as_str() {
                             if category == "chat" {
-                                // validate operation field (backward compatible, also accept if no operation field)
-                                if let Some(operation) = json_data["operation"].as_str() {
-                                    if operation != "send_message" {
-                                        continue; // skip invalid operation
-                                    }
+                                // validate operation field (now required by contract)
+                                let operation = json_data["operation"]
+                                    .as_str()
+                                    .unwrap_or("");
+                                
+                                if operation != "send_message" {
+                                    log::debug!("Skipping message: invalid or missing operation field (expected 'send_message', got '{}')", operation);
+                                    continue; // skip invalid operation
                                 }
                                 
                                 let message = json_data["message"]
