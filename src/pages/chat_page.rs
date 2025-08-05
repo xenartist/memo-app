@@ -283,9 +283,25 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                 }
                             });
                             
-                            // 5. update session balance
-                            session.update_untracked(|s| {
-                                s.mark_balance_update_needed();
+                            // 5. update session balance - directly update balance instead of just marking update needed
+                            spawn_local(async move {
+                                let mut session_update = session.get_untracked();
+                                match session_update.fetch_and_update_balances().await {
+                                    Ok(()) => {
+                                        log::info!("Successfully updated balances after sending message");
+                                        // set balance to original session
+                                        session.update(|s| {
+                                            s.set_balances(session_update.get_sol_balance(), session_update.get_token_balance());
+                                        });
+                                    },
+                                    Err(e) => {
+                                        log::error!("Failed to update balances after sending message: {}", e);
+                                        // if direct update fails, revert to marking update needed
+                                        session.update(|s| {
+                                            s.mark_balance_update_needed();
+                                        });
+                                    }
+                                }
                             });
                             
                             add_log_entry("INFO", "Message status updated to Sent");
