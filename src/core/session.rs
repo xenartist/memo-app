@@ -2,7 +2,7 @@ use serde::{Serialize, Deserialize};
 use std::time::{Duration, SystemTime};
 use crate::core::encrypt;
 use crate::core::rpc_base::{RpcConnection, RpcError};
-use crate::core::constants::TOKEN_MINT;
+use crate::core::rpc_mint::MintConfig;
 use web_sys::js_sys::Date;
 use secrecy::{Secret, ExposeSecret};
 use zeroize::Zeroize;
@@ -378,7 +378,7 @@ impl Session {
         
         // Now using global constant instead of local definition
         // get token balance
-        match rpc.get_token_balance(&pubkey, TOKEN_MINT).await {
+        match rpc.get_token_balance(&pubkey, MintConfig::TOKEN_MINT).await {
             Ok(token_result) => {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&token_result) {
                     if let Some(accounts) = json.get("value").and_then(|v| v.as_array()) {
@@ -511,6 +511,44 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Burn with history failed: {}", e)))?;
 
         // mark that balances need to be updated after successful burn
+        self.mark_balance_update_needed();
+        
+        Ok(result)
+    }
+
+    /// Send chat message to group - internal handle all key operations
+    pub async fn send_chat_message(
+        &mut self, 
+        group_id: u64, 
+        message: &str,
+        receiver: Option<String>,
+        reply_to_sig: Option<String>
+    ) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        // internal get and handle keypair
+        let seed = self.get_seed()?;
+        let seed_bytes = hex::decode(&seed)
+            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
+        
+        let seed_array: [u8; 64] = seed_bytes.try_into()
+            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
+
+        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
+            &seed_array,
+            crate::core::wallet::get_default_derivation_path()
+        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
+
+        let keypair_bytes = keypair.to_bytes().to_vec();
+
+        // call RPC send_chat_message method
+        let rpc = RpcConnection::new();
+        let result = rpc.send_chat_message(group_id, message, &keypair_bytes, receiver, reply_to_sig).await
+            .map_err(|e| SessionError::InvalidData(format!("Send chat message failed: {}", e)))?;
+
+        // mark that balances need to be updated after successful message send (user gets mint reward)
         self.mark_balance_update_needed();
         
         Ok(result)

@@ -1,13 +1,13 @@
 use leptos::*;
 use crate::core::rpc_base::RpcConnection;
 use crate::core::session::Session;
-use crate::core::constants::TOKEN_MINT;
 use crate::pages::home_page::HomePage;
 use crate::pages::profile_page::ProfilePage;
 use crate::pages::settings_page::SettingsPage;
 use crate::pages::mint_page::MintPage;
 use crate::pages::mint_page_legacy::MintPage as MintPageLegacy;
 use crate::pages::burn_page::BurnPage;
+use crate::pages::chat_page::ChatPage;
 use crate::pages::log_view::{LogView, add_log_entry};
 
 use wasm_bindgen::prelude::*;
@@ -20,6 +20,7 @@ use serde_json;
 enum MenuItem {
     Home,
     Mint,
+    Chat,
     MintLegacy,
     Burn,
     Profile,
@@ -109,8 +110,8 @@ pub fn MainPage(
                 session.update(|s| {
                     s.set_balances(session_update.get_sol_balance(), session_update.get_token_balance());
                 });
-                add_log_entry("INFO", &format!("SOL balance: {}", session_update.get_sol_balance()));
-                add_log_entry("INFO", &format!("Token balance: {}", session_update.get_token_balance()));
+                add_log_entry("INFO", &format!("XNT balance: {}", session_update.get_sol_balance()));
+                add_log_entry("INFO", &format!("MEMO balance: {}", session_update.get_token_balance()));
             },
             Err(e) => {
                 log::error!("Failed to fetch initial balances: {}", e);
@@ -180,7 +181,7 @@ pub fn MainPage(
                 */
                 <div class="wallet-address">
                     <span class="token-balance">{move || format!("{:.2} MEMO", token_balance())}</span>
-                    <span class="balance">{move || format!("{:.4} SOL", sol_balance())}</span>
+                    <span class="balance">{move || format!("{:.4} XNT", sol_balance())}</span>
                     <span class="address-label">"Wallet: "</span>
                     <span 
                         class="address-value" 
@@ -232,7 +233,15 @@ pub fn MainPage(
                         <i class="fas fa-hammer"></i>
                         <span>"Mint"</span>
                     </div>
-                    // Temporarily commented out for release - only showing Mint
+                    <div 
+                        class="menu-item"
+                        class:active=move || current_menu.get() == MenuItem::Chat
+                        on:click=move |_| set_current_menu.set(MenuItem::Chat)
+                    >
+                        <i class="fas fa-comments"></i>
+                        <span>"Chat"</span>
+                    </div>
+                    // Temporarily commented out for release - only showing Mint and Chat
                     /*
                     <div 
                         class="menu-item"
@@ -276,7 +285,10 @@ pub fn MainPage(
                     <div style=move || if current_menu.get() == MenuItem::Mint { "display: block;" } else { "display: none;" }>
                         <MintPage session=session/>
                     </div>
-                    // Temporarily commented out for release - only showing Home and Mint content
+                    <div style=move || if current_menu.get() == MenuItem::Chat { "display: block;" } else { "display: none;" }>
+                        <ChatPage session=session/>
+                    </div>
+                    // Temporarily commented out for release - only showing Home, Mint and Chat content
                     /*
                     <div style=move || if current_menu.get() == MenuItem::MintLegacy { "display: block;" } else { "display: none;" }>
                         <MintPageLegacy session=session/>

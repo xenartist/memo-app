@@ -1,5 +1,4 @@
 use super::rpc_base::{RpcConnection, RpcError};
-use super::constants::TOKEN_MINT;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use solana_sdk::{
@@ -13,6 +12,16 @@ use base64;
 use bincode;
 use spl_associated_token_account;
 use spl_memo;
+use serde::{Serialize, Deserialize};
+
+/// Supply tier configuration for mint rewards
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SupplyTier {
+    pub min: u64,
+    pub max: u64,
+    pub reward: f64,
+    pub label: String,
+}
 
 // Mint contract configuration
 pub struct MintConfig;
@@ -22,7 +31,7 @@ impl MintConfig {
     pub const MINT_PROGRAM_ID: &'static str = "A31a17bhgQyRQygeZa1SybytjbCdjMpu6oPr9M3iQWzy";
     
     // Authorized mint token address - now using global constant
-    pub const TOKEN_MINT: &'static str = TOKEN_MINT;
+    pub const TOKEN_MINT: &'static str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
     
     // Token 2022 Program ID
     pub const TOKEN_2022_PROGRAM_ID: &'static str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
@@ -90,6 +99,98 @@ impl MintConfig {
         let mut discriminator = [0u8; 8];
         discriminator.copy_from_slice(&result[..8]);
         discriminator
+    }
+
+    /// Get all available supply tiers
+    pub fn get_supply_tiers() -> Vec<SupplyTier> {
+        vec![
+            SupplyTier { min: 0, max: 100_000_000_000_000, reward: 1.0, label: "0-100M".to_string() },
+            SupplyTier { min: 100_000_000_000_000, max: 1_000_000_000_000_000, reward: 0.1, label: "100M-1B".to_string() },
+            SupplyTier { min: 1_000_000_000_000_000, max: 10_000_000_000_000_000, reward: 0.01, label: "1B-10B".to_string() },
+            SupplyTier { min: 10_000_000_000_000_000, max: 100_000_000_000_000_000, reward: 0.001, label: "10B-100B".to_string() },
+            SupplyTier { min: 100_000_000_000_000_000, max: 1_000_000_000_000_000_000, reward: 0.0001, label: "100B-1T".to_string() },
+            SupplyTier { min: 1_000_000_000_000_000_000, max: u64::MAX, reward: 0.000001, label: "1T+".to_string() },
+        ]
+    }
+    
+    /// Get the current supply tier based on total supply
+    pub fn get_current_supply_tier(supply: u64) -> SupplyTier {
+        Self::get_supply_tiers().into_iter()
+            .find(|tier| supply >= tier.min && supply < tier.max)
+            .unwrap_or_else(|| Self::get_supply_tiers().last().unwrap().clone())
+    }
+    
+    /// Calculate mint reward amount based on current supply
+    pub fn calculate_mint_reward(supply: u64) -> f64 {
+        let tier = Self::get_current_supply_tier(supply);
+        tier.reward
+    }
+    
+    /// Format mint amount for display (smart decimal precision)
+    pub fn format_mint_reward(amount: f64) -> String {
+        // If it's a whole number, don't show decimals
+        if amount.fract() == 0.0 {
+            format!("+{} MEMO", amount as u64)
+        } else if amount >= 1.0 {
+            // For values >= 1, show minimal decimals (remove trailing zeros)
+            let formatted = format!("{}", amount);
+            format!("+{} MEMO", formatted)
+        } else {
+            // For values < 1, show appropriate precision (remove trailing zeros)
+            let formatted = if amount >= 0.1 {
+                format!("{:.1}", amount)
+            } else if amount >= 0.01 {
+                format!("{:.2}", amount)
+            } else if amount >= 0.001 {
+                format!("{:.3}", amount)
+            } else if amount >= 0.0001 {
+                format!("{:.4}", amount)
+            } else if amount >= 0.00001 {
+                format!("{:.5}", amount)
+            } else {
+                format!("{:.6}", amount)
+            };
+            // Remove trailing zeros
+            let trimmed = formatted.trim_end_matches('0').trim_end_matches('.');
+            format!("+{} MEMO", trimmed)
+        }
+    }
+
+    /// Calculate visual progress percentage for supply progress bar
+    pub fn calculate_visual_progress_percentage(supply: u64) -> f64 {
+        // Define visual breakpoints to make the left range look bigger
+        let visual_breakpoints = [
+            (0u64, 0.0f64),                           // 0% 
+            (100_000_000_000_000u64, 50.0f64),        // 50% - 0-100M tier gets 50% space
+            (1_000_000_000_000_000u64, 75.0f64),      // 75% - 100M-1B tier gets 25% space  
+            (10_000_000_000_000_000u64, 87.0f64),     // 87% - 1B-10B tier gets 12% space
+            (100_000_000_000_000_000u64, 95.0f64),    // 95% - 10B-100B tier gets 8% space
+            (1_000_000_000_000_000_000u64, 100.0f64), // 100% - 100B-1T tier gets 5% space
+        ];
+        
+        // Find current supply in which interval
+        for i in 0..visual_breakpoints.len() - 1 {
+            let (lower_supply, lower_percent) = visual_breakpoints[i];
+            let (upper_supply, upper_percent) = visual_breakpoints[i + 1];
+            
+            if supply >= lower_supply && supply <= upper_supply {
+                if upper_supply == lower_supply {
+                    return lower_percent;
+                }
+                
+                // Linear interpolation in the interval
+                let ratio = (supply - lower_supply) as f64 / (upper_supply - lower_supply) as f64;
+                return lower_percent + ratio * (upper_percent - lower_percent);
+            }
+        }
+        
+        // If out of range, return 100%
+        100.0
+    }
+    
+    /// Calculate visual position for tier markers
+    pub fn calculate_visual_marker_position(tier_max: u64) -> f64 {
+        Self::calculate_visual_progress_percentage(tier_max)
     }
 }
 
@@ -314,5 +415,25 @@ impl RpcConnection {
         } else {
             Err(RpcError::Other("Failed to extract supply from response".to_string()))
         }
+    }
+
+    /// Get current mint reward amount for the current supply
+    /// 
+    /// # Returns
+    /// The formatted mint reward string (e.g., "+1.000000 MEMO")
+    pub async fn get_current_mint_reward_formatted(&self) -> Result<String, RpcError> {
+        let supply = self.get_token_supply().await?;
+        let reward_amount = MintConfig::calculate_mint_reward(supply);
+        Ok(MintConfig::format_mint_reward(reward_amount))
+    }
+
+    /// Get current supply tier information
+    /// 
+    /// # Returns
+    /// Tuple of (current_supply, current_tier)
+    pub async fn get_current_supply_tier_info(&self) -> Result<(u64, SupplyTier), RpcError> {
+        let supply = self.get_token_supply().await?;
+        let tier = MintConfig::get_current_supply_tier(supply);
+        Ok((supply, tier))
     }
 }
