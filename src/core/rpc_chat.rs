@@ -175,6 +175,7 @@ pub struct ChatMessagesResponse {
 /// Chat message data for sending
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessageData {
+    pub operation: String,     // Must be "send_message"
     pub category: String,      // Must be "chat"
     pub group_id: u64,        // Target group ID
     pub sender: String,       // Sender's public key
@@ -707,6 +708,13 @@ impl RpcConnection {
                         // Check if this is a chat message
                         if let Some(category) = json_data["category"].as_str() {
                             if category == "chat" {
+                                // validate operation field (backward compatible, also accept if no operation field)
+                                if let Some(operation) = json_data["operation"].as_str() {
+                                    if operation != "send_message" {
+                                        continue; // skip invalid operation
+                                    }
+                                }
+                                
                                 let message = json_data["message"]
                                     .as_str()
                                     .unwrap_or("")
@@ -835,6 +843,7 @@ impl RpcConnection {
         
         // Prepare chat message data
         let chat_message_data = ChatMessageData {
+            operation: "send_message".to_string(),
             category: "chat".to_string(),
             group_id,
             sender: user_pubkey.to_string(),
