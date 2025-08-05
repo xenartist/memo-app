@@ -634,6 +634,26 @@
     min-height: 20px; /* ensure even short messages have enough height to display status */
 }
 
+/* Current user messages - align to the right with light green background */
+.message-item.message-current-user {
+    align-self: flex-end;
+    background: #d4edda; /* Light green background */
+    border: 1px solid #c3e6cb;
+}
+
+.message-item.message-current-user .sender {
+    color: #155724; /* Darker green for current user sender text */
+}
+
+.message-item.message-current-user .message-content {
+    color: #155724; /* Darker green for message content */
+}
+
+/* Ensure current user messages have proper max-width */
+.message-item.message-current-user {
+    max-width: 80%;
+}
+
 /* Responsive Design updates */
 @media (max-width: 768px) {
     .chat-page {
@@ -673,6 +693,10 @@
     }
     
     .message-item {
+        max-width: 90%;
+    }
+    
+    .message-item.message-current-user {
         max-width: 90%;
     }
     
@@ -739,6 +763,10 @@
     }
     
     .message-item {
+        max-width: 95%;
+    }
+    
+    .message-item.message-current-user {
         max-width: 95%;
     }
     

@@ -390,7 +390,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                                     each=move || messages.get()
                                                     key=|message| message.message.signature.clone()
                                                     children=move |message: LocalChatMessage| {
-                                                        view! { <MessageItem message=message current_mint_reward=current_mint_reward/> }
+                                                        view! { <MessageItem message=message current_mint_reward=current_mint_reward session=session/> }
                                                     }
                                                 />
                                             </div>
@@ -693,13 +693,22 @@ fn GroupCard(group: ChatGroupInfo, enter_chat_room: impl Fn(u64) + 'static + Cop
 }
 
 #[component]
-fn MessageItem(message: LocalChatMessage, current_mint_reward: ReadSignal<Option<String>>) -> impl IntoView {
+fn MessageItem(message: LocalChatMessage, current_mint_reward: ReadSignal<Option<String>>, session: RwSignal<Session>) -> impl IntoView {
     // Store values in variables to make them accessible in closures
     let timestamp = message.message.timestamp;
     let message_content = message.message.message.clone();
     let sender = message.message.sender.clone();
     let status = message.status; // Now we can copy instead of clone
     let is_local = message.is_local;
+    
+    // Check if this message is from the current user
+    let is_current_user = session.with_untracked(|s| {
+        if let Ok(current_pubkey) = s.get_public_key() {
+            current_pubkey == sender
+        } else {
+            false
+        }
+    });
     
     // Helper function to format sender address (first 4 + last 4 chars)
     let format_sender = move |sender: &str| -> String {
@@ -713,7 +722,11 @@ fn MessageItem(message: LocalChatMessage, current_mint_reward: ReadSignal<Option
     };
     
     view! {
-        <div class="message-item" class:message-sending=move || status == MessageStatus::Sending>
+        <div 
+            class="message-item" 
+            class:message-sending=move || status == MessageStatus::Sending
+            class:message-current-user=move || is_current_user
+        >
             <div class="message-header">
                 <span class="sender">
                     {format_sender(&sender)}
