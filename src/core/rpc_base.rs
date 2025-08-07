@@ -61,7 +61,7 @@ struct RpcResponse<T> {
 
 impl RpcConnection {
     // X1 testnet RPC endpoint
-    const DEFAULT_RPC_ENDPOINT: &'static str = "https://rpc-testnet.x1.wiki";
+    const DEFAULT_RPC_ENDPOINT: &'static str = "https://rpc.testnet.x1.xyz";
     
     pub fn new() -> Self {
         Self::with_endpoint(Self::DEFAULT_RPC_ENDPOINT)

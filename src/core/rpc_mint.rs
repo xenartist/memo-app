@@ -44,7 +44,7 @@ impl MintConfig {
     pub const MAX_MEMO_LENGTH: usize = 800;
     
     // Compute budget configuration
-    pub const COMPUTE_UNIT_BUFFER: f64 = 1.1; // 10% buffer
+    pub const COMPUTE_UNIT_BUFFER: f64 = 1.2; // 20% buffer
 }
 
 // Helper functions
