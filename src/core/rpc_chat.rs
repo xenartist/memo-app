@@ -54,7 +54,9 @@ impl ChatConfig {
     pub const MAX_PAYLOAD_LENGTH: usize = Self::MAX_MEMO_LENGTH - BORSH_FIXED_OVERHEAD; // 800 - 13 = 787
     
     /// Compute budget configuration
-    pub const COMPUTE_UNIT_BUFFER: f64 = 1.2; // 20% buffer
+    pub const COMPUTE_UNIT_BUFFER: f64 = 1.2; // 20% buffer for chat operations
+    pub const MIN_COMPUTE_UNITS: u64 = 120_000; // Min cu to 120K
+    pub const MAX_COMPUTE_UNITS: u64 = 400_000; // Maximum CU limit
     
     /// Helper functions
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
@@ -1031,25 +1033,70 @@ impl RpcConnection {
         // Parse simulation result to extract compute units consumed
         let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
             log::info!("Chat message simulation consumed {} compute units", units_consumed);
-            // Apply 20% buffer
-            (units_consumed as f64 * ChatConfig::COMPUTE_UNIT_BUFFER) as u64
+            // Apply 50% buffer and ensure minimum
+            let with_buffer = (units_consumed as f64 * ChatConfig::COMPUTE_UNIT_BUFFER) as u64;
+            let final_units = with_buffer.max(ChatConfig::MIN_COMPUTE_UNITS).min(ChatConfig::MAX_COMPUTE_UNITS);
+            
+            log::info!("CU calculation: simulated={}, with_buffer={}, final={}", 
+                      units_consumed, with_buffer, final_units);
+            
+            final_units
         } else {
-            log::warn!("Failed to get compute units from simulation, using fallback of 300,000");
-            300_000 // Fallback to current fixed value
+            log::warn!("Failed to get compute units from simulation, using minimum guarantee");
+            ChatConfig::MIN_COMPUTE_UNITS // 130,000
         };
         
         log::info!("Using {} compute units for chat message (simulation: {}, +20% buffer)", 
-                  computed_units, 
-                  sim_result["value"]["unitsConsumed"].as_u64().unwrap_or(0));
+          computed_units, 
+          sim_result["value"]["unitsConsumed"].as_u64().unwrap_or(0));
         
         // Now build the final transaction with the calculated compute units
         let mut final_instructions = vec![];
-        
-        // Add compute budget instruction first
+
+        // Add compute budget instruction first (index 0)
         final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
-        
-        // Add all the base instructions
-        final_instructions.extend(base_instructions);
+
+        // Add memo instruction SECOND (index 1) - CONTRACT REQUIREMENT
+        final_instructions.push(spl_memo::build_memo(
+            &memo_data,
+            &[&user_pubkey],
+        ));
+
+        // If token account doesn't exist, create it AFTER memo (index 2+)
+        if token_account_info["value"].is_null() {
+            log::info!("User token account does not exist, creating it...");
+            final_instructions.push(
+                spl_associated_token_account::instruction::create_associated_token_account_idempotent(
+                    &user_pubkey,           
+                    &user_pubkey,           
+                    &memo_token_mint,       
+                    &token_2022_program_id  
+                )
+            );
+        }
+
+        // Add send_memo_to_group instruction LAST
+        let mut instruction_data = ChatConfig::get_send_memo_to_group_discriminator().to_vec();
+        instruction_data.extend_from_slice(&group_id.to_le_bytes());
+
+        let accounts = vec![
+            AccountMeta::new(user_pubkey, true),
+            AccountMeta::new(chat_group_pda, false),
+            AccountMeta::new(memo_token_mint, false),
+            AccountMeta::new(mint_authority_pda, false),
+            AccountMeta::new(user_token_account, false),
+            AccountMeta::new_readonly(token_2022_program_id, false),
+            AccountMeta::new_readonly(memo_mint_program_id, false),
+            AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false),
+        ];
+
+        let send_memo_instruction = Instruction::new_with_bytes(
+            chat_program_id,
+            &instruction_data,
+            accounts,
+        );
+
+        final_instructions.push(send_memo_instruction);
         
         // Create and sign final transaction
         let final_message = Message::new(&final_instructions, Some(&user_pubkey));

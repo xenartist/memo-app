@@ -336,9 +336,7 @@ impl RpcConnection {
             ));
         };
         
-        log::info!("Using {} compute units for mint (simulation + 10% buffer)", computed_units);
-        
-        log::info!("Using {} compute units for mint (simulation: {}, +10% buffer)", 
+        log::info!("Using {} compute units for mint (simulation: {}, +20% buffer)", 
             computed_units, 
             sim_result["value"]["unitsConsumed"].as_u64().unwrap_or(0)
         );
