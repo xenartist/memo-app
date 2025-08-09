@@ -61,7 +61,7 @@ impl ProgramConfig {
     
     // compute unit limits
     pub const MIN_COMPUTE_UNITS: u64 = 1000;
-    pub const COMPUTE_UNIT_BUFFER: f64 = 1.1; // 10% buffer
+    pub const COMPUTE_UNIT_BUFFER: f64 = 1.2; // 20% buffer
     
     // fallback compute unit configuration
     pub const FALLBACK_COMPUTE_UNITS: [(usize, u64); 7] = [

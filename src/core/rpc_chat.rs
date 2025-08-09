@@ -1,5 +1,6 @@
 use super::rpc_base::{RpcConnection, RpcError};
 use serde::{Serialize, Deserialize};
+use borsh::{BorshSerialize, BorshDeserialize};
 use std::str::FromStr;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::{
@@ -14,6 +15,16 @@ use sha2::{Sha256, Digest};
 use base64;
 use bincode;
 use wasm_bindgen::prelude::*;
+
+/// Borsh serialization version constants
+pub const BURN_MEMO_VERSION: u8 = 1;
+pub const CHAT_GROUP_CREATION_DATA_VERSION: u8 = 1;
+
+/// Borsh length constants
+const BORSH_U8_SIZE: usize = 1;         // version (u8)
+const BORSH_U64_SIZE: usize = 8;        // burn_amount (u64)
+const BORSH_VEC_LENGTH_SIZE: usize = 4; // user_data.len() (u32)
+const BORSH_FIXED_OVERHEAD: usize = BORSH_U8_SIZE + BORSH_U64_SIZE + BORSH_VEC_LENGTH_SIZE;
 
 /// Memo-Chat contract configuration and constants
 pub struct ChatConfig;
@@ -38,6 +49,12 @@ impl ChatConfig {
     /// Memo validation limits (from contract: 69-800 bytes)
     pub const MIN_MEMO_LENGTH: usize = 69;
     pub const MAX_MEMO_LENGTH: usize = 800;
+    
+    /// Maximum payload length = memo maximum length - borsh fixed overhead
+    pub const MAX_PAYLOAD_LENGTH: usize = Self::MAX_MEMO_LENGTH - BORSH_FIXED_OVERHEAD; // 800 - 13 = 787
+    
+    /// Compute budget configuration
+    pub const COMPUTE_UNIT_BUFFER: f64 = 1.2; // 20% buffer
     
     /// Helper functions
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
@@ -100,9 +117,9 @@ impl ChatConfig {
         discriminator
     }
     
-    /// Validate memo length
-    pub fn validate_memo_length(memo: &str) -> Result<(), RpcError> {
-        let memo_len = memo.len();
+    /// Validate memo length for binary data
+    pub fn validate_memo_length(memo_data: &[u8]) -> Result<(), RpcError> {
+        let memo_len = memo_data.len();
         if memo_len < Self::MIN_MEMO_LENGTH {
             return Err(RpcError::InvalidParameter(format!(
                 "Memo too short: {} bytes (minimum: {})", 
@@ -116,6 +133,137 @@ impl ChatConfig {
             )));
         }
         Ok(())
+    }
+}
+
+/// BurnMemo structure (compatible with contract)
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+pub struct BurnMemo {
+    /// Version of the BurnMemo structure (for future compatibility)
+    pub version: u8,
+    
+    /// Burn amount (must match actual burn amount)
+    pub burn_amount: u64,
+    
+    /// Application payload (variable length, max 787 bytes)
+    pub payload: Vec<u8>,
+}
+
+/// Chat message data structure (stored in BurnMemo.payload for send_memo_to_group)
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+pub struct ChatMessageData {
+    /// Version of this structure (for future compatibility)
+    pub version: u8,
+    
+    /// Category of the request (must be "chat" for memo-chat contract)
+    pub category: String,
+    
+    /// Operation type (must be "send_message" for sending messages)
+    pub operation: String,
+    
+    /// Group ID (must match the target group)
+    pub group_id: u64,
+    
+    /// Sender pubkey as string (must match the transaction signer)
+    pub sender: String,
+    
+    /// Message content (required, 1-512 characters)
+    pub message: String,
+    
+    /// Optional receiver pubkey as string (for direct messages within group)
+    pub receiver: Option<String>,
+    
+    /// Optional reply to signature (for message threading)
+    pub reply_to_sig: Option<String>,
+}
+
+impl ChatMessageData {
+    /// Create new chat message data
+    pub fn new(
+        group_id: u64,
+        sender: String,
+        message: String,
+        receiver: Option<String>,
+        reply_to_sig: Option<String>,
+    ) -> Self {
+        Self {
+            version: CHAT_GROUP_CREATION_DATA_VERSION,
+            category: "chat".to_string(),
+            operation: "send_message".to_string(),
+            group_id,
+            sender,
+            message,
+            receiver,
+            reply_to_sig,
+        }
+    }
+    
+    /// Validate message data
+    pub fn validate(&self, expected_group_id: u64, expected_sender: &str) -> Result<(), RpcError> {
+        // Validate version
+        if self.version != CHAT_GROUP_CREATION_DATA_VERSION {
+            return Err(RpcError::InvalidParameter(format!(
+                "Unsupported chat message data version: {} (expected: {})", 
+                self.version, CHAT_GROUP_CREATION_DATA_VERSION
+            )));
+        }
+        
+        // Validate category
+        if self.category != "chat" {
+            return Err(RpcError::InvalidParameter(format!(
+                "Invalid category: '{}' (expected: 'chat')", self.category
+            )));
+        }
+        
+        // Validate operation
+        if self.operation != "send_message" {
+            return Err(RpcError::InvalidParameter(format!(
+                "Invalid operation: '{}' (expected: 'send_message')", self.operation
+            )));
+        }
+        
+        // Validate group ID
+        if self.group_id != expected_group_id {
+            return Err(RpcError::InvalidParameter(format!(
+                "Group ID mismatch: data contains {}, expected {}", 
+                self.group_id, expected_group_id
+            )));
+        }
+        
+        // Validate sender
+        if self.sender != expected_sender {
+            return Err(RpcError::InvalidParameter(format!(
+                "Sender mismatch: data contains {}, expected {}", 
+                self.sender, expected_sender
+            )));
+        }
+        
+        // Validate message
+        if self.message.is_empty() {
+            return Err(RpcError::InvalidParameter("Message cannot be empty".to_string()));
+        }
+        
+        if self.message.len() > 512 {
+            return Err(RpcError::InvalidParameter("Message too long (max 512 characters)".to_string()));
+        }
+        
+        Ok(())
+    }
+}
+
+/// Parse Borsh-formatted memo data to extract chat message (simplified)
+fn parse_borsh_chat_message(memo_data: &[u8]) -> Option<(String, String)> {
+    // Try to deserialize ChatMessageData directly
+    match ChatMessageData::try_from_slice(memo_data) {
+        Ok(chat_data) => {
+            // Validate category and operation
+            if chat_data.category == "chat" && chat_data.operation == "send_message" {
+                Some((chat_data.sender, chat_data.message))
+            } else {
+                None
+            }
+        },
+        Err(_) => None
     }
 }
 
@@ -170,18 +318,6 @@ pub struct ChatMessagesResponse {
     pub messages: Vec<ChatMessage>,
     pub total_found: usize,
     pub has_more: bool,        // Indicates if there are more messages available
-}
-
-/// Chat message data for sending
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatMessageData {
-    pub operation: String,     // Must be "send_message"
-    pub category: String,      // Must be "chat"
-    pub group_id: u64,        // Target group ID
-    pub sender: String,       // Sender's public key
-    pub message: String,      // Message content
-    pub receiver: Option<String>, // Optional receiver public key
-    pub reply_to_sig: Option<String>, // Optional signature to reply to
 }
 
 /// Local message status for UI display
@@ -601,11 +737,11 @@ impl RpcConnection {
         Ok(groups)
     }
     
-    /// Get chat messages for a specific group
+    /// Get chat messages for a specific group (using Borsh format parsing)
     /// 
     /// # Parameters
     /// * `group_id` - The ID of the chat group
-    /// * `limit` - Maximum number of messages to fetch (default: 20)
+    /// * `limit` - Maximum number of messages to fetch (default: 50)
     /// * `before` - Optional signature to fetch messages before this one (for pagination)
     /// 
     /// # Returns
@@ -614,152 +750,104 @@ impl RpcConnection {
         &self,
         group_id: u64,
         limit: Option<usize>,
-        before: Option<String>
+        before: Option<String>,
     ) -> Result<ChatMessagesResponse, RpcError> {
-        let limit = limit.unwrap_or(20);
+        let limit = limit.unwrap_or(50).min(1000); // Maximum limit 1000
         
-        // Get the PDA for this group
-        let (group_pda, _) = ChatConfig::get_chat_group_pda(group_id)?;
+        log::info!("Fetching chat messages for group {}, limit: {}", group_id, limit);
         
-        log::info!("Fetching chat messages for group {} (PDA: {})", group_id, group_pda);
+        // Get chat group PDA
+        let (chat_group_pda, _) = ChatConfig::get_chat_group_pda(group_id)?;
         
-        // Build the parameters for getSignaturesForAddress
+        // Build request parameters
         let mut params = serde_json::json!([
-            group_pda.to_string(),
+            chat_group_pda.to_string(),
             {
-                "limit": limit,
-                "commitment": "finalized"
+                "encoding": "base64",
+                "commitment": "confirmed",
+                "limit": limit
             }
         ]);
         
-        // Add 'before' parameter if provided for pagination
+        // Add 'before' parameter if specified
         if let Some(before_sig) = before {
             params[1]["before"] = serde_json::Value::String(before_sig);
         }
         
-        // Get transaction signatures with memo information for this group's PDA
-        let signatures: Vec<serde_json::Value> = self.send_request("getSignaturesForAddress", params).await?;
+        log::info!("Fetching signatures for address: {}", chat_group_pda);
         
-        if signatures.is_empty() {
-            return Ok(ChatMessagesResponse {
-                group_id,
-                messages: vec![],
-                total_found: 0,
-                has_more: false,
-            });
-        }
+        // Get signatures for address
+        let signatures_response: serde_json::Value = self.send_request("getSignaturesForAddress", params).await?;
+        let signatures = signatures_response.as_array()
+            .ok_or_else(|| RpcError::Other("Invalid signatures response format".to_string()))?;
         
-        // Parse chat messages directly from the signatures response
+        log::info!("Found {} signatures", signatures.len());
+        
         let mut messages = Vec::new();
         
-        for sig_info in &signatures {
-            // Skip if there's an error in the transaction
-            if !sig_info["err"].is_null() {
+        // Process each signature
+        for sig_info in signatures {
+            let signature = sig_info["signature"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+            
+            if signature.is_empty() {
                 continue;
             }
             
-            // Extract required fields
-            let signature = sig_info["signature"]
-                .as_str()
-                .unwrap_or("Unknown")
-                .to_string();
-            
-            // Debug log the raw blockTime value
-            log::info!("Raw blockTime value: {:?}", sig_info["blockTime"]);
-            
-            let block_time = sig_info["blockTime"]
-                .as_i64()
-                .unwrap_or_else(|| {
-                    log::warn!("Failed to parse blockTime for signature {}, raw value: {:?}", signature, sig_info["blockTime"]);
-                    0
-                });
-            
-            log::info!("Parsed blockTime: {} for signature: {}", block_time, signature);
-            
-            let slot = sig_info["slot"]
-                .as_u64()
-                .unwrap_or(0);
-            
-            // Extract memo content
-            if let Some(memo_str) = sig_info["memo"].as_str() {
-                // Parse the memo format: "[length] JSON message"
-                // Extract the JSON content after the length prefix
-                let json_content = if let Some(bracket_end) = memo_str.find(']') {
-                    if bracket_end + 2 < memo_str.len() {
-                        // Skip the "] " part and get the JSON content
-                        memo_str[bracket_end + 2..].to_string()
-                    } else {
-                        // If there's no content after the bracket, skip this message
-                        continue;
-                    }
-                } else {
-                    // If there's no bracket format, treat the entire string as JSON
-                    memo_str.to_string()
-                };
-                
-                // Skip empty messages
-                if json_content.trim().is_empty() {
-                    continue;
+            // Get transaction details  
+            let tx_params = serde_json::json!([
+                signature,
+                {
+                    "encoding": "jsonParsed",
+                    "commitment": "confirmed",
+                    "maxSupportedTransactionVersion": 0
                 }
-                
-                // Try to parse the JSON content
-                match serde_json::from_str::<serde_json::Value>(&json_content) {
-                    Ok(json_data) => {
-                        // Check if this is a chat message
-                        if let Some(category) = json_data["category"].as_str() {
-                            if category == "chat" {
-                                // validate operation field (now required by contract)
-                                let operation = json_data["operation"]
-                                    .as_str()
-                                    .unwrap_or("");
-                                
-                                if operation != "send_message" {
-                                    log::debug!("Skipping message: invalid or missing operation field (expected 'send_message', got '{}')", operation);
-                                    continue; // skip invalid operation
+            ]);
+            
+            match self.send_request("getTransaction", tx_params).await {
+                Ok(tx_response) => {
+                    let tx_data: serde_json::Value = tx_response;
+                    
+                    // Extract timestamp and slot
+                    let block_time = tx_data["blockTime"].as_i64().unwrap_or(0);
+                    let slot = tx_data["slot"].as_u64().unwrap_or(0);
+                    
+                    // Look for memo instruction at index 1
+                    if let Some(instructions) = tx_data["transaction"]["message"]["instructions"].as_array() {
+                        // Check if index 1 is a memo instruction
+                        if let Some(instruction) = instructions.get(1) {
+                            // In jsonParsed mode, check if this is a parsed memo instruction
+                            if let Some(program) = instruction["program"].as_str() {
+                                if program == "spl-memo" {
+                                    // Get the parsed memo data directly
+                                    if let Some(parsed) = instruction["parsed"].as_str() {
+                                        // Convert string to bytes for Borsh parsing
+                                        let memo_bytes = parsed.as_bytes();
+                                        
+                                        // Parse Borsh format message
+                                        if let Some((sender, message)) = parse_borsh_chat_message(memo_bytes) {
+                                            // Skip empty messages
+                                            if !message.trim().is_empty() {
+                                                messages.push(ChatMessage {
+                                                    signature: signature.clone(),
+                                                    sender,
+                                                    message,
+                                                    timestamp: block_time,
+                                                    slot,
+                                                    memo_amount: 0,
+                                                });
+                                            }
+                                        }
+                                    }
                                 }
-                                
-                                let message = json_data["message"]
-                                    .as_str()
-                                    .unwrap_or("")
-                                    .to_string();
-                                    
-                                let sender = json_data["sender"]
-                                    .as_str()
-                                    .unwrap_or("")
-                                    .to_string();
-                                
-                                // Skip empty messages
-                                if message.trim().is_empty() {
-                                    continue;
-                                }
-                                
-                                log::info!("Creating chat message with timestamp: {}, sender: {}, content: {}", 
-                                          block_time, sender, message);
-                                
-                                messages.push(ChatMessage {
-                                    signature,
-                                    sender,
-                                    message,
-                                    timestamp: block_time,
-                                    slot,
-                                    memo_amount: 0, // Set to 0 for now, could be extracted from JSON if needed
-                                });
                             }
                         }
-                    },
-                    Err(_) => {
-                        // If JSON parsing fails, treat it as a plain text message (backward compatibility)
-                        log::info!("Creating plain text message with timestamp: {}, content: {}", block_time, json_content);
-                        
-                        messages.push(ChatMessage {
-                            signature,
-                            sender: String::new(), // Empty sender for plain text messages
-                            message: json_content,
-                            timestamp: block_time,
-                            slot,
-                            memo_amount: 0,
-                        });
                     }
+                },
+                Err(e) => {
+                    log::debug!("Failed to get transaction details {}: {}", signature, e);
                 }
             }
         }
@@ -770,7 +858,7 @@ impl RpcConnection {
         let has_more = signatures.len() == limit;
         let total_found = messages.len();
         
-        log::info!("Found {} chat messages for group {}, sorted oldest to newest", total_found, group_id);
+        log::info!("Found {} chat messages for group {}", total_found, group_id);
         
         Ok(ChatMessagesResponse {
             group_id,
@@ -780,7 +868,7 @@ impl RpcConnection {
         })
     }
 
-    /// Send a chat message to a group
+    /// Send a chat message to a group (using Borsh serialization with simulation)
     /// 
     /// # Parameters
     /// * `group_id` - The ID of the chat group to send message to
@@ -845,41 +933,39 @@ impl RpcConnection {
             .map_err(|e| RpcError::Other(format!("Failed to parse token account info: {}", e)))?;
         
         // Prepare chat message data
-        let chat_message_data = ChatMessageData {
-            operation: "send_message".to_string(),
-            category: "chat".to_string(),
+        let chat_message_data = ChatMessageData::new(
             group_id,
-            sender: user_pubkey.to_string(),
-            message: message.to_string(),
+            user_pubkey.to_string(),
+            message.to_string(),
             receiver,
             reply_to_sig,
-        };
+        );
         
-        // Serialize to JSON
-        let json_message = serde_json::to_string(&chat_message_data)
-            .map_err(|e| RpcError::Other(format!("Failed to serialize chat message: {}", e)))?;
+        // Validate message data
+        chat_message_data.validate(group_id, &user_pubkey.to_string())?;
         
-        log::info!("Chat message JSON: {}", json_message);
+        // Serialize chat message data directly
+        let memo_data = chat_message_data.try_to_vec()
+            .map_err(|e| RpcError::Other(format!("Failed to serialize chat message data: {}", e)))?;
+        
+        log::info!("Chat message data length: {} bytes", memo_data.len());
         
         // Validate memo length
-        ChatConfig::validate_memo_length(&json_message)?;
+        ChatConfig::validate_memo_length(&memo_data)?;
         
-        // Build instructions
-        let mut instructions = vec![];
+        // Build base instructions (for simulation first)
+        let mut base_instructions = vec![];
         
-        // Add compute budget instruction
-        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(300_000));
-        
-        // Add memo instruction first (required by contract)
-        instructions.push(spl_memo::build_memo(
-            json_message.as_bytes(),
+        // Add memo instruction (contract requires it at index 1)
+        base_instructions.push(spl_memo::build_memo(
+            &memo_data,
             &[&user_pubkey],
         ));
         
         // If token account doesn't exist, create it
         if token_account_info["value"].is_null() {
             log::info!("User token account does not exist, creating it...");
-            instructions.push(
+            base_instructions.push(
                 spl_associated_token_account::instruction::create_associated_token_account_idempotent(
                     &user_pubkey,           // Funding account (fee payer)
                     &user_pubkey,           // Wallet address  
@@ -910,9 +996,9 @@ impl RpcConnection {
             accounts,
         );
         
-        instructions.push(send_memo_instruction);
+        base_instructions.push(send_memo_instruction);
         
-        // Get recent blockhash
+        // Get latest blockhash
         let blockhash_response: serde_json::Value = self.send_request("getLatestBlockhash", serde_json::json!([])).await?;
         let blockhash_str = blockhash_response["value"]["blockhash"]
             .as_str()
@@ -920,18 +1006,63 @@ impl RpcConnection {
         let blockhash = solana_sdk::hash::Hash::from_str(blockhash_str)
             .map_err(|e| RpcError::Other(format!("Failed to parse blockhash: {}", e)))?;
         
-        // Create and sign transaction
-        let message = Message::new(&instructions, Some(&user_pubkey));
-        let mut transaction = Transaction::new(&[&keypair], message, blockhash);
+        // Create simulation transaction (without compute budget instruction)
+        let sim_message = Message::new(&base_instructions, Some(&user_pubkey));
+        let mut sim_transaction = Transaction::new_unsigned(sim_message);
+        sim_transaction.message.recent_blockhash = blockhash;
+        sim_transaction.sign(&[&keypair], blockhash);
         
-        // Serialize and encode transaction
-        let serialized_transaction = bincode::serialize(&transaction)
-            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?;
-        let encoded_transaction = base64::encode(&serialized_transaction);
+        // Serialize simulation transaction
+        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
         
-        // Send transaction
+        // Simulate transaction to get compute units consumption
+        let sim_options = serde_json::json!({
+            "encoding": "base64",
+            "commitment": "confirmed",
+            "replaceRecentBlockhash": true,
+            "sigVerify": false
+        });
+        
+        let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
+        let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
+            .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
+        
+        // Parse simulation result to extract compute units consumed
+        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            log::info!("Chat message simulation consumed {} compute units", units_consumed);
+            // Apply 20% buffer
+            (units_consumed as f64 * ChatConfig::COMPUTE_UNIT_BUFFER) as u64
+        } else {
+            log::warn!("Failed to get compute units from simulation, using fallback of 300,000");
+            300_000 // Fallback to current fixed value
+        };
+        
+        log::info!("Using {} compute units for chat message (simulation: {}, +20% buffer)", 
+                  computed_units, 
+                  sim_result["value"]["unitsConsumed"].as_u64().unwrap_or(0));
+        
+        // Now build the final transaction with the calculated compute units
+        let mut final_instructions = vec![];
+        
+        // Add compute budget instruction first
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+        
+        // Add all the base instructions
+        final_instructions.extend(base_instructions);
+        
+        // Create and sign final transaction
+        let final_message = Message::new(&final_instructions, Some(&user_pubkey));
+        let mut final_transaction = Transaction::new_unsigned(final_message);
+        final_transaction.message.recent_blockhash = blockhash;
+        final_transaction.sign(&[&keypair], blockhash);
+        
+        // Serialize and send final transaction
+        let final_serialized_tx = base64::encode(bincode::serialize(&final_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize final transaction: {}", e)))?);
+        
         let send_params = serde_json::json!([
-            encoded_transaction,
+            final_serialized_tx,
             {
                 "encoding": "base64",
                 "skipPreflight": false,
