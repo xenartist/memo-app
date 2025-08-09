@@ -19,7 +19,7 @@ pub fn SettingsPage() -> impl IntoView {
     // get current rpc url
     let current_rpc_url = move || {
         match selected_network.get() {
-            RpcNetwork::TestnetDefault => "https://rpc-testnet.x1.wiki".to_string(),
+            RpcNetwork::TestnetDefault => "https://rpc.testnet.x1.xyz".to_string(),
             RpcNetwork::TestnetCustom => custom_testnet_url.get(),
             RpcNetwork::MainnetDefault => "TBD".to_string(),
             RpcNetwork::MainnetCustom => custom_mainnet_url.get(),
@@ -45,7 +45,7 @@ pub fn SettingsPage() -> impl IntoView {
                                 checked=move || selected_network.get() == RpcNetwork::TestnetDefault
                                 on:change=move |_| set_selected_network.set(RpcNetwork::TestnetDefault)
                             />
-                            <label for="testnet-default">"Default (https://rpc-testnet.x1.wiki)"</label>
+                            <label for="testnet-default">"Default (https://rpc.testnet.x1.xyz)"</label>
                         </div>
                         
                         <div class="radio-option">
