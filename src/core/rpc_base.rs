@@ -63,7 +63,7 @@ impl RpcConnection {
     // X1 testnet RPC endpoints list for load balancing and redundancy
     const DEFAULT_RPC_ENDPOINTS: &'static [&'static str] = &[
         "https://rpc.testnet.x1.xyz",
-        "https://rpc-testnet.x1.wiki",
+        // "https://rpc-testnet.x1.wiki",
         // attention: the following endpoints are examples, please configure the actual available X1 testnet RPC endpoints
         // "https://rpc2.testnet.x1.xyz", 
         // "https://rpc3.testnet.x1.xyz",
