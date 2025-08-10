@@ -60,11 +60,51 @@ struct RpcResponse<T> {
 }
 
 impl RpcConnection {
-    // X1 testnet RPC endpoint
-    const DEFAULT_RPC_ENDPOINT: &'static str = "https://rpc.testnet.x1.xyz";
+    // X1 testnet RPC endpoints list for load balancing and redundancy
+    const DEFAULT_RPC_ENDPOINTS: &'static [&'static str] = &[
+        "https://rpc.testnet.x1.xyz",
+        "https://rpc-testnet.x1.wiki",
+        // attention: the following endpoints are examples, please configure the actual available X1 testnet RPC endpoints
+        // "https://rpc2.testnet.x1.xyz", 
+        // "https://rpc3.testnet.x1.xyz",
+        // if you need to add more endpoints, please uncomment and use the actual endpoint address
+    ];
     
     pub fn new() -> Self {
-        Self::with_endpoint(Self::DEFAULT_RPC_ENDPOINT)
+        let selected_endpoint = Self::select_random_endpoint();
+        log::debug!("Selected RPC endpoint: {}", selected_endpoint);
+        Self::with_endpoint(selected_endpoint)
+    }
+
+    /// select a random endpoint from the RPC endpoint list
+    fn select_random_endpoint() -> &'static str {
+        let endpoints = Self::DEFAULT_RPC_ENDPOINTS;
+        
+        // if there is only one endpoint, return it directly
+        if endpoints.len() == 1 {
+            return endpoints[0];
+        }
+        
+        // use high quality random number generator to select endpoint
+        if let Some(random_value) = Self::try_crypto_random() {
+            let index = (random_value as usize) % endpoints.len();
+            endpoints[index]
+        } else {
+            // fallback scheme: use Math.random()
+            let random_value = Math::random();
+            let index = (random_value * endpoints.len() as f64) as usize;
+            endpoints[index.min(endpoints.len() - 1)]
+        }
+    }
+
+    /// create a new connection instance, using the randomly selected endpoint (for retry etc.)
+    pub fn new_with_random_endpoint() -> Self {
+        Self::new()
+    }
+
+    /// get the current used endpoint
+    pub fn get_endpoint(&self) -> &str {
+        &self.endpoint
     }
 
     pub fn with_endpoint(endpoint: &str) -> Self {
