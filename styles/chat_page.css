@@ -616,22 +616,86 @@
     letter-spacing: 0.5px;
 }
 
-/* Sending status - red */
+/* Failed status - red with warning styling */
+.status-failed {
+    color: #dc3545; /* Bootstrap danger red */
+    background-color: rgba(220, 53, 69, 0.1);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(220, 53, 69, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Timeout status - orange/amber styling */
+.status-timeout {
+    color: #fd7e14; /* Bootstrap warning orange */
+    background-color: rgba(253, 126, 20, 0.1);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(253, 126, 20, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Retry button styling */
+.retry-button {
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 2px 4px;
+    margin-left: 4px;
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    transition: background-color 0.2s ease;
+}
+
+.retry-button:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.retry-button i {
+    font-size: 8px;
+}
+
+/* Update existing status styles to include icons properly */
 .status-sending {
     color: #dc3545; /* Bootstrap danger red */
     background-color: rgba(220, 53, 69, 0.1);
     padding: 2px 6px;
     border-radius: 4px;
     border: 1px solid rgba(220, 53, 69, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
 
-/* Sent status - green */
 .status-sent {
     color: #28a745; /* Bootstrap success green */
     background-color: rgba(40, 167, 69, 0.1);
     padding: 2px 6px;
     border-radius: 4px;
     border: 1px solid rgba(40, 167, 69, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Icon styling within status spans */
+.status-sending i,
+.status-sent i,
+.status-failed i,
+.status-timeout i {
+    font-size: 8px;
 }
 
 /* when message is sending, the whole message box is slightly transparent */

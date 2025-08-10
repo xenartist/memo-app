@@ -260,12 +260,15 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                     TimeoutFuture::new(100).await;
                     
                     // 3. actually send message
-                    let result = session.with_untracked(|s| s.clone()).send_chat_message(
+                    let result = session.with_untracked(|s| s.clone()).send_chat_message_with_timeout(
                         group_id,
                         &message_text,
                         None, // receiver
-                        None  // reply_to_sig
+                        None, // reply_to_sig
+                        Some(30000) // timeout_ms: 30 seconds timeout
                     ).await;
+                    
+                    log::info!("Chat page: Received result from session: success={}", result.is_ok());
                     
                     match result {
                         Ok(signature) => {
@@ -307,16 +310,51 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                             add_log_entry("INFO", "Message status updated to Sent");
                         },
                         Err(e) => {
-                            add_log_entry("ERROR", &format!("Failed to send message: {}", e));
+                            log::error!("Chat page: Error received from session: {}", e);
+                            
+                            // Parse error to show user-friendly English message
+                            let user_friendly_error = if e.to_string().contains("MemoTooFrequent") || e.to_string().contains("6009") {
+                                "Message sent too frequently. Please wait before sending another message."
+                            } else if e.to_string().contains("timeout") {
+                                "Message send timeout. Please try again."
+                            } else if e.to_string().contains("insufficient") {
+                                "Insufficient balance"
+                            } else {
+                                "Failed to send message. Please try again."
+                            };
+                            
+                            add_log_entry("ERROR", &format!("Failed to send message: {}", user_friendly_error));
+                            set_error_message.set(Some(user_friendly_error.to_string()));
                             
                             // 6. update local message status to failed
                             set_messages.update(|msgs| {
-                                if let Some(msg) = msgs.iter_mut().find(|m| {
-                                    m.is_local && 
-                                    m.message.message == message_text && 
-                                    m.message.sender == user_pubkey
-                                }) {
+                                log::info!("Looking for message to update status. Total messages: {}", msgs.len());
+                                log::info!("Looking for: message='{}', sender='{}'", message_text, user_pubkey);
+                                
+                                let found = msgs.iter_mut().find(|m| {
+                                    let message_match = m.message.message == message_text;
+                                    let sender_match = m.message.sender == user_pubkey;
+                                    let is_local_match = m.is_local;
+                                    
+                                    log::info!("Checking message: is_local={}, message_match={}, sender_match={}, current_status={:?}", 
+                                        is_local_match, message_match, sender_match, m.status
+                                    );
+                                    
+                                    is_local_match && message_match && sender_match
+                                });
+                                
+                                if let Some(msg) = found {
+                                    log::info!("Found message to update, changing status from {:?} to Failed", msg.status);
                                     msg.status = MessageStatus::Failed;
+                                    log::info!("Status updated successfully to {:?}", msg.status);
+                                } else {
+                                    log::error!("Could not find message to update status!");
+                                    // let's see what's in the current message list
+                                    for (i, msg) in msgs.iter().enumerate() {
+                                        log::error!("Message {}: is_local={}, message='{}', sender='{}', status={:?}", 
+                                            i, msg.is_local, msg.message.message, msg.message.sender, msg.status
+                                        );
+                                    }
                                 }
                             });
                         }
@@ -423,7 +461,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                             <div class="messages-list">
                                                 <For
                                                     each=move || messages.get()
-                                                    key=|message| message.message.signature.clone()
+                                                    key=|message| format!("{}_{:?}", message.message.signature, message.status)
                                                     children=move |message: LocalChatMessage| {
                                                         view! { <MessageItem message=message current_mint_reward=current_mint_reward session=session/> }
                                                     }
@@ -778,34 +816,82 @@ fn MessageItem(message: LocalChatMessage, current_mint_reward: ReadSignal<Option
             </div>
             <div class="message-content-wrapper">
                 <div class="message-content">
-                    {message_content}
+                    {message_content.clone()}
                 </div>
-                // only show status for local messages, and only show Sending and Sent
-                {move || {
-                    if is_local && (status == MessageStatus::Sending || status == MessageStatus::Sent) {
-                        view! {
-                            <div class="message-status-corner">
-                                {
-                                    match status {
-                                        MessageStatus::Sending => view! {
-                                            <span class="status-sending">
-                                                "Sending"
-                                            </span>
-                                        }.into_view(),
-                                        MessageStatus::Sent => view! {
-                                            <span class="status-sent">
-                                                "Sent"
-                                            </span>
-                                        }.into_view(),
-                                        _ => view! { <div></div> }.into_view(),
+                // show status for local messages
+                {
+                    let message_content = message_content.clone(); // Clone for closure
+                    move || {
+                        if is_local {
+                            view! {
+                                <div class="message-status-corner">
+                                    {
+                                        match status {
+                                            MessageStatus::Sending => view! {
+                                                <span class="status-sending">
+                                                    <i class="fas fa-clock"></i>
+                                                    "Sending..."
+                                                </span>
+                                            }.into_view(),
+                                            MessageStatus::Sent => view! {
+                                                <span class="status-sent">
+                                                    <i class="fas fa-check"></i>
+                                                    "Sent"
+                                                </span>
+                                            }.into_view(),
+                                            MessageStatus::Failed => view! {
+                                                <span class="status-failed">
+                                                    <i class="fas fa-exclamation-triangle"></i>
+                                                    "Failed"
+                                                    <button 
+                                                        class="retry-button"
+                                                        on:click={
+                                                            let message_content = message_content.clone();
+                                                            let session = session.clone();
+                                                            move |_| {
+                                                                log::info!("Retry sending message: {}", message_content);
+                                                                // TODO: Implement retry logic here
+                                                                // This would need access to the same send logic
+                                                            }
+                                                        }
+                                                        title="Retry sending this message"
+                                                    >
+                                                        <i class="fas fa-redo"></i>
+                                                        "Retry"
+                                                    </button>
+                                                </span>
+                                            }.into_view(),
+                                            MessageStatus::Timeout => view! {
+                                                <span class="status-timeout">
+                                                    <i class="fas fa-clock"></i>
+                                                    "Timeout"
+                                                    <button 
+                                                        class="retry-button"
+                                                        on:click={
+                                                            let message_content = message_content.clone();
+                                                            let session = session.clone();
+                                                            move |_| {
+                                                                log::info!("Retry sending message after timeout: {}", message_content);
+                                                                // TODO: Implement retry logic here
+                                                            }
+                                                        }
+                                                        title="Retry sending this message"
+                                                    >
+                                                        <i class="fas fa-redo"></i>
+                                                        "Retry"
+                                                    </button>
+                                                </span>
+                                            }.into_view(),
+                                            _ => view! { <div></div> }.into_view(),
+                                        }
                                     }
-                                }
-                            </div>
-                        }.into_view()
-                    } else {
-                        view! { <div></div> }.into_view()
+                                </div>
+                            }.into_view()
+                        } else {
+                            view! { <div></div> }.into_view()
+                        }
                     }
-                }}
+                }
             </div>
             <div class="message-meta">
                 <div class="memo-amount">
