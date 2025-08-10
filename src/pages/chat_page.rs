@@ -312,16 +312,40 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                         Err(e) => {
                             log::error!("Chat page: Error received from session: {}", e);
                             
-                            // Parse error to show user-friendly English message
-                            let user_friendly_error = if e.to_string().contains("MemoTooFrequent") || e.to_string().contains("6009") {
-                                "Message sent too frequently. Please wait before sending another message."
-                            } else if e.to_string().contains("timeout") {
-                                "Message send timeout. Please try again."
-                            } else if e.to_string().contains("insufficient") {
-                                "Insufficient balance"
-                            } else {
-                                "Failed to send message. Please try again."
-                            };
+                            // Parse error to extract specific error message
+                            let error_string = e.to_string();
+                            let user_friendly_error = 
+                                // Try to extract specific error message after " - "
+                                if let Some(dash_pos) = error_string.rfind(" - ") {
+                                    let specific_msg = &error_string[dash_pos + 3..];
+                                    // Clean up the message (remove trailing dots if any)
+                                    let cleaned_msg = specific_msg.trim_end_matches('.');
+                                    if !cleaned_msg.is_empty() {
+                                        cleaned_msg.to_string()
+                                    } else {
+                                        // Fallback to checking known error types
+                                        if error_string.contains("MemoTooFrequent") || error_string.contains("6009") {
+                                            "Message sent too frequently. Please wait before sending another message.".to_string()
+                                        } else if error_string.contains("timeout") {
+                                            "Message send timeout. Please try again.".to_string()
+                                        } else if error_string.contains("insufficient") {
+                                            "Insufficient balance".to_string()
+                                        } else {
+                                            "Failed to send message. Please try again.".to_string()
+                                        }
+                                    }
+                                } else {
+                                    // Fallback to checking known error types
+                                    if error_string.contains("MemoTooFrequent") || error_string.contains("6009") {
+                                        "Message sent too frequently. Please wait before sending another message.".to_string()
+                                    } else if error_string.contains("timeout") {
+                                        "Message send timeout. Please try again.".to_string()
+                                    } else if error_string.contains("insufficient") {
+                                        "Insufficient balance".to_string()
+                                    } else {
+                                        "Failed to send message. Please try again.".to_string()
+                                    }
+                                };
                             
                             add_log_entry("ERROR", &format!("Failed to send message: {}", user_friendly_error));
                             set_error_message.set(Some(user_friendly_error.to_string()));
@@ -486,6 +510,19 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
             ev.prevent_default();
             let dummy_event = web_sys::MouseEvent::new("click").unwrap();
             send_message(dummy_event);
+        }
+    };
+
+    // Helper function to extract fallback error messages
+    let extract_fallback_error_message = |error_str: &str| -> String {
+        if error_str.contains("MemoTooFrequent") || error_str.contains("6009") {
+            "Message sent too frequently. Please wait before sending another message.".to_string()
+        } else if error_str.contains("timeout") {
+            "Message send timeout. Please try again.".to_string()
+        } else if error_str.contains("insufficient") {
+            "Insufficient balance".to_string()
+        } else {
+            "Failed to send message. Please try again.".to_string()
         }
     };
 
