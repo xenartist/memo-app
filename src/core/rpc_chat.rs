@@ -253,10 +253,16 @@ impl ChatMessageData {
     }
 }
 
-/// Parse Borsh-formatted memo data to extract chat message (simplified)
+/// Parse Base64+Borsh-formatted memo data to extract chat message
 fn parse_borsh_chat_message(memo_data: &[u8]) -> Option<(String, String)> {
-    // Try to deserialize ChatMessageData directly
-    match ChatMessageData::try_from_slice(memo_data) {
+    // Convert bytes to UTF-8 string (should be Base64)
+    let memo_str = std::str::from_utf8(memo_data).ok()?;
+    
+    // Decode Base64 to get original Borsh binary data
+    let borsh_bytes = base64::decode(memo_str).ok()?;
+    
+    // Deserialize Borsh binary data to ChatMessageData
+    match ChatMessageData::try_from_slice(&borsh_bytes) {
         Ok(chat_data) => {
             // Validate category and operation
             if chat_data.category == "chat" && chat_data.operation == "send_message" {
@@ -825,10 +831,10 @@ impl RpcConnection {
                                 if program == "spl-memo" {
                                     // Get the parsed memo data directly
                                     if let Some(parsed) = instruction["parsed"].as_str() {
-                                        // Convert string to bytes for Borsh parsing
+                                        // Convert string to bytes for parsing
                                         let memo_bytes = parsed.as_bytes();
                                         
-                                        // Parse Borsh format message
+                                        // Parse Base64+Borsh format message
                                         if let Some((sender, message)) = parse_borsh_chat_message(memo_bytes) {
                                             // Skip empty messages
                                             if !message.trim().is_empty() {
@@ -946,21 +952,25 @@ impl RpcConnection {
         // Validate message data
         chat_message_data.validate(group_id, &user_pubkey.to_string())?;
         
-        // Serialize chat message data directly
-        let memo_data = chat_message_data.try_to_vec()
+        // Serialize chat message data to Borsh binary
+        let memo_data_bytes = chat_message_data.try_to_vec()
             .map_err(|e| RpcError::Other(format!("Failed to serialize chat message data: {}", e)))?;
+
+        // Encode Borsh binary data to Base64 string for UTF-8 compatibility with spl-memo
+        let memo_data_base64 = base64::encode(&memo_data_bytes);
         
-        log::info!("Chat message data length: {} bytes", memo_data.len());
-        
-        // Validate memo length
-        ChatConfig::validate_memo_length(&memo_data)?;
+        log::info!("Chat message data: {} bytes Borsh → {} bytes Base64", 
+                  memo_data_bytes.len(), memo_data_base64.len());
+
+        // Validate memo length (now Base64 string length)
+        ChatConfig::validate_memo_length(memo_data_base64.as_bytes())?;
         
         // Build base instructions (for simulation first)
         let mut base_instructions = vec![];
-        
-        // Add memo instruction (contract requires it at index 1)
+
+        // Add memo instruction with Base64-encoded Borsh data
         base_instructions.push(spl_memo::build_memo(
-            &memo_data,
+            memo_data_base64.as_bytes(), // UTF-8 Base64 string
             &[&user_pubkey],
         ));
         
@@ -1058,7 +1068,7 @@ impl RpcConnection {
 
         // Add memo instruction SECOND (index 1) - CONTRACT REQUIREMENT
         final_instructions.push(spl_memo::build_memo(
-            &memo_data,
+            memo_data_base64.as_bytes(), // UTF-8 Base64 string
             &[&user_pubkey],
         ));
 
