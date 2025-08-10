@@ -1223,14 +1223,14 @@ impl RpcConnection {
         check_timeout()?;
         log::info!("Sending chat message transaction...");
         
-        // add error capture
+        // Send transaction with minimal logging
         match self.send_request("sendTransaction", send_params).await {
             Ok(signature) => {
-                log::info!("Chat message sent successfully! Signature: {}", signature);
+                log::info!("Chat message sent successfully");
                 Ok(signature)
             },
             Err(e) => {
-                log::error!("send_request returned error in send_chat_message_internal: {:?}", e);
+                log::error!("Failed to send chat message: {}", e);
                 Err(e)
             }
         }

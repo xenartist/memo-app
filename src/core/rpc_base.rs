@@ -128,8 +128,10 @@ impl RpcConnection {
             params,
         };
 
-        // Add detailed logging for the request
-        log::info!("Sending RPC request: method={}, id={}", method, request_id);
+        // Simple request logging for important operations only
+        if method == "sendTransaction" {
+            log::debug!("Sending transaction request");
+        }
         
         let request_body = serde_json::to_string(&request)
             .map_err(|e| {
@@ -199,42 +201,55 @@ impl RpcConnection {
                 RpcError::Other(format!("Failed to parse response as JSON: {:?}", e))
             })?;
 
-        // Log the full response for debugging
-        log::debug!("RPC response for {}: {}", method, serde_json::to_string_pretty(&value).unwrap_or_else(|_| "Failed to serialize response".to_string()));
-
-        // check if there is an error
+        // Simplified response logging - only log errors
         if let Some(error) = value.get("error") {
-            // Enhanced error logging
-            log::error!("RPC error received for method {}: {}", method, serde_json::to_string_pretty(error).unwrap_or_else(|_| error.to_string()));
+            log::error!("RPC error for {}: {}", method, error.to_string());
             
-            // Try to extract more detailed error information
             if let Some(error_obj) = error.as_object() {
                 let code = error_obj.get("code").and_then(|c| c.as_i64()).unwrap_or(-1);
                 let message = error_obj.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
                 
-                // Check for transaction simulation/execution errors
+                // Extract specific error details from transaction logs
+                let mut specific_error = None;
                 if let Some(data) = error_obj.get("data") {
-                    log::error!("RPC error data: {}", serde_json::to_string_pretty(data).unwrap_or_else(|_| data.to_string()));
-                    
-                    // Check for specific Solana errors
+                    // Check for specific Solana contract errors
                     if let Some(err_info) = data.get("err") {
-                        log::error!("Solana transaction error: {}", serde_json::to_string_pretty(err_info).unwrap_or_else(|_| err_info.to_string()));
-                    }
-                    
-                    // Check for program logs
-                    if let Some(logs) = data.get("logs").and_then(|l| l.as_array()) {
-                        log::error!("Transaction logs:");
-                        for (i, log_entry) in logs.iter().enumerate() {
-                            if let Some(log_str) = log_entry.as_str() {
-                                log::error!("  [{}] {}", i, log_str);
+                        if let Some(custom) = err_info.get("InstructionError").and_then(|e| e.as_array()) {
+                            if custom.len() >= 2 {
+                                if let Some(custom_error) = custom[1].get("Custom") {
+                                    let error_code = custom_error.as_i64().unwrap_or(0);
+                                    log::error!("Contract error code: {}", error_code);
+                                    
+                                    // Extract specific error message from logs
+                                    if let Some(logs) = data.get("logs").and_then(|l| l.as_array()) {
+                                        for log_entry in logs {
+                                            if let Some(log_str) = log_entry.as_str() {
+                                                if log_str.contains("Error Message:") {
+                                                    // Extract the error message after "Error Message:"
+                                                    if let Some(msg_start) = log_str.find("Error Message:") {
+                                                        let error_msg = &log_str[msg_start + 14..].trim();
+                                                        specific_error = Some(error_msg.to_string());
+                                                        log::error!("Extracted error message: {}", error_msg);
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
                 
-                let error_result = RpcError::SolanaRpcError(format!("Code {}: {} - Full error: {}", code, message, error.to_string()));
-                log::error!("Returning RPC error to caller: {:?}", error_result);
-                return Err(error_result);
+                // Create error message with specific details if available
+                let error_message = if let Some(specific_msg) = specific_error {
+                    format!("Code {}: {} - {}", code, message, specific_msg)
+                } else {
+                    format!("Code {}: {}", code, message)
+                };
+                
+                return Err(RpcError::SolanaRpcError(error_message));
             } else {
                 return Err(RpcError::Other(error.to_string()));
             }

@@ -328,33 +328,17 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                             
                             // 6. update local message status to failed
                             set_messages.update(|msgs| {
-                                log::info!("Looking for message to update status. Total messages: {}", msgs.len());
-                                log::info!("Looking for: message='{}', sender='{}'", message_text, user_pubkey);
-                                
                                 let found = msgs.iter_mut().find(|m| {
-                                    let message_match = m.message.message == message_text;
-                                    let sender_match = m.message.sender == user_pubkey;
-                                    let is_local_match = m.is_local;
-                                    
-                                    log::info!("Checking message: is_local={}, message_match={}, sender_match={}, current_status={:?}", 
-                                        is_local_match, message_match, sender_match, m.status
-                                    );
-                                    
-                                    is_local_match && message_match && sender_match
+                                    m.is_local && 
+                                    m.message.message == message_text && 
+                                    m.message.sender == user_pubkey
                                 });
                                 
                                 if let Some(msg) = found {
-                                    log::info!("Found message to update, changing status from {:?} to Failed", msg.status);
+                                    log::info!("Updating message status to Failed");
                                     msg.status = MessageStatus::Failed;
-                                    log::info!("Status updated successfully to {:?}", msg.status);
                                 } else {
-                                    log::error!("Could not find message to update status!");
-                                    // let's see what's in the current message list
-                                    for (i, msg) in msgs.iter().enumerate() {
-                                        log::error!("Message {}: is_local={}, message='{}', sender='{}', status={:?}", 
-                                            i, msg.is_local, msg.message.message, msg.message.sender, msg.status
-                                        );
-                                    }
+                                    log::error!("Could not find message to update status");
                                 }
                             });
                         }
