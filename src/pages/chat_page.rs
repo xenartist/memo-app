@@ -370,6 +370,132 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         }
     };
 
+    // Handle retry sending a failed message
+    let retry_message = move |message_content: String| {
+        // Get current group ID and user info
+        if let ChatView::ChatRoom(group_id) = current_view.get() {
+            if let Ok(user_pubkey) = session.with_untracked(|s| s.get_public_key()) {
+                // Check SOL balance before sending
+                let sol_balance = session.with_untracked(|s| s.get_sol_balance());
+                if sol_balance < 0.01 {
+                    let error_msg = format!("Balance insufficient! Current XNT balance: {:.4}, sending message requires at least 0.01 SOL as transaction fee. Please top up.", sol_balance);
+                    add_log_entry("ERROR", &error_msg);
+                    set_error_message.set(Some(error_msg));
+                    return;
+                }
+                
+                // Clear any previous error messages
+                set_error_message.set(None);
+                
+                // 1. Update the failed message back to sending status
+                set_messages.update(|msgs| {
+                    if let Some(msg) = msgs.iter_mut().find(|m| {
+                        m.is_local && 
+                        m.message.message == message_content && 
+                        m.message.sender == user_pubkey &&
+                        (m.status == MessageStatus::Failed || m.status == MessageStatus::Timeout)
+                    }) {
+                        log::info!("Updating message status from {:?} to Sending for retry", msg.status);
+                        msg.status = MessageStatus::Sending;
+                    }
+                });
+                
+                set_sending.set(true);
+                
+                // 2. short delay to update UI
+                spawn_local(async move {
+                    TimeoutFuture::new(100).await;
+                    
+                    // 3. actually send message (retry logic)
+                    let result = session.with_untracked(|s| s.clone()).send_chat_message_with_timeout(
+                        group_id,
+                        &message_content,
+                        None, // receiver
+                        None, // reply_to_sig
+                        Some(30000) // timeout_ms: 30 seconds timeout
+                    ).await;
+                    
+                    log::info!("Retry result: success={}", result.is_ok());
+                    
+                    match result {
+                        Ok(signature) => {
+                            add_log_entry("INFO", &format!("Message retry sent successfully! Signature: {}", signature));
+                            
+                            // 4. update local message status to sent
+                            set_messages.update(|msgs| {
+                                if let Some(msg) = msgs.iter_mut().find(|m| {
+                                    m.is_local && 
+                                    m.message.message == message_content && 
+                                    m.message.sender == user_pubkey
+                                }) {
+                                    msg.status = MessageStatus::Sent;
+                                    msg.message.signature = signature; // update to real signature
+                                }
+                            });
+                            
+                            // 5. update session balance - directly update balance instead of just marking update needed
+                            spawn_local(async move {
+                                let mut session_update = session.get_untracked();
+                                match session_update.fetch_and_update_balances().await {
+                                    Ok(()) => {
+                                        log::info!("Successfully updated balances after retry sending message");
+                                        // set balance to original session
+                                        session.update(|s| {
+                                            s.set_balances(session_update.get_sol_balance(), session_update.get_token_balance());
+                                        });
+                                    },
+                                    Err(e) => {
+                                        log::error!("Failed to update balances after retry sending message: {}", e);
+                                        // if direct update fails, revert to marking update needed
+                                        session.update(|s| {
+                                            s.mark_balance_update_needed();
+                                        });
+                                    }
+                                }
+                            });
+                            
+                            add_log_entry("INFO", "Retry message status updated to Sent");
+                        },
+                        Err(e) => {
+                            log::error!("Retry failed: {}", e);
+                            
+                            // Parse error to show user-friendly English message
+                            let user_friendly_error = if e.to_string().contains("MemoTooFrequent") || e.to_string().contains("6009") {
+                                "Message sent too frequently. Please wait before sending another message."
+                            } else if e.to_string().contains("timeout") {
+                                "Message send timeout. Please try again."
+                            } else if e.to_string().contains("insufficient") {
+                                "Insufficient balance"
+                            } else {
+                                "Failed to send message. Please try again."
+                            };
+                            
+                            add_log_entry("ERROR", &format!("Retry failed: {}", user_friendly_error));
+                            set_error_message.set(Some(user_friendly_error.to_string()));
+                            
+                            // 6. update local message status back to failed
+                            set_messages.update(|msgs| {
+                                if let Some(msg) = msgs.iter_mut().find(|m| {
+                                    m.is_local && 
+                                    m.message.message == message_content && 
+                                    m.message.sender == user_pubkey
+                                }) {
+                                    msg.status = MessageStatus::Failed;
+                                }
+                            });
+                        }
+                    }
+                    
+                    set_sending.set(false);
+                });
+            } else {
+                add_log_entry("ERROR", "Failed to get user public key for retry");
+            }
+        } else {
+            add_log_entry("ERROR", "No chat room selected for retry");
+        }
+    };
+
     // Handle Enter key in message input
     let handle_key_press = move |ev: web_sys::KeyboardEvent| {
         if ev.key() == "Enter" && !ev.shift_key() {
@@ -463,7 +589,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                                     each=move || messages.get()
                                                     key=|message| format!("{}_{:?}", message.message.signature, message.status)
                                                     children=move |message: LocalChatMessage| {
-                                                        view! { <MessageItem message=message current_mint_reward=current_mint_reward session=session/> }
+                                                        view! { <MessageItem message=message current_mint_reward=current_mint_reward session=session retry_callback=retry_message/> }
                                                     }
                                                 />
                                             </div>
@@ -766,7 +892,12 @@ fn GroupCard(group: ChatGroupInfo, enter_chat_room: impl Fn(u64) + 'static + Cop
 }
 
 #[component]
-fn MessageItem(message: LocalChatMessage, current_mint_reward: ReadSignal<Option<String>>, session: RwSignal<Session>) -> impl IntoView {
+fn MessageItem(
+    message: LocalChatMessage, 
+    current_mint_reward: ReadSignal<Option<String>>, 
+    session: RwSignal<Session>,
+    retry_callback: impl Fn(String) + 'static + Copy
+) -> impl IntoView {
     // Store values in variables to make them accessible in closures
     let timestamp = message.message.timestamp;
     let message_content = message.message.message.clone();
@@ -847,11 +978,9 @@ fn MessageItem(message: LocalChatMessage, current_mint_reward: ReadSignal<Option
                                                         class="retry-button"
                                                         on:click={
                                                             let message_content = message_content.clone();
-                                                            let session = session.clone();
                                                             move |_| {
                                                                 log::info!("Retry sending message: {}", message_content);
-                                                                // TODO: Implement retry logic here
-                                                                // This would need access to the same send logic
+                                                                retry_callback(message_content.clone());
                                                             }
                                                         }
                                                         title="Retry sending this message"
@@ -869,10 +998,9 @@ fn MessageItem(message: LocalChatMessage, current_mint_reward: ReadSignal<Option
                                                         class="retry-button"
                                                         on:click={
                                                             let message_content = message_content.clone();
-                                                            let session = session.clone();
                                                             move |_| {
-                                                                log::info!("Retry sending message after timeout: {}", message_content);
-                                                                // TODO: Implement retry logic here
+                                                                log::info!("Retry sending message: {}", message_content);
+                                                                retry_callback(message_content.clone());
                                                             }
                                                         }
                                                         title="Retry sending this message"
