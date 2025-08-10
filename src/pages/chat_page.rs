@@ -260,12 +260,15 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                     TimeoutFuture::new(100).await;
                     
                     // 3. actually send message
-                    let result = session.with_untracked(|s| s.clone()).send_chat_message(
+                    let result = session.with_untracked(|s| s.clone()).send_chat_message_with_timeout(
                         group_id,
                         &message_text,
                         None, // receiver
-                        None  // reply_to_sig
+                        None, // reply_to_sig
+                        Some(30000) // timeout_ms: 30 seconds timeout
                     ).await;
+                    
+                    log::info!("Chat page: Received result from session: success={}", result.is_ok());
                     
                     match result {
                         Ok(signature) => {
@@ -307,16 +310,59 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                             add_log_entry("INFO", "Message status updated to Sent");
                         },
                         Err(e) => {
-                            add_log_entry("ERROR", &format!("Failed to send message: {}", e));
+                            log::error!("Chat page: Error received from session: {}", e);
+                            
+                            // Parse error to extract specific error message
+                            let error_string = e.to_string();
+                            let user_friendly_error = 
+                                // Try to extract specific error message after " - "
+                                if let Some(dash_pos) = error_string.rfind(" - ") {
+                                    let specific_msg = &error_string[dash_pos + 3..];
+                                    // Clean up the message (remove trailing dots if any)
+                                    let cleaned_msg = specific_msg.trim_end_matches('.');
+                                    if !cleaned_msg.is_empty() {
+                                        cleaned_msg.to_string()
+                                    } else {
+                                        // Fallback to checking known error types
+                                        if error_string.contains("MemoTooFrequent") || error_string.contains("6009") {
+                                            "Message sent too frequently. Please wait before sending another message.".to_string()
+                                        } else if error_string.contains("timeout") {
+                                            "Message send timeout. Please try again.".to_string()
+                                        } else if error_string.contains("insufficient") {
+                                            "Insufficient balance".to_string()
+                                        } else {
+                                            "Failed to send message. Please try again.".to_string()
+                                        }
+                                    }
+                                } else {
+                                    // Fallback to checking known error types
+                                    if error_string.contains("MemoTooFrequent") || error_string.contains("6009") {
+                                        "Message sent too frequently. Please wait before sending another message.".to_string()
+                                    } else if error_string.contains("timeout") {
+                                        "Message send timeout. Please try again.".to_string()
+                                    } else if error_string.contains("insufficient") {
+                                        "Insufficient balance".to_string()
+                                    } else {
+                                        "Failed to send message. Please try again.".to_string()
+                                    }
+                                };
+                            
+                            add_log_entry("ERROR", &format!("Failed to send message: {}", user_friendly_error));
+                            set_error_message.set(Some(user_friendly_error.to_string()));
                             
                             // 6. update local message status to failed
                             set_messages.update(|msgs| {
-                                if let Some(msg) = msgs.iter_mut().find(|m| {
+                                let found = msgs.iter_mut().find(|m| {
                                     m.is_local && 
                                     m.message.message == message_text && 
                                     m.message.sender == user_pubkey
-                                }) {
+                                });
+                                
+                                if let Some(msg) = found {
+                                    log::info!("Updating message status to Failed");
                                     msg.status = MessageStatus::Failed;
+                                } else {
+                                    log::error!("Could not find message to update status");
                                 }
                             });
                         }
@@ -332,12 +378,151 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         }
     };
 
+    // Handle retry sending a failed message
+    let retry_message = move |message_content: String| {
+        // Get current group ID and user info
+        if let ChatView::ChatRoom(group_id) = current_view.get() {
+            if let Ok(user_pubkey) = session.with_untracked(|s| s.get_public_key()) {
+                // Check SOL balance before sending
+                let sol_balance = session.with_untracked(|s| s.get_sol_balance());
+                if sol_balance < 0.01 {
+                    let error_msg = format!("Balance insufficient! Current XNT balance: {:.4}, sending message requires at least 0.01 SOL as transaction fee. Please top up.", sol_balance);
+                    add_log_entry("ERROR", &error_msg);
+                    set_error_message.set(Some(error_msg));
+                    return;
+                }
+                
+                // Clear any previous error messages
+                set_error_message.set(None);
+                
+                // 1. Update the failed message back to sending status
+                set_messages.update(|msgs| {
+                    if let Some(msg) = msgs.iter_mut().find(|m| {
+                        m.is_local && 
+                        m.message.message == message_content && 
+                        m.message.sender == user_pubkey &&
+                        (m.status == MessageStatus::Failed || m.status == MessageStatus::Timeout)
+                    }) {
+                        log::info!("Updating message status from {:?} to Sending for retry", msg.status);
+                        msg.status = MessageStatus::Sending;
+                    }
+                });
+                
+                set_sending.set(true);
+                
+                // 2. short delay to update UI
+                spawn_local(async move {
+                    TimeoutFuture::new(100).await;
+                    
+                    // 3. actually send message (retry logic)
+                    let result = session.with_untracked(|s| s.clone()).send_chat_message_with_timeout(
+                        group_id,
+                        &message_content,
+                        None, // receiver
+                        None, // reply_to_sig
+                        Some(30000) // timeout_ms: 30 seconds timeout
+                    ).await;
+                    
+                    log::info!("Retry result: success={}", result.is_ok());
+                    
+                    match result {
+                        Ok(signature) => {
+                            add_log_entry("INFO", &format!("Message retry sent successfully! Signature: {}", signature));
+                            
+                            // 4. update local message status to sent
+                            set_messages.update(|msgs| {
+                                if let Some(msg) = msgs.iter_mut().find(|m| {
+                                    m.is_local && 
+                                    m.message.message == message_content && 
+                                    m.message.sender == user_pubkey
+                                }) {
+                                    msg.status = MessageStatus::Sent;
+                                    msg.message.signature = signature; // update to real signature
+                                }
+                            });
+                            
+                            // 5. update session balance - directly update balance instead of just marking update needed
+                            spawn_local(async move {
+                                let mut session_update = session.get_untracked();
+                                match session_update.fetch_and_update_balances().await {
+                                    Ok(()) => {
+                                        log::info!("Successfully updated balances after retry sending message");
+                                        // set balance to original session
+                                        session.update(|s| {
+                                            s.set_balances(session_update.get_sol_balance(), session_update.get_token_balance());
+                                        });
+                                    },
+                                    Err(e) => {
+                                        log::error!("Failed to update balances after retry sending message: {}", e);
+                                        // if direct update fails, revert to marking update needed
+                                        session.update(|s| {
+                                            s.mark_balance_update_needed();
+                                        });
+                                    }
+                                }
+                            });
+                            
+                            add_log_entry("INFO", "Retry message status updated to Sent");
+                        },
+                        Err(e) => {
+                            log::error!("Retry failed: {}", e);
+                            
+                            // Parse error to show user-friendly English message
+                            let user_friendly_error = if e.to_string().contains("MemoTooFrequent") || e.to_string().contains("6009") {
+                                "Message sent too frequently. Please wait before sending another message."
+                            } else if e.to_string().contains("timeout") {
+                                "Message send timeout. Please try again."
+                            } else if e.to_string().contains("insufficient") {
+                                "Insufficient balance"
+                            } else {
+                                "Failed to send message. Please try again."
+                            };
+                            
+                            add_log_entry("ERROR", &format!("Retry failed: {}", user_friendly_error));
+                            set_error_message.set(Some(user_friendly_error.to_string()));
+                            
+                            // 6. update local message status back to failed
+                            set_messages.update(|msgs| {
+                                if let Some(msg) = msgs.iter_mut().find(|m| {
+                                    m.is_local && 
+                                    m.message.message == message_content && 
+                                    m.message.sender == user_pubkey
+                                }) {
+                                    msg.status = MessageStatus::Failed;
+                                }
+                            });
+                        }
+                    }
+                    
+                    set_sending.set(false);
+                });
+            } else {
+                add_log_entry("ERROR", "Failed to get user public key for retry");
+            }
+        } else {
+            add_log_entry("ERROR", "No chat room selected for retry");
+        }
+    };
+
     // Handle Enter key in message input
     let handle_key_press = move |ev: web_sys::KeyboardEvent| {
         if ev.key() == "Enter" && !ev.shift_key() {
             ev.prevent_default();
             let dummy_event = web_sys::MouseEvent::new("click").unwrap();
             send_message(dummy_event);
+        }
+    };
+
+    // Helper function to extract fallback error messages
+    let extract_fallback_error_message = |error_str: &str| -> String {
+        if error_str.contains("MemoTooFrequent") || error_str.contains("6009") {
+            "Message sent too frequently. Please wait before sending another message.".to_string()
+        } else if error_str.contains("timeout") {
+            "Message send timeout. Please try again.".to_string()
+        } else if error_str.contains("insufficient") {
+            "Insufficient balance".to_string()
+        } else {
+            "Failed to send message. Please try again.".to_string()
         }
     };
 
@@ -423,9 +608,9 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                             <div class="messages-list">
                                                 <For
                                                     each=move || messages.get()
-                                                    key=|message| message.message.signature.clone()
+                                                    key=|message| format!("{}_{:?}", message.message.signature, message.status)
                                                     children=move |message: LocalChatMessage| {
-                                                        view! { <MessageItem message=message current_mint_reward=current_mint_reward session=session/> }
+                                                        view! { <MessageItem message=message current_mint_reward=current_mint_reward session=session retry_callback=retry_message/> }
                                                     }
                                                 />
                                             </div>
@@ -728,7 +913,12 @@ fn GroupCard(group: ChatGroupInfo, enter_chat_room: impl Fn(u64) + 'static + Cop
 }
 
 #[component]
-fn MessageItem(message: LocalChatMessage, current_mint_reward: ReadSignal<Option<String>>, session: RwSignal<Session>) -> impl IntoView {
+fn MessageItem(
+    message: LocalChatMessage, 
+    current_mint_reward: ReadSignal<Option<String>>, 
+    session: RwSignal<Session>,
+    retry_callback: impl Fn(String) + 'static + Copy
+) -> impl IntoView {
     // Store values in variables to make them accessible in closures
     let timestamp = message.message.timestamp;
     let message_content = message.message.message.clone();
@@ -778,34 +968,79 @@ fn MessageItem(message: LocalChatMessage, current_mint_reward: ReadSignal<Option
             </div>
             <div class="message-content-wrapper">
                 <div class="message-content">
-                    {message_content}
+                    {message_content.clone()}
                 </div>
-                // only show status for local messages, and only show Sending and Sent
-                {move || {
-                    if is_local && (status == MessageStatus::Sending || status == MessageStatus::Sent) {
-                        view! {
-                            <div class="message-status-corner">
-                                {
-                                    match status {
-                                        MessageStatus::Sending => view! {
-                                            <span class="status-sending">
-                                                "Sending"
-                                            </span>
-                                        }.into_view(),
-                                        MessageStatus::Sent => view! {
-                                            <span class="status-sent">
-                                                "Sent"
-                                            </span>
-                                        }.into_view(),
-                                        _ => view! { <div></div> }.into_view(),
+                // show status for local messages
+                {
+                    let message_content = message_content.clone(); // Clone for closure
+                    move || {
+                        if is_local {
+                            view! {
+                                <div class="message-status-corner">
+                                    {
+                                        match status {
+                                            MessageStatus::Sending => view! {
+                                                <span class="status-sending">
+                                                    <i class="fas fa-clock"></i>
+                                                    "Sending..."
+                                                </span>
+                                            }.into_view(),
+                                            MessageStatus::Sent => view! {
+                                                <span class="status-sent">
+                                                    <i class="fas fa-check"></i>
+                                                    "Sent"
+                                                </span>
+                                            }.into_view(),
+                                            MessageStatus::Failed => view! {
+                                                <span class="status-failed">
+                                                    <i class="fas fa-exclamation-triangle"></i>
+                                                    "Failed"
+                                                    <button 
+                                                        class="retry-button"
+                                                        on:click={
+                                                            let message_content = message_content.clone();
+                                                            move |_| {
+                                                                log::info!("Retry sending message: {}", message_content);
+                                                                retry_callback(message_content.clone());
+                                                            }
+                                                        }
+                                                        title="Retry sending this message"
+                                                    >
+                                                        <i class="fas fa-redo"></i>
+                                                        "Retry"
+                                                    </button>
+                                                </span>
+                                            }.into_view(),
+                                            MessageStatus::Timeout => view! {
+                                                <span class="status-timeout">
+                                                    <i class="fas fa-clock"></i>
+                                                    "Timeout"
+                                                    <button 
+                                                        class="retry-button"
+                                                        on:click={
+                                                            let message_content = message_content.clone();
+                                                            move |_| {
+                                                                log::info!("Retry sending message: {}", message_content);
+                                                                retry_callback(message_content.clone());
+                                                            }
+                                                        }
+                                                        title="Retry sending this message"
+                                                    >
+                                                        <i class="fas fa-redo"></i>
+                                                        "Retry"
+                                                    </button>
+                                                </span>
+                                            }.into_view(),
+                                            _ => view! { <div></div> }.into_view(),
+                                        }
                                     }
-                                }
-                            </div>
-                        }.into_view()
-                    } else {
-                        view! { <div></div> }.into_view()
+                                </div>
+                            }.into_view()
+                        } else {
+                            view! { <div></div> }.into_view()
+                        }
                     }
-                }}
+                }
             </div>
             <div class="message-meta">
                 <div class="memo-amount">

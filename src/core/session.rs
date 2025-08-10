@@ -553,6 +553,54 @@ impl Session {
         
         Ok(result)
     }
+
+    /// Send a chat message to a group with timeout
+    pub async fn send_chat_message_with_timeout(
+        &mut self, 
+        group_id: u64, 
+        message: &str,
+        receiver: Option<String>,
+        reply_to_sig: Option<String>,
+        timeout_ms: Option<u32>
+    ) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        // internal get and handle keypair
+        let seed = self.get_seed()?;
+        let seed_bytes = hex::decode(&seed)
+            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
+        
+        let seed_array: [u8; 64] = seed_bytes.try_into()
+            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
+
+        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
+            &seed_array,
+            crate::core::wallet::get_default_derivation_path()
+        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
+
+        let keypair_bytes = keypair.to_bytes().to_vec();
+
+        // call RPC send_chat_message_with_timeout method
+        let rpc = RpcConnection::new();
+        let result = rpc.send_chat_message_with_timeout(group_id, message, &keypair_bytes, receiver, reply_to_sig, timeout_ms).await
+            .map_err(|e| {
+                log::error!("Session: RPC send_chat_message_with_timeout failed: {}", e);
+                if e.to_string().contains("timeout") {
+                    SessionError::InvalidData(format!("Message send timeout: {}", e))
+                } else {
+                    SessionError::InvalidData(format!("Send chat message failed: {}", e))
+                }
+            })?;
+
+        log::info!("Session: Chat message sent successfully");
+
+        // mark that balances need to be updated after successful message send (user gets mint reward)
+        self.mark_balance_update_needed();
+        
+        Ok(result)
+    }
 }
 
 // implement Drop trait to ensure session data is properly cleaned up

@@ -120,52 +120,152 @@ impl RpcConnection {
         T: Serialize,
         R: for<'de> Deserialize<'de>,
     {
+        let request_id = Self::generate_request_id();
         let request = RpcRequest {
             jsonrpc: "2.0".to_string(),
-            id: Self::generate_request_id(),
+            id: request_id,
             method: method.to_string(),
             params,
         };
 
+        // Simple request logging for important operations only
+        if method == "sendTransaction" {
+            log::debug!("Sending transaction request");
+        }
+        
+        let request_body = serde_json::to_string(&request)
+            .map_err(|e| {
+                log::error!("Failed to serialize request: {}", e);
+                RpcError::Other(e.to_string())
+            })?;
+        
+        // Log request details for debugging (but limit size)
+        if method == "sendTransaction" || method == "simulateTransaction" {
+            log::debug!("RPC request body (first 200 chars): {}", 
+                       if request_body.len() > 200 { &request_body[..200] } else { &request_body });
+        } else {
+            log::debug!("RPC request body: {}", request_body);
+        }
+
         let mut opts = RequestInit::new();
         opts.set_method("POST");
         opts.set_mode(RequestMode::Cors);
-        opts.set_body(&JsValue::from_str(&serde_json::to_string(&request)
-            .map_err(|e| RpcError::Other(e.to_string()))?));
+        opts.set_body(&JsValue::from_str(&request_body));
 
         let request = Request::new_with_str_and_init(&self.endpoint, &opts)
-            .map_err(|e| RpcError::ConnectionFailed(format!("Failed to create request: {:?}", e)))?;
+            .map_err(|e| {
+                log::error!("Failed to create HTTP request: {:?}", e);
+                RpcError::ConnectionFailed(format!("Failed to create request: {:?}", e))
+            })?;
 
         request.headers().set("Content-Type", "application/json")
-            .map_err(|e| RpcError::ConnectionFailed(format!("Failed to set headers: {:?}", e)))?;
+            .map_err(|e| {
+                log::error!("Failed to set HTTP headers: {:?}", e);
+                RpcError::ConnectionFailed(format!("Failed to set headers: {:?}", e))
+            })?;
 
         let window = web_sys::window().unwrap();
         let resp_value = JsFuture::from(window.fetch_with_request(&request))
             .await
-            .map_err(|e| RpcError::ConnectionFailed(format!("Failed to send request: {:?}", e)))?;
+            .map_err(|e| {
+                log::error!("HTTP request failed: {:?}", e);
+                RpcError::ConnectionFailed(format!("Failed to send request: {:?}", e))
+            })?;
 
         let resp: Response = resp_value.dyn_into()
-            .map_err(|e| RpcError::Other(format!("Failed to convert response: {:?}", e)))?;
+            .map_err(|e| {
+                log::error!("Failed to convert response: {:?}", e);
+                RpcError::Other(format!("Failed to convert response: {:?}", e))
+            })?;
 
-        let json = JsFuture::from(resp.json().map_err(|e| RpcError::Other(format!("Failed to get JSON: {:?}", e)))?)
+        // Check HTTP status
+        if !resp.ok() {
+            log::error!("HTTP error: status={}, status_text={}", resp.status(), resp.status_text());
+            return Err(RpcError::ConnectionFailed(format!("HTTP {} {}", resp.status(), resp.status_text())));
+        }
+
+        let json = JsFuture::from(resp.json().map_err(|e| {
+            log::error!("Failed to get JSON from response: {:?}", e);
+            RpcError::Other(format!("Failed to get JSON: {:?}", e))
+        })?)
             .await
-            .map_err(|e| RpcError::Other(format!("Failed to parse JSON: {:?}", e)))?;
+            .map_err(|e| {
+                log::error!("Failed to parse JSON: {:?}", e);
+                RpcError::Other(format!("Failed to parse JSON: {:?}", e))
+            })?;
 
         // first try to parse as Value, so we can check for errors
         let value: serde_json::Value = json.into_serde()
-            .map_err(|e| RpcError::Other(format!("Failed to parse response as JSON: {:?}", e)))?;
+            .map_err(|e| {
+                log::error!("Failed to parse response as JSON Value: {:?}", e);
+                RpcError::Other(format!("Failed to parse response as JSON: {:?}", e))
+            })?;
 
-        // check if there is an error
+        // Simplified response logging - only log errors
         if let Some(error) = value.get("error") {
-            return Err(RpcError::Other(error.to_string()));
+            log::error!("RPC error for {}: {}", method, error.to_string());
+            
+            if let Some(error_obj) = error.as_object() {
+                let code = error_obj.get("code").and_then(|c| c.as_i64()).unwrap_or(-1);
+                let message = error_obj.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+                
+                // Extract specific error details from transaction logs
+                let mut specific_error = None;
+                if let Some(data) = error_obj.get("data") {
+                    // Check for specific Solana contract errors
+                    if let Some(err_info) = data.get("err") {
+                        if let Some(custom) = err_info.get("InstructionError").and_then(|e| e.as_array()) {
+                            if custom.len() >= 2 {
+                                if let Some(custom_error) = custom[1].get("Custom") {
+                                    let error_code = custom_error.as_i64().unwrap_or(0);
+                                    log::error!("Contract error code: {}", error_code);
+                                    
+                                    // Extract specific error message from logs
+                                    if let Some(logs) = data.get("logs").and_then(|l| l.as_array()) {
+                                        for log_entry in logs {
+                                            if let Some(log_str) = log_entry.as_str() {
+                                                if log_str.contains("Error Message:") {
+                                                    // Extract the error message after "Error Message:"
+                                                    if let Some(msg_start) = log_str.find("Error Message:") {
+                                                        let error_msg = &log_str[msg_start + 14..].trim();
+                                                        specific_error = Some(error_msg.to_string());
+                                                        log::error!("Extracted error message: {}", error_msg);
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Create error message with specific details if available
+                let error_message = if let Some(specific_msg) = specific_error {
+                    format!("Code {}: {} - {}", code, message, specific_msg)
+                } else {
+                    format!("Code {}: {}", code, message)
+                };
+                
+                return Err(RpcError::SolanaRpcError(error_message));
+            } else {
+                return Err(RpcError::Other(error.to_string()));
+            }
         }
 
         // if there is no error, try to get the result
         if let Some(result) = value.get("result") {
+            log::debug!("RPC request {} completed successfully", method);
             // convert result to target type
             serde_json::from_value(result.clone())
-                .map_err(|e| RpcError::Other(format!("Failed to deserialize result: {:?}", e)))
+                .map_err(|e| {
+                    log::error!("Failed to deserialize result for method {}: {:?}", method, e);
+                    RpcError::Other(format!("Failed to deserialize result: {:?}", e))
+                })
         } else {
+            log::error!("RPC response missing result field for method {}", method);
             Err(RpcError::Other("Response missing result field".to_string()))
         }
     }

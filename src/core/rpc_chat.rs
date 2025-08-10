@@ -334,6 +334,35 @@ pub enum MessageStatus {
     Sending,
     Sent,
     Failed,
+    Timeout,
+}
+
+/// Custom error type that includes timeout
+#[derive(Debug)]
+pub enum ChatError {
+    Rpc(RpcError),
+    Timeout,
+}
+
+impl From<RpcError> for ChatError {
+    fn from(error: RpcError) -> Self {
+        ChatError::Rpc(error)
+    }
+}
+
+impl std::fmt::Display for ChatError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChatError::Rpc(e) => write!(f, "RPC Error: {}", e),
+            ChatError::Timeout => write!(f, "Request timeout"),
+        }
+    }
+}
+
+impl ChatError {
+    pub fn is_timeout(&self) -> bool {
+        matches!(self, ChatError::Timeout)
+    }
 }
 
 /// Local message for immediate UI display
@@ -876,7 +905,7 @@ impl RpcConnection {
         })
     }
 
-    /// Send a chat message to a group (using Borsh serialization with simulation)
+    /// Send a chat message to a group with timeout handling
     /// 
     /// # Parameters
     /// * `group_id` - The ID of the chat group to send message to
@@ -884,17 +913,75 @@ impl RpcConnection {
     /// * `keypair_bytes` - The user's keypair bytes for signing
     /// * `receiver` - Optional receiver public key for direct messages
     /// * `reply_to_sig` - Optional signature to reply to
+    /// * `timeout_ms` - Timeout in milliseconds (default: 30000ms = 30s)
     /// 
     /// # Returns
-    /// Transaction signature on success
-    pub async fn send_chat_message(
+    /// Result containing signature or error (RpcError::Other for timeout)
+    pub async fn send_chat_message_with_timeout(
         &self,
         group_id: u64,
         message: &str,
         keypair_bytes: &[u8],
         receiver: Option<String>,
         reply_to_sig: Option<String>,
+        timeout_ms: Option<u32>,
     ) -> Result<String, RpcError> {
+        let timeout_duration = timeout_ms.unwrap_or(30000);
+        let start_time = js_sys::Date::now();
+        
+        let result = self.send_chat_message_internal(group_id, message, keypair_bytes, receiver, reply_to_sig, start_time, timeout_duration).await;
+        
+        match result {
+            Ok(signature) => Ok(signature),
+            Err(e) => {
+                // return timeout error only when actual network request timeout
+                // if it's business error (like MemoTooFrequent), return the original error directly
+                match &e {
+                    RpcError::SolanaRpcError(msg) => {
+                        // this is Solana contract error, return directly, don't be covered by timeout logic
+                        log::error!("Chat message failed with Solana error: {}", msg);
+                        Err(e)
+                    },
+                    RpcError::Other(msg) if msg.contains("Failed to send request") || msg.contains("Failed to parse JSON") => {
+                        // this might be the actual network timeout, check the time
+                        let elapsed = js_sys::Date::now() - start_time;
+                        if elapsed >= timeout_duration as f64 {
+                            log::warn!("Chat message send timeout after {}ms", elapsed);
+                            Err(RpcError::Other(format!("Request timeout after {}ms", elapsed)))
+                        } else {
+                            Err(e)
+                        }
+                    },
+                    _ => {
+                        // other errors, return directly
+                        Err(e)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Internal implementation with timeout checking
+    async fn send_chat_message_internal(
+        &self,
+        group_id: u64,
+        message: &str,
+        keypair_bytes: &[u8],
+        receiver: Option<String>,
+        reply_to_sig: Option<String>,
+        start_time: f64,
+        timeout_ms: u32,
+    ) -> Result<String, RpcError> {
+        // check timeout helper function - only check before actual time-consuming operation
+        let check_timeout = || {
+            let elapsed = js_sys::Date::now() - start_time;
+            if elapsed >= timeout_ms as f64 {
+                log::warn!("Timeout detected before operation: {}ms elapsed", elapsed);
+                return Err(RpcError::Other(format!("Request timeout after {}ms", elapsed)));
+            }
+            Ok(())
+        };
+
         // Validate message
         if message.is_empty() {
             return Err(RpcError::InvalidParameter("Message cannot be empty".to_string()));
@@ -902,6 +989,8 @@ impl RpcConnection {
         if message.len() > 512 {
             return Err(RpcError::InvalidParameter("Message too long (max 512 characters)".to_string()));
         }
+        
+        check_timeout()?;
         
         log::info!("Sending chat message to group {}: {} characters", group_id, message.len());
         
@@ -936,6 +1025,7 @@ impl RpcConnection {
         log::info!("Mint authority PDA: {}", mint_authority_pda);
         
         // Check if user's token account exists
+        check_timeout()?;
         let token_account_info = self.get_account_info(&user_token_account.to_string(), Some("base64")).await?;
         let token_account_info: serde_json::Value = serde_json::from_str(&token_account_info)
             .map_err(|e| RpcError::Other(format!("Failed to parse token account info: {}", e)))?;
@@ -1011,6 +1101,7 @@ impl RpcConnection {
         base_instructions.push(send_memo_instruction);
         
         // Get latest blockhash
+        check_timeout()?;
         let blockhash_response: serde_json::Value = self.send_request("getLatestBlockhash", serde_json::json!([])).await?;
         let blockhash_str = blockhash_response["value"]["blockhash"]
             .as_str()
@@ -1036,14 +1127,15 @@ impl RpcConnection {
             "sigVerify": false
         });
         
+        check_timeout()?;
         let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
         let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
             .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
-        
+
         // Parse simulation result to extract compute units consumed
         let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
             log::info!("Chat message simulation consumed {} compute units", units_consumed);
-            // Apply 50% buffer and ensure minimum
+            // Apply 20% buffer and ensure minimum
             let with_buffer = (units_consumed as f64 * ChatConfig::COMPUTE_UNIT_BUFFER) as u64;
             let final_units = with_buffer.max(ChatConfig::MIN_COMPUTE_UNITS).min(ChatConfig::MAX_COMPUTE_UNITS);
             
@@ -1053,9 +1145,9 @@ impl RpcConnection {
             final_units
         } else {
             log::warn!("Failed to get compute units from simulation, using minimum guarantee");
-            ChatConfig::MIN_COMPUTE_UNITS // 130,000
+            ChatConfig::MIN_COMPUTE_UNITS
         };
-        
+
         log::info!("Using {} compute units for chat message (simulation: {}, +20% buffer)", 
           computed_units, 
           sim_result["value"]["unitsConsumed"].as_u64().unwrap_or(0));
@@ -1128,10 +1220,31 @@ impl RpcConnection {
             }
         ]);
         
+        check_timeout()?;
         log::info!("Sending chat message transaction...");
-        let signature: String = self.send_request("sendTransaction", send_params).await?;
         
-        log::info!("Chat message sent successfully! Signature: {}", signature);
-        Ok(signature)
+        // Send transaction with minimal logging
+        match self.send_request("sendTransaction", send_params).await {
+            Ok(signature) => {
+                log::info!("Chat message sent successfully");
+                Ok(signature)
+            },
+            Err(e) => {
+                log::error!("Failed to send chat message: {}", e);
+                Err(e)
+            }
+        }
+    }
+
+    /// Original method maintained for backward compatibility
+    pub async fn send_chat_message(
+        &self,
+        group_id: u64,
+        message: &str,
+        keypair_bytes: &[u8],
+        receiver: Option<String>,
+        reply_to_sig: Option<String>,
+    ) -> Result<String, RpcError> {
+        self.send_chat_message_with_timeout(group_id, message, keypair_bytes, receiver, reply_to_sig, None).await
     }
 }
