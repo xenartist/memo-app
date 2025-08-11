@@ -6,8 +6,15 @@ use crate::core::rpc_base::RpcConnection;
 use crate::core::rpc_chat::{ChatStatistics, ChatGroupInfo, ChatMessage, ChatMessagesResponse, LocalChatMessage, MessageStatus};
 use crate::core::rpc_mint::MintConfig;
 use crate::pages::log_view::add_log_entry;
+use crate::pages::memo_card::LazyPixelView;
+use crate::pages::pixel_view::PixelView;
+use crate::core::pixel::Pixel;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
+use web_sys::{HtmlInputElement, File, FileReader, Event, ProgressEvent, window};
+use wasm_bindgen::{closure::Closure};
+use js_sys::Uint8Array;
+use std::rc::Rc;
 
 // Chat page view mode
 #[derive(Clone, PartialEq)]
@@ -34,6 +41,9 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     
     // Node ref for messages area to enable auto-scroll
     let messages_area_ref = create_node_ref::<Div>();
+    
+    // Create Chat Group Dialog states
+    let (show_create_dialog, set_show_create_dialog) = create_signal(false);
     
     // Auto-scroll to bottom when messages change
     create_effect(move |_| {
@@ -526,6 +536,36 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         }
     };
 
+    // Function to open create chat group dialog
+    let open_create_dialog = move |_| {
+        set_show_create_dialog.set(true);
+    };
+
+    // Function to close create chat group dialog
+    let close_create_dialog = move || {
+        set_show_create_dialog.set(false);
+    };
+
+    // Function to handle successful group creation
+    let on_group_created = move |signature: String, group_id: u64| {
+        add_log_entry("INFO", &format!("Chat group created successfully! ID: {}, Signature: {}", group_id, signature));
+        set_show_create_dialog.set(false);
+        
+        // Wait 30 seconds before refreshing to allow blockchain to update
+        spawn_local(async move {
+            add_log_entry("INFO", "Waiting 30 seconds for blockchain to update...");
+            TimeoutFuture::new(30_000).await; // Wait 30 seconds
+            
+            add_log_entry("INFO", "Refreshing group list after group creation...");
+            refresh_groups_data(web_sys::MouseEvent::new("click").unwrap());
+        });
+    };
+
+    // Function to handle group creation error
+    let on_group_creation_error = move |error: String| {
+        add_log_entry("ERROR", &format!("Failed to create chat group: {}", error));
+    };
+
     view! {
         <div class="chat-page">
             <Show
@@ -679,14 +719,31 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                         <p class="page-description">
                             "Decentralized Messaging on X1 Blockchain"
                         </p>
-                        <button 
-                            class="refresh-button"
-                            on:click=refresh_groups_data
-                            disabled=move || loading.get()
-                        >
-                            <i class="fas fa-sync-alt"></i>
-                            {move || if loading.get() { "Loading..." } else { "Refresh" }}
-                        </button>
+                        <div class="header-buttons">
+                            <button 
+                                class="create-group-button"
+                                on:click=open_create_dialog
+                                disabled=move || loading.get()
+                                title=move || {
+                                    if !session.with(|s| s.has_user_profile()) {
+                                        "Please create your profile first".to_string()
+                                    } else {
+                                        "Create new chat group".to_string()
+                                    }
+                                }
+                            >
+                                <i class="fas fa-plus"></i>
+                                "Create Group"
+                            </button>
+                            <button 
+                                class="refresh-button"
+                                on:click=refresh_groups_data
+                                disabled=move || loading.get()
+                            >
+                                <i class="fas fa-sync-alt"></i>
+                                {move || if loading.get() { "Loading..." } else { "Refresh" }}
+                            </button>
+                        </div>
                     </div>
 
                     <Show
@@ -719,6 +776,18 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                             })
                         }}
                     </Show>
+                </div>
+            </Show>
+
+            // Create Chat Group Dialog
+            <Show when=move || show_create_dialog.get()>
+                <div class="modal-overlay">
+                    <CreateChatGroupForm
+                        session=session
+                        on_close=Rc::new(close_create_dialog)
+                        on_success=Rc::new(on_group_created)
+                        on_error=Rc::new(on_group_creation_error)
+                    />
                 </div>
             </Show>
         </div>
@@ -831,11 +900,47 @@ fn GroupCard(group: ChatGroupInfo, enter_chat_room: impl Fn(u64) + 'static + Cop
             </div>
             
             <Show
-                when=move || !group_image.get().is_empty()
+                when=move || true // always show image area
                 fallback=|| view! { <div></div> }
             >
                 <div class="group-image">
-                    <img src={move || group_image.get()} alt="Group image" loading="lazy"/>
+                    {move || {
+                        let image_data = group_image.get();
+                        
+                        // check if it is a valid pixel art string (starts with "c:" or "n:")
+                        if !image_data.is_empty() && 
+                           (image_data.starts_with("c:") || image_data.starts_with("n:")) {
+                            // valid pixel art string
+                            view! {
+                                <LazyPixelView
+                                    art={image_data}
+                                    size=64
+                                />
+                            }.into_view()
+                        } else if !image_data.is_empty() && 
+                                  (image_data.starts_with("http") || image_data.starts_with("data:")) {
+                            // regular image URL
+                            view! {
+                                <img 
+                                    src={image_data}
+                                    alt="Group image" 
+                                    class="group-image-img"
+                                    loading="lazy"
+                                />
+                            }.into_view()
+                        } else {
+                            // no valid image, generate random pixel art based on group_id
+                            let group_id_val = group_id.get();
+                            let fake_pixel_art = generate_random_pixel_art(group_id_val);
+                            
+                            view! {
+                                <LazyPixelView
+                                    art={fake_pixel_art}
+                                    size=64
+                                />
+                            }.into_view()
+                        }
+                    }}
                 </div>
             </Show>
             
@@ -1090,5 +1195,626 @@ fn format_timestamp(timestamp: i64) -> String {
             log::warn!("Failed to get ISO string, using fallback: {}", fallback);
             fallback
         }
+    }
+} 
+
+// generate random pixel art string (simplest random fill)
+fn generate_random_pixel_art(seed: u64) -> String {
+    // add debug log
+    log::info!("Generating pixel art with seed: {}", seed);
+    
+    // create 16x16 pixel art
+    let mut pixel = Pixel::new_with_size(16);
+    
+    // ensure seed is not 0, avoid xorshift stuck in all zeros
+    let mut rng_state = if seed == 0 { 1 } else { seed };
+    
+    // fill random pixel data
+    for y in 0..16 {
+        for x in 0..16 {
+            // use xorshift algorithm, better randomness
+            rng_state ^= rng_state << 13;
+            rng_state ^= rng_state >> 7;
+            rng_state ^= rng_state << 17;
+            
+            let is_black = (rng_state % 100) < 40; // 40% probability of black
+            pixel.set(x, y, is_black);
+        }
+    }
+    
+    let result = pixel.to_optimal_string();
+    log::info!("Generated pixel art for seed {}: length={}, preview={}", 
+        seed, result.len(), 
+        if result.len() > 30 { &result[..30] } else { &result }
+    );
+    result
+} 
+
+#[component]
+fn CreateChatGroupForm(
+    session: RwSignal<Session>,
+    on_close: Rc<dyn Fn()>,
+    on_success: Rc<dyn Fn(String, u64)>,
+    on_error: Rc<dyn Fn(String)>,
+) -> impl IntoView {
+    // Wrap callbacks in signals for easy access in closures
+    let on_close_signal = create_rw_signal(Some(on_close));
+    let on_success_signal = create_rw_signal(Some(on_success));
+    let on_error_signal = create_rw_signal(Some(on_error));
+
+    // Form state signals
+    let (group_name, set_group_name) = create_signal(String::new());
+    let (group_description, set_group_description) = create_signal(String::new());
+    let (group_tags, set_group_tags) = create_signal(String::new()); // comma-separated tags
+    let (min_memo_interval, set_min_memo_interval) = create_signal(60i64); // default 60 seconds
+    let (burn_amount, set_burn_amount) = create_signal(42069u64); // default 42,069 tokens (minimum required)
+    let (pixel_art, set_pixel_art) = create_signal(Pixel::new_with_size(16)); // default 16x16
+    
+    // UI state signals
+    let (is_creating, set_is_creating) = create_signal(false);
+    let (error_message, set_error_message) = create_signal(String::new());
+    let (show_copied, set_show_copied) = create_signal(false);
+    let (creating_status, set_creating_status) = create_signal(String::new());
+
+    // Grid size for pixel art
+    let (grid_size, set_grid_size) = create_signal(16usize);
+
+    // Create combined image data
+    let get_image_data = move || -> String {
+        pixel_art.get().to_optimal_string()
+    };
+
+    // Calculate current memo size in bytes (Borsh + Base64)
+    let calculate_memo_size = move || -> (usize, bool, String) {
+        let name = group_name.get().trim().to_string();
+        let description = group_description.get().trim().to_string();
+        let image_data = get_image_data();
+        // Parse tags inline here
+        let tags = group_tags.get()
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .take(4) // Maximum 4 tags
+            .collect();
+        let interval = Some(min_memo_interval.get());
+        let amount = burn_amount.get() * 1_000_000; // Convert to lamports
+        
+        // Create temporary ChatGroupCreationData for size calculation
+        let group_data = crate::core::rpc_chat::ChatGroupCreationData::new(
+            0, // temporary group_id
+            name,
+            description,
+            image_data,
+            tags,
+            interval,
+        );
+        
+        match group_data.calculate_final_memo_size(amount) {
+            Ok(size) => {
+                let is_valid = size >= 69 && size <= 800;
+                let status = if is_valid {
+                    "✅ Valid".to_string()
+                } else if size < 69 {
+                    "❌ Too short".to_string()
+                } else {
+                    "❌ Too long".to_string()
+                };
+                (size, is_valid, status)
+            },
+            Err(e) => (0, false, format!("❌ Error: {}", e))
+        }
+    };
+
+    // Parse tags from comma-separated string
+    let parse_tags = move || -> Vec<String> {
+        group_tags.get()
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .take(4) // Maximum 4 tags
+            .collect()
+    };
+
+    // Handle form submission
+    let handle_submit = move |ev: leptos::leptos_dom::ev::SubmitEvent| {
+        ev.prevent_default();
+
+        if is_creating.get() {
+            return;
+        }
+
+        // Validate form
+        let name = group_name.get().trim().to_string();
+        let description = group_description.get().trim().to_string();
+        let tags = parse_tags();
+        let interval = min_memo_interval.get();
+        let amount = burn_amount.get();
+
+        // Validation
+        if name.is_empty() || name.len() > 64 {
+            set_error_message.set("❌ Group name must be 1-64 characters, got {}".to_string().replace("{}", &name.len().to_string()));
+            return;
+        }
+        if description.len() > 128 {
+            set_error_message.set("❌ Group description must be at most 128 characters, got {}".to_string().replace("{}", &description.len().to_string()));
+            return;
+        }
+        if amount < 42069 {
+            set_error_message.set("❌ Burn amount must be at least 42,069 MEMO tokens, got {}".to_string().replace("{}", &amount.to_string()));
+            return;
+        }
+        if amount % 1_000_000 != 0 {
+            set_error_message.set("❌ Burn amount must be a whole number of tokens (multiple of 1,000,000 lamports)".to_string());
+            return;
+        }
+        if tags.len() > 4 {
+            set_error_message.set("❌ Maximum 4 tags allowed".to_string());
+            return;
+        }
+        for tag in &tags {
+            if tag.len() > 32 {
+                set_error_message.set("❌ Each tag must be at most 32 characters".to_string());
+                return;
+            }
+        }
+        if interval < 0 || interval > 86400 {
+            set_error_message.set("❌ Memo interval must be between 0 and 86400 seconds (24 hours)".to_string());
+            return;
+        }
+        if amount < 42069 {
+            set_error_message.set("❌ Burn amount must be at least 42,069 MEMO tokens".to_string());
+            return;
+        }
+
+        // Check balance
+        let token_balance = session.with_untracked(|s| s.get_token_balance());
+        if token_balance < amount as f64 {
+            set_error_message.set(format!("❌ Insufficient balance. Required: {} MEMO, Available: {:.2} MEMO", amount, token_balance));
+            return;
+        }
+
+        // Set UI state
+        set_is_creating.set(true);
+        set_creating_status.set("Creating chat group...".to_string());
+        set_error_message.set(String::new());
+
+        // Create chat group
+        spawn_local(async move {
+            let mut session_update = session.get_untracked();
+            let result = session_update.create_chat_group(
+                &name,
+                &description,
+                &get_image_data(),
+                tags,
+                Some(interval),
+                amount * 1_000_000, // Convert to lamports
+            ).await;
+
+            set_is_creating.set(false);
+            set_creating_status.set(String::new());
+
+            match result {
+                Ok((signature, group_id)) => {
+                    // Update session
+                    session.update(|s| {
+                        s.set_balances(session_update.get_sol_balance(), session_update.get_token_balance());
+                    });
+
+                    on_success_signal.with_untracked(|cb_opt| {
+                        if let Some(callback) = cb_opt.as_ref() {
+                            callback(signature, group_id);
+                        }
+                    });
+                },
+                Err(e) => {
+                    let error_msg = format!("Failed to create chat group: {}", e);
+                    set_error_message.set(format!("❌ {}", error_msg));
+                    
+                    on_error_signal.with_untracked(|cb_opt| {
+                        if let Some(callback) = cb_opt.as_ref() {
+                            callback(error_msg);
+                        }
+                    });
+                }
+            }
+        });
+    };
+
+    // Handle image import (similar to mint_form.rs)
+    let handle_import = move |ev: web_sys::MouseEvent| {
+        ev.prevent_default();
+        
+        let window = web_sys::window().unwrap();
+        let document = window.document().unwrap();
+        let input: HtmlInputElement = document
+            .create_element("input")
+            .unwrap()
+            .dyn_into()
+            .unwrap();
+        
+        input.set_type("file");
+        input.set_accept("image/*");
+        
+        let pixel_art_write = set_pixel_art;
+        let error_signal = set_error_message;
+        let grid_size_signal = grid_size;
+        
+        let onchange = Closure::wrap(Box::new(move |event: Event| {
+            let input: HtmlInputElement = event.target().unwrap().dyn_into().unwrap();
+            if let Some(file) = input.files().unwrap().get(0) {
+                let reader = FileReader::new().unwrap();
+                let reader_clone = reader.clone();
+                let current_grid_size = grid_size_signal.get(); // get current size
+                
+                let onload = Closure::wrap(Box::new(move |_: ProgressEvent| {
+                    if let Ok(buffer) = reader_clone.result() {
+                        let array = Uint8Array::new(&buffer);
+                        let data = array.to_vec();
+                        
+                        match Pixel::from_image_data_with_size(&data, current_grid_size) {
+                            Ok(new_art) => {
+                                pixel_art_write.set(new_art);
+                                error_signal.set(String::new());
+                            }
+                            Err(e) => {
+                                error_signal.set(format!("Failed to process image: {}", e));
+                            }
+                        }
+                    }
+                }) as Box<dyn FnMut(ProgressEvent)>);
+                
+                reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+                onload.forget();
+                
+                reader.read_as_array_buffer(&file).unwrap();
+            }
+        }) as Box<dyn FnMut(_)>);
+        
+        input.set_onchange(Some(onchange.as_ref().unchecked_ref()));
+        onchange.forget();
+        
+        input.click();
+    };
+
+    // Handle copy pixel art string
+    let copy_string = move |ev: web_sys::MouseEvent| {
+        ev.prevent_default();
+        ev.stop_propagation();
+        
+        let art_string = pixel_art.get().to_optimal_string();
+        if let Some(window) = window() {
+            let clipboard = window.navigator().clipboard();
+            let _ = clipboard.write_text(&art_string);
+            set_show_copied.set(true);
+            
+            spawn_local(async move {
+                TimeoutFuture::new(3000).await;
+                set_show_copied.set(false);
+            });
+        }
+    };
+
+    // Handle close
+    let handle_close = move |_| {
+        on_close_signal.with_untracked(|cb_opt| {
+            if let Some(callback) = cb_opt.as_ref() {
+                callback();
+            }
+        });
+    };
+
+    view! {
+        <div class="create-chat-group-form">
+            // Header with title and close button
+            <div class="form-header">
+                <h3 class="form-title">"Create New Chat Group"</h3>
+                <button
+                    type="button"
+                    class="form-close-btn"
+                    on:click=handle_close
+                    title="Close"
+                >
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form class="chat-group-form" on:submit=handle_submit>
+                <div class="form-layout">
+                    // Left side: Basic Information
+                    <div class="form-left">
+                        // Group Name
+                        <div class="form-group">
+                            <label for="group-name">"Group Name (required) *"</label>
+                            <input
+                                type="text"
+                                id="group-name"
+                                prop:value=group_name
+                                on:input=move |ev| {
+                                    let value = event_target_value(&ev);
+                                    set_group_name.set(value);
+                                }
+                                placeholder="Enter group name (1-64 characters)..."
+                                maxlength="64"
+                                prop:disabled=move || is_creating.get()
+                                required
+                            />
+                        </div>
+
+                        // Group Description
+                        <div class="form-group">
+                            <label for="group-description">"Group Description (optional)"</label>
+                            <textarea
+                                id="group-description"
+                                prop:value=group_description
+                                on:input=move |ev| {
+                                    let value = event_target_value(&ev);
+                                    set_group_description.set(value);
+                                }
+                                placeholder="Enter group description (max 128 characters)..."
+                                maxlength="128"
+                                rows="3"
+                                prop:disabled=move || is_creating.get()
+                            ></textarea>
+                        </div>
+
+                        // Tags
+                        <div class="form-group">
+                            <label for="group-tags">"Tags (optional)"</label>
+                            <input
+                                type="text"
+                                id="group-tags"
+                                prop:value=group_tags
+                                on:input=move |ev| {
+                                    let value = event_target_value(&ev);
+                                    set_group_tags.set(value);
+                                }
+                                placeholder="Enter tags separated by commas (max 4 tags, 32 chars each)..."
+                                prop:disabled=move || is_creating.get()
+                            />
+                            <small class="form-hint">"Example: technology, blockchain, discussion"</small>
+                        </div>
+
+                        // Min Memo Interval
+                        <div class="form-group">
+                            <label for="memo-interval">"Minimum Message Interval (seconds)"</label>
+                            <input
+                                type="number"
+                                id="memo-interval"
+                                prop:value=min_memo_interval
+                                on:input=move |ev| {
+                                    let input = event_target::<HtmlInputElement>(&ev);
+                                    if let Ok(value) = input.value().parse::<i64>() {
+                                        set_min_memo_interval.set(value);
+                                    }
+                                }
+                                min="0"
+                                max="86400"
+                                prop:disabled=move || is_creating.get()
+                            />
+                            <small class="form-hint">"Minimum time between messages (0-86400 seconds, default: 60)"</small>
+                        </div>
+
+                        // Burn Amount
+                        <div class="form-group">
+                            <label for="burn-amount">"Burn Amount (MEMO tokens)"</label>
+                            <input
+                                type="number"
+                                id="burn-amount"
+                                prop:value=burn_amount
+                                on:input=move |ev| {
+                                    let input = event_target::<HtmlInputElement>(&ev);
+                                    if let Ok(value) = input.value().parse::<u64>() {
+                                        set_burn_amount.set(value);
+                                    }
+                                }
+                                min="42069"
+                                prop:disabled=move || is_creating.get()
+                            />
+                            <small class="form-hint">
+                                {move || {
+                                    let balance = session.with(|s| s.get_token_balance());
+                                    format!("Minimum: 42,069 MEMO tokens (Available: {:.2} MEMO)", balance)
+                                }}
+                            </small>
+                        </div>
+                    </div>
+
+                    // Right side: Group Image (Pixel Art)
+                    <div class="form-right">
+                        <div class="pixel-art-editor">
+                            <div class="pixel-art-header">
+                                <label>"Group Image"</label>
+                                <div class="pixel-art-controls">
+                                    <select
+                                        class="size-selector"
+                                        prop:value=move || grid_size.get().to_string()
+                                        on:change=move |ev| {
+                                            let value = event_target_value(&ev);
+                                            if let Ok(size) = value.parse::<usize>() {
+                                                set_grid_size.set(size);
+                                                set_pixel_art.set(Pixel::new_with_size(size));
+                                            }
+                                        }
+                                        prop:disabled=move || is_creating.get()
+                                    >
+                                        <option value="16">"16×16 pixels"</option>
+                                        <option value="32">"32×32 pixels"</option>
+                                    </select>
+                                    <button 
+                                        type="button"
+                                        class="import-btn"
+                                        on:click=handle_import
+                                        prop:disabled=move || is_creating.get()
+                                    >
+                                        "Import Image"
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            // Pixel Art Canvas
+                            {move || {
+                                let art_string = pixel_art.get().to_optimal_string();
+                                let click_handler = Box::new(move |row, col| {
+                                    let mut new_art = pixel_art.get();
+                                    new_art.toggle_pixel(row, col);
+                                    set_pixel_art.set(new_art);
+                                });
+                                
+                                view! {
+                                    <PixelView
+                                        art=art_string
+                                        size=256
+                                        editable=true
+                                        show_grid=true
+                                        on_click=click_handler
+                                    />
+                                }
+                            }}
+
+                            // Pixel art info
+                            <div class="pixel-string-info">
+                                <div class="string-display">
+                                    <span class="label">"Encoded String: "</span>
+                                    <span class="value">
+                                        {move || {
+                                            let art_string = pixel_art.get().to_optimal_string();
+                                            if art_string.len() <= 20 {
+                                                art_string
+                                            } else {
+                                                format!("{}...{}", &art_string[..10], &art_string[art_string.len()-10..])
+                                            }
+                                        }}
+                                    </span>
+                                    <div class="copy-container">
+                                        <button
+                                            type="button"
+                                            class="copy-button"
+                                            on:click=copy_string
+                                            title="Copy encoded string to clipboard"
+                                        >
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                        <div 
+                                            class="copy-tooltip"
+                                            class:show=move || show_copied.get()
+                                        >
+                                            "Copied!"
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="string-length">
+                                    <span class="label">"Length: "</span>
+                                    <span class="value">
+                                        {move || format!("{} bytes", pixel_art.get().to_optimal_string().len())}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                // Memo size indicator
+                <div class="memo-size-indicator">
+                    <div class="size-info">
+                        <span class="size-label">"Memo Size: "</span>
+                        {move || {
+                            let (size, is_valid, status) = calculate_memo_size();
+                            view! {
+                                <span class="size-value" class:valid=is_valid class:invalid=move || !is_valid>
+                                    {format!("{} bytes", size)}
+                                </span>
+                                <span class="size-range">" (Required: 69-800 bytes)"</span>
+                                <span class="size-status" class:valid=is_valid class:invalid=move || !is_valid>
+                                    {status}
+                                </span>
+                            }
+                        }}
+                    </div>
+                    <div class="size-progress">
+                        {move || {
+                            let (size, is_valid, _) = calculate_memo_size();
+                            let percentage = ((size as f64 / 800.0) * 100.0).min(100.0);
+                            
+                            view! {
+                                <div class="progress-bar">
+                                    <div class="progress-track">
+                                        <div 
+                                            class="progress-fill"
+                                            class:valid=is_valid
+                                            class:invalid=move || !is_valid
+                                            style:width=move || format!("{}%", percentage)
+                                        ></div>
+                                        <div class="progress-markers">
+                                            <div class="marker min-marker" style="left: 8.625%"></div>
+                                            <div class="marker max-marker" style="left: 100%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }}
+                    </div>
+                </div>
+
+                // Error message
+                {move || {
+                    let message = error_message.get();
+                    if !message.is_empty() {
+                        view! {
+                            <div class="error-message" 
+                                class:success=message.contains("✅")
+                                class:error=message.contains("❌")
+                            >
+                                {message}
+                            </div>
+                        }
+                    } else {
+                        view! { <div></div> }
+                    }
+                }}
+
+                // Creating status
+                {move || {
+                    let status = creating_status.get();
+                    if !status.is_empty() {
+                        view! {
+                            <div class="creating-progress">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <span>{status}</span>
+                            </div>
+                        }
+                    } else {
+                        view! { <div></div> }
+                    }
+                }}
+
+                // Submit button
+                <div class="button-group">
+                    <button
+                        type="submit"
+                        class="create-group-btn"
+                        prop:disabled=move || {
+                            is_creating.get() ||
+                            group_name.get().trim().is_empty() ||
+                            group_name.get().len() > 64 ||
+                            group_description.get().len() > 128 ||
+                            parse_tags().len() > 4 ||
+                            min_memo_interval.get() < 0 ||
+                            min_memo_interval.get() > 86400 ||
+                            burn_amount.get() < 42069 ||
+                            burn_amount.get() % 1_000_000 != 0 ||
+                            session.with(|s| s.get_token_balance()) < burn_amount.get() as f64
+                        }
+                    >
+                        {move || {
+                            if is_creating.get() {
+                                "Creating Group...".to_string()
+                            } else {
+                                format!("Create Group (Burn {} MEMO)", burn_amount.get())
+                            }
+                        }}
+                    </button>
+                </div>
+            </form>
+        </div>
     }
 } 

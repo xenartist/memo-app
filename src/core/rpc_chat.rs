@@ -15,6 +15,7 @@ use sha2::{Sha256, Digest};
 use base64;
 use bincode;
 use wasm_bindgen::prelude::*;
+use spl_associated_token_account;
 
 /// Borsh serialization version constants
 pub const BURN_MEMO_VERSION: u8 = 1;
@@ -45,6 +46,9 @@ impl ChatConfig {
     
     /// Authorized MEMO token mint address
     pub const MEMO_TOKEN_MINT: &'static str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
+    
+    /// Minimum burn amount required to create a chat group (42,069 tokens = 42,069,000,000 lamports)
+    pub const MIN_BURN_AMOUNT: u64 = 42_069_000_000;
     
     /// Memo validation limits (from contract: 69-800 bytes)
     pub const MIN_MEMO_LENGTH: usize = 69;
@@ -135,6 +139,25 @@ impl ChatConfig {
             )));
         }
         Ok(())
+    }
+
+    /// Memo-burn program ID (referenced by chat contract for group creation)  
+    pub const MEMO_BURN_PROGRAM_ID: &'static str = "FEjJ9KKJETocmaStfsFteFrktPchDLAVNTMeTvndoxaP";
+
+    /// Get create_chat_group instruction discriminator
+    pub fn get_create_chat_group_discriminator() -> [u8; 8] {
+        let mut hasher = Sha256::new();
+        hasher.update(b"global:create_chat_group");
+        let result = hasher.finalize();
+        let mut discriminator = [0u8; 8];
+        discriminator.copy_from_slice(&result[..8]);
+        discriminator
+    }
+
+    /// Helper to get memo-burn program ID
+    pub fn get_memo_burn_program_id() -> Result<Pubkey, RpcError> {
+        Pubkey::from_str(Self::MEMO_BURN_PROGRAM_ID)
+            .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-burn program ID: {}", e)))
     }
 }
 
@@ -1246,5 +1269,248 @@ impl RpcConnection {
         reply_to_sig: Option<String>,
     ) -> Result<String, RpcError> {
         self.send_chat_message_with_timeout(group_id, message, keypair_bytes, receiver, reply_to_sig, None).await
+    }
+
+    /// Create a new chat group (requires burning tokens)
+    /// 
+    /// # Parameters
+    /// * `name` - Group name (1-64 characters)
+    /// * `description` - Group description (max 128 characters) 
+    /// * `image` - Group image info (max 256 characters)
+    /// * `tags` - Tags (max 4 tags, each max 32 characters)
+    /// * `min_memo_interval` - Minimum memo interval in seconds (optional, defaults to 60)
+    /// * `burn_amount` - Amount of MEMO tokens to burn (in lamports, must be >= 1_000_000)
+    /// * `keypair_bytes` - The user's keypair bytes for signing
+    /// 
+    /// # Returns
+    /// Result containing transaction signature and created group_id
+    pub async fn create_chat_group(
+        &self,
+        name: &str,
+        description: &str,
+        image: &str,
+        tags: Vec<String>,
+        min_memo_interval: Option<i64>,
+        burn_amount: u64,
+        keypair_bytes: &[u8],
+    ) -> Result<(String, u64), RpcError> {
+        // basic parameter validation
+        if name.is_empty() || name.len() > 64 {
+            return Err(RpcError::InvalidParameter(format!("Group name must be 1-64 characters, got {}", name.len())));
+        }
+        if description.len() > 128 {
+            return Err(RpcError::InvalidParameter(format!("Group description must be at most 128 characters, got {}", description.len())));
+        }
+        if burn_amount < ChatConfig::MIN_BURN_AMOUNT {
+            return Err(RpcError::InvalidParameter(format!("Burn amount must be at least {} MEMO tokens (42,069), got {} lamports", ChatConfig::MIN_BURN_AMOUNT / 1_000_000, burn_amount)));
+        }
+        if burn_amount % 1_000_000 != 0 {
+            return Err(RpcError::InvalidParameter("Burn amount must be a whole number of tokens (multiple of 1,000,000 lamports)".to_string()));
+        }
+        
+        log::info!("Creating chat group '{}': {} tokens", name, burn_amount / 1_000_000);
+        
+        // create keypair
+        let keypair = Keypair::from_bytes(keypair_bytes)
+            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
+        let user_pubkey = keypair.pubkey();
+        
+        // get next group_id
+        let global_stats = self.get_chat_global_statistics().await?;
+        let expected_group_id = global_stats.total_groups;
+        
+        // get config
+        let chat_program_id = ChatConfig::get_program_id()?;
+        let memo_token_mint = ChatConfig::get_memo_token_mint()?;
+        let token_2022_program_id = ChatConfig::get_token_2022_program_id()?;
+        let memo_burn_program_id = ChatConfig::get_memo_burn_program_id()?;
+        
+        // calculate PDAs
+        let (global_counter_pda, _) = ChatConfig::get_global_counter_pda()?;
+        let (chat_group_pda, _) = ChatConfig::get_chat_group_pda(expected_group_id)?;
+        let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
+            &user_pubkey, &memo_token_mint, &token_2022_program_id,
+        );
+        
+        // prepare group creation data
+        let group_creation_data = ChatGroupCreationData::new(
+            expected_group_id, name.to_string(), description.to_string(), 
+            image.to_string(), tags.clone(), min_memo_interval,
+        );
+        
+        // create BurnMemo
+        let burn_memo = BurnMemo {
+            version: BURN_MEMO_VERSION,
+            burn_amount,
+            payload: group_creation_data.try_to_vec()
+                .map_err(|e| RpcError::Other(format!("Failed to serialize group data: {}", e)))?,
+        };
+        
+        // serialize and encode to Base64
+        let memo_data_bytes = burn_memo.try_to_vec()
+            .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo: {}", e)))?;
+        let memo_data_base64 = base64::encode(&memo_data_bytes);
+        
+        // validate memo length
+        ChatConfig::validate_memo_length(memo_data_base64.as_bytes())?;
+        
+        // check if token account exists
+        let token_account_info = self.get_account_info(&user_token_account.to_string(), Some("base64")).await?;
+        let token_account_info: serde_json::Value = serde_json::from_str(&token_account_info)
+            .map_err(|e| RpcError::Other(format!("Failed to parse token account info: {}", e)))?;
+        
+        // build instructions
+        let mut instructions = vec![];
+        
+        // 1. calculate budget instruction
+        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(200_000));
+        
+        // 2. memo instruction
+        instructions.push(spl_memo::build_memo(memo_data_base64.as_bytes(), &[&user_pubkey]));
+        
+        // 3. if needed, create token account
+        if token_account_info["value"].is_null() {
+            instructions.push(
+                spl_associated_token_account::instruction::create_associated_token_account_idempotent(
+                    &user_pubkey, &user_pubkey, &memo_token_mint, &token_2022_program_id
+                )
+            );
+        }
+        
+        // 4. create chat group instruction
+        let mut instruction_data = ChatConfig::get_create_chat_group_discriminator().to_vec();
+        instruction_data.extend_from_slice(&expected_group_id.to_le_bytes());
+        instruction_data.extend_from_slice(&burn_amount.to_le_bytes());
+        
+        let accounts = vec![
+            AccountMeta::new(user_pubkey, true),                      // creator
+            AccountMeta::new(global_counter_pda, false),             // global_counter
+            AccountMeta::new(chat_group_pda, false),                 // chat_group
+            AccountMeta::new(memo_token_mint, false),                // mint
+            AccountMeta::new(user_token_account, false),             // creator_token_account
+            AccountMeta::new_readonly(token_2022_program_id, false), // token_program
+            AccountMeta::new_readonly(memo_burn_program_id, false),  // memo_burn_program
+            AccountMeta::new_readonly(solana_sdk::system_program::id(), false), // system_program
+            AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false), // instructions
+        ];
+        
+        instructions.push(Instruction::new_with_bytes(chat_program_id, &instruction_data, accounts));
+        
+        // get blockhash and send transaction
+        let blockhash_response: serde_json::Value = self.send_request("getLatestBlockhash", serde_json::json!([])).await?;
+        let blockhash_str = blockhash_response["value"]["blockhash"].as_str()
+            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
+        let blockhash = solana_sdk::hash::Hash::from_str(blockhash_str)
+            .map_err(|e| RpcError::Other(format!("Failed to parse blockhash: {}", e)))?;
+        
+        // create and sign transaction
+        let message = Message::new(&instructions, Some(&user_pubkey));
+        let mut transaction = Transaction::new_unsigned(message);
+        transaction.message.recent_blockhash = blockhash;
+        transaction.sign(&[&keypair], blockhash);
+        
+        // send transaction
+        let serialized_tx = base64::encode(bincode::serialize(&transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?);
+        
+        let send_params = serde_json::json!([
+            serialized_tx,
+            {"encoding": "base64", "skipPreflight": false, "preflightCommitment": "processed"}
+        ]);
+        
+        let signature = self.send_request("sendTransaction", send_params).await?;
+        
+        log::info!("Chat group '{}' created successfully with ID {}", name, expected_group_id);
+        Ok((signature, expected_group_id))
+    }
+}
+
+/// Chat group creation data structure (stored in BurnMemo.payload for create_chat_group)
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+pub struct ChatGroupCreationData {
+    /// Version of this structure (for future compatibility)
+    pub version: u8,
+    
+    /// Category of the request (must be "chat" for memo-chat contract)
+    pub category: String,
+    
+    /// Operation type (must be "create_group" for group creation)
+    pub operation: String,
+    
+    /// Group ID (must match expected_group_id)
+    pub group_id: u64,
+    
+    /// Group name (required, 1-64 characters)
+    pub name: String,
+    
+    /// Group description (optional, max 128 characters)  
+    pub description: String,
+    
+    /// Group image info (optional, max 256 characters)
+    pub image: String,
+    
+    /// Tags (optional, max 4 tags, each max 32 characters)
+    pub tags: Vec<String>,
+    
+    /// Minimum memo interval in seconds (optional, defaults to 60)
+    pub min_memo_interval: Option<i64>,
+}
+
+impl ChatGroupCreationData {
+    /// Create new chat group creation data
+    pub fn new(
+        group_id: u64,
+        name: String,
+        description: String,
+        image: String,
+        tags: Vec<String>,
+        min_memo_interval: Option<i64>,
+    ) -> Self {
+        Self {
+            version: CHAT_GROUP_CREATION_DATA_VERSION,
+            category: "chat".to_string(),
+            operation: "create_group".to_string(),
+            group_id,
+            name,
+            description,
+            image,
+            tags,
+            min_memo_interval,
+        }
+    }
+    
+    /// Calculate the final memo size (Borsh + Base64) for this chat group creation data
+    /// 
+    /// # Parameters
+    /// * `burn_amount` - The burn amount that will be used in BurnMemo
+    /// 
+    /// # Returns
+    /// The final size in bytes after Borsh serialization and Base64 encoding
+    pub fn calculate_final_memo_size(&self, burn_amount: u64) -> Result<usize, String> {
+        // Serialize ChatGroupCreationData to Borsh
+        let payload_bytes = self.try_to_vec()
+            .map_err(|e| format!("Failed to serialize ChatGroupCreationData: {}", e))?;
+        
+        // Create BurnMemo with the payload
+        let burn_memo = BurnMemo {
+            version: BURN_MEMO_VERSION,
+            burn_amount,
+            payload: payload_bytes,
+        };
+        
+        // Serialize BurnMemo to Borsh
+        let memo_data_bytes = burn_memo.try_to_vec()
+            .map_err(|e| format!("Failed to serialize BurnMemo: {}", e))?;
+        
+        // Encode to Base64 (this is what actually gets sent)
+        let memo_data_base64 = base64::encode(&memo_data_bytes);
+        
+        Ok(memo_data_base64.len())
+    }
+    
+    /// Check if the final memo size is within valid limits (69-800 bytes)
+    pub fn is_valid_memo_size(&self, burn_amount: u64) -> Result<bool, String> {
+        let final_size = self.calculate_final_memo_size(burn_amount)?;
+        Ok(final_size >= ChatConfig::MIN_MEMO_LENGTH && final_size <= ChatConfig::MAX_MEMO_LENGTH)
     }
 }
