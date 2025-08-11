@@ -6,6 +6,8 @@ use crate::core::rpc_base::RpcConnection;
 use crate::core::rpc_chat::{ChatStatistics, ChatGroupInfo, ChatMessage, ChatMessagesResponse, LocalChatMessage, MessageStatus};
 use crate::core::rpc_mint::MintConfig;
 use crate::pages::log_view::add_log_entry;
+use crate::pages::memo_card::LazyPixelView;
+use crate::core::pixel::Pixel;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
 
@@ -831,11 +833,47 @@ fn GroupCard(group: ChatGroupInfo, enter_chat_room: impl Fn(u64) + 'static + Cop
             </div>
             
             <Show
-                when=move || !group_image.get().is_empty()
+                when=move || true // always show image area
                 fallback=|| view! { <div></div> }
             >
                 <div class="group-image">
-                    <img src={move || group_image.get()} alt="Group image" loading="lazy"/>
+                    {move || {
+                        let image_data = group_image.get();
+                        
+                        // check if it is a valid pixel art string (starts with "c:" or "n:")
+                        if !image_data.is_empty() && 
+                           (image_data.starts_with("c:") || image_data.starts_with("n:")) {
+                            // valid pixel art string
+                            view! {
+                                <LazyPixelView
+                                    art={image_data}
+                                    size=64
+                                />
+                            }.into_view()
+                        } else if !image_data.is_empty() && 
+                                  (image_data.starts_with("http") || image_data.starts_with("data:")) {
+                            // regular image URL
+                            view! {
+                                <img 
+                                    src={image_data}
+                                    alt="Group image" 
+                                    class="group-image-img"
+                                    loading="lazy"
+                                />
+                            }.into_view()
+                        } else {
+                            // no valid image, generate random pixel art based on group_id
+                            let group_id_val = group_id.get();
+                            let fake_pixel_art = generate_random_pixel_art(group_id_val);
+                            
+                            view! {
+                                <LazyPixelView
+                                    art={fake_pixel_art}
+                                    size=64
+                                />
+                            }.into_view()
+                        }
+                    }}
                 </div>
             </Show>
             
@@ -1091,4 +1129,36 @@ fn format_timestamp(timestamp: i64) -> String {
             fallback
         }
     }
+} 
+
+// generate random pixel art string (simplest random fill)
+fn generate_random_pixel_art(seed: u64) -> String {
+    // add debug log
+    log::info!("Generating pixel art with seed: {}", seed);
+    
+    // create 32x32 pixel art
+    let mut pixel = Pixel::new_with_size(32);
+    
+    // ensure seed is not 0, avoid xorshift stuck in all zeros
+    let mut rng_state = if seed == 0 { 1 } else { seed };
+    
+    // fill random pixel data
+    for y in 0..32 {
+        for x in 0..32 {
+            // use xorshift algorithm, better randomness
+            rng_state ^= rng_state << 13;
+            rng_state ^= rng_state >> 7;
+            rng_state ^= rng_state << 17;
+            
+            let is_black = (rng_state % 100) < 40; // 40% probability of black
+            pixel.set(x, y, is_black);
+        }
+    }
+    
+    let result = pixel.to_optimal_string();
+    log::info!("Generated pixel art for seed {}: length={}, preview={}", 
+        seed, result.len(), 
+        if result.len() > 30 { &result[..30] } else { &result }
+    );
+    result
 } 
