@@ -601,6 +601,51 @@ impl Session {
         
         Ok(result)
     }
+
+    /// Create a new chat group - internal handle all key operations
+    pub async fn create_chat_group(
+        &mut self,
+        name: &str,
+        description: &str,
+        image: &str,
+        tags: Vec<String>,
+        min_memo_interval: Option<i64>,
+        burn_amount: u64,
+    ) -> Result<(String, u64), SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        log::info!("Session: Creating chat group '{}' with {} tokens", name, burn_amount / 1_000_000);
+
+        // get keypair
+        let seed = self.get_seed()?;
+        let seed_bytes = hex::decode(&seed)
+            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
+        let seed_array: [u8; 64] = seed_bytes.try_into()
+            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
+        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
+            &seed_array, crate::core::wallet::get_default_derivation_path()
+        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
+        let keypair_bytes = keypair.to_bytes().to_vec();
+
+        // call RPC method
+        let rpc = RpcConnection::new();
+        let result = rpc.create_chat_group(
+            name, description, image, tags, min_memo_interval, burn_amount, &keypair_bytes
+        ).await
+            .map_err(|e| {
+                log::error!("Session: RPC create_chat_group failed: {}", e);
+                SessionError::InvalidData(format!("Create chat group failed: {}", e))
+            })?;
+
+        log::info!("Session: Chat group '{}' created successfully with ID {}", name, result.1);
+
+        // mark that balances need to be updated after successful group creation (user gets mint reward)
+        self.mark_balance_update_needed();
+        
+        Ok(result)
+    }
 }
 
 // implement Drop trait to ensure session data is properly cleaned up
