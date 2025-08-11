@@ -1340,11 +1340,7 @@ fn CreateChatGroupForm(
             return;
         }
         if amount < 42069 {
-            set_error_message.set("❌ Burn amount must be at least 42,069 MEMO tokens, got {}".to_string().replace("{}", &amount.to_string()));
-            return;
-        }
-        if amount % 1_000_000 != 0 {
-            set_error_message.set("❌ Burn amount must be a whole number of tokens (multiple of 1,000,000 lamports)".to_string());
+            set_error_message.set("❌ Burn amount must be at least 42,069 MEMO tokens".to_string());
             return;
         }
         if tags.len() > 4 {
@@ -1359,10 +1355,6 @@ fn CreateChatGroupForm(
         }
         if interval < 0 || interval > 86400 {
             set_error_message.set("❌ Memo interval must be between 0 and 86400 seconds (24 hours)".to_string());
-            return;
-        }
-        if amount < 42069 {
-            set_error_message.set("❌ Burn amount must be at least 42,069 MEMO tokens".to_string());
             return;
         }
 
@@ -1380,6 +1372,9 @@ fn CreateChatGroupForm(
 
         // Create chat group
         spawn_local(async move {
+            // Give UI time to update the loading state
+            TimeoutFuture::new(100).await;
+            
             let mut session_update = session.get_untracked();
             let result = session_update.create_chat_group(
                 &name,
@@ -1395,9 +1390,9 @@ fn CreateChatGroupForm(
 
             match result {
                 Ok((signature, group_id)) => {
-                    // Update session
+                    // Update session to trigger balance refresh
                     session.update(|s| {
-                        s.set_balances(session_update.get_sol_balance(), session_update.get_token_balance());
+                        s.mark_balance_update_needed();
                     });
 
                     on_success_signal.with_untracked(|cb_opt| {
@@ -1801,7 +1796,6 @@ fn CreateChatGroupForm(
                             min_memo_interval.get() < 0 ||
                             min_memo_interval.get() > 86400 ||
                             burn_amount.get() < 42069 ||
-                            burn_amount.get() % 1_000_000 != 0 ||
                             session.with(|s| s.get_token_balance()) < burn_amount.get() as f64
                         }
                     >
