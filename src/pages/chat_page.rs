@@ -1523,7 +1523,7 @@ fn CreateChatGroupForm(
                         // Group Name
                         <div class="form-group">
                             <label for="group-name">
-                                <i class="fas fa-signature"></i>
+                                <i class="fas fa-pencil-alt"></i>
                                 "Group Name (required) *"
                             </label>
                             <input
@@ -1736,7 +1736,14 @@ fn CreateChatGroupForm(
                                 <i class="fas fa-wallet"></i>
                                 {move || {
                                     let balance = session.with(|s| s.get_token_balance());
-                                    format!("Minimum: 42,069 MEMO tokens (Available: {:.2} MEMO)", balance)
+                                    let is_sufficient = balance >= 42069.0;
+                                    view! {
+                                        "Minimum: 42,069 MEMO tokens (Available: "
+                                        <span class={if is_sufficient { "balance-sufficient" } else { "balance-insufficient" }}>
+                                            {format!("{:.2} MEMO", balance)}
+                                        </span>
+                                        ")"
+                                    }
                                 }}
                             </small>
                         </div>

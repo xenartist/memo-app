@@ -1567,4 +1567,15 @@
 
 .creating-progress i {
     margin-right: 8px;
+}
+
+/* Balance status colors */
+.balance-sufficient {
+    color: #38a169;
+    font-weight: 600;
+}
+
+.balance-insufficient {
+    color: #e53e3e;
+    font-weight: 600;
 } 
