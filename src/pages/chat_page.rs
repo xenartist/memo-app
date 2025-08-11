@@ -1136,15 +1136,15 @@ fn generate_random_pixel_art(seed: u64) -> String {
     // add debug log
     log::info!("Generating pixel art with seed: {}", seed);
     
-    // create 32x32 pixel art
-    let mut pixel = Pixel::new_with_size(32);
+    // create 16x16 pixel art
+    let mut pixel = Pixel::new_with_size(16);
     
     // ensure seed is not 0, avoid xorshift stuck in all zeros
     let mut rng_state = if seed == 0 { 1 } else { seed };
     
     // fill random pixel data
-    for y in 0..32 {
-        for x in 0..32 {
+    for y in 0..16 {
+        for x in 0..16 {
             // use xorshift algorithm, better randomness
             rng_state ^= rng_state << 13;
             rng_state ^= rng_state >> 7;
