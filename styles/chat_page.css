@@ -1537,3 +1537,35 @@
         min-width: 100px;
     }
 } 
+
+/* Icon spacing in create chat group form */
+.create-chat-group-form label i {
+    margin-right: 8px;
+}
+
+.create-chat-group-form .form-hint i {
+    margin-right: 6px;
+}
+
+.create-chat-group-form .string-display .label i,
+.create-chat-group-form .string-length .label i,
+.create-chat-group-form .size-label i {
+    margin-right: 6px;
+}
+
+.create-chat-group-form .import-btn i {
+    margin-right: 6px;
+}
+
+.create-chat-group-form .create-group-btn i {
+    margin-right: 8px;
+}
+
+.create-chat-group-form .form-title i {
+    margin-right: 10px;
+    color: #667eea;
+}
+
+.creating-progress i {
+    margin-right: 8px;
+} 

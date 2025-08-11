@@ -1502,7 +1502,10 @@ fn CreateChatGroupForm(
         <div class="create-chat-group-form">
             // Header with title and close button
             <div class="form-header">
-                <h3 class="form-title">"Create New Chat Group"</h3>
+                <h3 class="form-title">
+                    <i class="fas fa-users"></i>
+                    "Create New Chat Group"
+                </h3>
                 <button
                     type="button"
                     class="form-close-btn"
@@ -1519,7 +1522,10 @@ fn CreateChatGroupForm(
                     <div class="form-left">
                         // Group Name
                         <div class="form-group">
-                            <label for="group-name">"Group Name (required) *"</label>
+                            <label for="group-name">
+                                <i class="fas fa-signature"></i>
+                                "Group Name (required) *"
+                            </label>
                             <input
                                 type="text"
                                 id="group-name"
@@ -1537,7 +1543,10 @@ fn CreateChatGroupForm(
 
                         // Group Description
                         <div class="form-group">
-                            <label for="group-description">"Group Description (optional)"</label>
+                            <label for="group-description">
+                                <i class="fas fa-align-left"></i>
+                                "Group Description (optional)"
+                            </label>
                             <textarea
                                 id="group-description"
                                 prop:value=group_description
@@ -1554,7 +1563,10 @@ fn CreateChatGroupForm(
 
                         // Tags
                         <div class="form-group">
-                            <label for="group-tags">"Tags (optional)"</label>
+                            <label for="group-tags">
+                                <i class="fas fa-tags"></i>
+                                "Tags (optional)"
+                            </label>
                             <input
                                 type="text"
                                 id="group-tags"
@@ -1566,12 +1578,18 @@ fn CreateChatGroupForm(
                                 placeholder="Enter tags separated by commas (max 4 tags, 32 chars each)..."
                                 prop:disabled=move || is_creating.get()
                             />
-                            <small class="form-hint">"Example: technology, blockchain, discussion"</small>
+                            <small class="form-hint">
+                                <i class="fas fa-info-circle"></i>
+                                "Example: technology, blockchain, discussion"
+                            </small>
                         </div>
 
                         // Min Memo Interval
                         <div class="form-group">
-                            <label for="memo-interval">"Minimum Message Interval (seconds)"</label>
+                            <label for="memo-interval">
+                                <i class="fas fa-clock"></i>
+                                "Minimum Message Interval (seconds)"
+                            </label>
                             <input
                                 type="number"
                                 id="memo-interval"
@@ -1586,39 +1604,21 @@ fn CreateChatGroupForm(
                                 max="86400"
                                 prop:disabled=move || is_creating.get()
                             />
-                            <small class="form-hint">"Minimum time between messages (0-86400 seconds, default: 60)"</small>
-                        </div>
-
-                        // Burn Amount
-                        <div class="form-group">
-                            <label for="burn-amount">"Burn Amount (MEMO tokens)"</label>
-                            <input
-                                type="number"
-                                id="burn-amount"
-                                prop:value=burn_amount
-                                on:input=move |ev| {
-                                    let input = event_target::<HtmlInputElement>(&ev);
-                                    if let Ok(value) = input.value().parse::<u64>() {
-                                        set_burn_amount.set(value);
-                                    }
-                                }
-                                min="42069"
-                                prop:disabled=move || is_creating.get()
-                            />
                             <small class="form-hint">
-                                {move || {
-                                    let balance = session.with(|s| s.get_token_balance());
-                                    format!("Minimum: 42,069 MEMO tokens (Available: {:.2} MEMO)", balance)
-                                }}
+                                <i class="fas fa-info-circle"></i>
+                                "Minimum time between messages (0-86400 seconds, default: 60)"
                             </small>
                         </div>
                     </div>
 
-                    // Right side: Group Image (Pixel Art)
+                    // Right side: Group Image (Pixel Art) and Burn Amount
                     <div class="form-right">
                         <div class="pixel-art-editor">
                             <div class="pixel-art-header">
-                                <label>"Group Image"</label>
+                                <label>
+                                    <i class="fas fa-image"></i>
+                                    "Group Image"
+                                </label>
                                 <div class="pixel-art-controls">
                                     <select
                                         class="size-selector"
@@ -1641,6 +1641,7 @@ fn CreateChatGroupForm(
                                         on:click=handle_import
                                         prop:disabled=move || is_creating.get()
                                     >
+                                        <i class="fas fa-upload"></i>
                                         "Import Image"
                                     </button>
                                 </div>
@@ -1669,7 +1670,10 @@ fn CreateChatGroupForm(
                             // Pixel art info
                             <div class="pixel-string-info">
                                 <div class="string-display">
-                                    <span class="label">"Encoded String: "</span>
+                                    <span class="label">
+                                        <i class="fas fa-code"></i>
+                                        "Encoded String: "
+                                    </span>
                                     <span class="value">
                                         {move || {
                                             let art_string = pixel_art.get().to_optimal_string();
@@ -1698,12 +1702,43 @@ fn CreateChatGroupForm(
                                     </div>
                                 </div>
                                 <div class="string-length">
-                                    <span class="label">"Length: "</span>
+                                    <span class="label">
+                                        <i class="fas fa-ruler"></i>
+                                        "Length: "
+                                    </span>
                                     <span class="value">
                                         {move || format!("{} bytes", pixel_art.get().to_optimal_string().len())}
                                     </span>
                                 </div>
                             </div>
+                        </div>
+                        
+                        // Burn Amount - moved to right side
+                        <div class="form-group" style="margin-top: 20px;">
+                            <label for="burn-amount">
+                                <i class="fas fa-fire"></i>
+                                "Burn Amount (MEMO tokens)"
+                            </label>
+                            <input
+                                type="number"
+                                id="burn-amount"
+                                prop:value=burn_amount
+                                on:input=move |ev| {
+                                    let input = event_target::<HtmlInputElement>(&ev);
+                                    if let Ok(value) = input.value().parse::<u64>() {
+                                        set_burn_amount.set(value);
+                                    }
+                                }
+                                min="42069"
+                                prop:disabled=move || is_creating.get()
+                            />
+                            <small class="form-hint">
+                                <i class="fas fa-wallet"></i>
+                                {move || {
+                                    let balance = session.with(|s| s.get_token_balance());
+                                    format!("Minimum: 42,069 MEMO tokens (Available: {:.2} MEMO)", balance)
+                                }}
+                            </small>
                         </div>
                     </div>
                 </div>
@@ -1711,7 +1746,10 @@ fn CreateChatGroupForm(
                 // Memo size indicator
                 <div class="memo-size-indicator">
                     <div class="size-info">
-                        <span class="size-label">"Memo Size: "</span>
+                        <span class="size-label">
+                            <i class="fas fa-database"></i>
+                            "Memo Size: "
+                        </span>
                         {move || {
                             let (size, is_valid, status) = calculate_memo_size();
                             view! {
@@ -1799,6 +1837,7 @@ fn CreateChatGroupForm(
                             session.with(|s| s.get_token_balance()) < burn_amount.get() as f64
                         }
                     >
+                        <i class="fas fa-rocket"></i>
                         {move || {
                             if is_creating.get() {
                                 "Creating Group...".to_string()
