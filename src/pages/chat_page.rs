@@ -826,9 +826,9 @@ fn OverviewStats(stats: ChatStatistics) -> impl IntoView {
 
 #[component]
 fn GroupsList(groups: Vec<ChatGroupInfo>, enter_chat_room: impl Fn(u64) + 'static + Copy) -> impl IntoView {
-    // Sort groups by memo count (descending) for display
+    // Sort groups by burned amount (descending) for display
     let mut sorted_groups = groups;
-    sorted_groups.sort_by(|a, b| b.memo_count.cmp(&a.memo_count));
+    sorted_groups.sort_by(|a, b| b.burned_amount.cmp(&a.burned_amount));
     
     // Create a signal to store the sorted groups
     let (groups_signal, _) = create_signal(sorted_groups);
