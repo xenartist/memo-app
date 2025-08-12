@@ -1028,8 +1028,15 @@ fn MessageItem(
     let timestamp = message.message.timestamp;
     let message_content = message.message.message.clone();
     let sender = message.message.sender.clone();
-    let status = message.status; // Now we can copy instead of clone
+    let status = message.status;
     let is_local = message.is_local;
+    let message_type = message.message.message_type.clone();
+    let burn_amount = message.message.burn_amount;
+    
+    // Create clones for different uses to avoid move issues
+    let message_type_for_class = message_type.clone();
+    let message_type_for_display = message_type.clone();
+    let message_type_for_meta = message_type.clone();
     
     // Check if this message is from the current user
     let is_current_user = session.with_untracked(|s| {
@@ -1056,11 +1063,30 @@ fn MessageItem(
             class="message-item" 
             class:message-sending=move || status == MessageStatus::Sending
             class:message-current-user=move || is_current_user
+            class:message-burn=move || message_type_for_class == "burn"
         >
             <div class="message-header">
                 <span class="sender">
                     {format_sender(&sender)}
                 </span>
+                {
+                    // show message type icon
+                    if message_type_for_display == "burn" {
+                        view! {
+                            <span class="message-type-indicator burn">
+                                <i class="fas fa-fire"></i>
+                                "Burn"
+                            </span>
+                        }.into_view()
+                    } else {
+                        view! {
+                            <span class="message-type-indicator chat">
+                                <i class="fas fa-comment"></i>
+                                "Message"
+                            </span>
+                        }.into_view()
+                    }
+                }
                 <span class="timestamp">
                     {move || {
                         if timestamp > 0 {
@@ -1148,12 +1174,33 @@ fn MessageItem(
                 }
             </div>
             <div class="message-meta">
-                <div class="memo-amount">
-                    <i class="fas fa-coins"></i>
-                    <span>
-                        {move || current_mint_reward.get().unwrap_or_else(|| "+1 MEMO".to_string())}
-                    </span>
-                </div>
+                {
+                    if message_type_for_meta == "burn" {
+                        view! {
+                            <div class="burn-amount">
+                                <i class="fas fa-fire"></i>
+                                <span>
+                                    {move || {
+                                        if let Some(amount) = burn_amount {
+                                            format!("Burn {:.2} MEMO", amount as f64 / 1_000_000.0)
+                                        } else {
+                                            "Burn operation".to_string()
+                                        }
+                                    }}
+                                </span>
+                            </div>
+                        }.into_view()
+                    } else {
+                        view! {
+                            <div class="memo-amount">
+                                <i class="fas fa-coins"></i>
+                                <span>
+                                    {move || current_mint_reward.get().unwrap_or_else(|| "+1 MEMO".to_string())}
+                                </span>
+                            </div>
+                        }.into_view()
+                    }
+                }
             </div>
         </div>
     }

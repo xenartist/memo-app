@@ -276,6 +276,94 @@ impl ChatMessageData {
     }
 }
 
+/// Chat group burn data structure (stored in BurnMemo.payload for burn_tokens_for_group)
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+pub struct ChatGroupBurnData {
+    /// Version of this structure (for future compatibility)
+    pub version: u8,
+    
+    /// Category of the request (must be "chat" for memo-chat contract)
+    pub category: String,
+    
+    /// Operation type (must be "burn_for_group" for burning tokens)
+    pub operation: String,
+    
+    /// Group ID (must match the target group)
+    pub group_id: u64,
+    
+    /// Burner pubkey as string (must match the transaction signer)
+    pub burner: String,
+    
+    /// Burn message (optional, max 512 characters)
+    pub message: String,
+}
+
+impl ChatGroupBurnData {
+    /// Create new chat group burn data
+    pub fn new(
+        group_id: u64,
+        burner: String,
+        message: String,
+    ) -> Self {
+        Self {
+            version: CHAT_GROUP_CREATION_DATA_VERSION,
+            category: "chat".to_string(),
+            operation: "burn_for_group".to_string(),
+            group_id,
+            burner,
+            message,
+        }
+    }
+    
+    /// Validate burn data
+    pub fn validate(&self, expected_group_id: u64, expected_burner: &str) -> Result<(), RpcError> {
+        // Validate version
+        if self.version != CHAT_GROUP_CREATION_DATA_VERSION {
+            return Err(RpcError::InvalidParameter(format!(
+                "Unsupported chat group burn data version: {} (expected: {})", 
+                self.version, CHAT_GROUP_CREATION_DATA_VERSION
+            )));
+        }
+        
+        // Validate category
+        if self.category != "chat" {
+            return Err(RpcError::InvalidParameter(format!(
+                "Invalid category: '{}' (expected: 'chat')", self.category
+            )));
+        }
+        
+        // Validate operation
+        if self.operation != "burn_for_group" {
+            return Err(RpcError::InvalidParameter(format!(
+                "Invalid operation: '{}' (expected: 'burn_for_group')", self.operation
+            )));
+        }
+        
+        // Validate group ID
+        if self.group_id != expected_group_id {
+            return Err(RpcError::InvalidParameter(format!(
+                "Group ID mismatch: data contains {}, expected {}", 
+                self.group_id, expected_group_id
+            )));
+        }
+        
+        // Validate burner
+        if self.burner != expected_burner {
+            return Err(RpcError::InvalidParameter(format!(
+                "Burner mismatch: data contains {}, expected {}", 
+                self.burner, expected_burner
+            )));
+        }
+        
+        // Validate message
+        if self.message.len() > 512 {
+            return Err(RpcError::InvalidParameter("Burn message too long (max 512 characters)".to_string()));
+        }
+        
+        Ok(())
+    }
+}
+
 /// Parse Base64+Borsh-formatted memo data to extract chat message
 fn parse_borsh_chat_message(memo_data: &[u8]) -> Option<(String, String)> {
     // Convert bytes to UTF-8 string (should be Base64)
@@ -296,6 +384,49 @@ fn parse_borsh_chat_message(memo_data: &[u8]) -> Option<(String, String)> {
         },
         Err(_) => None
     }
+}
+
+/// Parse Base64+Borsh-formatted memo data to extract burn message
+fn parse_borsh_burn_message(memo_data: &[u8]) -> Option<(String, String, u64)> {
+    // Convert bytes to UTF-8 string (should be Base64)
+    let memo_str = std::str::from_utf8(memo_data).ok()?;
+    
+    // Decode Base64 to get original Borsh binary data
+    let borsh_bytes = base64::decode(memo_str).ok()?;
+    
+    // Deserialize Borsh binary data to BurnMemo first
+    match BurnMemo::try_from_slice(&borsh_bytes) {
+        Ok(burn_memo) => {
+            // Try to deserialize the payload as ChatGroupBurnData
+            match ChatGroupBurnData::try_from_slice(&burn_memo.payload) {
+                Ok(burn_data) => {
+                    // Validate category and operation
+                    if burn_data.category == "chat" && burn_data.operation == "burn_for_group" {
+                        Some((burn_data.burner, burn_data.message, burn_memo.burn_amount))
+                    } else {
+                        None
+                    }
+                },
+                Err(_) => None
+            }
+        },
+        Err(_) => None
+    }
+}
+
+/// Parse memo data and determine message type
+fn parse_memo_data(memo_data: &[u8]) -> Option<(String, String, String, Option<u64>)> {
+    // Try parsing as chat message first
+    if let Some((sender, message)) = parse_borsh_chat_message(memo_data) {
+        return Some((sender, message, "chat".to_string(), None));
+    }
+    
+    // Try parsing as burn message
+    if let Some((burner, message, burn_amount)) = parse_borsh_burn_message(memo_data) {
+        return Some((burner, message, "burn".to_string(), Some(burn_amount)));
+    }
+    
+    None
 }
 
 /// Represents global statistics from the memo-chat contract
@@ -335,11 +466,13 @@ pub struct ChatStatistics {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub signature: String,      // Transaction signature
-    pub sender: String,         // Sender's public key
-    pub message: String,        // The memo content
+    pub sender: String,         // Sender's public key (for chat) or burner (for burn)
+    pub message: String,        // The memo content or burn message
     pub timestamp: i64,         // Block time
     pub slot: u64,             // Slot number
     pub memo_amount: u64,      // Amount of MEMO tokens burned for this message
+    pub message_type: String,  // "chat" or "burn"
+    pub burn_amount: Option<u64>, // For burn messages, the amount burned (in lamports)
 }
 
 /// Response containing chat messages for a group
@@ -407,6 +540,8 @@ impl LocalChatMessage {
                 timestamp: (js_sys::Date::now() / 1000.0) as i64, // current timestamp
                 slot: 0,
                 memo_amount: 0,
+                message_type: "chat".to_string(),
+                burn_amount: None,
             },
             status: MessageStatus::Sending,
             is_local: true,
@@ -886,8 +1021,8 @@ impl RpcConnection {
                                         // Convert string to bytes for parsing
                                         let memo_bytes = parsed.as_bytes();
                                         
-                                        // Parse Base64+Borsh format message
-                                        if let Some((sender, message)) = parse_borsh_chat_message(memo_bytes) {
+                                        // Parse memo data (both chat and burn messages)
+                                        if let Some((sender, message, msg_type, burn_amount)) = parse_memo_data(memo_bytes) {
                                             // Skip empty messages
                                             if !message.trim().is_empty() {
                                                 messages.push(ChatMessage {
@@ -897,6 +1032,8 @@ impl RpcConnection {
                                                     timestamp: block_time,
                                                     slot,
                                                     memo_amount: 0,
+                                                    message_type: msg_type,
+                                                    burn_amount,
                                                 });
                                             }
                                         }

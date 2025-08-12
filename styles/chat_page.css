@@ -1579,3 +1579,50 @@
     color: #e53e3e;
     font-weight: 600;
 } 
+
+/* burn message special style */
+.message-item.message-burn {
+    border-left: 4px solid #ff6b35;
+    background: linear-gradient(135deg, #fff5f3 0%, #ffffff 100%);
+}
+
+.message-item.message-burn .message-header {
+    color: #d63384;
+}
+
+.message-type-indicator {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: 8px;
+}
+
+.message-type-indicator.chat {
+    background-color: #e3f2fd;
+    color: #1976d2;
+}
+
+.message-type-indicator.burn {
+    background-color: #fff3e0;
+    color: #ff6b35;
+}
+
+.burn-amount {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: #ff6b35;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.burn-amount i {
+    color: #ff6b35;
+}
+
+/* burn message in current user's style */
+.message-item.message-burn.message-current-user {
+    background: linear-gradient(135deg, #fff8f0 0%, #fff5f3 100%);
+    border-left: 4px solid #ff8a50;
+} 
