@@ -1939,58 +1939,6 @@
     --text-disabled: #6c757d;
 }
 
-/* Burn message input */
-.burn-message-input {
-    width: 100%;
-    min-height: 60px;
-    max-height: 120px;
-    padding: 12px;
-    border: 2px solid var(--border-color);
-    border-radius: 8px;
-    background: var(--input-bg);
-    color: var(--text-primary);
-    font-family: inherit;
-    font-size: 14px;
-    line-height: 1.4;
-    resize: vertical;
-    transition: border-color 0.2s ease;
-}
-
-.burn-message-input:focus {
-    outline: none;
-    border-color: var(--accent-color);
-}
-
-.burn-message-input:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.burn-message-input::placeholder {
-    color: var(--text-secondary);
-    opacity: 0.7;
-}
-
-/* Burn button styles */
-.send-button.burn-button {
-    background: linear-gradient(135deg, #ff6b35, #f7931e);
-    color: white;
-    border: none;
-}
-
-.send-button.burn-button:hover:not(:disabled) {
-    background: linear-gradient(135deg, #e55a2b, #e8841a);
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
-}
-
-.send-button.burn-button:disabled {
-    background: #666;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-}
-
 /* Burn total in header */
 .burn-total {
     margin-left: 15px;

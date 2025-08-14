@@ -1062,19 +1062,21 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                         >
                                             // burn message input box
                                             <textarea
-                                                class="burn-message-input"
+                                                class="message-input"
                                                 placeholder=move || {
                                                     if burning.get() {
                                                         "Burning tokens, please wait...".to_string()
+                                                    } else if session.with(|s| s.get_sol_balance()) < 0.005 {
+                                                        format!("Insufficient balance, burning requires at least 0.005 SOL (current: {:.4} SOL)", session.with(|s| s.get_sol_balance()))
                                                     } else {
-                                                        "Optional burn message...".to_string()
+                                                        "Type your burn message... (Press Enter to burn, Shift+Enter for new line)".to_string()
                                                     }
                                                 }
                                                 prop:value=move || burn_message.get()
                                                 on:input=move |ev| {
                                                     set_burn_message.set(event_target_value(&ev));
                                                 }
-                                                disabled=move || burning.get()
+                                                disabled=move || burning.get() || session.with(|s| s.get_sol_balance()) < 0.005
                                             ></textarea>
                                         </Show>
                                         
@@ -1085,6 +1087,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                             disabled=move || {
                                                 if action_type.get() == "burn" {
                                                     burning.get() || 
+                                                    burn_message.get().trim().is_empty() ||
                                                     burn_amount.get().trim().is_empty() ||
                                                     burn_amount.get().trim().parse::<u64>().unwrap_or(0) < 1 ||
                                                     session.with(|s| s.get_sol_balance()) < 0.01 ||
