@@ -605,11 +605,14 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                 return;
             }
             
+            // 1. set burning state immediately to update UI
             set_burning.set(true);
             
-            // execute burn operation
+            // 2. short delay to update UI (like sending message)
             spawn_local(async move {
-                // get session copy and call async method
+                TimeoutFuture::new(100).await;
+                
+                // 3. actually execute burn operation
                 let mut session_copy = session.get_untracked();
                 let result = session_copy.burn_tokens_for_group(group_id, burn_tokens_amount, &burn_msg).await;
                 
