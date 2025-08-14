@@ -39,6 +39,12 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     // Current mint reward state
     let (current_mint_reward, set_current_mint_reward) = create_signal::<Option<String>>(None);
     
+    // add new state for burn function
+    let (action_type, set_action_type) = create_signal("message".to_string()); // "message" 或 "burn"
+    let (burn_amount, set_burn_amount) = create_signal("1".to_string());
+    let (burn_message, set_burn_message) = create_signal(String::new());
+    let (burning, set_burning) = create_signal(false);
+
     // Node ref for messages area to enable auto-scroll
     let messages_area_ref = create_node_ref::<Div>();
     
@@ -566,6 +572,99 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         add_log_entry("ERROR", &format!("Failed to create chat group: {}", error));
     };
 
+    // add burn tokens handler
+    let handle_burn_tokens = move |_ev: web_sys::MouseEvent| {
+        let burn_msg = burn_message.get().trim().to_string();
+        let amount_str = burn_amount.get().trim().to_string(); // fix: add .to_string()
+        
+        // validate input
+        let burn_tokens_amount = match amount_str.parse::<u64>() {
+            Ok(amount) if amount >= 1 => amount,
+            _ => {
+                add_log_entry("ERROR", "Burn amount must be at least 1 token");
+                return;
+            }
+        };
+        
+        // get current group ID
+        if let ChatView::ChatRoom(group_id) = current_view.get() {
+            // check token balance
+            let token_balance = session.with_untracked(|s| s.get_token_balance());
+            if token_balance < burn_tokens_amount as f64 {
+                let error_msg = format!("Insufficient token balance! Required: {} MEMO, Available: {:.2} MEMO", 
+                                      burn_tokens_amount, token_balance);
+                add_log_entry("ERROR", &error_msg);
+                return;
+            }
+            
+            // check SOL balance
+            let sol_balance = session.with_untracked(|s| s.get_sol_balance());
+            if sol_balance < 0.01 {
+                let error_msg = format!("Insufficient SOL balance for transaction fee! Current: {:.4} SOL, Required: at least 0.01 SOL", sol_balance);
+                add_log_entry("ERROR", &error_msg);
+                return;
+            }
+            
+            set_burning.set(true);
+            
+            // execute burn operation
+            spawn_local(async move {
+                // get session copy and call async method
+                let mut session_copy = session.get_untracked();
+                let result = session_copy.burn_tokens_for_group(group_id, burn_tokens_amount, &burn_msg).await;
+                
+                match result {
+                    Ok(signature) => {
+                        add_log_entry("SUCCESS", &format!("Tokens burned successfully! Signature: {}", signature));
+                        
+                        // update original session balance state
+                        session.update(|s| {
+                            s.set_balances(session_copy.get_sol_balance(), session_copy.get_token_balance());
+                        });
+                        
+                        // clear input
+                        set_burn_message.set(String::new());
+                        set_burn_amount.set("1".to_string());
+                        
+                        // update group info (burn total)
+                        spawn_local(async move {
+                            let rpc = crate::core::rpc_base::RpcConnection::new();
+                            match rpc.get_chat_group_info(group_id).await {
+                                Ok(updated_group_info) => {
+                                    set_current_group_info.set(Some(updated_group_info));
+                                },
+                                Err(e) => {
+                                    log::error!("Failed to refresh group info after burn: {}", e);
+                                }
+                            }
+                        });
+                    },
+                    Err(e) => {
+                        add_log_entry("ERROR", &format!("Failed to burn tokens: {}", e));
+                    }
+                }
+                
+                set_burning.set(false);
+            });
+        } else {
+            add_log_entry("ERROR", "No chat room selected");
+        }
+    };
+
+    // modify send message logic, decide to send message or burn tokens based on selected operation type
+    let send_message_or_burn = move |_ev: web_sys::MouseEvent| {
+        match action_type.get().as_str() {
+            "burn" => {
+                let dummy_event = web_sys::MouseEvent::new("click").unwrap();
+                handle_burn_tokens(dummy_event);
+            },
+            _ => {
+                let dummy_event = web_sys::MouseEvent::new("click").unwrap();
+                send_message(dummy_event);
+            }
+        }
+    };
+
     view! {
         <div class="chat-page">
             <Show
@@ -594,7 +693,14 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                         current_group_info.get().map(|info| {
                                             view! {
                                                 <div class="group-title">
-                                                    <h1><i class="fas fa-comments"></i>{info.name}</h1>
+                                                    <h1>
+                                                        <i class="fas fa-comments"></i>
+                                                        {info.name.clone()}
+                                                        <span class="burn-total">
+                                                            <i class="fas fa-fire"></i>
+                                                            {format!("{:.2} MEMO", info.burned_amount as f64 / 1_000_000.0)}
+                                                        </span>
+                                                    </h1>
                                                     <p class="group-description">{info.description}</p>
                                                 </div>
                                             }
@@ -659,48 +765,127 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                 </div>
                                 
                                 <div class="message-input-area">
+                                    // operation type selection
+                                    <div class="action-selector">
+                                        <label class="radio-option">
+                                            <input 
+                                                type="radio" 
+                                                name="action-type" 
+                                                value="message" 
+                                                checked=move || action_type.get() == "message"
+                                                on:change=move |_| set_action_type.set("message".to_string())
+                                            />
+                                            <span>"Message"</span>
+                                        </label>
+                                        <label class="radio-option">
+                                            <input 
+                                                type="radio" 
+                                                name="action-type" 
+                                                value="burn" 
+                                                checked=move || action_type.get() == "burn"
+                                                on:change=move |_| set_action_type.set("burn".to_string())
+                                            />
+                                            <span>"Burn"</span>
+                                            <Show when=move || action_type.get() == "burn">
+                                                <input 
+                                                    type="number" 
+                                                    class="burn-amount-input"
+                                                    placeholder="Amount"
+                                                    min="1"
+                                                    prop:value=move || burn_amount.get()
+                                                    on:input=move |ev| {
+                                                        set_burn_amount.set(event_target_value(&ev));
+                                                    }
+                                                    disabled=move || burning.get()
+                                                />
+                                                <span class="burn-unit">"MEMO"</span>
+                                            </Show>
+                                        </label>
+                                    </div>
+                                    
                                     <div class="input-container">
-                                        <textarea
-                                            class="message-input"
-                                            placeholder=move || {
-                                                if sending.get() {
-                                                    "Sending, please wait...".to_string()
-                                                } else if session.with(|s| s.get_sol_balance()) < 0.005 {
-                                                    format!("Balance insufficient, sending message requires at least 0.005 XNT (current: {:.4} XNT)", session.with(|s| s.get_sol_balance()))
-                                                } else {
-                                                    "Type your message... (Press Enter to send, Shift+Enter for new line)".to_string()
+                                        <Show
+                                            when=move || action_type.get() == "burn"
+                                            fallback=move || {
+                                                // message input box
+                                                view! {
+                                                    <textarea
+                                                        class="message-input"
+                                                        placeholder=move || {
+                                                            if sending.get() {
+                                                                "Sending, please wait...".to_string()
+                                                            } else if session.with(|s| s.get_sol_balance()) < 0.005 {
+                                                                format!("Balance insufficient, sending message requires at least 0.005 SOL (current: {:.4} SOL)", session.with(|s| s.get_sol_balance()))
+                                                            } else {
+                                                                "Type your message... (Press Enter to send, Shift+Enter for new line)".to_string()
+                                                            }
+                                                        }
+                                                        prop:value=move || message_input.get()
+                                                        on:input=move |ev| {
+                                                            set_message_input.set(event_target_value(&ev));
+                                                        }
+                                                        on:keypress=handle_key_press
+                                                        disabled=move || sending.get() || session.with(|s| s.get_sol_balance()) < 0.005
+                                                    ></textarea>
                                                 }
                                             }
-                                            prop:value=move || message_input.get()
-                                            on:input=move |ev| {
-                                                set_message_input.set(event_target_value(&ev));
-                                            }
-                                            on:keypress=handle_key_press
-                                            disabled=move || sending.get() || session.with(|s| s.get_sol_balance()) < 0.005
-                                        ></textarea>
+                                        >
+                                            // burn message input box
+                                            <textarea
+                                                class="burn-message-input"
+                                                placeholder=move || {
+                                                    if burning.get() {
+                                                        "Burning tokens, please wait...".to_string()
+                                                    } else {
+                                                        "Optional burn message...".to_string()
+                                                    }
+                                                }
+                                                prop:value=move || burn_message.get()
+                                                on:input=move |ev| {
+                                                    set_burn_message.set(event_target_value(&ev));
+                                                }
+                                                disabled=move || burning.get()
+                                            ></textarea>
+                                        </Show>
+                                        
                                         <button
                                             class="send-button"
-                                            on:click=send_message
+                                            class:burn-button=move || action_type.get() == "burn"
+                                            on:click=send_message_or_burn
                                             disabled=move || {
-                                                message_input.get().trim().is_empty() || 
-                                                sending.get() || 
-                                                session.with(|s| s.get_sol_balance()) < 0.005
+                                                if action_type.get() == "burn" {
+                                                    burning.get() || 
+                                                    burn_amount.get().trim().is_empty() ||
+                                                    burn_amount.get().trim().parse::<u64>().unwrap_or(0) < 1 ||
+                                                    session.with(|s| s.get_sol_balance()) < 0.01 ||
+                                                    session.with(|s| s.get_token_balance()) < burn_amount.get().trim().parse::<f64>().unwrap_or(0.0)
+                                                } else {
+                                                    message_input.get().trim().is_empty() || 
+                                                    sending.get() || 
+                                                    session.with(|s| s.get_sol_balance()) < 0.005
+                                                }
                                             }
                                             title=move || {
-                                                if sending.get() {
-                                                    "Sending...".to_string()
-                                                } else if session.with(|s| s.get_sol_balance()) < 0.005 {
-                                                    format!("Balance insufficient, sending message requires at least 0.005 XNT (current: {:.4} XNT)", session.with(|s| s.get_sol_balance()))
-                                                } else if message_input.get().trim().is_empty() {
-                                                    "Please enter message content".to_string()
+                                                if action_type.get() == "burn" {
+                                                    if burning.get() {
+                                                        "Burning tokens...".to_string()
+                                                    } else {
+                                                        format!("Burn {} MEMO tokens", burn_amount.get())
+                                                    }
                                                 } else {
                                                     "Send message".to_string()
                                                 }
                                             }
                                         >
                                             <Show
-                                                when=move || sending.get()
-                                                fallback=|| view! { <i class="fas fa-paper-plane"></i> }
+                                                when=move || (action_type.get() == "burn" && burning.get()) || (action_type.get() == "message" && sending.get())
+                                                fallback=move || {
+                                                    if action_type.get() == "burn" {
+                                                        view! { <i class="fas fa-fire"></i> }
+                                                    } else {
+                                                        view! { <i class="fas fa-paper-plane"></i> }
+                                                    }
+                                                }
                                             >
                                                 <div class="spinner"></div>
                                             </Show>

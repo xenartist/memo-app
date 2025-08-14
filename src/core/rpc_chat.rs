@@ -59,7 +59,7 @@ impl ChatConfig {
     pub const MAX_PAYLOAD_LENGTH: usize = Self::MAX_MEMO_LENGTH - BORSH_FIXED_OVERHEAD; // 800 - 13 = 787
     
     /// Compute budget configuration
-    pub const COMPUTE_UNIT_BUFFER: f64 = 1.1; // 10% buffer for chat operations
+    pub const COMPUTE_UNIT_BUFFER: f64 = 1.2; // 20% buffer for chat operations
     
     /// Helper functions
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
@@ -166,6 +166,16 @@ impl ChatConfig {
             &[Self::BURN_LEADERBOARD_SEED],
             &program_id
         ))
+    }
+
+    /// Get burn_tokens_for_group instruction discriminator
+    pub fn get_burn_tokens_for_group_discriminator() -> [u8; 8] {
+        let mut hasher = Sha256::new();
+        hasher.update(b"global:burn_tokens_for_group");
+        let result = hasher.finalize();
+        let mut discriminator = [0u8; 8];
+        discriminator.copy_from_slice(&result[..8]);
+        discriminator
     }
 }
 
@@ -1377,12 +1387,7 @@ impl RpcConnection {
         
         let send_params = serde_json::json!([
             final_serialized_tx,
-            {
-                "encoding": "base64",
-                "skipPreflight": false,
-                "preflightCommitment": "processed",
-                "maxRetries": 3
-            }
+            {"encoding": "base64", "skipPreflight": false, "preflightCommitment": "processed"}
         ]);
         
         check_timeout()?;
@@ -1612,6 +1617,228 @@ impl RpcConnection {
         
         log::info!("Chat group '{}' created successfully with ID {}", name, expected_group_id);
         Ok((signature, expected_group_id))
+    }
+
+    /// Burn tokens for a chat group
+    /// 
+    /// # Parameters
+    /// * `group_id` - The ID of the chat group to burn tokens for
+    /// * `amount` - Amount of MEMO tokens to burn (in lamports, must be >= 1_000_000)
+    /// * `message` - Optional burn message (max 512 characters)
+    /// * `keypair_bytes` - The user's keypair bytes for signing
+    /// 
+    /// # Returns
+    /// Result containing transaction signature
+    pub async fn burn_tokens_for_group(
+        &self,
+        group_id: u64,
+        amount: u64,
+        message: &str,
+        keypair_bytes: &[u8],
+    ) -> Result<String, RpcError> {
+        // Basic parameter validation
+        if amount < 1_000_000 {
+            return Err(RpcError::InvalidParameter("Burn amount must be at least 1 MEMO token (1,000,000 lamports)".to_string()));
+        }
+        if amount % 1_000_000 != 0 {
+            return Err(RpcError::InvalidParameter("Burn amount must be a whole number of tokens (multiple of 1,000,000 lamports)".to_string()));
+        }
+        if message.len() > 512 {
+            return Err(RpcError::InvalidParameter("Burn message too long (max 512 characters)".to_string()));
+        }
+        
+        log::info!("Burning {} tokens for group {}: {}", amount / 1_000_000, group_id, message);
+        
+        // Create keypair from bytes and get pubkey
+        let keypair = Keypair::from_bytes(keypair_bytes)
+            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
+        let user_pubkey = keypair.pubkey();
+        
+        log::info!("Burner pubkey: {}", user_pubkey);
+        
+        // Get contract configuration
+        let chat_program_id = ChatConfig::get_program_id()?;
+        let memo_token_mint = ChatConfig::get_memo_token_mint()?;
+        let token_2022_program_id = ChatConfig::get_token_2022_program_id()?;
+        let memo_burn_program_id = ChatConfig::get_memo_burn_program_id()?;
+        
+        // Calculate PDAs
+        let (chat_group_pda, _) = ChatConfig::get_chat_group_pda(group_id)?;
+        let (burn_leaderboard_pda, _) = ChatConfig::get_burn_leaderboard_pda()?;
+        
+        // Calculate user's token account (ATA)
+        let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
+            &user_pubkey,
+            &memo_token_mint,
+            &token_2022_program_id,
+        );
+        
+        log::info!("Chat group PDA: {}", chat_group_pda);
+        log::info!("Burn leaderboard PDA: {}", burn_leaderboard_pda);
+        log::info!("User token account: {}", user_token_account);
+        
+        // Check if user's token account exists
+        let token_account_info = self.get_account_info(&user_token_account.to_string(), Some("base64")).await?;
+        let token_account_info: serde_json::Value = serde_json::from_str(&token_account_info)
+            .map_err(|e| RpcError::Other(format!("Failed to parse token account info: {}", e)))?;
+        
+        if token_account_info["value"].is_null() {
+            return Err(RpcError::Other("User token account does not exist. Please mint some tokens first.".to_string()));
+        }
+        
+        // Prepare chat group burn data
+        let burn_data = ChatGroupBurnData::new(
+            group_id,
+            user_pubkey.to_string(),
+            message.to_string(),
+        );
+        
+        // Validate burn data
+        burn_data.validate(group_id, &user_pubkey.to_string())?;
+        
+        // Create BurnMemo
+        let burn_memo = BurnMemo {
+            version: BURN_MEMO_VERSION,
+            burn_amount: amount,
+            payload: burn_data.try_to_vec()
+                .map_err(|e| RpcError::Other(format!("Failed to serialize burn data: {}", e)))?,
+        };
+        
+        // Serialize and encode to Base64
+        let memo_data_bytes = burn_memo.try_to_vec()
+            .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo: {}", e)))?;
+        let memo_data_base64 = base64::encode(&memo_data_bytes);
+        
+        log::info!("Burn memo data: {} bytes Borsh → {} bytes Base64", 
+                  memo_data_bytes.len(), memo_data_base64.len());
+
+        // Validate memo length
+        ChatConfig::validate_memo_length(memo_data_base64.as_bytes())?;
+        
+        // Build base instructions (for simulation)
+        let mut base_instructions = vec![];
+
+        // Add memo instruction
+        base_instructions.push(spl_memo::build_memo(
+            memo_data_base64.as_bytes(),
+            &[&user_pubkey],
+        ));
+        
+        // Create burn_tokens_for_group instruction
+        let mut instruction_data = ChatConfig::get_burn_tokens_for_group_discriminator().to_vec();
+        instruction_data.extend_from_slice(&group_id.to_le_bytes());
+        instruction_data.extend_from_slice(&amount.to_le_bytes());
+        
+        let accounts = vec![
+            AccountMeta::new(user_pubkey, true),                    // burner (signer)
+            AccountMeta::new(chat_group_pda, false),               // chat_group
+            AccountMeta::new(burn_leaderboard_pda, false),         // burn_leaderboard
+            AccountMeta::new(memo_token_mint, false),              // mint
+            AccountMeta::new(user_token_account, false),           // burner_token_account
+            AccountMeta::new_readonly(token_2022_program_id, false), // token_program
+            AccountMeta::new_readonly(memo_burn_program_id, false), // memo_burn_program
+            AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false), // instructions sysvar
+        ];
+        
+        let burn_instruction = Instruction::new_with_bytes(
+            chat_program_id,
+            &instruction_data,
+            accounts,
+        );
+        
+        base_instructions.push(burn_instruction);
+        
+        // Get latest blockhash and simulate transaction
+        let blockhash_response: serde_json::Value = self.send_request("getLatestBlockhash", serde_json::json!([])).await?;
+        let blockhash_str = blockhash_response["value"]["blockhash"]
+            .as_str()
+            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
+        let blockhash = solana_sdk::hash::Hash::from_str(blockhash_str)
+            .map_err(|e| RpcError::Other(format!("Failed to parse blockhash: {}", e)))?;
+        
+        // Create simulation transaction (without compute budget instruction)
+        let sim_message = Message::new(&base_instructions, Some(&user_pubkey));
+        let mut sim_transaction = Transaction::new_unsigned(sim_message);
+        sim_transaction.message.recent_blockhash = blockhash;
+        sim_transaction.sign(&[&keypair], blockhash);
+        
+        // Serialize simulation transaction
+        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
+        
+        // Simulate transaction to get compute units consumption
+        let sim_options = serde_json::json!({
+            "encoding": "base64",
+            "commitment": "confirmed",
+            "replaceRecentBlockhash": true,
+            "sigVerify": false
+        });
+        
+        log::info!("Simulating burn tokens for group transaction...");
+        let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
+        let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
+            .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
+
+        // Parse simulation result to extract compute units consumed
+        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            log::info!("Burn tokens for group simulation consumed {} compute units", units_consumed);
+            // apply 20% buffer
+            let final_units = (units_consumed as f64 * ChatConfig::COMPUTE_UNIT_BUFFER) as u64;
+            
+            log::info!("CU calculation for burn tokens: simulated={}, final={} (+20%)", 
+                      units_consumed, final_units);
+            
+            final_units
+        } else {
+            log::error!("Failed to get compute units from simulation");
+            return Err(RpcError::Other("Simulation failed to provide compute units".to_string()));
+        };
+
+        // use calculated CU, like sending message
+        log::info!("Using {} compute units for burn tokens for group", computed_units);
+        
+        // Now build the final transaction with the calculated compute units
+        let mut final_instructions = vec![];
+
+        // Add compute budget instruction first
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+
+        // Add all base instructions
+        final_instructions.extend(base_instructions);
+        
+        // Create and sign final transaction
+        let final_message = Message::new(&final_instructions, Some(&user_pubkey));
+        let mut final_transaction = Transaction::new_unsigned(final_message);
+        final_transaction.message.recent_blockhash = blockhash;
+        final_transaction.sign(&[&keypair], blockhash);
+        
+        // Serialize and send final transaction
+        let final_serialized_tx = base64::encode(bincode::serialize(&final_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize final transaction: {}", e)))?);
+        
+        let send_params = serde_json::json!([
+            final_serialized_tx,
+            {
+                "encoding": "base64",
+                "skipPreflight": false,
+                "preflightCommitment": "processed",
+                "maxRetries": 3
+            }
+        ]);
+        
+        log::info!("Sending burn tokens for group transaction...");
+        
+        // Send transaction
+        match self.send_request("sendTransaction", send_params).await {
+            Ok(signature) => {
+                log::info!("Burn tokens for group successful");
+                Ok(signature)
+            },
+            Err(e) => {
+                log::error!("Failed to burn tokens for group: {}", e);
+                Err(e)
+            }
+        }
     }
 }
 

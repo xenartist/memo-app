@@ -1626,3 +1626,245 @@
     background: linear-gradient(135deg, #fff8f0 0%, #fff5f3 100%);
     border-left: 4px solid #ff8a50;
 } 
+
+/* burn total in chat room title */
+.title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+.burned-amount {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: linear-gradient(135deg, #ff6b35, #ff8e53);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
+}
+
+.burned-amount i {
+    color: #ffeb3b;
+}
+
+/* Action type selector */
+.action-type-selector {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    background: #f8f9fa;
+    border-radius: 8px 8px 0 0;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.radio-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.radio-option input[type="radio"] {
+    margin: 0;
+    transform: scale(1.1);
+}
+
+.radio-option:hover {
+    color: #6366f1;
+}
+
+.radio-option input[type="radio"]:checked + span {
+    color: #6366f1;
+    font-weight: 600;
+}
+
+/* burn amount input */
+.burn-amount-input {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: 1rem;
+    padding-left: 1rem;
+    border-left: 1px solid #d0d0d0;
+}
+
+.burn-amount-input label {
+    font-size: 0.9rem;
+    color: #666;
+    font-weight: 500;
+}
+
+.burn-amount-input input {
+    width: 80px;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.burn-amount-input span {
+    font-size: 0.9rem;
+    color: #666;
+}
+
+/* burn button style */
+.send-button.burn-button {
+    background: linear-gradient(135deg, #ff6b35, #ff8e53);
+    border-color: #ff6b35;
+}
+
+.send-button.burn-button:hover:not(:disabled) {
+    background: linear-gradient(135deg, #e55a2b, #e67d47);
+    box-shadow: 0 4px 12px rgba(255, 107, 53, 0.4);
+}
+
+.send-button.burn-button:disabled {
+    background: #ffcab0;
+    border-color: #ffcab0;
+}
+
+/* input container adjustment */
+.message-input-area .input-container {
+    border-radius: 0 0 8px 8px;
+}
+
+/* responsive design */
+@media (max-width: 768px) {
+    .title-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .action-type-selector {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    
+    .burn-amount-input {
+        margin-left: 0;
+        padding-left: 0;
+        border-left: none;
+        border-top: 1px solid #d0d0d0;
+        padding-top: 0.5rem;
+        margin-top: 0.5rem;
+    }
+} 
+
+/* Action selector styles */
+.action-selector {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 10px;
+    padding: 10px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.radio-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 8px 12px;
+    border-radius: 6px;
+    transition: background-color 0.2s ease;
+}
+
+.radio-option:hover {
+    background: var(--hover-bg);
+}
+
+.radio-option input[type="radio"] {
+    margin: 0;
+}
+
+.radio-option span {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.burn-amount-input {
+    width: 80px;
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--input-bg);
+    color: var(--text-primary);
+    font-size: 14px;
+    margin-left: 8px;
+}
+
+.burn-unit {
+    color: var(--text-secondary);
+    font-size: 12px;
+    margin-left: 4px;
+}
+
+/* Burn message input */
+.burn-message-input {
+    width: 100%;
+    min-height: 60px;
+    max-height: 120px;
+    padding: 12px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--input-bg);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.4;
+    resize: vertical;
+    transition: border-color 0.2s ease;
+}
+
+.burn-message-input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+.burn-message-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Burn button styles */
+.send-button.burn-button {
+    background: linear-gradient(135deg, #ff6b35, #f7931e);
+    color: white;
+}
+
+.send-button.burn-button:hover:not(:disabled) {
+    background: linear-gradient(135deg, #e55a2b, #e8841a);
+    transform: translateY(-1px);
+}
+
+.send-button.burn-button:disabled {
+    background: #666;
+    cursor: not-allowed;
+}
+
+/* Burn total in header */
+.burn-total {
+    margin-left: 15px;
+    padding: 4px 12px;
+    background: linear-gradient(135deg, #ff6b35, #f7931e);
+    color: white;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.burn-total i {
+    margin-right: 4px;
+} 
