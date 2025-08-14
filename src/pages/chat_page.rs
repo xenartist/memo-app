@@ -1069,24 +1069,6 @@ fn MessageItem(
                 <span class="sender">
                     {format_sender(&sender)}
                 </span>
-                {
-                    // show message type icon
-                    if message_type_for_display == "burn" {
-                        view! {
-                            <span class="message-type-indicator burn">
-                                <i class="fas fa-fire"></i>
-                                "Burn"
-                            </span>
-                        }.into_view()
-                    } else {
-                        view! {
-                            <span class="message-type-indicator chat">
-                                <i class="fas fa-comment"></i>
-                                "Message"
-                            </span>
-                        }.into_view()
-                    }
-                }
                 <span class="timestamp">
                     {move || {
                         if timestamp > 0 {

@@ -1245,7 +1245,7 @@ impl RpcConnection {
             AccountMeta::new(user_pubkey, true),                    // sender (signer)
             AccountMeta::new(chat_group_pda, false),               // chat_group
             AccountMeta::new(memo_token_mint, false),              // mint
-            AccountMeta::new(mint_authority_pda, false),           // mint_authority
+            AccountMeta::new_readonly(mint_authority_pda, false),           // mint_authority
             AccountMeta::new(user_token_account, false),           // sender_token_account
             AccountMeta::new_readonly(token_2022_program_id, false), // token_program
             AccountMeta::new_readonly(memo_mint_program_id, false), // memo_mint_program
