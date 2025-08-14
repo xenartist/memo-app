@@ -575,7 +575,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     // add burn tokens handler
     let handle_burn_tokens = move |_ev: web_sys::MouseEvent| {
         let burn_msg = burn_message.get().trim().to_string();
-        let amount_str = burn_amount.get().trim().to_string(); // fix: add .to_string()
+        let amount_str = burn_amount.get().trim().to_string();
         
         // validate input
         let burn_tokens_amount = match amount_str.parse::<u64>() {
@@ -588,67 +588,134 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         
         // get current group ID
         if let ChatView::ChatRoom(group_id) = current_view.get() {
-            // check token balance
-            let token_balance = session.with_untracked(|s| s.get_token_balance());
-            if token_balance < burn_tokens_amount as f64 {
-                let error_msg = format!("Insufficient token balance! Required: {} MEMO, Available: {:.2} MEMO", 
-                                      burn_tokens_amount, token_balance);
-                add_log_entry("ERROR", &error_msg);
-                return;
-            }
-            
-            // check SOL balance
-            let sol_balance = session.with_untracked(|s| s.get_sol_balance());
-            if sol_balance < 0.01 {
-                let error_msg = format!("Insufficient SOL balance for transaction fee! Current: {:.4} SOL, Required: at least 0.01 SOL", sol_balance);
-                add_log_entry("ERROR", &error_msg);
-                return;
-            }
-            
-            // 1. set burning state immediately to update UI
-            set_burning.set(true);
-            
-            // 2. short delay to update UI (like sending message)
-            spawn_local(async move {
-                TimeoutFuture::new(100).await;
-                
-                // 3. actually execute burn operation
-                let mut session_copy = session.get_untracked();
-                let result = session_copy.burn_tokens_for_group(group_id, burn_tokens_amount, &burn_msg).await;
-                
-                match result {
-                    Ok(signature) => {
-                        add_log_entry("SUCCESS", &format!("Tokens burned successfully! Signature: {}", signature));
-                        
-                        // update original session balance state
-                        session.update(|s| {
-                            s.set_balances(session_copy.get_sol_balance(), session_copy.get_token_balance());
-                        });
-                        
-                        // clear input
-                        set_burn_message.set(String::new());
-                        set_burn_amount.set("1".to_string());
-                        
-                        // update group info (burn total)
-                        spawn_local(async move {
-                            let rpc = crate::core::rpc_base::RpcConnection::new();
-                            match rpc.get_chat_group_info(group_id).await {
-                                Ok(updated_group_info) => {
-                                    set_current_group_info.set(Some(updated_group_info));
-                                },
-                                Err(e) => {
-                                    log::error!("Failed to refresh group info after burn: {}", e);
-                                }
-                            }
-                        });
-                    },
-                    Err(e) => {
-                        add_log_entry("ERROR", &format!("Failed to burn tokens: {}", e));
-                    }
+            if let Ok(user_pubkey) = session.with_untracked(|s| s.get_public_key()) {
+                // check token balance
+                let token_balance = session.with_untracked(|s| s.get_token_balance());
+                if token_balance < burn_tokens_amount as f64 {
+                    let error_msg = format!("Insufficient token balance! Required: {} MEMO, Available: {:.2} MEMO", 
+                                          burn_tokens_amount, token_balance);
+                    add_log_entry("ERROR", &error_msg);
+                    set_error_message.set(Some(error_msg));
+                    return;
                 }
                 
-                set_burning.set(false);
-            });
+                // check SOL balance
+                let sol_balance = session.with_untracked(|s| s.get_sol_balance());
+                if sol_balance < 0.01 {
+                    let error_msg = format!("Insufficient SOL balance for transaction fee! Current: {:.4} SOL, Required: at least 0.01 SOL", sol_balance);
+                    add_log_entry("ERROR", &error_msg);
+                    set_error_message.set(Some(error_msg));
+                    return;
+                }
+                
+                // Clear any previous error messages
+                set_error_message.set(None);
+                
+                // 1. show burn message on UI immediately (like regular message)
+                let local_burn_message = LocalChatMessage::new_local_burn(
+                    user_pubkey.clone(),
+                    burn_msg.clone(),
+                    burn_tokens_amount,
+                    group_id
+                );
+                
+                // add to current message list
+                set_messages.update(|msgs| {
+                    msgs.push(local_burn_message.clone());
+                });
+                
+                // clear input and set burning state
+                set_burn_message.set(String::new());
+                set_burn_amount.set("1".to_string());
+                set_burning.set(true);
+                
+                // 2. short delay to update UI (like sending message)
+                spawn_local(async move {
+                    TimeoutFuture::new(100).await;
+                    
+                    // 3. actually execute burn operation
+                    let mut session_copy = session.get_untracked();
+                    let result = session_copy.burn_tokens_for_group(group_id, burn_tokens_amount, &burn_msg).await;
+                    
+                    match result {
+                        Ok(signature) => {
+                            add_log_entry("SUCCESS", &format!("Tokens burned successfully! Signature: {}", signature));
+                            
+                            // 4. update local message status to sent
+                            set_messages.update(|msgs| {
+                                if let Some(msg) = msgs.iter_mut().find(|m| {
+                                    m.is_local && 
+                                    m.message.message == burn_msg && 
+                                    m.message.sender == user_pubkey &&
+                                    m.message.message_type == "burn"
+                                }) {
+                                    msg.status = MessageStatus::Sent;
+                                    msg.message.signature = signature; // update to real signature
+                                }
+                            });
+                            
+                            // 5. update original session balance state
+                            session.update(|s| {
+                                s.set_balances(session_copy.get_sol_balance(), session_copy.get_token_balance());
+                            });
+                            
+                            // 6. update group info (burn total)
+                            spawn_local(async move {
+                                let rpc = crate::core::rpc_base::RpcConnection::new();
+                                match rpc.get_chat_group_info(group_id).await {
+                                    Ok(updated_group_info) => {
+                                        set_current_group_info.set(Some(updated_group_info));
+                                    },
+                                    Err(e) => {
+                                        log::error!("Failed to refresh group info after burn: {}", e);
+                                    }
+                                }
+                            });
+                        },
+                        Err(e) => {
+                            log::error!("Failed to burn tokens: {}", e);
+                            
+                            // Parse error to extract specific error message (like regular messages)
+                            let error_string = e.to_string();
+                            let user_friendly_error = 
+                                if let Some(dash_pos) = error_string.rfind(" - ") {
+                                    let specific_msg = &error_string[dash_pos + 3..];
+                                    let cleaned_msg = specific_msg.trim_end_matches('.');
+                                    if !cleaned_msg.is_empty() {
+                                        cleaned_msg.to_string()
+                                    } else {
+                                        "Failed to burn tokens. Please try again.".to_string()
+                                    }
+                                } else {
+                                    if error_string.contains("insufficient") {
+                                        "Insufficient balance".to_string()
+                                    } else {
+                                        "Failed to burn tokens. Please try again.".to_string()
+                                    }
+                                };
+                            
+                            add_log_entry("ERROR", &format!("Failed to burn tokens: {}", user_friendly_error));
+                            set_error_message.set(Some(user_friendly_error.to_string()));
+                            
+                            // 7. update local message status to failed
+                            set_messages.update(|msgs| {
+                                if let Some(msg) = msgs.iter_mut().find(|m| {
+                                    m.is_local && 
+                                    m.message.message == burn_msg && 
+                                    m.message.sender == user_pubkey &&
+                                    m.message.message_type == "burn"
+                                }) {
+                                    msg.status = MessageStatus::Failed;
+                                }
+                            });
+                        }
+                    }
+                    
+                    set_burning.set(false);
+                });
+            } else {
+                add_log_entry("ERROR", "Failed to get user public key");
+            }
         } else {
             add_log_entry("ERROR", "No chat room selected");
         }
@@ -665,6 +732,127 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                 let dummy_event = web_sys::MouseEvent::new("click").unwrap();
                 send_message(dummy_event);
             }
+        }
+    };
+
+    // Handle retry burning a failed message (similar to retry_message)
+    let retry_burn_message = move |burn_content: String, burn_tokens_amount: u64| {
+        // Get current group ID and user info
+        if let ChatView::ChatRoom(group_id) = current_view.get() {
+            if let Ok(user_pubkey) = session.with_untracked(|s| s.get_public_key()) {
+                // Check balances before retrying
+                let token_balance = session.with_untracked(|s| s.get_token_balance());
+                if token_balance < burn_tokens_amount as f64 {
+                    let error_msg = format!("Insufficient token balance! Required: {} MEMO, Available: {:.2} MEMO", 
+                                          burn_tokens_amount, token_balance);
+                    add_log_entry("ERROR", &error_msg);
+                    set_error_message.set(Some(error_msg));
+                    return;
+                }
+                
+                let sol_balance = session.with_untracked(|s| s.get_sol_balance());
+                if sol_balance < 0.01 {
+                    let error_msg = format!("Insufficient SOL balance for transaction fee! Current: {:.4} SOL, Required: at least 0.01 SOL", sol_balance);
+                    add_log_entry("ERROR", &error_msg);
+                    set_error_message.set(Some(error_msg));
+                    return;
+                }
+                
+                // Clear any previous error messages
+                set_error_message.set(None);
+                
+                // 1. Update the failed message back to sending status
+                set_messages.update(|msgs| {
+                    if let Some(msg) = msgs.iter_mut().find(|m| {
+                        m.is_local && 
+                        m.message.message == burn_content && 
+                        m.message.sender == user_pubkey &&
+                        m.message.message_type == "burn" &&
+                        (m.status == MessageStatus::Failed || m.status == MessageStatus::Timeout)
+                    }) {
+                        log::info!("Updating burn message status from {:?} to Sending for retry", msg.status);
+                        msg.status = MessageStatus::Sending;
+                    }
+                });
+                
+                set_burning.set(true);
+                
+                // 2. short delay to update UI
+                spawn_local(async move {
+                    TimeoutFuture::new(100).await;
+                    
+                    // 3. actually retry burn operation
+                    let mut session_copy = session.get_untracked();
+                    let result = session_copy.burn_tokens_for_group(group_id, burn_tokens_amount, &burn_content).await;
+                    
+                    match result {
+                        Ok(signature) => {
+                            add_log_entry("INFO", &format!("Burn retry successful! Signature: {}", signature));
+                            
+                            // 4. update local message status to sent
+                            set_messages.update(|msgs| {
+                                if let Some(msg) = msgs.iter_mut().find(|m| {
+                                    m.is_local && 
+                                    m.message.message == burn_content && 
+                                    m.message.sender == user_pubkey &&
+                                    m.message.message_type == "burn"
+                                }) {
+                                    msg.status = MessageStatus::Sent;
+                                    msg.message.signature = signature; // update to real signature
+                                }
+                            });
+                            
+                            // 5. update session balance
+                            session.update(|s| {
+                                s.set_balances(session_copy.get_sol_balance(), session_copy.get_token_balance());
+                            });
+                            
+                            // 6. update group info
+                            spawn_local(async move {
+                                let rpc = crate::core::rpc_base::RpcConnection::new();
+                                match rpc.get_chat_group_info(group_id).await {
+                                    Ok(updated_group_info) => {
+                                        set_current_group_info.set(Some(updated_group_info));
+                                    },
+                                    Err(e) => {
+                                        log::error!("Failed to refresh group info after retry burn: {}", e);
+                                    }
+                                }
+                            });
+                        },
+                        Err(e) => {
+                            log::error!("Burn retry failed: {}", e);
+                            
+                            let user_friendly_error = if e.to_string().contains("insufficient") {
+                                "Insufficient balance"
+                            } else {
+                                "Failed to burn tokens. Please try again."
+                            };
+                            
+                            add_log_entry("ERROR", &format!("Retry failed: {}", user_friendly_error));
+                            set_error_message.set(Some(user_friendly_error.to_string()));
+                            
+                            // 7. update local message status back to failed
+                            set_messages.update(|msgs| {
+                                if let Some(msg) = msgs.iter_mut().find(|m| {
+                                    m.is_local && 
+                                    m.message.message == burn_content && 
+                                    m.message.sender == user_pubkey &&
+                                    m.message.message_type == "burn"
+                                }) {
+                                    msg.status = MessageStatus::Failed;
+                                }
+                            });
+                        }
+                    }
+                    
+                    set_burning.set(false);
+                });
+            } else {
+                add_log_entry("ERROR", "Failed to get user public key for burn retry");
+            }
+        } else {
+            add_log_entry("ERROR", "No chat room selected for burn retry");
         }
     };
 
@@ -759,7 +947,15 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                                     each=move || messages.get()
                                                     key=|message| format!("{}_{:?}", message.message.signature, message.status)
                                                     children=move |message: LocalChatMessage| {
-                                                        view! { <MessageItem message=message current_mint_reward=current_mint_reward session=session retry_callback=retry_message/> }
+                                                        view! { 
+                                                            <MessageItem 
+                                                                message=message 
+                                                                current_mint_reward=current_mint_reward 
+                                                                session=session 
+                                                                retry_callback=retry_message
+                                                                retry_burn_callback=retry_burn_message
+                                                            /> 
+                                                        }
                                                     }
                                                 />
                                             </div>
@@ -1210,7 +1406,8 @@ fn MessageItem(
     message: LocalChatMessage, 
     current_mint_reward: ReadSignal<Option<String>>, 
     session: RwSignal<Session>,
-    retry_callback: impl Fn(String) + 'static + Copy
+    retry_callback: impl Fn(String) + 'static + Copy,
+    retry_burn_callback: impl Fn(String, u64) + 'static + Copy
 ) -> impl IntoView {
     // Store values in variables to make them accessible in closures
     let timestamp = message.message.timestamp;
@@ -1223,8 +1420,9 @@ fn MessageItem(
     
     // Create clones for different uses to avoid move issues
     let message_type_for_class = message_type.clone();
-    let message_type_for_display = message_type.clone();
+    let message_type_for_status = message_type.clone();
     let message_type_for_meta = message_type.clone();
+    let message_content_for_status = message_content.clone();
     
     // Check if this message is from the current user
     let is_current_user = session.with_untracked(|s| {
@@ -1273,7 +1471,6 @@ fn MessageItem(
                 </div>
                 // show status for local messages
                 {
-                    let message_content = message_content.clone(); // Clone for closure
                     move || {
                         if is_local {
                             view! {
@@ -1292,46 +1489,76 @@ fn MessageItem(
                                                     "Sent"
                                                 </span>
                                             }.into_view(),
-                                            MessageStatus::Failed => view! {
-                                                <span class="status-failed">
-                                                    <i class="fas fa-exclamation-triangle"></i>
-                                                    "Failed"
-                                                    <button 
-                                                        class="retry-button"
-                                                        on:click={
-                                                            let message_content = message_content.clone();
-                                                            move |_| {
-                                                                log::info!("Retry sending message: {}", message_content);
-                                                                retry_callback(message_content.clone());
+                                            MessageStatus::Failed => {
+                                                // re-clone needed values here to avoid move issues
+                                                let msg_content = message_content_for_status.clone();
+                                                let msg_type = message_type_for_status.clone();
+                                                
+                                                view! {
+                                                    <span class="status-failed">
+                                                        <i class="fas fa-exclamation-triangle"></i>
+                                                        "Failed"
+                                                        <button 
+                                                            class="retry-button"
+                                                            on:click={
+                                                                move |_| {
+                                                                    if msg_type == "burn" {
+                                                                        // retry burn message
+                                                                        if let Some(amount) = burn_amount {
+                                                                            let burn_tokens = amount / 1_000_000; // Convert back to tokens
+                                                                            log::info!("Retry burning tokens: {} tokens, message: {}", burn_tokens, msg_content);
+                                                                            retry_burn_callback(msg_content.clone(), burn_tokens);
+                                                                        }
+                                                                    } else {
+                                                                        // retry normal message
+                                                                        log::info!("Retry sending message: {}", msg_content);
+                                                                        retry_callback(msg_content.clone());
+                                                                    }
+                                                                }
                                                             }
-                                                        }
-                                                        title="Retry sending this message"
-                                                    >
-                                                        <i class="fas fa-redo"></i>
-                                                        "Retry"
-                                                    </button>
-                                                </span>
-                                            }.into_view(),
-                                            MessageStatus::Timeout => view! {
-                                                <span class="status-timeout">
-                                                    <i class="fas fa-clock"></i>
-                                                    "Timeout"
-                                                    <button 
-                                                        class="retry-button"
-                                                        on:click={
-                                                            let message_content = message_content.clone();
-                                                            move |_| {
-                                                                log::info!("Retry sending message: {}", message_content);
-                                                                retry_callback(message_content.clone());
+                                                            title="Retry this operation"
+                                                        >
+                                                            <i class="fas fa-redo"></i>
+                                                            "Retry"
+                                                        </button>
+                                                    </span>
+                                                }.into_view()
+                                            },
+                                            MessageStatus::Timeout => {
+                                                // re-clone needed values here to avoid move issues
+                                                let msg_content = message_content_for_status.clone();
+                                                let msg_type = message_type_for_status.clone();
+                                                
+                                                view! {
+                                                    <span class="status-timeout">
+                                                        <i class="fas fa-clock"></i>
+                                                        "Timeout"
+                                                        <button 
+                                                            class="retry-button"
+                                                            on:click={
+                                                                move |_| {
+                                                                    if msg_type == "burn" {
+                                                                        // retry burn message
+                                                                        if let Some(amount) = burn_amount {
+                                                                            let burn_tokens = amount / 1_000_000; // Convert back to tokens
+                                                                            log::info!("Retry burning tokens: {} tokens, message: {}", burn_tokens, msg_content);
+                                                                            retry_burn_callback(msg_content.clone(), burn_tokens);
+                                                                        }
+                                                                    } else {
+                                                                        // retry normal message
+                                                                        log::info!("Retry sending message: {}", msg_content);
+                                                                        retry_callback(msg_content.clone());
+                                                                    }
+                                                                }
                                                             }
-                                                        }
-                                                        title="Retry sending this message"
-                                                    >
-                                                        <i class="fas fa-redo"></i>
-                                                        "Retry"
-                                                    </button>
-                                                </span>
-                                            }.into_view(),
+                                                            title="Retry this operation"
+                                                        >
+                                                            <i class="fas fa-redo"></i>
+                                                            "Retry"
+                                                        </button>
+                                                    </span>
+                                                }.into_view()
+                                            },
                                             _ => view! { <div></div> }.into_view(),
                                         }
                                     }

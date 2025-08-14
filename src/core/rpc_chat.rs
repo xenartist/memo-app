@@ -566,6 +566,24 @@ impl LocalChatMessage {
         }
     }
     
+    /// Create a new local burn message for immediate UI display
+    pub fn new_local_burn(sender: String, message: String, burn_amount: u64, group_id: u64) -> Self {
+        Self {
+            message: ChatMessage {
+                signature: format!("local_burn_{}", js_sys::Date::now() as u64), // temporary local signature
+                sender,
+                message,
+                timestamp: (js_sys::Date::now() / 1000.0) as i64, // current timestamp
+                slot: 0,
+                memo_amount: 0,
+                message_type: "burn".to_string(),
+                burn_amount: Some(burn_amount * 1_000_000), // Convert to lamports for display
+            },
+            status: MessageStatus::Sending,
+            is_local: true,
+        }
+    }
+    
     /// Create from chain message
     pub fn from_chain_message(message: ChatMessage) -> Self {
         Self {
