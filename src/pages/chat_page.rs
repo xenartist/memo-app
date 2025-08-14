@@ -39,6 +39,12 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     // Current mint reward state
     let (current_mint_reward, set_current_mint_reward) = create_signal::<Option<String>>(None);
     
+    // add new state for burn function
+    let (action_type, set_action_type) = create_signal("message".to_string()); // "message" 或 "burn"
+    let (burn_amount, set_burn_amount) = create_signal("1".to_string());
+    let (burn_message, set_burn_message) = create_signal(String::new());
+    let (burning, set_burning) = create_signal(false);
+
     // Node ref for messages area to enable auto-scroll
     let messages_area_ref = create_node_ref::<Div>();
     
@@ -566,6 +572,290 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         add_log_entry("ERROR", &format!("Failed to create chat group: {}", error));
     };
 
+    // add burn tokens handler
+    let handle_burn_tokens = move |_ev: web_sys::MouseEvent| {
+        let burn_msg = burn_message.get().trim().to_string();
+        let amount_str = burn_amount.get().trim().to_string();
+        
+        // validate input
+        let burn_tokens_amount = match amount_str.parse::<u64>() {
+            Ok(amount) if amount >= 1 => amount,
+            _ => {
+                add_log_entry("ERROR", "Burn amount must be at least 1 token");
+                return;
+            }
+        };
+        
+        // get current group ID
+        if let ChatView::ChatRoom(group_id) = current_view.get() {
+            if let Ok(user_pubkey) = session.with_untracked(|s| s.get_public_key()) {
+                // check token balance
+                let token_balance = session.with_untracked(|s| s.get_token_balance());
+                if token_balance < burn_tokens_amount as f64 {
+                    let error_msg = format!("Insufficient token balance! Required: {} MEMO, Available: {:.2} MEMO", 
+                                          burn_tokens_amount, token_balance);
+                    add_log_entry("ERROR", &error_msg);
+                    set_error_message.set(Some(error_msg));
+                    return;
+                }
+                
+                // check SOL balance
+                let sol_balance = session.with_untracked(|s| s.get_sol_balance());
+                if sol_balance < 0.01 {
+                    let error_msg = format!("Insufficient SOL balance for transaction fee! Current: {:.4} SOL, Required: at least 0.01 SOL", sol_balance);
+                    add_log_entry("ERROR", &error_msg);
+                    set_error_message.set(Some(error_msg));
+                    return;
+                }
+                
+                // Clear any previous error messages
+                set_error_message.set(None);
+                
+                // 1. show burn message on UI immediately (like regular message)
+                let local_burn_message = LocalChatMessage::new_local_burn(
+                    user_pubkey.clone(),
+                    burn_msg.clone(),
+                    burn_tokens_amount,
+                    group_id
+                );
+                
+                // add to current message list
+                set_messages.update(|msgs| {
+                    msgs.push(local_burn_message.clone());
+                });
+                
+                // clear input and set burning state
+                set_burn_message.set(String::new());
+                set_burn_amount.set("1".to_string());
+                set_burning.set(true);
+                
+                // 2. short delay to update UI (like sending message)
+                spawn_local(async move {
+                    TimeoutFuture::new(100).await;
+                    
+                    // 3. actually execute burn operation
+                    let mut session_copy = session.get_untracked();
+                    let result = session_copy.burn_tokens_for_group(group_id, burn_tokens_amount, &burn_msg).await;
+                    
+                    match result {
+                        Ok(signature) => {
+                            add_log_entry("SUCCESS", &format!("Tokens burned successfully! Signature: {}", signature));
+                            
+                            // 4. update local message status to sent
+                            set_messages.update(|msgs| {
+                                if let Some(msg) = msgs.iter_mut().find(|m| {
+                                    m.is_local && 
+                                    m.message.message == burn_msg && 
+                                    m.message.sender == user_pubkey &&
+                                    m.message.message_type == "burn"
+                                }) {
+                                    msg.status = MessageStatus::Sent;
+                                    msg.message.signature = signature; // update to real signature
+                                }
+                            });
+                            
+                            // 5. update original session balance state
+                            session.update(|s| {
+                                s.set_balances(session_copy.get_sol_balance(), session_copy.get_token_balance());
+                            });
+                            
+                            // 6. update group info (burn total)
+                            spawn_local(async move {
+                                let rpc = crate::core::rpc_base::RpcConnection::new();
+                                match rpc.get_chat_group_info(group_id).await {
+                                    Ok(updated_group_info) => {
+                                        set_current_group_info.set(Some(updated_group_info));
+                                    },
+                                    Err(e) => {
+                                        log::error!("Failed to refresh group info after burn: {}", e);
+                                    }
+                                }
+                            });
+                        },
+                        Err(e) => {
+                            log::error!("Failed to burn tokens: {}", e);
+                            
+                            // Parse error to extract specific error message (like regular messages)
+                            let error_string = e.to_string();
+                            let user_friendly_error = 
+                                if let Some(dash_pos) = error_string.rfind(" - ") {
+                                    let specific_msg = &error_string[dash_pos + 3..];
+                                    let cleaned_msg = specific_msg.trim_end_matches('.');
+                                    if !cleaned_msg.is_empty() {
+                                        cleaned_msg.to_string()
+                                    } else {
+                                        "Failed to burn tokens. Please try again.".to_string()
+                                    }
+                                } else {
+                                    if error_string.contains("insufficient") {
+                                        "Insufficient balance".to_string()
+                                    } else {
+                                        "Failed to burn tokens. Please try again.".to_string()
+                                    }
+                                };
+                            
+                            add_log_entry("ERROR", &format!("Failed to burn tokens: {}", user_friendly_error));
+                            set_error_message.set(Some(user_friendly_error.to_string()));
+                            
+                            // 7. update local message status to failed
+                            set_messages.update(|msgs| {
+                                if let Some(msg) = msgs.iter_mut().find(|m| {
+                                    m.is_local && 
+                                    m.message.message == burn_msg && 
+                                    m.message.sender == user_pubkey &&
+                                    m.message.message_type == "burn"
+                                }) {
+                                    msg.status = MessageStatus::Failed;
+                                }
+                            });
+                        }
+                    }
+                    
+                    set_burning.set(false);
+                });
+            } else {
+                add_log_entry("ERROR", "Failed to get user public key");
+            }
+        } else {
+            add_log_entry("ERROR", "No chat room selected");
+        }
+    };
+
+    // modify send message logic, decide to send message or burn tokens based on selected operation type
+    let send_message_or_burn = move |_ev: web_sys::MouseEvent| {
+        match action_type.get().as_str() {
+            "burn" => {
+                let dummy_event = web_sys::MouseEvent::new("click").unwrap();
+                handle_burn_tokens(dummy_event);
+            },
+            _ => {
+                let dummy_event = web_sys::MouseEvent::new("click").unwrap();
+                send_message(dummy_event);
+            }
+        }
+    };
+
+    // Handle retry burning a failed message (similar to retry_message)
+    let retry_burn_message = move |burn_content: String, burn_tokens_amount: u64| {
+        // Get current group ID and user info
+        if let ChatView::ChatRoom(group_id) = current_view.get() {
+            if let Ok(user_pubkey) = session.with_untracked(|s| s.get_public_key()) {
+                // Check balances before retrying
+                let token_balance = session.with_untracked(|s| s.get_token_balance());
+                if token_balance < burn_tokens_amount as f64 {
+                    let error_msg = format!("Insufficient token balance! Required: {} MEMO, Available: {:.2} MEMO", 
+                                          burn_tokens_amount, token_balance);
+                    add_log_entry("ERROR", &error_msg);
+                    set_error_message.set(Some(error_msg));
+                    return;
+                }
+                
+                let sol_balance = session.with_untracked(|s| s.get_sol_balance());
+                if sol_balance < 0.01 {
+                    let error_msg = format!("Insufficient SOL balance for transaction fee! Current: {:.4} SOL, Required: at least 0.01 SOL", sol_balance);
+                    add_log_entry("ERROR", &error_msg);
+                    set_error_message.set(Some(error_msg));
+                    return;
+                }
+                
+                // Clear any previous error messages
+                set_error_message.set(None);
+                
+                // 1. Update the failed message back to sending status
+                set_messages.update(|msgs| {
+                    if let Some(msg) = msgs.iter_mut().find(|m| {
+                        m.is_local && 
+                        m.message.message == burn_content && 
+                        m.message.sender == user_pubkey &&
+                        m.message.message_type == "burn" &&
+                        (m.status == MessageStatus::Failed || m.status == MessageStatus::Timeout)
+                    }) {
+                        log::info!("Updating burn message status from {:?} to Sending for retry", msg.status);
+                        msg.status = MessageStatus::Sending;
+                    }
+                });
+                
+                set_burning.set(true);
+                
+                // 2. short delay to update UI
+                spawn_local(async move {
+                    TimeoutFuture::new(100).await;
+                    
+                    // 3. actually retry burn operation
+                    let mut session_copy = session.get_untracked();
+                    let result = session_copy.burn_tokens_for_group(group_id, burn_tokens_amount, &burn_content).await;
+                    
+                    match result {
+                        Ok(signature) => {
+                            add_log_entry("INFO", &format!("Burn retry successful! Signature: {}", signature));
+                            
+                            // 4. update local message status to sent
+                            set_messages.update(|msgs| {
+                                if let Some(msg) = msgs.iter_mut().find(|m| {
+                                    m.is_local && 
+                                    m.message.message == burn_content && 
+                                    m.message.sender == user_pubkey &&
+                                    m.message.message_type == "burn"
+                                }) {
+                                    msg.status = MessageStatus::Sent;
+                                    msg.message.signature = signature; // update to real signature
+                                }
+                            });
+                            
+                            // 5. update session balance
+                            session.update(|s| {
+                                s.set_balances(session_copy.get_sol_balance(), session_copy.get_token_balance());
+                            });
+                            
+                            // 6. update group info
+                            spawn_local(async move {
+                                let rpc = crate::core::rpc_base::RpcConnection::new();
+                                match rpc.get_chat_group_info(group_id).await {
+                                    Ok(updated_group_info) => {
+                                        set_current_group_info.set(Some(updated_group_info));
+                                    },
+                                    Err(e) => {
+                                        log::error!("Failed to refresh group info after retry burn: {}", e);
+                                    }
+                                }
+                            });
+                        },
+                        Err(e) => {
+                            log::error!("Burn retry failed: {}", e);
+                            
+                            let user_friendly_error = if e.to_string().contains("insufficient") {
+                                "Insufficient balance"
+                            } else {
+                                "Failed to burn tokens. Please try again."
+                            };
+                            
+                            add_log_entry("ERROR", &format!("Retry failed: {}", user_friendly_error));
+                            set_error_message.set(Some(user_friendly_error.to_string()));
+                            
+                            // 7. update local message status back to failed
+                            set_messages.update(|msgs| {
+                                if let Some(msg) = msgs.iter_mut().find(|m| {
+                                    m.is_local && 
+                                    m.message.message == burn_content && 
+                                    m.message.sender == user_pubkey &&
+                                    m.message.message_type == "burn"
+                                }) {
+                                    msg.status = MessageStatus::Failed;
+                                }
+                            });
+                        }
+                    }
+                    
+                    set_burning.set(false);
+                });
+            } else {
+                add_log_entry("ERROR", "Failed to get user public key for burn retry");
+            }
+        } else {
+            add_log_entry("ERROR", "No chat room selected for burn retry");
+        }
+    };
+
     view! {
         <div class="chat-page">
             <Show
@@ -594,7 +884,14 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                         current_group_info.get().map(|info| {
                                             view! {
                                                 <div class="group-title">
-                                                    <h1><i class="fas fa-comments"></i>{info.name}</h1>
+                                                    <h1>
+                                                        <i class="fas fa-comments"></i>
+                                                        {info.name.clone()}
+                                                        <span class="burn-total">
+                                                            <i class="fas fa-fire"></i>
+                                                            {format!("{:.2} MEMO", info.burned_amount as f64 / 1_000_000.0)}
+                                                        </span>
+                                                    </h1>
                                                     <p class="group-description">{info.description}</p>
                                                 </div>
                                             }
@@ -650,7 +947,15 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                                     each=move || messages.get()
                                                     key=|message| format!("{}_{:?}", message.message.signature, message.status)
                                                     children=move |message: LocalChatMessage| {
-                                                        view! { <MessageItem message=message current_mint_reward=current_mint_reward session=session retry_callback=retry_message/> }
+                                                        view! { 
+                                                            <MessageItem 
+                                                                message=message 
+                                                                current_mint_reward=current_mint_reward 
+                                                                session=session 
+                                                                retry_callback=retry_message
+                                                                retry_burn_callback=retry_burn_message
+                                                            /> 
+                                                        }
                                                     }
                                                 />
                                             </div>
@@ -659,48 +964,161 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                 </div>
                                 
                                 <div class="message-input-area">
+                                    // action type selection - new card design
+                                    <div class="action-selector">
+                                        <h4>
+                                            <i class="fas fa-cog"></i>
+                                            "Select Action Type"
+                                        </h4>
+                                        <div class="action-options">
+                                            // message option
+                                            <div class="action-option">
+                                                <div class="action-radio-line">
+                                                    <input 
+                                                        type="radio" 
+                                                        id="action-message"
+                                                        name="action-type" 
+                                                        value="message" 
+                                                        checked=move || action_type.get() == "message"
+                                                        on:change=move |_| set_action_type.set("message".to_string())
+                                                    />
+                                                    <label for="action-message" class="action-label">
+                                                        <i class="fas fa-comment"></i>
+                                                        "Send Message"
+                                                    </label>
+                                                </div>
+                                                <div class="action-description">
+                                                    "Send message and earn "
+                                                    {move || current_mint_reward.get().unwrap_or_else(|| "+1 MEMO".to_string())}
+                                                    " reward"
+                                                </div>
+                                            </div>
+                                            
+                                            // burn option
+                                            <div class="action-option">
+                                                <div class="action-radio-line">
+                                                    <input 
+                                                        type="radio" 
+                                                        id="action-burn"
+                                                        name="action-type" 
+                                                        value="burn" 
+                                                        checked=move || action_type.get() == "burn"
+                                                        on:change=move |_| set_action_type.set("burn".to_string())
+                                                    />
+                                                    <label for="action-burn" class="action-label">
+                                                        <i class="fas fa-fire"></i>
+                                                        "Burn Tokens"
+                                                    </label>
+                                                </div>
+                                                <div class="action-description">
+                                                    "Burn MEMO tokens to improve leaderboard ranking"
+                                                </div>
+                                                <Show when=move || action_type.get() == "burn">
+                                                    <div class="burn-amount-container">
+                                                        <input 
+                                                            type="number" 
+                                                            class="burn-amount-input"
+                                                            placeholder="Amount"
+                                                            min="1"
+                                                            prop:value=move || burn_amount.get()
+                                                            on:input=move |ev| {
+                                                                set_burn_amount.set(event_target_value(&ev));
+                                                            }
+                                                            disabled=move || burning.get()
+                                                        />
+                                                        <span class="burn-unit">"MEMO"</span>
+                                                    </div>
+                                                </Show>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
                                     <div class="input-container">
-                                        <textarea
-                                            class="message-input"
-                                            placeholder=move || {
-                                                if sending.get() {
-                                                    "Sending, please wait...".to_string()
-                                                } else if session.with(|s| s.get_sol_balance()) < 0.005 {
-                                                    format!("Balance insufficient, sending message requires at least 0.005 XNT (current: {:.4} XNT)", session.with(|s| s.get_sol_balance()))
-                                                } else {
-                                                    "Type your message... (Press Enter to send, Shift+Enter for new line)".to_string()
+                                        <Show
+                                            when=move || action_type.get() == "burn"
+                                            fallback=move || {
+                                                // message input box
+                                                view! {
+                                                    <textarea
+                                                        class="message-input"
+                                                        placeholder=move || {
+                                                            if sending.get() {
+                                                                "Sending, please wait...".to_string()
+                                                            } else if session.with(|s| s.get_sol_balance()) < 0.005 {
+                                                                format!("Insufficient balance, sending message requires at least 0.005 SOL (current: {:.4} SOL)", session.with(|s| s.get_sol_balance()))
+                                                            } else {
+                                                                "Type your message... (Press Enter to send, Shift+Enter for new line)".to_string()
+                                                            }
+                                                        }
+                                                        prop:value=move || message_input.get()
+                                                        on:input=move |ev| {
+                                                            set_message_input.set(event_target_value(&ev));
+                                                        }
+                                                        on:keypress=handle_key_press
+                                                        disabled=move || sending.get() || session.with(|s| s.get_sol_balance()) < 0.005
+                                                    ></textarea>
                                                 }
                                             }
-                                            prop:value=move || message_input.get()
-                                            on:input=move |ev| {
-                                                set_message_input.set(event_target_value(&ev));
-                                            }
-                                            on:keypress=handle_key_press
-                                            disabled=move || sending.get() || session.with(|s| s.get_sol_balance()) < 0.005
-                                        ></textarea>
+                                        >
+                                            // burn message input box
+                                            <textarea
+                                                class="message-input"
+                                                placeholder=move || {
+                                                    if burning.get() {
+                                                        "Burning tokens, please wait...".to_string()
+                                                    } else if session.with(|s| s.get_sol_balance()) < 0.005 {
+                                                        format!("Insufficient balance, burning requires at least 0.005 SOL (current: {:.4} SOL)", session.with(|s| s.get_sol_balance()))
+                                                    } else {
+                                                        "Type your burn message... (Press Enter to burn, Shift+Enter for new line)".to_string()
+                                                    }
+                                                }
+                                                prop:value=move || burn_message.get()
+                                                on:input=move |ev| {
+                                                    set_burn_message.set(event_target_value(&ev));
+                                                }
+                                                disabled=move || burning.get() || session.with(|s| s.get_sol_balance()) < 0.005
+                                            ></textarea>
+                                        </Show>
+                                        
                                         <button
                                             class="send-button"
-                                            on:click=send_message
+                                            class:burn-button=move || action_type.get() == "burn"
+                                            on:click=send_message_or_burn
                                             disabled=move || {
-                                                message_input.get().trim().is_empty() || 
-                                                sending.get() || 
-                                                session.with(|s| s.get_sol_balance()) < 0.005
+                                                if action_type.get() == "burn" {
+                                                    burning.get() || 
+                                                    burn_message.get().trim().is_empty() ||
+                                                    burn_amount.get().trim().is_empty() ||
+                                                    burn_amount.get().trim().parse::<u64>().unwrap_or(0) < 1 ||
+                                                    session.with(|s| s.get_sol_balance()) < 0.01 ||
+                                                    session.with(|s| s.get_token_balance()) < burn_amount.get().trim().parse::<f64>().unwrap_or(0.0)
+                                                } else {
+                                                    message_input.get().trim().is_empty() || 
+                                                    sending.get() || 
+                                                    session.with(|s| s.get_sol_balance()) < 0.005
+                                                }
                                             }
                                             title=move || {
-                                                if sending.get() {
-                                                    "Sending...".to_string()
-                                                } else if session.with(|s| s.get_sol_balance()) < 0.005 {
-                                                    format!("Balance insufficient, sending message requires at least 0.005 XNT (current: {:.4} XNT)", session.with(|s| s.get_sol_balance()))
-                                                } else if message_input.get().trim().is_empty() {
-                                                    "Please enter message content".to_string()
+                                                if action_type.get() == "burn" {
+                                                    if burning.get() {
+                                                        "Burning tokens...".to_string()
+                                                    } else {
+                                                        format!("Burn {} MEMO tokens", burn_amount.get())
+                                                    }
                                                 } else {
                                                     "Send message".to_string()
                                                 }
                                             }
                                         >
                                             <Show
-                                                when=move || sending.get()
-                                                fallback=|| view! { <i class="fas fa-paper-plane"></i> }
+                                                when=move || (action_type.get() == "burn" && burning.get()) || (action_type.get() == "message" && sending.get())
+                                                fallback=move || {
+                                                    if action_type.get() == "burn" {
+                                                        view! { <i class="fas fa-fire"></i> }
+                                                    } else {
+                                                        view! { <i class="fas fa-paper-plane"></i> }
+                                                    }
+                                                }
                                             >
                                                 <div class="spinner"></div>
                                             </Show>
@@ -826,9 +1244,9 @@ fn OverviewStats(stats: ChatStatistics) -> impl IntoView {
 
 #[component]
 fn GroupsList(groups: Vec<ChatGroupInfo>, enter_chat_room: impl Fn(u64) + 'static + Copy) -> impl IntoView {
-    // Sort groups by memo count (descending) for display
+    // Sort groups by burned amount (descending) for display
     let mut sorted_groups = groups;
-    sorted_groups.sort_by(|a, b| b.memo_count.cmp(&a.memo_count));
+    sorted_groups.sort_by(|a, b| b.burned_amount.cmp(&a.burned_amount));
     
     // Create a signal to store the sorted groups
     let (groups_signal, _) = create_signal(sorted_groups);
@@ -1022,14 +1440,23 @@ fn MessageItem(
     message: LocalChatMessage, 
     current_mint_reward: ReadSignal<Option<String>>, 
     session: RwSignal<Session>,
-    retry_callback: impl Fn(String) + 'static + Copy
+    retry_callback: impl Fn(String) + 'static + Copy,
+    retry_burn_callback: impl Fn(String, u64) + 'static + Copy
 ) -> impl IntoView {
     // Store values in variables to make them accessible in closures
     let timestamp = message.message.timestamp;
     let message_content = message.message.message.clone();
     let sender = message.message.sender.clone();
-    let status = message.status; // Now we can copy instead of clone
+    let status = message.status;
     let is_local = message.is_local;
+    let message_type = message.message.message_type.clone();
+    let burn_amount = message.message.burn_amount;
+    
+    // Create clones for different uses to avoid move issues
+    let message_type_for_class = message_type.clone();
+    let message_type_for_status = message_type.clone();
+    let message_type_for_meta = message_type.clone();
+    let message_content_for_status = message_content.clone();
     
     // Check if this message is from the current user
     let is_current_user = session.with_untracked(|s| {
@@ -1056,6 +1483,7 @@ fn MessageItem(
             class="message-item" 
             class:message-sending=move || status == MessageStatus::Sending
             class:message-current-user=move || is_current_user
+            class:message-burn=move || message_type_for_class == "burn"
         >
             <div class="message-header">
                 <span class="sender">
@@ -1077,7 +1505,6 @@ fn MessageItem(
                 </div>
                 // show status for local messages
                 {
-                    let message_content = message_content.clone(); // Clone for closure
                     move || {
                         if is_local {
                             view! {
@@ -1096,46 +1523,76 @@ fn MessageItem(
                                                     "Sent"
                                                 </span>
                                             }.into_view(),
-                                            MessageStatus::Failed => view! {
-                                                <span class="status-failed">
-                                                    <i class="fas fa-exclamation-triangle"></i>
-                                                    "Failed"
-                                                    <button 
-                                                        class="retry-button"
-                                                        on:click={
-                                                            let message_content = message_content.clone();
-                                                            move |_| {
-                                                                log::info!("Retry sending message: {}", message_content);
-                                                                retry_callback(message_content.clone());
+                                            MessageStatus::Failed => {
+                                                // re-clone needed values here to avoid move issues
+                                                let msg_content = message_content_for_status.clone();
+                                                let msg_type = message_type_for_status.clone();
+                                                
+                                                view! {
+                                                    <span class="status-failed">
+                                                        <i class="fas fa-exclamation-triangle"></i>
+                                                        "Failed"
+                                                        <button 
+                                                            class="retry-button"
+                                                            on:click={
+                                                                move |_| {
+                                                                    if msg_type == "burn" {
+                                                                        // retry burn message
+                                                                        if let Some(amount) = burn_amount {
+                                                                            let burn_tokens = amount / 1_000_000; // Convert back to tokens
+                                                                            log::info!("Retry burning tokens: {} tokens, message: {}", burn_tokens, msg_content);
+                                                                            retry_burn_callback(msg_content.clone(), burn_tokens);
+                                                                        }
+                                                                    } else {
+                                                                        // retry normal message
+                                                                        log::info!("Retry sending message: {}", msg_content);
+                                                                        retry_callback(msg_content.clone());
+                                                                    }
+                                                                }
                                                             }
-                                                        }
-                                                        title="Retry sending this message"
-                                                    >
-                                                        <i class="fas fa-redo"></i>
-                                                        "Retry"
-                                                    </button>
-                                                </span>
-                                            }.into_view(),
-                                            MessageStatus::Timeout => view! {
-                                                <span class="status-timeout">
-                                                    <i class="fas fa-clock"></i>
-                                                    "Timeout"
-                                                    <button 
-                                                        class="retry-button"
-                                                        on:click={
-                                                            let message_content = message_content.clone();
-                                                            move |_| {
-                                                                log::info!("Retry sending message: {}", message_content);
-                                                                retry_callback(message_content.clone());
+                                                            title="Retry this operation"
+                                                        >
+                                                            <i class="fas fa-redo"></i>
+                                                            "Retry"
+                                                        </button>
+                                                    </span>
+                                                }.into_view()
+                                            },
+                                            MessageStatus::Timeout => {
+                                                // re-clone needed values here to avoid move issues
+                                                let msg_content = message_content_for_status.clone();
+                                                let msg_type = message_type_for_status.clone();
+                                                
+                                                view! {
+                                                    <span class="status-timeout">
+                                                        <i class="fas fa-clock"></i>
+                                                        "Timeout"
+                                                        <button 
+                                                            class="retry-button"
+                                                            on:click={
+                                                                move |_| {
+                                                                    if msg_type == "burn" {
+                                                                        // retry burn message
+                                                                        if let Some(amount) = burn_amount {
+                                                                            let burn_tokens = amount / 1_000_000; // Convert back to tokens
+                                                                            log::info!("Retry burning tokens: {} tokens, message: {}", burn_tokens, msg_content);
+                                                                            retry_burn_callback(msg_content.clone(), burn_tokens);
+                                                                        }
+                                                                    } else {
+                                                                        // retry normal message
+                                                                        log::info!("Retry sending message: {}", msg_content);
+                                                                        retry_callback(msg_content.clone());
+                                                                    }
+                                                                }
                                                             }
-                                                        }
-                                                        title="Retry sending this message"
-                                                    >
-                                                        <i class="fas fa-redo"></i>
-                                                        "Retry"
-                                                    </button>
-                                                </span>
-                                            }.into_view(),
+                                                            title="Retry this operation"
+                                                        >
+                                                            <i class="fas fa-redo"></i>
+                                                            "Retry"
+                                                        </button>
+                                                    </span>
+                                                }.into_view()
+                                            },
                                             _ => view! { <div></div> }.into_view(),
                                         }
                                     }
@@ -1148,12 +1605,33 @@ fn MessageItem(
                 }
             </div>
             <div class="message-meta">
-                <div class="memo-amount">
-                    <i class="fas fa-coins"></i>
-                    <span>
-                        {move || current_mint_reward.get().unwrap_or_else(|| "+1 MEMO".to_string())}
-                    </span>
-                </div>
+                {
+                    if message_type_for_meta == "burn" {
+                        view! {
+                            <div class="burn-amount">
+                                <i class="fas fa-fire"></i>
+                                <span>
+                                    {move || {
+                                        if let Some(amount) = burn_amount {
+                                            format!("Burn {:.2} MEMO", amount as f64 / 1_000_000.0)
+                                        } else {
+                                            "Burn operation".to_string()
+                                        }
+                                    }}
+                                </span>
+                            </div>
+                        }.into_view()
+                    } else {
+                        view! {
+                            <div class="memo-amount">
+                                <i class="fas fa-coins"></i>
+                                <span>
+                                    {move || current_mint_reward.get().unwrap_or_else(|| "+1 MEMO".to_string())}
+                                </span>
+                            </div>
+                        }.into_view()
+                    }
+                }
             </div>
         </div>
     }
@@ -1502,7 +1980,10 @@ fn CreateChatGroupForm(
         <div class="create-chat-group-form">
             // Header with title and close button
             <div class="form-header">
-                <h3 class="form-title">"Create New Chat Group"</h3>
+                <h3 class="form-title">
+                    <i class="fas fa-users"></i>
+                    "Create New Chat Group"
+                </h3>
                 <button
                     type="button"
                     class="form-close-btn"
@@ -1519,7 +2000,10 @@ fn CreateChatGroupForm(
                     <div class="form-left">
                         // Group Name
                         <div class="form-group">
-                            <label for="group-name">"Group Name (required) *"</label>
+                            <label for="group-name">
+                                <i class="fas fa-pencil-alt"></i>
+                                "Group Name (required) *"
+                            </label>
                             <input
                                 type="text"
                                 id="group-name"
@@ -1537,7 +2021,10 @@ fn CreateChatGroupForm(
 
                         // Group Description
                         <div class="form-group">
-                            <label for="group-description">"Group Description (optional)"</label>
+                            <label for="group-description">
+                                <i class="fas fa-align-left"></i>
+                                "Group Description (optional)"
+                            </label>
                             <textarea
                                 id="group-description"
                                 prop:value=group_description
@@ -1554,7 +2041,10 @@ fn CreateChatGroupForm(
 
                         // Tags
                         <div class="form-group">
-                            <label for="group-tags">"Tags (optional)"</label>
+                            <label for="group-tags">
+                                <i class="fas fa-tags"></i>
+                                "Tags (optional)"
+                            </label>
                             <input
                                 type="text"
                                 id="group-tags"
@@ -1566,12 +2056,18 @@ fn CreateChatGroupForm(
                                 placeholder="Enter tags separated by commas (max 4 tags, 32 chars each)..."
                                 prop:disabled=move || is_creating.get()
                             />
-                            <small class="form-hint">"Example: technology, blockchain, discussion"</small>
+                            <small class="form-hint">
+                                <i class="fas fa-info-circle"></i>
+                                "Example: technology, blockchain, discussion"
+                            </small>
                         </div>
 
                         // Min Memo Interval
                         <div class="form-group">
-                            <label for="memo-interval">"Minimum Message Interval (seconds)"</label>
+                            <label for="memo-interval">
+                                <i class="fas fa-clock"></i>
+                                "Minimum Message Interval (seconds)"
+                            </label>
                             <input
                                 type="number"
                                 id="memo-interval"
@@ -1586,39 +2082,21 @@ fn CreateChatGroupForm(
                                 max="86400"
                                 prop:disabled=move || is_creating.get()
                             />
-                            <small class="form-hint">"Minimum time between messages (0-86400 seconds, default: 60)"</small>
-                        </div>
-
-                        // Burn Amount
-                        <div class="form-group">
-                            <label for="burn-amount">"Burn Amount (MEMO tokens)"</label>
-                            <input
-                                type="number"
-                                id="burn-amount"
-                                prop:value=burn_amount
-                                on:input=move |ev| {
-                                    let input = event_target::<HtmlInputElement>(&ev);
-                                    if let Ok(value) = input.value().parse::<u64>() {
-                                        set_burn_amount.set(value);
-                                    }
-                                }
-                                min="42069"
-                                prop:disabled=move || is_creating.get()
-                            />
                             <small class="form-hint">
-                                {move || {
-                                    let balance = session.with(|s| s.get_token_balance());
-                                    format!("Minimum: 42,069 MEMO tokens (Available: {:.2} MEMO)", balance)
-                                }}
+                                <i class="fas fa-info-circle"></i>
+                                "Minimum time between messages (0-86400 seconds, default: 60)"
                             </small>
                         </div>
                     </div>
 
-                    // Right side: Group Image (Pixel Art)
+                    // Right side: Group Image (Pixel Art) and Burn Amount
                     <div class="form-right">
                         <div class="pixel-art-editor">
                             <div class="pixel-art-header">
-                                <label>"Group Image"</label>
+                                <label>
+                                    <i class="fas fa-image"></i>
+                                    "Group Image"
+                                </label>
                                 <div class="pixel-art-controls">
                                     <select
                                         class="size-selector"
@@ -1641,6 +2119,7 @@ fn CreateChatGroupForm(
                                         on:click=handle_import
                                         prop:disabled=move || is_creating.get()
                                     >
+                                        <i class="fas fa-upload"></i>
                                         "Import Image"
                                     </button>
                                 </div>
@@ -1669,7 +2148,10 @@ fn CreateChatGroupForm(
                             // Pixel art info
                             <div class="pixel-string-info">
                                 <div class="string-display">
-                                    <span class="label">"Encoded String: "</span>
+                                    <span class="label">
+                                        <i class="fas fa-code"></i>
+                                        "Encoded String: "
+                                    </span>
                                     <span class="value">
                                         {move || {
                                             let art_string = pixel_art.get().to_optimal_string();
@@ -1698,12 +2180,50 @@ fn CreateChatGroupForm(
                                     </div>
                                 </div>
                                 <div class="string-length">
-                                    <span class="label">"Length: "</span>
+                                    <span class="label">
+                                        <i class="fas fa-ruler"></i>
+                                        "Length: "
+                                    </span>
                                     <span class="value">
                                         {move || format!("{} bytes", pixel_art.get().to_optimal_string().len())}
                                     </span>
                                 </div>
                             </div>
+                        </div>
+                        
+                        // Burn Amount - moved to right side
+                        <div class="form-group" style="margin-top: 20px;">
+                            <label for="burn-amount">
+                                <i class="fas fa-fire"></i>
+                                "Burn Amount (MEMO tokens)"
+                            </label>
+                            <input
+                                type="number"
+                                id="burn-amount"
+                                prop:value=burn_amount
+                                on:input=move |ev| {
+                                    let input = event_target::<HtmlInputElement>(&ev);
+                                    if let Ok(value) = input.value().parse::<u64>() {
+                                        set_burn_amount.set(value);
+                                    }
+                                }
+                                min="42069"
+                                prop:disabled=move || is_creating.get()
+                            />
+                            <small class="form-hint">
+                                <i class="fas fa-wallet"></i>
+                                {move || {
+                                    let balance = session.with(|s| s.get_token_balance());
+                                    let is_sufficient = balance >= 42069.0;
+                                    view! {
+                                        "Minimum: 42,069 MEMO tokens (Available: "
+                                        <span class={if is_sufficient { "balance-sufficient" } else { "balance-insufficient" }}>
+                                            {format!("{:.2} MEMO", balance)}
+                                        </span>
+                                        ")"
+                                    }
+                                }}
+                            </small>
                         </div>
                     </div>
                 </div>
@@ -1711,7 +2231,10 @@ fn CreateChatGroupForm(
                 // Memo size indicator
                 <div class="memo-size-indicator">
                     <div class="size-info">
-                        <span class="size-label">"Memo Size: "</span>
+                        <span class="size-label">
+                            <i class="fas fa-database"></i>
+                            "Memo Size: "
+                        </span>
                         {move || {
                             let (size, is_valid, status) = calculate_memo_size();
                             view! {
@@ -1799,6 +2322,7 @@ fn CreateChatGroupForm(
                             session.with(|s| s.get_token_balance()) < burn_amount.get() as f64
                         }
                     >
+                        <i class="fas fa-rocket"></i>
                         {move || {
                             if is_creating.get() {
                                 "Creating Group...".to_string()

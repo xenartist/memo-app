@@ -646,6 +646,66 @@ impl Session {
         
         Ok(result)
     }
+
+    /// Burn tokens for a chat group
+    /// 
+    /// # Parameters
+    /// * `group_id` - The ID of the chat group to burn tokens for
+    /// * `amount` - Amount of MEMO tokens to burn (in token units, not lamports)
+    /// * `message` - Optional burn message (max 512 characters)
+    /// 
+    /// # Returns
+    /// Result containing transaction signature
+    pub async fn burn_tokens_for_group(
+        &mut self,
+        group_id: u64,
+        amount: u64,
+        message: &str,
+    ) -> Result<String, SessionError> {
+        // Check if session is valid
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        // Get the seed and convert to keypair
+        let seed = self.get_seed()?;
+        let seed_bytes = hex::decode(&seed)
+            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
+        
+        let seed_array: [u8; 64] = seed_bytes.try_into()
+            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
+
+        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
+            &seed_array,
+            crate::core::wallet::get_default_derivation_path()
+        ).map_err(|e| SessionError::InvalidData(format!("Failed to derive keypair: {:?}", e)))?;
+
+        // Convert amount from tokens to lamports
+        let amount_lamports = amount * 1_000_000;
+
+        // Call RPC
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        let signature = rpc.burn_tokens_for_group(
+            group_id,
+            amount_lamports,
+            message,
+            &keypair.to_bytes(),
+        ).await.map_err(|e| SessionError::InvalidData(format!("Burn tokens for group failed: {}", e)))?;
+
+        // Update balances after successful burn
+        match self.fetch_and_update_balances().await {
+            Ok(()) => {
+                log::info!("Successfully updated balances after burning tokens for group");
+            },
+            Err(e) => {
+                log::error!("Failed to update balances after burning tokens for group: {}", e);
+                // Mark that we need to update balances later
+                self.mark_balance_update_needed();
+            }
+        }
+
+        Ok(signature)
+    }
 }
 
 // implement Drop trait to ensure session data is properly cleaned up

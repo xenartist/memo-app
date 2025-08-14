@@ -1454,7 +1454,6 @@
 }
 
 .marker::after {
-    content: "";
     position: absolute;
     top: 14px;
     left: 50%;
@@ -1536,4 +1535,502 @@
     .size-selector {
         min-width: 100px;
     }
+} 
+
+/* Icon spacing in create chat group form */
+.create-chat-group-form label i {
+    margin-right: 8px;
+}
+
+.create-chat-group-form .form-hint i {
+    margin-right: 6px;
+}
+
+.create-chat-group-form .string-display .label i,
+.create-chat-group-form .string-length .label i,
+.create-chat-group-form .size-label i {
+    margin-right: 6px;
+}
+
+.create-chat-group-form .import-btn i {
+    margin-right: 6px;
+}
+
+.create-chat-group-form .create-group-btn i {
+    margin-right: 8px;
+}
+
+.create-chat-group-form .form-title i {
+    margin-right: 10px;
+    color: #667eea;
+}
+
+.creating-progress i {
+    margin-right: 8px;
+}
+
+/* Balance status colors */
+.balance-sufficient {
+    color: #38a169;
+    font-weight: 600;
+}
+
+.balance-insufficient {
+    color: #e53e3e;
+    font-weight: 600;
+} 
+
+/* burn message special style */
+.message-item.message-burn {
+    border-left: 4px solid #ff6b35;
+    background: linear-gradient(135deg, #fff5f3 0%, #ffffff 100%);
+}
+
+.message-item.message-burn .message-header {
+    color: #d63384;
+}
+
+.message-type-indicator {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: 8px;
+}
+
+.message-type-indicator.chat {
+    background-color: #e3f2fd;
+    color: #1976d2;
+}
+
+.message-type-indicator.burn {
+    background-color: #fff3e0;
+    color: #ff6b35;
+}
+
+.burn-amount {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: #ff6b35;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.burn-amount i {
+    color: #ff6b35;
+}
+
+/* burn message in current user's style */
+.message-item.message-burn.message-current-user {
+    background: linear-gradient(135deg, #fff8f0 0%, #fff5f3 100%);
+    border-left: 4px solid #ff8a50;
+} 
+
+/* burn total in chat room title */
+.title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+.burned-amount {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: linear-gradient(135deg, #ff6b35, #ff8e53);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
+}
+
+.burned-amount i {
+    color: #ffeb3b;
+}
+
+/* Action type selector */
+.action-type-selector {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    background: #f8f9fa;
+    border-radius: 8px 8px 0 0;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.radio-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.radio-option input[type="radio"] {
+    margin: 0;
+    transform: scale(1.1);
+}
+
+.radio-option:hover {
+    color: #6366f1;
+}
+
+.radio-option input[type="radio"]:checked + span {
+    color: #6366f1;
+    font-weight: 600;
+}
+
+/* burn amount input */
+.burn-amount-input {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: 1rem;
+    padding-left: 1rem;
+    border-left: 1px solid #d0d0d0;
+}
+
+.burn-amount-input label {
+    font-size: 0.9rem;
+    color: #666;
+    font-weight: 500;
+}
+
+.burn-amount-input input {
+    width: 80px;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.burn-amount-input span {
+    font-size: 0.9rem;
+    color: #666;
+}
+
+/* burn button style */
+.send-button.burn-button {
+    background: linear-gradient(135deg, #ff6b35, #ff8e53);
+    border-color: #ff6b35;
+}
+
+.send-button.burn-button:hover:not(:disabled) {
+    background: linear-gradient(135deg, #e55a2b, #e67d47);
+    box-shadow: 0 4px 12px rgba(255, 107, 53, 0.4);
+}
+
+.send-button.burn-button:disabled {
+    background: #ffcab0;
+    border-color: #ffcab0;
+}
+
+/* input container adjustment */
+.message-input-area .input-container {
+    border-radius: 0 0 8px 8px;
+}
+
+/* responsive design */
+@media (max-width: 768px) {
+    .title-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .action-type-selector {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    
+    .burn-amount-input {
+        margin-left: 0;
+        padding-left: 0;
+        border-left: none;
+        border-top: 1px solid #d0d0d0;
+        padding-top: 0.5rem;
+        margin-top: 0.5rem;
+    }
+} 
+
+/* Action selector styles */
+.action-selector {
+    margin: 1rem 0;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.action-selector h4 {
+    color: var(--text-primary);
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0 0 1rem 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.action-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+/* reference mint-mode-option design */
+.action-option {
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: var(--bg-primary);
+    position: relative;
+}
+
+.action-option:hover {
+    border-color: var(--accent-color);
+    background: var(--hover-bg);
+}
+
+.action-option:has(input[type="radio"]:checked) {
+    border-color: var(--accent-color);
+    background: var(--accent-bg);
+}
+
+.action-option:has(input[type="radio"]:disabled) {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: var(--bg-disabled);
+    border-color: var(--border-disabled);
+}
+
+.action-option:has(input[type="radio"]:disabled):hover {
+    border-color: var(--border-disabled);
+    background: var(--bg-disabled);
+}
+
+/* Radio button line layout */
+.action-radio-line {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    margin-bottom: 0.5rem;
+}
+
+.action-option input[type="radio"] {
+    margin: 0;
+    transform: scale(1.2);
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.action-option input[type="radio"]:checked {
+    accent-color: var(--accent-color);
+}
+
+.action-option input[type="radio"]:disabled {
+    cursor: not-allowed;
+}
+
+/* Action label with icon */
+.action-label {
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    flex: 1;
+}
+
+.action-label i {
+    font-size: 1.1rem;
+    width: 16px;
+    text-align: center;
+}
+
+/* Action description */
+.action-description {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    margin-left: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+/* Disabled state text color */
+.action-option:has(input[type="radio"]:disabled) .action-label,
+.action-option:has(input[type="radio"]:disabled) .action-description {
+    color: var(--text-disabled);
+}
+
+/* Burn amount input container */
+.burn-amount-container {
+    margin-left: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.action-option input.burn-amount-input {
+    width: 80px;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--input-bg);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    text-align: center;
+    transform: none; /* reset radio transform */
+}
+
+.action-option input.burn-amount-input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(var(--accent-color-rgb), 0.2);
+}
+
+.action-option input.burn-amount-input:disabled {
+    background: var(--bg-disabled);
+    color: var(--text-disabled);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.burn-unit {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .action-options {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+    
+    .action-option {
+        padding: 0.75rem;
+    }
+}
+
+/* CSS variable definition (if not already defined) */
+:root {
+    --accent-color: #007bff;
+    --accent-color-rgb: 0, 123, 255;
+    --accent-bg: rgba(0, 123, 255, 0.1);
+    --hover-bg: rgba(0, 0, 0, 0.05);
+    --bg-disabled: #f8f9fa;
+    --border-disabled: #dee2e6;
+    --text-disabled: #6c757d;
+}
+
+/* Burn total in header */
+.burn-total {
+    margin-left: 15px;
+    padding: 4px 12px;
+    background: linear-gradient(135deg, #ff6b35, #f7931e);
+    color: white;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.burn-total i {
+    margin-right: 4px;
+}
+
+/* Input container improvements */
+.input-container {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+}
+
+.input-container textarea {
+    flex: 1;
+}
+
+.input-container .send-button {
+    flex-shrink: 0;
+    height: fit-content;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 60px;
+}
+
+/* Message input area layout */
+.message-input-area {
+    padding: 16px;
+    background: var(--bg-primary);
+    border-top: 1px solid var(--border-color);
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+    .action-selector {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .radio-option {
+        flex-wrap: wrap;
+    }
+    
+    .burn-amount-input {
+        width: 100px;
+        margin-left: 0;
+        margin-top: 4px;
+    }
+} 
+
+/* Burn mode specific styling - burn mode specific styling */
+.action-option:has(input[value="burn"]:checked) {
+    border-color: #dc3545; /* red border */
+    background: #fff5f5; /* light red background */
+}
+
+.action-option:has(input[value="burn"]:checked):hover {
+    background: #fee; /* hover light red */
+    border-color: #c82333; /* hover deep red border */
+}
+
+/* also adjust accent color for burn button to red */
+.action-option:has(input[value="burn"]) input[type="radio"]:checked {
+    accent-color: #dc3545;
+}
+
+/* also adjust hover state for burn option for better visual effect */
+.action-option:has(input[value="burn"]):hover {
+    border-color: #dc3545;
+    background: #fff8f8;
+}
+
+/* ensure burn mode label has appropriate color when selected */
+.action-option:has(input[value="burn"]:checked) .action-label {
+    color: #721c24; /* deep red text */
+}
+
+.action-option:has(input[value="burn"]:checked) .action-label i {
+    color: #dc3545; /* red fire icon */
 } 
