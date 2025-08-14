@@ -964,42 +964,73 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                 </div>
                                 
                                 <div class="message-input-area">
-                                    // operation type selection
+                                    // action type selection - new card design
                                     <div class="action-selector">
-                                        <label class="radio-option">
-                                            <input 
-                                                type="radio" 
-                                                name="action-type" 
-                                                value="message" 
-                                                checked=move || action_type.get() == "message"
-                                                on:change=move |_| set_action_type.set("message".to_string())
-                                            />
-                                            <span>"Message"</span>
-                                        </label>
-                                        <label class="radio-option">
-                                            <input 
-                                                type="radio" 
-                                                name="action-type" 
-                                                value="burn" 
-                                                checked=move || action_type.get() == "burn"
-                                                on:change=move |_| set_action_type.set("burn".to_string())
-                                            />
-                                            <span>"Burn"</span>
-                                            <Show when=move || action_type.get() == "burn">
-                                                <input 
-                                                    type="number" 
-                                                    class="burn-amount-input"
-                                                    placeholder="Amount"
-                                                    min="1"
-                                                    prop:value=move || burn_amount.get()
-                                                    on:input=move |ev| {
-                                                        set_burn_amount.set(event_target_value(&ev));
-                                                    }
-                                                    disabled=move || burning.get()
-                                                />
-                                                <span class="burn-unit">"MEMO"</span>
-                                            </Show>
-                                        </label>
+                                        <h4>
+                                            <i class="fas fa-cog"></i>
+                                            "Select Action Type"
+                                        </h4>
+                                        <div class="action-options">
+                                            // message option
+                                            <div class="action-option">
+                                                <div class="action-radio-line">
+                                                    <input 
+                                                        type="radio" 
+                                                        id="action-message"
+                                                        name="action-type" 
+                                                        value="message" 
+                                                        checked=move || action_type.get() == "message"
+                                                        on:change=move |_| set_action_type.set("message".to_string())
+                                                    />
+                                                    <label for="action-message" class="action-label">
+                                                        <i class="fas fa-comment"></i>
+                                                        "Send Message"
+                                                    </label>
+                                                </div>
+                                                <div class="action-description">
+                                                    "Send message and earn "
+                                                    {move || current_mint_reward.get().unwrap_or_else(|| "+1 MEMO".to_string())}
+                                                    " reward"
+                                                </div>
+                                            </div>
+                                            
+                                            // burn option
+                                            <div class="action-option">
+                                                <div class="action-radio-line">
+                                                    <input 
+                                                        type="radio" 
+                                                        id="action-burn"
+                                                        name="action-type" 
+                                                        value="burn" 
+                                                        checked=move || action_type.get() == "burn"
+                                                        on:change=move |_| set_action_type.set("burn".to_string())
+                                                    />
+                                                    <label for="action-burn" class="action-label">
+                                                        <i class="fas fa-fire"></i>
+                                                        "Burn Tokens"
+                                                    </label>
+                                                </div>
+                                                <div class="action-description">
+                                                    "Burn MEMO tokens to improve leaderboard ranking"
+                                                </div>
+                                                <Show when=move || action_type.get() == "burn">
+                                                    <div class="burn-amount-container">
+                                                        <input 
+                                                            type="number" 
+                                                            class="burn-amount-input"
+                                                            placeholder="Amount"
+                                                            min="1"
+                                                            prop:value=move || burn_amount.get()
+                                                            on:input=move |ev| {
+                                                                set_burn_amount.set(event_target_value(&ev));
+                                                            }
+                                                            disabled=move || burning.get()
+                                                        />
+                                                        <span class="burn-unit">"MEMO"</span>
+                                                    </div>
+                                                </Show>
+                                            </div>
+                                        </div>
                                     </div>
                                     
                                     <div class="input-container">
@@ -1014,7 +1045,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                                             if sending.get() {
                                                                 "Sending, please wait...".to_string()
                                                             } else if session.with(|s| s.get_sol_balance()) < 0.005 {
-                                                                format!("Balance insufficient, sending message requires at least 0.005 SOL (current: {:.4} SOL)", session.with(|s| s.get_sol_balance()))
+                                                                format!("Insufficient balance, sending message requires at least 0.005 SOL (current: {:.4} SOL)", session.with(|s| s.get_sol_balance()))
                                                             } else {
                                                                 "Type your message... (Press Enter to send, Shift+Enter for new line)".to_string()
                                                             }

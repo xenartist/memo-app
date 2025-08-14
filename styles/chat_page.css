@@ -1762,53 +1762,181 @@
 
 /* Action selector styles */
 .action-selector {
-    display: flex;
-    gap: 15px;
-    margin-bottom: 10px;
-    padding: 10px;
+    margin: 1rem 0;
+    padding: 1rem;
     background: var(--bg-secondary);
     border-radius: 8px;
     border: 1px solid var(--border-color);
 }
 
-.radio-option {
+.action-selector h4 {
+    color: var(--text-primary);
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0 0 1rem 0;
     display: flex;
     align-items: center;
     gap: 8px;
-    cursor: pointer;
-    padding: 8px 12px;
-    border-radius: 6px;
-    transition: background-color 0.2s ease;
 }
 
-.radio-option:hover {
+.action-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+/* reference mint-mode-option design */
+.action-option {
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: var(--bg-primary);
+    position: relative;
+}
+
+.action-option:hover {
+    border-color: var(--accent-color);
     background: var(--hover-bg);
 }
 
-.radio-option input[type="radio"] {
+.action-option:has(input[type="radio"]:checked) {
+    border-color: var(--accent-color);
+    background: var(--accent-bg);
+}
+
+.action-option:has(input[type="radio"]:disabled) {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: var(--bg-disabled);
+    border-color: var(--border-disabled);
+}
+
+.action-option:has(input[type="radio"]:disabled):hover {
+    border-color: var(--border-disabled);
+    background: var(--bg-disabled);
+}
+
+/* Radio button line layout */
+.action-radio-line {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    margin-bottom: 0.5rem;
+}
+
+.action-option input[type="radio"] {
     margin: 0;
+    transform: scale(1.2);
+    flex-shrink: 0;
+    cursor: pointer;
 }
 
-.radio-option span {
-    font-weight: 500;
+.action-option input[type="radio"]:checked {
+    accent-color: var(--accent-color);
+}
+
+.action-option input[type="radio"]:disabled {
+    cursor: not-allowed;
+}
+
+/* Action label with icon */
+.action-label {
+    font-weight: 600;
     color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    flex: 1;
 }
 
-.burn-amount-input {
+.action-label i {
+    font-size: 1.1rem;
+    width: 16px;
+    text-align: center;
+}
+
+/* Action description */
+.action-description {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    margin-left: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+/* Disabled state text color */
+.action-option:has(input[type="radio"]:disabled) .action-label,
+.action-option:has(input[type="radio"]:disabled) .action-description {
+    color: var(--text-disabled);
+}
+
+/* Burn amount input container */
+.burn-amount-container {
+    margin-left: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.action-option input.burn-amount-input {
     width: 80px;
-    padding: 4px 8px;
+    padding: 0.4rem 0.5rem;
     border: 1px solid var(--border-color);
     border-radius: 4px;
     background: var(--input-bg);
     color: var(--text-primary);
-    font-size: 14px;
-    margin-left: 8px;
+    font-size: 0.9rem;
+    text-align: center;
+    transform: none; /* reset radio transform */
+}
+
+.action-option input.burn-amount-input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(var(--accent-color-rgb), 0.2);
+}
+
+.action-option input.burn-amount-input:disabled {
+    background: var(--bg-disabled);
+    color: var(--text-disabled);
+    cursor: not-allowed;
+    opacity: 0.6;
 }
 
 .burn-unit {
     color: var(--text-secondary);
-    font-size: 12px;
-    margin-left: 4px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .action-options {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+    
+    .action-option {
+        padding: 0.75rem;
+    }
+}
+
+/* CSS variable definition (if not already defined) */
+:root {
+    --accent-color: #007bff;
+    --accent-color-rgb: 0, 123, 255;
+    --accent-bg: rgba(0, 123, 255, 0.1);
+    --hover-bg: rgba(0, 0, 0, 0.05);
+    --bg-disabled: #f8f9fa;
+    --border-disabled: #dee2e6;
+    --text-disabled: #6c757d;
 }
 
 /* Burn message input */
@@ -1838,20 +1966,29 @@
     cursor: not-allowed;
 }
 
+.burn-message-input::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
 /* Burn button styles */
 .send-button.burn-button {
     background: linear-gradient(135deg, #ff6b35, #f7931e);
     color: white;
+    border: none;
 }
 
 .send-button.burn-button:hover:not(:disabled) {
     background: linear-gradient(135deg, #e55a2b, #e8841a);
     transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
 }
 
 .send-button.burn-button:disabled {
     background: #666;
     cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
 }
 
 /* Burn total in header */
@@ -1867,4 +2004,85 @@
 
 .burn-total i {
     margin-right: 4px;
+}
+
+/* Input container improvements */
+.input-container {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+}
+
+.input-container textarea {
+    flex: 1;
+}
+
+.input-container .send-button {
+    flex-shrink: 0;
+    height: fit-content;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 60px;
+}
+
+/* Message input area layout */
+.message-input-area {
+    padding: 16px;
+    background: var(--bg-primary);
+    border-top: 1px solid var(--border-color);
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+    .action-selector {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .radio-option {
+        flex-wrap: wrap;
+    }
+    
+    .burn-amount-input {
+        width: 100px;
+        margin-left: 0;
+        margin-top: 4px;
+    }
+} 
+
+/* Burn mode specific styling - burn mode specific styling */
+.action-option:has(input[value="burn"]:checked) {
+    border-color: #dc3545; /* red border */
+    background: #fff5f5; /* light red background */
+}
+
+.action-option:has(input[value="burn"]:checked):hover {
+    background: #fee; /* hover light red */
+    border-color: #c82333; /* hover deep red border */
+}
+
+/* also adjust accent color for burn button to red */
+.action-option:has(input[value="burn"]) input[type="radio"]:checked {
+    accent-color: #dc3545;
+}
+
+/* also adjust hover state for burn option for better visual effect */
+.action-option:has(input[value="burn"]):hover {
+    border-color: #dc3545;
+    background: #fff8f8;
+}
+
+/* ensure burn mode label has appropriate color when selected */
+.action-option:has(input[value="burn"]:checked) .action-label {
+    color: #721c24; /* deep red text */
+}
+
+.action-option:has(input[value="burn"]:checked) .action-label i {
+    color: #dc3545; /* red fire icon */
 } 
