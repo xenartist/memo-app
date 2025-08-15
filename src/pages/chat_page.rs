@@ -1174,7 +1174,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                                     if burning.get() {
                                                         "Burning tokens...".to_string()
                                                     } else {
-                                                        format!("Burn {} MEMO tokens", burn_amount.get())
+                                                        format!("Burn {} MEMO", burn_amount.get())
                                                     }
                                                 } else {
                                                     "Send message".to_string()
@@ -1694,7 +1694,7 @@ fn MessageItem(
                                 <span>
                                     {move || {
                                         if let Some(amount) = burn_amount {
-                                            format!("Burn {:.2} MEMO", amount as f64 / 1_000_000.0)
+                                            format!("Burn {} MEMO", amount / 1_000_000)
                                         } else {
                                             "Burn operation".to_string()
                                         }
@@ -2439,7 +2439,7 @@ fn LeaderboardOverviewStats(leaderboard: BurnLeaderboardResponse, total_groups: 
                         <i class="fas fa-fire"></i>
                     </div>
                     <div class="stat-content">
-                        <h3>{format!("{:.2}", leaderboard.total_burned_tokens as f64 / 1_000_000.0)}</h3>
+                        <h3>{format!("{}", leaderboard.total_burned_tokens / 1_000_000)}</h3>
                         <p>"MEMO Burned (Top 100)"</p>
                     </div>
                 </div>
