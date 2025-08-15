@@ -1858,6 +1858,134 @@ impl RpcConnection {
             }
         }
     }
+
+    /// get burn leaderboard
+    /// 
+    /// # Returns
+    /// burn leaderboard data, including the top 100 chat groups
+    pub async fn get_burn_leaderboard(&self) -> Result<BurnLeaderboardResponse, RpcError> {
+        let (burn_leaderboard_pda, _) = ChatConfig::get_burn_leaderboard_pda()?;
+        
+        log::info!("Fetching burn leaderboard from PDA: {}", burn_leaderboard_pda);
+        
+        let account_info = self.get_account_info(&burn_leaderboard_pda.to_string(), Some("base64")).await?;
+        let account_info: serde_json::Value = serde_json::from_str(&account_info)
+            .map_err(|e| RpcError::Other(format!("Failed to parse leaderboard account info: {}", e)))?;
+        
+        if account_info["value"].is_null() {
+            return Err(RpcError::Other(
+                "Burn leaderboard not found. Please initialize the memo-chat system first.".to_string()
+            ));
+        }
+        
+        let account_data = account_info["value"]["data"][0]
+            .as_str()
+            .ok_or_else(|| RpcError::Other("Failed to get leaderboard account data".to_string()))?;
+        
+        let data = base64::decode(account_data)
+            .map_err(|e| RpcError::Other(format!("Failed to decode leaderboard account data: {}", e)))?;
+        
+        // verify account owner
+        let owner = account_info["value"]["owner"]
+            .as_str()
+            .ok_or_else(|| RpcError::Other("Failed to get leaderboard account owner".to_string()))?;
+        
+        if owner != ChatConfig::MEMO_CHAT_PROGRAM_ID {
+            return Err(RpcError::Other(format!(
+                "Account not owned by memo-chat program. Expected: {}, Got: {}", 
+                ChatConfig::MEMO_CHAT_PROGRAM_ID, owner
+            )));
+        }
+        
+        // parse leaderboard data
+        self.parse_burn_leaderboard_data(&data)
+    }
+    
+    /// parse burn leaderboard account data
+    fn parse_burn_leaderboard_data(&self, data: &[u8]) -> Result<BurnLeaderboardResponse, RpcError> {
+        if data.len() < 8 {
+            return Err(RpcError::Other("Data too short for discriminator".to_string()));
+        }
+        
+        let mut offset = 8; // skip discriminator
+        
+        // read current_size (u8)
+        if data.len() < offset + 1 {
+            return Err(RpcError::Other("Data too short for current_size".to_string()));
+        }
+        let current_size = data[offset];
+        offset += 1;
+        
+        // read entries Vec length (u32)
+        if data.len() < offset + 4 {
+            return Err(RpcError::Other("Data too short for entries length".to_string()));
+        }
+        let entries_len = u32::from_le_bytes(
+            data[offset..offset + 4].try_into()
+                .map_err(|e| RpcError::Other(format!("Failed to parse entries length: {:?}", e)))?
+        ) as usize;
+        offset += 4;
+        
+        // read each leaderboard entry
+        let mut entries = Vec::new();
+        let mut total_burned_tokens = 0u64;
+        
+        for i in 0..entries_len {
+            if data.len() < offset + 16 { // each entry 16 bytes (8 + 8)
+                return Err(RpcError::Other(format!("Data too short for entry {}", i)));
+            }
+            
+            // read group_id (u64)
+            let group_id = u64::from_le_bytes(
+                data[offset..offset + 8].try_into()
+                    .map_err(|e| RpcError::Other(format!("Failed to parse group_id for entry {}: {:?}", i, e)))?
+            );
+            offset += 8;
+            
+            // read burned_amount (u64)
+            let burned_amount = u64::from_le_bytes(
+                data[offset..offset + 8].try_into()
+                    .map_err(|e| RpcError::Other(format!("Failed to parse burned_amount for entry {}: {:?}", i, e)))?
+            );
+            offset += 8;
+            
+            total_burned_tokens = total_burned_tokens.saturating_add(burned_amount);
+            
+            entries.push(LeaderboardEntry {
+                group_id,
+                burned_amount,
+                rank: (i + 1) as u8, // rank starts from 1
+            });
+        }
+        
+        log::info!("Parsed burn leaderboard: {} entries, total burned: {:.2} MEMO", 
+                  entries.len(), total_burned_tokens as f64 / 1_000_000.0);
+        
+        Ok(BurnLeaderboardResponse {
+            current_size,
+            entries,
+            total_burned_tokens,
+        })
+    }
+    
+    /// get the rank of a specific group in the burn leaderboard
+    /// 
+    /// # Parameters
+    /// * `group_id` - group ID
+    /// 
+    /// # Returns
+    /// rank (1-100), return None if the group is not in the leaderboard
+    pub async fn get_group_burn_rank(&self, group_id: u64) -> Result<Option<u8>, RpcError> {
+        let leaderboard = self.get_burn_leaderboard().await?;
+        
+        for entry in &leaderboard.entries {
+            if entry.group_id == group_id {
+                return Ok(Some(entry.rank));
+            }
+        }
+        
+        Ok(None)
+    }
 }
 
 /// Chat group creation data structure (stored in BurnMemo.payload for create_chat_group)
@@ -1948,4 +2076,20 @@ impl ChatGroupCreationData {
         let final_size = self.calculate_final_memo_size(burn_amount)?;
         Ok(final_size >= ChatConfig::MIN_MEMO_LENGTH && final_size <= ChatConfig::MAX_MEMO_LENGTH)
     }
+}
+
+/// leaderboard entry
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LeaderboardEntry {
+    pub group_id: u64,
+    pub burned_amount: u64,
+    pub rank: u8, // rank (1-100)
+}
+
+/// burn leaderboard response
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BurnLeaderboardResponse {
+    pub current_size: u8,
+    pub entries: Vec<LeaderboardEntry>,
+    pub total_burned_tokens: u64, // total burned amount of all leaderboard entries
 }

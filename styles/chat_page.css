@@ -2034,3 +2034,372 @@
 .action-option:has(input[value="burn"]:checked) .action-label i {
     color: #dc3545; /* red fire icon */
 } 
+
+/* ===== burn leaderboard related styles ===== */
+
+/* leaderboard overview stats */
+.leaderboard-overview {
+    margin-top: 30px;
+}
+
+.leaderboard-overview .overview-stats {
+    margin-bottom: 40px;
+}
+
+.leaderboard-overview .overview-stats h2 {
+    font-size: 1.8rem;
+    color: #333;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* paginated leaderboard */
+.paginated-leaderboard {
+    margin-top: 30px;
+}
+
+.paginated-leaderboard h2 {
+    font-size: 1.6rem;
+    color: #333;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* pagination info */
+.pagination-info {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.pagination-info p {
+    margin: 0;
+    color: #6c757d;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+/* leaderboard grid */
+.leaderboard-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 16px;
+    padding: 0;
+    width: 100%;
+    margin-bottom: 30px;
+}
+
+/* leaderboard card */
+.leaderboard-card {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+    width: 300px;
+    flex-grow: 0;
+    flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+}
+
+.leaderboard-card.clickable {
+    cursor: pointer;
+}
+
+.leaderboard-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+}
+
+/* top 3 cards special background color */
+.leaderboard-card.rank-1 {
+    background: linear-gradient(135deg, #ffebee, #fce4ec);
+    border-color: #f8bbd9;
+}
+
+.leaderboard-card.rank-2 {
+    background: linear-gradient(135deg, #fff3e0, #ffe0b2);
+    border-color: #ffcc80;
+}
+
+.leaderboard-card.rank-3 {
+    background: linear-gradient(135deg, #fffde7, #fff9c4);
+    border-color: #fff176;
+}
+
+/* leaderboard card content */
+.leaderboard-card .group-header {
+    margin-top: 15px; /* reset margin, no space for rank identifier */
+    margin-bottom: 15px;
+}
+
+.leaderboard-card .group-image {
+    margin-bottom: 15px;
+    text-align: center;
+}
+
+.leaderboard-stats {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 8px;
+    backdrop-filter: blur(10px);
+}
+
+.burn-stat {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem; /* same as message-stat font size */
+    font-weight: normal; /* remove bold */
+    color: #666; /* same as message-stat normal font color */
+}
+
+.burn-stat i {
+    color: #dc3545; /* only icon remains red */
+    font-size: 1.1rem;
+}
+
+.message-stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.message-stat i {
+    color: #007bff;
+}
+
+/* group info not available */
+.group-not-found {
+    text-align: center;
+    padding: 20px 0;
+}
+
+.group-not-found h3 {
+    color: #6c757d;
+    margin-bottom: 15px;
+}
+
+.group-not-found p {
+    color: #adb5bd;
+    font-style: italic;
+    margin-top: 10px;
+}
+
+/* loading placeholder */
+.loading-placeholder {
+    text-align: center;
+    padding: 40px 20px;
+}
+
+.loading-spinner-small {
+    width: 24px;
+    height: 24px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #007bff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 10px;
+}
+
+.loading-placeholder p {
+    color: #6c757d;
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+/* ===== pagination controls ===== */
+
+.pagination-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin-top: 30px;
+    padding: 20px 0;
+}
+
+.pagination-btn {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background-color 0.2s, opacity 0.2s;
+    font-weight: 500;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    background: #0056b3;
+}
+
+.pagination-btn:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.page-numbers {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0 10px;
+}
+
+.page-number {
+    background: white;
+    color: #007bff;
+    border: 1px solid #dee2e6;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+    min-width: 40px;
+    text-align: center;
+    font-weight: 500;
+}
+
+.page-number:hover {
+    background: #e9ecef;
+    border-color: #007bff;
+}
+
+.page-number.active {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+    font-weight: bold;
+}
+
+.pagination-ellipsis {
+    color: #6c757d;
+    padding: 8px 4px;
+    font-weight: bold;
+    user-select: none;
+}
+
+/* ===== header button styles ===== */
+
+.header-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.create-group-button {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background-color 0.2s;
+}
+
+.create-group-button:hover:not(:disabled) {
+    background: #218838;
+}
+
+.create-group-button:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+}
+
+/* ===== empty state styles ===== */
+
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #6c757d;
+}
+
+.empty-state i {
+    font-size: 4rem;
+    color: #dee2e6;
+    margin-bottom: 20px;
+}
+
+.empty-state p {
+    font-size: 1.1rem;
+    margin: 0;
+}
+
+/* ===== responsive design ===== */
+
+@media (max-width: 768px) {
+    .leaderboard-grid {
+        justify-content: center;
+    }
+    
+    .leaderboard-card {
+        width: 100%;
+        max-width: 400px;
+    }
+    
+    .pagination-controls {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .page-numbers {
+        margin: 10px 0;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .header-buttons {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .create-group-button,
+    .refresh-button {
+        width: 200px;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 480px) {
+    .leaderboard-card {
+        padding: 16px;
+    }
+    
+    .pagination-btn {
+        padding: 8px 12px;
+        font-size: 13px;
+    }
+    
+    .page-number {
+        padding: 6px 10px;
+        min-width: 35px;
+        font-size: 13px;
+    }
+} 

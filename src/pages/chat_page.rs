@@ -3,7 +3,7 @@ use leptos::html::Div;
 use wasm_bindgen::JsCast;
 use crate::core::session::Session;
 use crate::core::rpc_base::RpcConnection;
-use crate::core::rpc_chat::{ChatStatistics, ChatGroupInfo, ChatMessage, ChatMessagesResponse, LocalChatMessage, MessageStatus};
+use crate::core::rpc_chat::{ChatStatistics, ChatGroupInfo, ChatMessage, ChatMessagesResponse, LocalChatMessage, MessageStatus, BurnLeaderboardResponse, LeaderboardEntry};
 use crate::core::rpc_mint::MintConfig;
 use crate::pages::log_view::add_log_entry;
 use crate::pages::memo_card::LazyPixelView;
@@ -15,6 +15,7 @@ use web_sys::{HtmlInputElement, File, FileReader, Event, ProgressEvent, window};
 use wasm_bindgen::{closure::Closure};
 use js_sys::Uint8Array;
 use std::rc::Rc;
+use futures;
 
 // Chat page view mode
 #[derive(Clone, PartialEq)]
@@ -25,10 +26,16 @@ enum ChatView {
 
 #[component]
 pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
-    let (chat_stats, set_chat_stats) = create_signal::<Option<ChatStatistics>>(None);
+    // state for burn leaderboard
+    let (leaderboard_data, set_leaderboard_data) = create_signal::<Option<BurnLeaderboardResponse>>(None);
+    let (total_groups, set_total_groups) = create_signal(0u64); // total groups
     let (loading, set_loading) = create_signal(true);
     let (error_message, set_error_message) = create_signal::<Option<String>>(None);
     let (current_view, set_current_view) = create_signal(ChatView::GroupsList);
+    
+    // pagination state
+    let (current_page, set_current_page) = create_signal(1usize);
+    let (groups_per_page, _) = create_signal(10usize); // 10 groups per page
     
     // Chat room specific states
     let (current_group_info, set_current_group_info) = create_signal::<Option<ChatGroupInfo>>(None);
@@ -65,22 +72,29 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         });
     });
 
-    // Load chat statistics on component mount
+    // Load burn leaderboard and global stats on component mount
     spawn_local(async move {
         set_loading.set(true);
         set_error_message.set(None);
         
-        add_log_entry("INFO", "Loading memo-chat statistics...");
+        add_log_entry("INFO", "Loading burn leaderboard and global stats...");
         
         let rpc = RpcConnection::new();
-        match rpc.get_all_chat_statistics().await {
-            Ok(stats) => {
-                add_log_entry("INFO", &format!("Loaded {} chat groups", stats.total_groups));
-                set_chat_stats.set(Some(stats));
+        
+        // parallel get leaderboard data and global stats
+        let leaderboard_future = rpc.get_burn_leaderboard();
+        let global_stats_future = rpc.get_chat_global_statistics();
+        
+        match futures::join!(leaderboard_future, global_stats_future) {
+            (Ok(leaderboard), Ok(global_stats)) => {
+                add_log_entry("INFO", &format!("Loaded {} groups in burn leaderboard, {} total groups", 
+                             leaderboard.current_size, global_stats.total_groups));
+                set_leaderboard_data.set(Some(leaderboard));
+                set_total_groups.set(global_stats.total_groups);
                 set_error_message.set(None);
             },
-            Err(e) => {
-                let error_msg = format!("Failed to load chat statistics: {}", e);
+            (Err(e), _) | (_, Err(e)) => {
+                let error_msg = format!("Failed to load data: {}", e);
                 add_log_entry("ERROR", &error_msg);
                 set_error_message.set(Some(error_msg));
             }
@@ -108,12 +122,18 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     let enter_chat_room = move |group_id: u64| {
         set_current_view.set(ChatView::ChatRoom(group_id));
         
-        // Find group info from loaded stats
-        if let Some(stats) = chat_stats.get() {
-            if let Some(group) = stats.groups.iter().find(|g| g.group_id == group_id) {
-                set_current_group_info.set(Some(group.clone()));
+        // get full group info by group_id
+        spawn_local(async move {
+            let rpc = RpcConnection::new();
+            match rpc.get_chat_group_info(group_id).await {
+                Ok(group_info) => {
+                    set_current_group_info.set(Some(group_info));
+                },
+                Err(e) => {
+                    add_log_entry("ERROR", &format!("Failed to load group info: {}", e));
+                }
             }
-        }
+        });
         
         // Load messages for this group
         spawn_local(async move {
@@ -156,17 +176,26 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
             set_loading.set(true);
             set_error_message.set(None);
             
-            add_log_entry("INFO", "Refreshing memo-chat statistics...");
+            add_log_entry("INFO", "Refreshing burn leaderboard and global stats...");
             
             let rpc = RpcConnection::new();
-            match rpc.get_all_chat_statistics().await {
-                Ok(stats) => {
-                    add_log_entry("INFO", &format!("Refreshed {} chat groups", stats.total_groups));
-                    set_chat_stats.set(Some(stats));
+            
+            // parallel get leaderboard data and global stats
+            let leaderboard_future = rpc.get_burn_leaderboard();
+            let global_stats_future = rpc.get_chat_global_statistics();
+            
+            match futures::join!(leaderboard_future, global_stats_future) {
+                (Ok(leaderboard), Ok(global_stats)) => {
+                    add_log_entry("INFO", &format!("Refreshed {} groups in burn leaderboard, {} total groups", 
+                                 leaderboard.current_size, global_stats.total_groups));
+                    set_leaderboard_data.set(Some(leaderboard));
+                    set_total_groups.set(global_stats.total_groups);
                     set_error_message.set(None);
+                    // reset to first page
+                    set_current_page.set(1);
                 },
-                Err(e) => {
-                    let error_msg = format!("Failed to refresh chat statistics: {}", e);
+                (Err(e), _) | (_, Err(e)) => {
+                    let error_msg = format!("Failed to refresh data: {}", e);
                     add_log_entry("ERROR", &error_msg);
                     set_error_message.set(Some(error_msg));
                 }
@@ -856,6 +885,48 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         }
     };
 
+    // calculate pagination data
+    let get_paginated_groups = create_memo(move |_| {
+        if let Some(leaderboard) = leaderboard_data.get() {
+            let per_page = groups_per_page.get();
+            let page = current_page.get();
+            let start_idx = (page - 1) * per_page;
+            let end_idx = start_idx + per_page;
+            
+            let total_groups = leaderboard.entries.len();
+            let total_pages = (total_groups + per_page - 1) / per_page; // round up
+            
+            let page_entries = leaderboard.entries
+                .iter()
+                .skip(start_idx)
+                .take(per_page)
+                .cloned()
+                .collect::<Vec<_>>();
+            
+            (page_entries, total_pages, total_groups)
+        } else {
+            (vec![], 0, 0)
+        }
+    });
+
+    // pagination navigation function
+    let go_to_page = move |page: usize| {
+        set_current_page.set(page);
+    };
+
+    let next_page = move |_| {
+        let (_, total_pages, _) = get_paginated_groups.get();
+        if current_page.get() < total_pages {
+            set_current_page.set(current_page.get() + 1);
+        }
+    };
+
+    let prev_page = move |_| {
+        if current_page.get() > 1 {
+            set_current_page.set(current_page.get() - 1);
+        }
+    };
+
     view! {
         <div class="chat-page">
             <Show
@@ -889,7 +960,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                                         {info.name.clone()}
                                                         <span class="burn-total">
                                                             <i class="fas fa-fire"></i>
-                                                            {format!("{:.2} MEMO", info.burned_amount as f64 / 1_000_000.0)}
+                                                            {format!("{}", info.burned_amount / 1_000_000)}
                                                         </span>
                                                     </h1>
                                                     <p class="group-description">{info.description}</p>
@@ -1103,7 +1174,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                                     if burning.get() {
                                                         "Burning tokens...".to_string()
                                                     } else {
-                                                        format!("Burn {} MEMO tokens", burn_amount.get())
+                                                        format!("Burn {} MEMO", burn_amount.get())
                                                     }
                                                 } else {
                                                     "Send message".to_string()
@@ -1130,7 +1201,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                     }
                 }
             >
-                // Groups List View (existing code)
+                // Groups List View
                 <div class="groups-list-container">
                     <div class="page-header">
                         <h1><i class="fas fa-comments"></i>"Chat & Earn"</h1>
@@ -1175,20 +1246,30 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                     </Show>
 
                     <Show
-                        when=move || !loading.get() && chat_stats.get().is_some()
+                        when=move || !loading.get() && leaderboard_data.get().is_some()
                         fallback=move || view! {
                             <div class="loading-container">
                                 <div class="loading-spinner"></div>
-                                <p>"Loading chat groups..."</p>
+                                <p>"Loading burn leaderboard..."</p>
                             </div>
                         }
                     >
                         {move || {
-                            chat_stats.get().map(|stats| {
+                            leaderboard_data.get().map(|leaderboard| {
                                 view! {
-                                    <div class="chat-overview">
-                                        <OverviewStats stats=stats.clone()/>
-                                        <GroupsList groups=stats.groups enter_chat_room=enter_chat_room/>
+                                    <div class="leaderboard-overview">
+                                        <LeaderboardOverviewStats 
+                                            leaderboard=leaderboard.clone()
+                                            total_groups=total_groups.get()
+                                        />
+                                        <PaginatedLeaderboardList 
+                                            paginated_groups=get_paginated_groups
+                                            current_page=current_page
+                                            go_to_page=go_to_page
+                                            next_page=next_page
+                                            prev_page=prev_page
+                                            enter_chat_room=enter_chat_room
+                                        />
                                     </div>
                                 }
                             })
@@ -1376,7 +1457,7 @@ fn GroupCard(group: ChatGroupInfo, enter_chat_room: impl Fn(u64) + 'static + Cop
                 </div>
                 <div class="stat-item">
                     <i class="fas fa-fire"></i>
-                    <span>{move || format!("{:.2}", group_burned_amount.get() as f64 / 1_000_000.0)} " MEMO"</span>
+                    <span>{move || format!("{}", group_burned_amount.get() / 1_000_000)} " MEMO"</span>
                 </div>
             </div>
             
@@ -1613,7 +1694,7 @@ fn MessageItem(
                                 <span>
                                     {move || {
                                         if let Some(amount) = burn_amount {
-                                            format!("Burn {:.2} MEMO", amount as f64 / 1_000_000.0)
+                                            format!("Burn {} MEMO", amount / 1_000_000)
                                         } else {
                                             "Burn operation".to_string()
                                         }
@@ -2336,3 +2417,307 @@ fn CreateChatGroupForm(
         </div>
     }
 } 
+
+#[component]
+fn LeaderboardOverviewStats(leaderboard: BurnLeaderboardResponse, total_groups: u64) -> impl IntoView {
+    view! {
+        <div class="overview-stats">
+            <h2>"Chat Overview"</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>{total_groups}</h3>
+                        <p>"Groups in Total"</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-fire"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>{format!("{}", leaderboard.total_burned_tokens / 1_000_000)}</h3>
+                        <p>"MEMO Burned (Top 100)"</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn PaginatedLeaderboardList(
+    paginated_groups: Memo<(Vec<LeaderboardEntry>, usize, usize)>,
+    current_page: ReadSignal<usize>,
+    go_to_page: impl Fn(usize) + 'static + Copy,
+    next_page: impl Fn(web_sys::MouseEvent) + 'static + Copy,
+    prev_page: impl Fn(web_sys::MouseEvent) + 'static + Copy,
+    enter_chat_room: impl Fn(u64) + 'static + Copy,
+) -> impl IntoView {
+    view! {
+        <div class="paginated-leaderboard">
+            <h2>"Chat Groups Ranking"</h2>
+            
+            // pagination info
+            <div class="pagination-info">
+                {move || {
+                    let (entries, total_pages, total_groups) = paginated_groups.get();
+                    let page = current_page.get();
+                    let start_rank = if entries.is_empty() { 0 } else { (page - 1) * 10 + 1 };
+                    let end_rank = if entries.is_empty() { 0 } else { (page - 1) * 10 + entries.len() };
+                    
+                    view! {
+                        <p>
+                            "Showing rank " {start_rank} " - " {end_rank} 
+                            " of " {total_groups} " groups"
+                            {if total_pages > 1 {
+                                format!(" (Page {} of {})", page, total_pages)
+                            } else {
+                                String::new()
+                            }}
+                        </p>
+                    }
+                }}
+            </div>
+            
+            <Show
+                when=move || !paginated_groups.get().0.is_empty()
+                fallback=|| view! {
+                    <div class="empty-state">
+                        <i class="fas fa-trophy"></i>
+                        <p>"No groups in burn leaderboard yet"</p>
+                    </div>
+                }
+            >
+                <div class="leaderboard-grid">
+                    <For
+                        each=move || paginated_groups.get().0
+                        key=|entry| entry.group_id
+                        children=move |entry: LeaderboardEntry| {
+                            view! { <LeaderboardCard entry=entry enter_chat_room=enter_chat_room/> }
+                        }
+                    />
+                </div>
+                
+                // pagination controls
+                {move || {
+                    let (_, total_pages, _) = paginated_groups.get();
+                    let page = current_page.get();
+                    
+                    if total_pages > 1 {
+                        view! {
+                            <div class="pagination-controls">
+                                <button 
+                                    class="pagination-btn"
+                                    disabled=move || page <= 1
+                                    on:click=prev_page
+                                >
+                                    <i class="fas fa-chevron-left"></i>
+                                    "Previous"
+                                </button>
+                                
+                                <div class="page-numbers">
+                                    {move || {
+                                        let current = current_page.get();
+                                        let total = total_pages;
+                                        let mut pages_to_show = vec![];
+                                        
+                                        // show page numbers
+                                        if total <= 7 {
+                                            // total pages less than or equal to 7, show all pages
+                                            for i in 1..=total {
+                                                pages_to_show.push(i);
+                                            }
+                                        } else {
+                                            // total pages greater than 7, show partial pages
+                                            if current <= 4 {
+                                                for i in 1..=5 {
+                                                    pages_to_show.push(i);
+                                                }
+                                                pages_to_show.push(0); // 0 means "..."
+                                                pages_to_show.push(total);
+                                            } else if current >= total - 3 {
+                                                pages_to_show.push(1);
+                                                pages_to_show.push(0); // 0 means "..."
+                                                for i in (total-4)..=total {
+                                                    pages_to_show.push(i);
+                                                }
+                                            } else {
+                                                pages_to_show.push(1);
+                                                pages_to_show.push(0); // 0 means "..."
+                                                for i in (current-1)..=(current+1) {
+                                                    pages_to_show.push(i);
+                                                }
+                                                pages_to_show.push(0); // 0 means "..."
+                                                pages_to_show.push(total);
+                                            }
+                                        }
+                                        
+                                        pages_to_show.into_iter().map(|page_num| {
+                                            if page_num == 0 {
+                                                view! {
+                                                    <span class="pagination-ellipsis">"..."</span>
+                                                }.into_view()
+                                            } else {
+                                                view! {
+                                                    <button 
+                                                        class="page-number"
+                                                        class:active=move || current == page_num
+                                                        on:click=move |_| go_to_page(page_num)
+                                                    >
+                                                        {page_num}
+                                                    </button>
+                                                }.into_view()
+                                            }
+                                        }).collect::<Vec<_>>()
+                                    }}
+                                </div>
+                                
+                                <button 
+                                    class="pagination-btn"
+                                    disabled=move || page >= total_pages
+                                    on:click=next_page
+                                >
+                                    "Next"
+                                    <i class="fas fa-chevron-right"></i>
+                                </button>
+                            </div>
+                        }.into_view()
+                    } else {
+                        view! { <div></div> }.into_view()
+                    }
+                }}
+            </Show>
+        </div>
+    }
+}
+
+#[component]
+fn LeaderboardCard(entry: LeaderboardEntry, enter_chat_room: impl Fn(u64) + 'static + Copy) -> impl IntoView {
+    // create signal to store group info
+    let (group_info, set_group_info) = create_signal::<Option<ChatGroupInfo>>(None);
+    let (loading_info, set_loading_info) = create_signal(true);
+    
+    let group_id = entry.group_id;
+    let rank = entry.rank;
+    let burned_amount = entry.burned_amount;
+    
+    // load group info
+    spawn_local(async move {
+        let rpc = RpcConnection::new();
+        match rpc.get_chat_group_info(group_id).await {
+            Ok(info) => {
+                set_group_info.set(Some(info));
+            },
+            Err(e) => {
+                log::warn!("Failed to load group {} info: {}", group_id, e);
+            }
+        }
+        set_loading_info.set(false);
+    });
+
+    // Handle click to enter chat group
+    let handle_click = move |_| {
+        enter_chat_room(group_id);
+    };
+
+    view! {
+        <div 
+            class="leaderboard-card clickable" 
+            class:rank-1=move || rank == 1 
+            class:rank-2=move || rank == 2 
+            class:rank-3=move || rank == 3
+            on:click=handle_click
+        >
+            <Show
+                when=move || !loading_info.get()
+                fallback=|| view! {
+                    <div class="loading-placeholder">
+                        <div class="loading-spinner-small"></div>
+                        <p>"Loading group info..."</p>
+                    </div>
+                }
+            >
+                {move || {
+                    if let Some(info) = group_info.get() {
+                        view! {
+                            <div class="group-header">
+                                <h3 class="group-name">{info.name.clone()}</h3>
+                                <div class="group-id">#{group_id}</div>
+                            </div>
+                            
+                            <div class="group-image">
+                                {move || {
+                                    let image_data = info.image.clone();
+                                    
+                                    // check if it is a valid pixel art string (starts with "c:" or "n:")
+                                    if !image_data.is_empty() && 
+                                       (image_data.starts_with("c:") || image_data.starts_with("n:")) {
+                                        // valid pixel art string
+                                        view! {
+                                            <LazyPixelView
+                                                art={image_data}
+                                                size=64
+                                            />
+                                        }.into_view()
+                                    } else if !image_data.is_empty() && 
+                                              (image_data.starts_with("http") || image_data.starts_with("data:")) {
+                                        // regular image URL
+                                        view! {
+                                            <img 
+                                                src={image_data}
+                                                alt="Group image" 
+                                                class="group-image-img"
+                                                loading="lazy"
+                                            />
+                                        }.into_view()
+                                    } else {
+                                        // no valid image, generate random pixel art based on group_id
+                                        let fake_pixel_art = generate_random_pixel_art(group_id);
+                                        
+                                        view! {
+                                            <LazyPixelView
+                                                art={fake_pixel_art}
+                                                size=64
+                                            />
+                                        }.into_view()
+                                    }
+                                }}
+                            </div>
+                            
+                            <div class="leaderboard-stats">
+                                <div class="burn-stat">
+                                    <i class="fas fa-fire"></i>
+                                    <span>{format!("{}", burned_amount / 1_000_000)} " MEMO"</span>
+                                </div>
+                                <div class="message-stat">
+                                    <i class="fas fa-comments"></i>
+                                    <span>{info.memo_count} " messages"</span>
+                                </div>
+                            </div>
+                            
+                            <div class="enter-chat-hint">
+                                <i class="fas fa-arrow-right"></i>
+                                <span>"Click to enter chat group"</span>
+                            </div>
+                        }.into_view()
+                    } else {
+                        view! {
+                            <div class="group-not-found">
+                                <h3>"Group #{group_id}"</h3>
+                                <div class="burn-stat">
+                                    <i class="fas fa-fire"></i>
+                                    <span>{format!("{}", burned_amount / 1_000_000)}</span>
+                                </div>
+                                <p>"Group info not available"</p>
+                            </div>
+                        }.into_view()
+                    }
+                }}
+            </Show>
+        </div>
+    }
+}
