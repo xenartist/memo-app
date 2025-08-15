@@ -1204,7 +1204,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                 // Groups List View
                 <div class="groups-list-container">
                     <div class="page-header">
-                        <h1><i class="fas fa-fire"></i>"Chat & Earn"</h1>
+                        <h1><i class="fas fa-comments"></i>"Chat & Earn"</h1>
                         <p class="page-description">
                             "Decentralized Messaging on X1 Blockchain"
                         </p>
