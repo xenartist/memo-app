@@ -29,6 +29,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     // state for burn leaderboard
     let (leaderboard_data, set_leaderboard_data) = create_signal::<Option<BurnLeaderboardResponse>>(None);
     let (total_groups, set_total_groups) = create_signal(0u64); // total groups
+    let (leaderboard_group_infos, set_leaderboard_group_infos) = create_signal::<std::collections::HashMap<u64, ChatGroupInfo>>(std::collections::HashMap::new());
     let (loading, set_loading) = create_signal(true);
     let (error_message, set_error_message) = create_signal::<Option<String>>(None);
     let (current_view, set_current_view) = create_signal(ChatView::GroupsList);
@@ -927,6 +928,19 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         }
     };
 
+    // calculate total messages in leaderboard
+    let leaderboard_total_messages = create_memo(move |_| {
+        let group_infos = leaderboard_group_infos.get();
+        group_infos.values().map(|info| info.memo_count).sum::<u64>()
+    });
+
+    // handle group info loaded callback
+    let handle_group_info_loaded = move |group_id: u64, group_info: ChatGroupInfo| {
+        set_leaderboard_group_infos.update(|infos| {
+            infos.insert(group_id, group_info);
+        });
+    };
+
     view! {
         <div class="chat-page">
             <Show
@@ -1261,6 +1275,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                         <LeaderboardOverviewStats 
                                             leaderboard=leaderboard.clone()
                                             total_groups=total_groups.get()
+                                            leaderboard_total_messages=leaderboard_total_messages
                                         />
                                         <PaginatedLeaderboardList 
                                             paginated_groups=get_paginated_groups
@@ -1269,6 +1284,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                             next_page=next_page
                                             prev_page=prev_page
                                             enter_chat_room=enter_chat_room
+                                            on_group_info_loaded=handle_group_info_loaded
                                         />
                                     </div>
                                 }
@@ -2419,7 +2435,7 @@ fn CreateChatGroupForm(
 } 
 
 #[component]
-fn LeaderboardOverviewStats(leaderboard: BurnLeaderboardResponse, total_groups: u64) -> impl IntoView {
+fn LeaderboardOverviewStats(leaderboard: BurnLeaderboardResponse, total_groups: u64, leaderboard_total_messages: Memo<u64>) -> impl IntoView {
     view! {
         <div class="overview-stats">
             <h2>"Chat Overview"</h2>
@@ -2443,6 +2459,16 @@ fn LeaderboardOverviewStats(leaderboard: BurnLeaderboardResponse, total_groups: 
                         <p>"MEMO Burned (Top 100)"</p>
                     </div>
                 </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-comments"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>{move || leaderboard_total_messages.get()}</h3>
+                        <p>"Messages (Top 100)"</p>
+                    </div>
+                </div>
             </div>
         </div>
     }
@@ -2456,6 +2482,7 @@ fn PaginatedLeaderboardList(
     next_page: impl Fn(web_sys::MouseEvent) + 'static + Copy,
     prev_page: impl Fn(web_sys::MouseEvent) + 'static + Copy,
     enter_chat_room: impl Fn(u64) + 'static + Copy,
+    on_group_info_loaded: impl Fn(u64, ChatGroupInfo) + 'static + Copy,
 ) -> impl IntoView {
     view! {
         <div class="paginated-leaderboard">
@@ -2497,7 +2524,13 @@ fn PaginatedLeaderboardList(
                         each=move || paginated_groups.get().0
                         key=|entry| entry.group_id
                         children=move |entry: LeaderboardEntry| {
-                            view! { <LeaderboardCard entry=entry enter_chat_room=enter_chat_room/> }
+                            view! { 
+                                <LeaderboardCard 
+                                    entry=entry 
+                                    enter_chat_room=enter_chat_room
+                                    on_group_info_loaded=on_group_info_loaded
+                                /> 
+                            }
                         }
                     />
                 </div>
@@ -2596,7 +2629,11 @@ fn PaginatedLeaderboardList(
 }
 
 #[component]
-fn LeaderboardCard(entry: LeaderboardEntry, enter_chat_room: impl Fn(u64) + 'static + Copy) -> impl IntoView {
+fn LeaderboardCard(
+    entry: LeaderboardEntry, 
+    enter_chat_room: impl Fn(u64) + 'static + Copy,
+    on_group_info_loaded: impl Fn(u64, ChatGroupInfo) + 'static + Copy,
+) -> impl IntoView {
     // create signal to store group info
     let (group_info, set_group_info) = create_signal::<Option<ChatGroupInfo>>(None);
     let (loading_info, set_loading_info) = create_signal(true);
@@ -2610,7 +2647,9 @@ fn LeaderboardCard(entry: LeaderboardEntry, enter_chat_room: impl Fn(u64) + 'sta
         let rpc = RpcConnection::new();
         match rpc.get_chat_group_info(group_id).await {
             Ok(info) => {
-                set_group_info.set(Some(info));
+                set_group_info.set(Some(info.clone()));
+                // notify parent component that group info is loaded
+                on_group_info_loaded(group_id, info);
             },
             Err(e) => {
                 log::warn!("Failed to load group {} info: {}", group_id, e);
