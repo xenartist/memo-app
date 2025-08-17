@@ -73,6 +73,32 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         });
     });
 
+    // Function to sort leaderboard entries by burned_amount and update ranks
+    let sort_leaderboard = move |mut leaderboard: BurnLeaderboardResponse| -> BurnLeaderboardResponse {
+        log::info!("Sorting {} leaderboard entries by burned_amount", leaderboard.entries.len());
+        
+        // Sort entries by burned_amount in descending order
+        leaderboard.entries.sort_by(|a, b| b.burned_amount.cmp(&a.burned_amount));
+        
+        // Update ranks after sorting
+        for (index, entry) in leaderboard.entries.iter_mut().enumerate() {
+            entry.rank = (index + 1) as u8;
+        }
+        
+        if !leaderboard.entries.is_empty() {
+            log::info!("Top 3 groups after sorting: #1: {} ({}), #2: {} ({}), #3: {} ({})", 
+                      leaderboard.entries.get(0).map(|e| e.group_id).unwrap_or(0),
+                      leaderboard.entries.get(0).map(|e| e.burned_amount / 1_000_000).unwrap_or(0),
+                      leaderboard.entries.get(1).map(|e| e.group_id).unwrap_or(0),
+                      leaderboard.entries.get(1).map(|e| e.burned_amount / 1_000_000).unwrap_or(0),
+                      leaderboard.entries.get(2).map(|e| e.group_id).unwrap_or(0),
+                      leaderboard.entries.get(2).map(|e| e.burned_amount / 1_000_000).unwrap_or(0)
+            );
+        }
+        
+        leaderboard
+    };
+
     // Load burn leaderboard and global stats on component mount
     spawn_local(async move {
         set_loading.set(true);
@@ -88,9 +114,12 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         
         match futures::join!(leaderboard_future, global_stats_future) {
             (Ok(leaderboard), Ok(global_stats)) => {
+                // Sort leaderboard by burned_amount
+                let sorted_leaderboard = sort_leaderboard(leaderboard);
+                
                 add_log_entry("INFO", &format!("Loaded {} groups in burn leaderboard, {} total groups", 
-                             leaderboard.current_size, global_stats.total_groups));
-                set_leaderboard_data.set(Some(leaderboard));
+                             sorted_leaderboard.entries.len(), global_stats.total_groups));
+                set_leaderboard_data.set(Some(sorted_leaderboard));
                 set_total_groups.set(global_stats.total_groups);
                 set_error_message.set(None);
             },
@@ -187,13 +216,19 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
             
             match futures::join!(leaderboard_future, global_stats_future) {
                 (Ok(leaderboard), Ok(global_stats)) => {
+                    // Sort leaderboard by burned_amount
+                    let sorted_leaderboard = sort_leaderboard(leaderboard);
+                    
                     add_log_entry("INFO", &format!("Refreshed {} groups in burn leaderboard, {} total groups", 
-                                 leaderboard.current_size, global_stats.total_groups));
-                    set_leaderboard_data.set(Some(leaderboard));
+                                 sorted_leaderboard.entries.len(), global_stats.total_groups));
+                    set_leaderboard_data.set(Some(sorted_leaderboard));
                     set_total_groups.set(global_stats.total_groups);
                     set_error_message.set(None);
                     // reset to first page
                     set_current_page.set(1);
+                    
+                    // Clear previous group infos when refreshing
+                    set_leaderboard_group_infos.set(std::collections::HashMap::new());
                 },
                 (Err(e), _) | (_, Err(e)) => {
                     let error_msg = format!("Failed to refresh data: {}", e);
