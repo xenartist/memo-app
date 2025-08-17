@@ -118,9 +118,34 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                 let sorted_leaderboard = sort_leaderboard(leaderboard);
                 
                 add_log_entry("INFO", &format!("Loaded {} groups in burn leaderboard, {} total groups", 
-                             sorted_leaderboard.entries.len(), global_stats.total_groups));
+                             sorted_leaderboard.current_size, global_stats.total_groups));
+                
+                // parallel get all group infos in leaderboard
+                let mut group_info_futures = vec![];
+                for entry in &sorted_leaderboard.entries {
+                    group_info_futures.push(rpc.get_chat_group_info(entry.group_id));
+                }
+                
+                let mut all_group_infos = std::collections::HashMap::new();
+                
+                for (i, future) in group_info_futures.into_iter().enumerate() {
+                    match future.await {
+                        Ok(group_info) => {
+                            all_group_infos.insert(sorted_leaderboard.entries[i].group_id, group_info);
+                        },
+                        Err(e) => {
+                            log::warn!("Failed to get group info for group {}: {}", sorted_leaderboard.entries[i].group_id, e);
+                        }
+                    }
+                }
+                
+                let total_messages: u64 = all_group_infos.values().map(|info| info.memo_count).sum();
+                add_log_entry("INFO", &format!("Calculated total messages in leaderboard: {}", total_messages));
+                
+                // set all data
                 set_leaderboard_data.set(Some(sorted_leaderboard));
                 set_total_groups.set(global_stats.total_groups);
+                set_leaderboard_group_infos.set(all_group_infos);
                 set_error_message.set(None);
             },
             (Err(e), _) | (_, Err(e)) => {
@@ -220,15 +245,37 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                     let sorted_leaderboard = sort_leaderboard(leaderboard);
                     
                     add_log_entry("INFO", &format!("Refreshed {} groups in burn leaderboard, {} total groups", 
-                                 sorted_leaderboard.entries.len(), global_stats.total_groups));
+                                 sorted_leaderboard.current_size, global_stats.total_groups));
+                    
+                    // parallel get all group infos in leaderboard
+                    let mut group_info_futures = vec![];
+                    for entry in &sorted_leaderboard.entries {
+                        group_info_futures.push(rpc.get_chat_group_info(entry.group_id));
+                    }
+                    
+                    let mut all_group_infos = std::collections::HashMap::new();
+                    
+                    for (i, future) in group_info_futures.into_iter().enumerate() {
+                        match future.await {
+                            Ok(group_info) => {
+                                all_group_infos.insert(sorted_leaderboard.entries[i].group_id, group_info);
+                            },
+                            Err(e) => {
+                                log::warn!("Failed to get group info for group {}: {}", sorted_leaderboard.entries[i].group_id, e);
+                            }
+                        }
+                    }
+                    
+                    let total_messages: u64 = all_group_infos.values().map(|info| info.memo_count).sum();
+                    add_log_entry("INFO", &format!("Refreshed total messages in leaderboard: {}", total_messages));
+                    
+                    // set all data
                     set_leaderboard_data.set(Some(sorted_leaderboard));
                     set_total_groups.set(global_stats.total_groups);
+                    set_leaderboard_group_infos.set(all_group_infos);
                     set_error_message.set(None);
                     // reset to first page
                     set_current_page.set(1);
-                    
-                    // Clear previous group infos when refreshing
-                    set_leaderboard_group_infos.set(std::collections::HashMap::new());
                 },
                 (Err(e), _) | (_, Err(e)) => {
                     let error_msg = format!("Failed to refresh data: {}", e);
@@ -1319,7 +1366,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                             next_page=next_page
                                             prev_page=prev_page
                                             enter_chat_room=enter_chat_room
-                                            on_group_info_loaded=handle_group_info_loaded
+                                            leaderboard_group_infos=leaderboard_group_infos
                                         />
                                     </div>
                                 }
@@ -2517,7 +2564,7 @@ fn PaginatedLeaderboardList(
     next_page: impl Fn(web_sys::MouseEvent) + 'static + Copy,
     prev_page: impl Fn(web_sys::MouseEvent) + 'static + Copy,
     enter_chat_room: impl Fn(u64) + 'static + Copy,
-    on_group_info_loaded: impl Fn(u64, ChatGroupInfo) + 'static + Copy,
+    leaderboard_group_infos: ReadSignal<std::collections::HashMap<u64, ChatGroupInfo>>,
 ) -> impl IntoView {
     view! {
         <div class="paginated-leaderboard">
@@ -2559,11 +2606,15 @@ fn PaginatedLeaderboardList(
                         each=move || paginated_groups.get().0
                         key=|entry| entry.group_id
                         children=move |entry: LeaderboardEntry| {
+                            let group_id = entry.group_id;
+                            let group_infos = leaderboard_group_infos.get();
+                            let group_info = group_infos.get(&group_id).cloned();
+                            
                             view! { 
                                 <LeaderboardCard 
                                     entry=entry 
+                                    group_info=group_info
                                     enter_chat_room=enter_chat_room
-                                    on_group_info_loaded=on_group_info_loaded
                                 /> 
                             }
                         }
@@ -2666,32 +2717,15 @@ fn PaginatedLeaderboardList(
 #[component]
 fn LeaderboardCard(
     entry: LeaderboardEntry, 
+    group_info: Option<ChatGroupInfo>,
     enter_chat_room: impl Fn(u64) + 'static + Copy,
-    on_group_info_loaded: impl Fn(u64, ChatGroupInfo) + 'static + Copy,
 ) -> impl IntoView {
-    // create signal to store group info
-    let (group_info, set_group_info) = create_signal::<Option<ChatGroupInfo>>(None);
-    let (loading_info, set_loading_info) = create_signal(true);
-    
     let group_id = entry.group_id;
     let rank = entry.rank;
     let burned_amount = entry.burned_amount;
     
-    // load group info
-    spawn_local(async move {
-        let rpc = RpcConnection::new();
-        match rpc.get_chat_group_info(group_id).await {
-            Ok(info) => {
-                set_group_info.set(Some(info.clone()));
-                // notify parent component that group info is loaded
-                on_group_info_loaded(group_id, info);
-            },
-            Err(e) => {
-                log::warn!("Failed to load group {} info: {}", group_id, e);
-            }
-        }
-        set_loading_info.set(false);
-    });
+    // convert group_info to signal to avoid FnOnce problem
+    let (group_info_signal, _) = create_signal(group_info);
 
     // Handle click to enter chat group
     let handle_click = move |_| {
@@ -2707,7 +2741,7 @@ fn LeaderboardCard(
             on:click=handle_click
         >
             <Show
-                when=move || !loading_info.get()
+                when=move || group_info_signal.get().is_some()
                 fallback=|| view! {
                     <div class="loading-placeholder">
                         <div class="loading-spinner-small"></div>
@@ -2716,7 +2750,7 @@ fn LeaderboardCard(
                 }
             >
                 {move || {
-                    if let Some(info) = group_info.get() {
+                    if let Some(info) = group_info_signal.get() {
                         view! {
                             <div class="group-header">
                                 <h3 class="group-name">{info.name.clone()}</h3>
