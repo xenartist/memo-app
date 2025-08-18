@@ -24,6 +24,24 @@ enum ChatView {
     ChatRoom(u64), // group_id
 }
 
+// Chat groups display mode
+#[derive(Clone, PartialEq, Debug)]
+enum GroupsDisplayMode {
+    BurnLeaderboard,
+    Latest,
+    Oldest,
+}
+
+impl ToString for GroupsDisplayMode {
+    fn to_string(&self) -> String {
+        match self {
+            GroupsDisplayMode::BurnLeaderboard => "Burn Leaderboard".to_string(),
+            GroupsDisplayMode::Latest => "Latest".to_string(),
+            GroupsDisplayMode::Oldest => "Oldest".to_string(),
+        }
+    }
+}
+
 #[component]
 pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     // state for burn leaderboard
@@ -37,6 +55,12 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     // pagination state
     let (current_page, set_current_page) = create_signal(1usize);
     let (groups_per_page, _) = create_signal(10usize); // 10 groups per page
+    
+    // groups display mode state
+    let (display_mode, set_display_mode) = create_signal(GroupsDisplayMode::BurnLeaderboard);
+    let (latest_groups, set_latest_groups) = create_signal::<Vec<ChatGroupInfo>>(vec![]);
+    let (oldest_groups, set_oldest_groups) = create_signal::<Vec<ChatGroupInfo>>(vec![]);
+    let (mode_loading, set_mode_loading) = create_signal(false);
     
     // Chat room specific states
     let (current_group_info, set_current_group_info) = create_signal::<Option<ChatGroupInfo>>(None);
@@ -118,9 +142,34 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                 let sorted_leaderboard = sort_leaderboard(leaderboard);
                 
                 add_log_entry("INFO", &format!("Loaded {} groups in burn leaderboard, {} total groups", 
-                             sorted_leaderboard.entries.len(), global_stats.total_groups));
+                             sorted_leaderboard.current_size, global_stats.total_groups));
+                
+                // parallel get all group infos in leaderboard
+                let mut group_info_futures = vec![];
+                for entry in &sorted_leaderboard.entries {
+                    group_info_futures.push(rpc.get_chat_group_info(entry.group_id));
+                }
+                
+                let mut all_group_infos = std::collections::HashMap::new();
+                
+                for (i, future) in group_info_futures.into_iter().enumerate() {
+                    match future.await {
+                        Ok(group_info) => {
+                            all_group_infos.insert(sorted_leaderboard.entries[i].group_id, group_info);
+                        },
+                        Err(e) => {
+                            log::warn!("Failed to get group info for group {}: {}", sorted_leaderboard.entries[i].group_id, e);
+                        }
+                    }
+                }
+                
+                let total_messages: u64 = all_group_infos.values().map(|info| info.memo_count).sum();
+                add_log_entry("INFO", &format!("Calculated total messages in leaderboard: {}", total_messages));
+                
+                // set all data
                 set_leaderboard_data.set(Some(sorted_leaderboard));
                 set_total_groups.set(global_stats.total_groups);
+                set_leaderboard_group_infos.set(all_group_infos);
                 set_error_message.set(None);
             },
             (Err(e), _) | (_, Err(e)) => {
@@ -220,15 +269,37 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                     let sorted_leaderboard = sort_leaderboard(leaderboard);
                     
                     add_log_entry("INFO", &format!("Refreshed {} groups in burn leaderboard, {} total groups", 
-                                 sorted_leaderboard.entries.len(), global_stats.total_groups));
+                                 sorted_leaderboard.current_size, global_stats.total_groups));
+                    
+                    // parallel get all group infos in leaderboard
+                    let mut group_info_futures = vec![];
+                    for entry in &sorted_leaderboard.entries {
+                        group_info_futures.push(rpc.get_chat_group_info(entry.group_id));
+                    }
+                    
+                    let mut all_group_infos = std::collections::HashMap::new();
+                    
+                    for (i, future) in group_info_futures.into_iter().enumerate() {
+                        match future.await {
+                            Ok(group_info) => {
+                                all_group_infos.insert(sorted_leaderboard.entries[i].group_id, group_info);
+                            },
+                            Err(e) => {
+                                log::warn!("Failed to get group info for group {}: {}", sorted_leaderboard.entries[i].group_id, e);
+                            }
+                        }
+                    }
+                    
+                    let total_messages: u64 = all_group_infos.values().map(|info| info.memo_count).sum();
+                    add_log_entry("INFO", &format!("Refreshed total messages in leaderboard: {}", total_messages));
+                    
+                    // set all data
                     set_leaderboard_data.set(Some(sorted_leaderboard));
                     set_total_groups.set(global_stats.total_groups);
+                    set_leaderboard_group_infos.set(all_group_infos);
                     set_error_message.set(None);
                     // reset to first page
                     set_current_page.set(1);
-                    
-                    // Clear previous group infos when refreshing
-                    set_leaderboard_group_infos.set(std::collections::HashMap::new());
                 },
                 (Err(e), _) | (_, Err(e)) => {
                     let error_msg = format!("Failed to refresh data: {}", e);
@@ -945,21 +1016,127 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         }
     });
 
+    // Function to load groups by mode
+    let load_groups_by_mode = move |mode: GroupsDisplayMode, page: usize| {
+        spawn_local(async move {
+            set_mode_loading.set(true);
+            set_error_message.set(None);
+            
+            let rpc = RpcConnection::new();
+            let per_page = groups_per_page.get();
+            
+            match mode {
+                GroupsDisplayMode::Latest => {
+                    // Get total groups count first
+                    match rpc.get_chat_global_statistics().await {
+                        Ok(global_stats) => {
+                            let total_groups = global_stats.total_groups;
+                            if total_groups == 0 {
+                                set_latest_groups.set(vec![]);
+                                set_mode_loading.set(false);
+                                return;
+                            }
+                            
+                            // Calculate range for latest groups (reverse order)
+                            let start_idx = (page - 1) * per_page;
+                            let start_id = if total_groups > start_idx as u64 {
+                                total_groups - 1 - start_idx as u64
+                            } else {
+                                set_latest_groups.set(vec![]);
+                                set_mode_loading.set(false);
+                                return;
+                            };
+                            
+                            let end_id = if start_id >= per_page as u64 {
+                                start_id - per_page as u64 + 1
+                            } else {
+                                0
+                            };
+                            
+                            // Get groups in range
+                            let mut group_ids: Vec<u64> = (end_id..=start_id).collect();
+                            group_ids.reverse(); // Latest first
+                            
+                            let mut groups = vec![];
+                            for group_id in group_ids {
+                                match rpc.get_chat_group_info(group_id).await {
+                                    Ok(group_info) => groups.push(group_info),
+                                    Err(_) => {} // Skip non-existent groups
+                                }
+                            }
+                            
+                            add_log_entry("INFO", &format!("Loaded {} latest groups for page {}", groups.len(), page));
+                            set_latest_groups.set(groups);
+                        },
+                        Err(e) => {
+                            add_log_entry("ERROR", &format!("Failed to load latest groups: {}", e));
+                            set_error_message.set(Some(format!("Failed to load latest groups: {}", e)));
+                        }
+                    }
+                },
+                GroupsDisplayMode::Oldest => {
+                    // Calculate range for oldest groups
+                    let start_idx = (page - 1) * per_page;
+                    let start_id = start_idx as u64;
+                    let end_id = start_id + per_page as u64;
+                    
+                    match rpc.get_chat_groups_range(start_id, end_id).await {
+                        Ok(groups) => {
+                            add_log_entry("INFO", &format!("Loaded {} oldest groups for page {}", groups.len(), page));
+                            set_oldest_groups.set(groups);
+                        },
+                        Err(e) => {
+                            add_log_entry("ERROR", &format!("Failed to load oldest groups: {}", e));
+                            set_error_message.set(Some(format!("Failed to load oldest groups: {}", e)));
+                        }
+                    }
+                },
+                GroupsDisplayMode::BurnLeaderboard => {
+                    // Do nothing, handled by existing logic
+                }
+            }
+            
+            set_mode_loading.set(false);
+        });
+    };
+
     // pagination navigation function
     let go_to_page = move |page: usize| {
         set_current_page.set(page);
     };
 
     let next_page = move |_| {
-        let (_, total_pages, _) = get_paginated_groups.get();
-        if current_page.get() < total_pages {
-            set_current_page.set(current_page.get() + 1);
+        let current_mode = display_mode.get();
+        let new_page = current_page.get() + 1;
+        
+        match current_mode {
+            GroupsDisplayMode::BurnLeaderboard => {
+                let (_, total_pages, _) = get_paginated_groups.get();
+                if current_page.get() < total_pages {
+                    set_current_page.set(new_page);
+                }
+            },
+            GroupsDisplayMode::Latest | GroupsDisplayMode::Oldest => {
+                set_current_page.set(new_page);
+                load_groups_by_mode(current_mode, new_page);
+            }
         }
     };
 
     let prev_page = move |_| {
         if current_page.get() > 1 {
-            set_current_page.set(current_page.get() - 1);
+            let current_mode = display_mode.get();
+            let new_page = current_page.get() - 1;
+            set_current_page.set(new_page);
+            
+            match current_mode {
+                GroupsDisplayMode::Latest | GroupsDisplayMode::Oldest => {
+                    load_groups_by_mode(current_mode, new_page);
+                },
+                GroupsDisplayMode::BurnLeaderboard => {
+                    // Handled by existing memo logic
+                }
+            }
         }
     };
 
@@ -974,6 +1151,21 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         set_leaderboard_group_infos.update(|infos| {
             infos.insert(group_id, group_info);
         });
+    };
+
+    // Handle display mode change
+    let handle_mode_change = move |new_mode: GroupsDisplayMode| {
+        set_display_mode.set(new_mode.clone());
+        set_current_page.set(1); // Reset to first page
+        
+        match new_mode {
+            GroupsDisplayMode::Latest | GroupsDisplayMode::Oldest => {
+                load_groups_by_mode(new_mode, 1);
+            },
+            GroupsDisplayMode::BurnLeaderboard => {
+                // Do nothing, use existing leaderboard data
+            }
+        }
     };
 
     view! {
@@ -1282,6 +1474,29 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                 {move || if loading.get() { "Loading..." } else { "Refresh" }}
                             </button>
                         </div>
+                        // <div class="display-mode-selector">
+                        //     <label for="display-mode">
+                        //         <i class="fas fa-filter"></i>
+                        //         "Display Mode:"
+                        //     </label>
+                        //     <select 
+                        //         id="display-mode"
+                        //         prop:value=move || display_mode.get().to_string()
+                        //         on:change=move |ev| {
+                        //             let value = event_target_value(&ev);
+                        //             let new_mode = match value.as_str() {
+                        //                 "Latest" => GroupsDisplayMode::Latest,
+                        //                 "Oldest" => GroupsDisplayMode::Oldest,
+                        //                 _ => GroupsDisplayMode::BurnLeaderboard,
+                        //             };
+                        //             handle_mode_change(new_mode);
+                        //         }
+                        //     >
+                        //         <option value="Burn Leaderboard">"Burn Leaderboard"</option>
+                        //         <option value="Latest">"Latest"</option>
+                        //         <option value="Oldest">"Oldest"</option>
+                        //     </select>
+                        // </div>
                     </div>
 
                     <Show
@@ -1312,14 +1527,55 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                             total_groups=total_groups.get()
                                             leaderboard_total_messages=leaderboard_total_messages
                                         />
+                                        <div class="display-mode-selector">
+                                            <label for="display-mode">
+                                                <i class="fas fa-filter"></i>
+                                                "Display Mode:"
+                                            </label>
+                                            <select 
+                                                id="display-mode"
+                                                on:change=move |ev| {
+                                                    let value = event_target_value(&ev);
+                                                    let new_mode = match value.as_str() {
+                                                        "Latest" => GroupsDisplayMode::Latest,
+                                                        "Oldest" => GroupsDisplayMode::Oldest,
+                                                        _ => GroupsDisplayMode::BurnLeaderboard,
+                                                    };
+                                                    handle_mode_change(new_mode);
+                                                }
+                                            >
+                                                <option 
+                                                    value="Burn Leaderboard"
+                                                    prop:selected=move || display_mode.get() == GroupsDisplayMode::BurnLeaderboard
+                                                >
+                                                    "Burn Leaderboard"
+                                                </option>
+                                                <option 
+                                                    value="Latest"
+                                                    prop:selected=move || display_mode.get() == GroupsDisplayMode::Latest
+                                                >
+                                                    "Latest"
+                                                </option>
+                                                <option 
+                                                    value="Oldest"
+                                                    prop:selected=move || display_mode.get() == GroupsDisplayMode::Oldest
+                                                >
+                                                    "Oldest"
+                                                </option>
+                                            </select>
+                                        </div>
                                         <PaginatedLeaderboardList 
+                                            display_mode=display_mode
                                             paginated_groups=get_paginated_groups
+                                            latest_groups=latest_groups
+                                            oldest_groups=oldest_groups
                                             current_page=current_page
+                                            mode_loading=mode_loading
                                             go_to_page=go_to_page
                                             next_page=next_page
                                             prev_page=prev_page
                                             enter_chat_room=enter_chat_room
-                                            on_group_info_loaded=handle_group_info_loaded
+                                            leaderboard_group_infos=leaderboard_group_infos
                                         />
                                     </div>
                                 }
@@ -2511,154 +2767,307 @@ fn LeaderboardOverviewStats(leaderboard: BurnLeaderboardResponse, total_groups: 
 
 #[component]
 fn PaginatedLeaderboardList(
+    display_mode: ReadSignal<GroupsDisplayMode>,
     paginated_groups: Memo<(Vec<LeaderboardEntry>, usize, usize)>,
+    latest_groups: ReadSignal<Vec<ChatGroupInfo>>,
+    oldest_groups: ReadSignal<Vec<ChatGroupInfo>>,
     current_page: ReadSignal<usize>,
+    mode_loading: ReadSignal<bool>,
     go_to_page: impl Fn(usize) + 'static + Copy,
     next_page: impl Fn(web_sys::MouseEvent) + 'static + Copy,
     prev_page: impl Fn(web_sys::MouseEvent) + 'static + Copy,
     enter_chat_room: impl Fn(u64) + 'static + Copy,
-    on_group_info_loaded: impl Fn(u64, ChatGroupInfo) + 'static + Copy,
+    leaderboard_group_infos: ReadSignal<std::collections::HashMap<u64, ChatGroupInfo>>,
 ) -> impl IntoView {
     view! {
         <div class="paginated-leaderboard">
-            <h2>"Chat Groups Ranking"</h2>
-            
-            // pagination info
-            <div class="pagination-info">
-                {move || {
-                    let (entries, total_pages, total_groups) = paginated_groups.get();
-                    let page = current_page.get();
-                    let start_rank = if entries.is_empty() { 0 } else { (page - 1) * 10 + 1 };
-                    let end_rank = if entries.is_empty() { 0 } else { (page - 1) * 10 + entries.len() };
-                    
-                    view! {
-                        <p>
-                            "Showing rank " {start_rank} " - " {end_rank} 
-                            " of " {total_groups} " groups"
-                            {if total_pages > 1 {
-                                format!(" (Page {} of {})", page, total_pages)
-                            } else {
-                                String::new()
-                            }}
-                        </p>
-                    }
-                }}
-            </div>
-            
-            <Show
-                when=move || !paginated_groups.get().0.is_empty()
-                fallback=|| view! {
-                    <div class="empty-state">
-                        <i class="fas fa-trophy"></i>
-                        <p>"No groups in burn leaderboard yet"</p>
-                    </div>
-                }
-            >
-                <div class="leaderboard-grid">
-                    <For
-                        each=move || paginated_groups.get().0
-                        key=|entry| entry.group_id
-                        children=move |entry: LeaderboardEntry| {
-                            view! { 
-                                <LeaderboardCard 
-                                    entry=entry 
-                                    enter_chat_room=enter_chat_room
-                                    on_group_info_loaded=on_group_info_loaded
-                                /> 
-                            }
-                        }
-                    />
-                </div>
-                
-                // pagination controls
-                {move || {
-                    let (_, total_pages, _) = paginated_groups.get();
-                    let page = current_page.get();
-                    
-                    if total_pages > 1 {
+            {move || {
+                match display_mode.get() {
+                    GroupsDisplayMode::BurnLeaderboard => {
                         view! {
-                            <div class="pagination-controls">
-                                <button 
-                                    class="pagination-btn"
-                                    disabled=move || page <= 1
-                                    on:click=prev_page
-                                >
-                                    <i class="fas fa-chevron-left"></i>
-                                    "Previous"
-                                </button>
-                                
-                                <div class="page-numbers">
-                                    {move || {
-                                        let current = current_page.get();
-                                        let total = total_pages;
-                                        let mut pages_to_show = vec![];
-                                        
-                                        // show page numbers
-                                        if total <= 7 {
-                                            // total pages less than or equal to 7, show all pages
-                                            for i in 1..=total {
-                                                pages_to_show.push(i);
-                                            }
-                                        } else {
-                                            // total pages greater than 7, show partial pages
-                                            if current <= 4 {
-                                                for i in 1..=5 {
-                                                    pages_to_show.push(i);
-                                                }
-                                                pages_to_show.push(0); // 0 means "..."
-                                                pages_to_show.push(total);
-                                            } else if current >= total - 3 {
-                                                pages_to_show.push(1);
-                                                pages_to_show.push(0); // 0 means "..."
-                                                for i in (total-4)..=total {
-                                                    pages_to_show.push(i);
-                                                }
+                            <h2>"Chat Groups Ranking"</h2>
+                            
+                            // pagination info for burn leaderboard
+                            <div class="pagination-info">
+                                {move || {
+                                    let (entries, total_pages, total_groups) = paginated_groups.get();
+                                    let page = current_page.get();
+                                    let start_rank = if entries.is_empty() { 0 } else { (page - 1) * 10 + 1 };
+                                    let end_rank = if entries.is_empty() { 0 } else { (page - 1) * 10 + entries.len() };
+                                    
+                                    view! {
+                                        <p>
+                                            "Showing rank " {start_rank} " - " {end_rank} 
+                                            " of " {total_groups} " groups"
+                                            {if total_pages > 1 {
+                                                format!(" (Page {} of {})", page, total_pages)
                                             } else {
-                                                pages_to_show.push(1);
-                                                pages_to_show.push(0); // 0 means "..."
-                                                for i in (current-1)..=(current+1) {
-                                                    pages_to_show.push(i);
-                                                }
-                                                pages_to_show.push(0); // 0 means "..."
-                                                pages_to_show.push(total);
+                                                String::new()
+                                            }}
+                                        </p>
+                                    }
+                                }}
+                            </div>
+                            
+                            <Show
+                                when=move || !paginated_groups.get().0.is_empty()
+                                fallback=|| view! {
+                                    <div class="empty-state">
+                                        <i class="fas fa-trophy"></i>
+                                        <p>"No groups in burn leaderboard yet"</p>
+                                    </div>
+                                }
+                            >
+                                <div class="leaderboard-grid">
+                                    <For
+                                        each=move || paginated_groups.get().0
+                                        key=|entry| entry.group_id
+                                        children=move |entry: LeaderboardEntry| {
+                                            let group_id = entry.group_id;
+                                            let group_infos = leaderboard_group_infos.get();
+                                            let group_info = group_infos.get(&group_id).cloned();
+                                            
+                                            view! { 
+                                                <LeaderboardCard 
+                                                    entry=entry 
+                                                    group_info=group_info
+                                                    enter_chat_room=enter_chat_room
+                                                /> 
                                             }
                                         }
-                                        
-                                        pages_to_show.into_iter().map(|page_num| {
-                                            if page_num == 0 {
-                                                view! {
-                                                    <span class="pagination-ellipsis">"..."</span>
-                                                }.into_view()
-                                            } else {
-                                                view! {
-                                                    <button 
-                                                        class="page-number"
-                                                        class:active=move || current == page_num
-                                                        on:click=move |_| go_to_page(page_num)
-                                                    >
-                                                        {page_num}
-                                                    </button>
-                                                }.into_view()
-                                            }
-                                        }).collect::<Vec<_>>()
-                                    }}
+                                    />
                                 </div>
                                 
-                                <button 
-                                    class="pagination-btn"
-                                    disabled=move || page >= total_pages
-                                    on:click=next_page
-                                >
-                                    "Next"
-                                    <i class="fas fa-chevron-right"></i>
-                                </button>
-                            </div>
+                                // pagination controls for burn leaderboard
+                                {move || {
+                                    let (_, total_pages, _) = paginated_groups.get();
+                                    let page = current_page.get();
+                                    
+                                    if total_pages > 1 {
+                                        view! {
+                                            <div class="pagination-controls">
+                                                <button 
+                                                    class="pagination-btn"
+                                                    disabled=move || page <= 1
+                                                    on:click=prev_page
+                                                >
+                                                    <i class="fas fa-chevron-left"></i>
+                                                    "Previous"
+                                                </button>
+                                                
+                                                <div class="page-numbers">
+                                                    {move || {
+                                                        let current = current_page.get();
+                                                        let total = total_pages;
+                                                        let mut pages_to_show = vec![];
+                                                        
+                                                        if total <= 7 {
+                                                            for i in 1..=total {
+                                                                pages_to_show.push(i);
+                                                            }
+                                                        } else {
+                                                            if current <= 4 {
+                                                                for i in 1..=5 {
+                                                                    pages_to_show.push(i);
+                                                                }
+                                                                pages_to_show.push(0);
+                                                                pages_to_show.push(total);
+                                                            } else if current >= total - 3 {
+                                                                pages_to_show.push(1);
+                                                                pages_to_show.push(0);
+                                                                for i in (total-4)..=total {
+                                                                    pages_to_show.push(i);
+                                                                }
+                                                            } else {
+                                                                pages_to_show.push(1);
+                                                                pages_to_show.push(0);
+                                                                for i in (current-1)..=(current+1) {
+                                                                    pages_to_show.push(i);
+                                                                }
+                                                                pages_to_show.push(0);
+                                                                pages_to_show.push(total);
+                                                            }
+                                                        }
+                                                        
+                                                        pages_to_show.into_iter().map(|page_num| {
+                                                            if page_num == 0 {
+                                                                view! {
+                                                                    <span class="pagination-ellipsis">"..."</span>
+                                                                }.into_view()
+                                                            } else {
+                                                                view! {
+                                                                    <button 
+                                                                        class="page-number"
+                                                                        class:active=move || current == page_num
+                                                                        on:click=move |_| go_to_page(page_num)
+                                                                    >
+                                                                        {page_num}
+                                                                    </button>
+                                                                }.into_view()
+                                                            }
+                                                        }).collect::<Vec<_>>()
+                                                    }}
+                                                </div>
+                                                
+                                                <button 
+                                                    class="pagination-btn"
+                                                    disabled=move || page >= total_pages
+                                                    on:click=next_page
+                                                >
+                                                    "Next"
+                                                    <i class="fas fa-chevron-right"></i>
+                                                </button>
+                                            </div>
+                                        }.into_view()
+                                    } else {
+                                        view! { <div></div> }.into_view()
+                                    }
+                                }}
+                            </Show>
                         }.into_view()
-                    } else {
-                        view! { <div></div> }.into_view()
+                    },
+                    GroupsDisplayMode::Latest => {
+                        view! {
+                            <h2>"Latest Chat Groups"</h2>
+                            
+                            <div class="pagination-info">
+                                <p>
+                                    "Page " {move || current_page.get()} " - Latest groups"
+                                </p>
+                            </div>
+                            
+                            <Show
+                                when=move || !mode_loading.get()
+                                fallback=|| view! {
+                                    <div class="loading-container">
+                                        <div class="loading-spinner"></div>
+                                        <p>"Loading latest groups..."</p>
+                                    </div>
+                                }
+                            >
+                                <Show
+                                    when=move || !latest_groups.get().is_empty()
+                                    fallback=|| view! {
+                                        <div class="empty-state">
+                                            <i class="fas fa-clock"></i>
+                                            <p>"No groups found"</p>
+                                        </div>
+                                    }
+                                >
+                                    <div class="groups-grid">
+                                        <For
+                                            each=move || latest_groups.get()
+                                            key=|group| group.group_id
+                                            children=move |group: ChatGroupInfo| {
+                                                view! { 
+                                                    <GroupCard 
+                                                        group=group 
+                                                        enter_chat_room=enter_chat_room
+                                                    /> 
+                                                }
+                                            }
+                                        />
+                                    </div>
+                                    
+                                    <div class="pagination-controls">
+                                        <button 
+                                            class="pagination-btn"
+                                            disabled=move || current_page.get() <= 1
+                                            on:click=prev_page
+                                        >
+                                            <i class="fas fa-chevron-left"></i>
+                                            "Previous"
+                                        </button>
+                                        
+                                        <span class="page-info">
+                                            "Page " {move || current_page.get()}
+                                        </span>
+                                        
+                                        <button 
+                                            class="pagination-btn"
+                                            disabled=move || latest_groups.get().len() < 10
+                                            on:click=next_page
+                                        >
+                                            "Next"
+                                            <i class="fas fa-chevron-right"></i>
+                                        </button>
+                                    </div>
+                                </Show>
+                            </Show>
+                        }.into_view()
+                    },
+                    GroupsDisplayMode::Oldest => {
+                        view! {
+                            <h2>"Oldest Chat Groups"</h2>
+                            
+                            <div class="pagination-info">
+                                <p>
+                                    "Page " {move || current_page.get()} " - Oldest groups"
+                                </p>
+                            </div>
+                            
+                            <Show
+                                when=move || !mode_loading.get()
+                                fallback=|| view! {
+                                    <div class="loading-container">
+                                        <div class="loading-spinner"></div>
+                                        <p>"Loading oldest groups..."</p>
+                                    </div>
+                                }
+                            >
+                                <Show
+                                    when=move || !oldest_groups.get().is_empty()
+                                    fallback=|| view! {
+                                        <div class="empty-state">
+                                            <i class="fas fa-history"></i>
+                                            <p>"No groups found"</p>
+                                        </div>
+                                    }
+                                >
+                                    <div class="groups-grid">
+                                        <For
+                                            each=move || oldest_groups.get()
+                                            key=|group| group.group_id
+                                            children=move |group: ChatGroupInfo| {
+                                                view! { 
+                                                    <GroupCard 
+                                                        group=group 
+                                                        enter_chat_room=enter_chat_room
+                                                    /> 
+                                                }
+                                            }
+                                        />
+                                    </div>
+                                    
+                                    <div class="pagination-controls">
+                                        <button 
+                                            class="pagination-btn"
+                                            disabled=move || current_page.get() <= 1
+                                            on:click=prev_page
+                                        >
+                                            <i class="fas fa-chevron-left"></i>
+                                            "Previous"
+                                        </button>
+                                        
+                                        <span class="page-info">
+                                            "Page " {move || current_page.get()}
+                                        </span>
+                                        
+                                        <button 
+                                            class="pagination-btn"
+                                            disabled=move || oldest_groups.get().len() < 10
+                                            on:click=next_page
+                                        >
+                                            "Next"
+                                            <i class="fas fa-chevron-right"></i>
+                                        </button>
+                                    </div>
+                                </Show>
+                            </Show>
+                        }.into_view()
                     }
-                }}
-            </Show>
+                }
+            }}
         </div>
     }
 }
@@ -2666,32 +3075,15 @@ fn PaginatedLeaderboardList(
 #[component]
 fn LeaderboardCard(
     entry: LeaderboardEntry, 
+    group_info: Option<ChatGroupInfo>,
     enter_chat_room: impl Fn(u64) + 'static + Copy,
-    on_group_info_loaded: impl Fn(u64, ChatGroupInfo) + 'static + Copy,
 ) -> impl IntoView {
-    // create signal to store group info
-    let (group_info, set_group_info) = create_signal::<Option<ChatGroupInfo>>(None);
-    let (loading_info, set_loading_info) = create_signal(true);
-    
     let group_id = entry.group_id;
     let rank = entry.rank;
     let burned_amount = entry.burned_amount;
     
-    // load group info
-    spawn_local(async move {
-        let rpc = RpcConnection::new();
-        match rpc.get_chat_group_info(group_id).await {
-            Ok(info) => {
-                set_group_info.set(Some(info.clone()));
-                // notify parent component that group info is loaded
-                on_group_info_loaded(group_id, info);
-            },
-            Err(e) => {
-                log::warn!("Failed to load group {} info: {}", group_id, e);
-            }
-        }
-        set_loading_info.set(false);
-    });
+    // convert group_info to signal to avoid FnOnce problem
+    let (group_info_signal, _) = create_signal(group_info);
 
     // Handle click to enter chat group
     let handle_click = move |_| {
@@ -2707,7 +3099,7 @@ fn LeaderboardCard(
             on:click=handle_click
         >
             <Show
-                when=move || !loading_info.get()
+                when=move || group_info_signal.get().is_some()
                 fallback=|| view! {
                     <div class="loading-placeholder">
                         <div class="loading-spinner-small"></div>
@@ -2716,7 +3108,7 @@ fn LeaderboardCard(
                 }
             >
                 {move || {
-                    if let Some(info) = group_info.get() {
+                    if let Some(info) = group_info_signal.get() {
                         view! {
                             <div class="group-header">
                                 <h3 class="group-name">{info.name.clone()}</h3>
