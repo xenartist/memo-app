@@ -1445,10 +1445,6 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                 // Groups List View
                 <div class="groups-list-container">
                     <div class="page-header">
-                        <h1><i class="fas fa-comments"></i>"Chat & Earn"</h1>
-                        <p class="page-description">
-                            "Decentralized Messaging on X1 Blockchain"
-                        </p>
                         <div class="header-buttons">
                             <button 
                                 class="create-group-button"
@@ -1474,29 +1470,6 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                 {move || if loading.get() { "Loading..." } else { "Refresh" }}
                             </button>
                         </div>
-                        // <div class="display-mode-selector">
-                        //     <label for="display-mode">
-                        //         <i class="fas fa-filter"></i>
-                        //         "Display Mode:"
-                        //     </label>
-                        //     <select 
-                        //         id="display-mode"
-                        //         prop:value=move || display_mode.get().to_string()
-                        //         on:change=move |ev| {
-                        //             let value = event_target_value(&ev);
-                        //             let new_mode = match value.as_str() {
-                        //                 "Latest" => GroupsDisplayMode::Latest,
-                        //                 "Oldest" => GroupsDisplayMode::Oldest,
-                        //                 _ => GroupsDisplayMode::BurnLeaderboard,
-                        //             };
-                        //             handle_mode_change(new_mode);
-                        //         }
-                        //     >
-                        //         <option value="Burn Leaderboard">"Burn Leaderboard"</option>
-                        //         <option value="Latest">"Latest"</option>
-                        //         <option value="Oldest">"Oldest"</option>
-                        //     </select>
-                        // </div>
                     </div>
 
                     <Show
