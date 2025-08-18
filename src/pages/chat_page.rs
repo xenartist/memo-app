@@ -1534,7 +1534,6 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                             </label>
                                             <select 
                                                 id="display-mode"
-                                                prop:value=move || display_mode.get().to_string()
                                                 on:change=move |ev| {
                                                     let value = event_target_value(&ev);
                                                     let new_mode = match value.as_str() {
@@ -1545,9 +1544,24 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                                     handle_mode_change(new_mode);
                                                 }
                                             >
-                                                <option value="Burn Leaderboard">"Burn Leaderboard"</option>
-                                                <option value="Latest">"Latest"</option>
-                                                <option value="Oldest">"Oldest"</option>
+                                                <option 
+                                                    value="Burn Leaderboard"
+                                                    prop:selected=move || display_mode.get() == GroupsDisplayMode::BurnLeaderboard
+                                                >
+                                                    "Burn Leaderboard"
+                                                </option>
+                                                <option 
+                                                    value="Latest"
+                                                    prop:selected=move || display_mode.get() == GroupsDisplayMode::Latest
+                                                >
+                                                    "Latest"
+                                                </option>
+                                                <option 
+                                                    value="Oldest"
+                                                    prop:selected=move || display_mode.get() == GroupsDisplayMode::Oldest
+                                                >
+                                                    "Oldest"
+                                                </option>
                                             </select>
                                         </div>
                                         <PaginatedLeaderboardList 
