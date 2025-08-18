@@ -2093,3 +2093,28 @@ pub struct BurnLeaderboardResponse {
     pub entries: Vec<LeaderboardEntry>,
     pub total_burned_tokens: u64, // total burned amount of all leaderboard entries
 }
+
+// Chat page view mode
+#[derive(Clone, PartialEq)]
+enum ChatView {
+    GroupsList,
+    ChatRoom(u64), // group_id
+}
+
+// Chat groups display mode
+#[derive(Clone, PartialEq, Debug)]
+enum GroupsDisplayMode {
+    BurnLeaderboard,
+    Latest,
+    Oldest,
+}
+
+impl ToString for GroupsDisplayMode {
+    fn to_string(&self) -> String {
+        match self {
+            GroupsDisplayMode::BurnLeaderboard => "Burn Leaderboard".to_string(),
+            GroupsDisplayMode::Latest => "Latest".to_string(),
+            GroupsDisplayMode::Oldest => "Oldest".to_string(),
+        }
+    }
+}
