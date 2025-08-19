@@ -1168,6 +1168,37 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         }
     };
 
+    // Function to auto-resize textarea based on target element
+    let auto_resize_textarea = move |target: web_sys::EventTarget| {
+        if let Ok(textarea) = target.dyn_into::<web_sys::HtmlTextAreaElement>() {
+            // Reset height to auto to get proper scrollHeight
+            textarea.style().set_property("height", "auto").unwrap_or_default();
+            
+            // Calculate new height based on scrollHeight
+            let scroll_height = textarea.scroll_height();
+            let max_height = 200; // Maximum height in pixels
+            let min_height = 50;  // Minimum height in pixels
+            
+            let new_height = if scroll_height > max_height {
+                max_height
+            } else if scroll_height < min_height {
+                min_height
+            } else {
+                scroll_height
+            };
+            
+            // Set the new height
+            textarea.style().set_property("height", &format!("{}px", new_height)).unwrap_or_default();
+            
+            // If content exceeds max height, enable scrolling
+            if scroll_height > max_height {
+                textarea.style().set_property("overflow-y", "auto").unwrap_or_default();
+            } else {
+                textarea.style().set_property("overflow-y", "hidden").unwrap_or_default();
+            }
+        }
+    };
+
     view! {
         <div class="chat-page">
             <Show
@@ -1365,6 +1396,8 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                                         prop:value=move || message_input.get()
                                                         on:input=move |ev| {
                                                             set_message_input.set(event_target_value(&ev));
+                                                            // Auto-resize after setting value
+                                                            auto_resize_textarea(event_target(&ev));
                                                         }
                                                         on:keypress=handle_key_press
                                                         disabled=move || sending.get() || session.with(|s| s.get_sol_balance()) < 0.005
@@ -1387,6 +1420,8 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                                 prop:value=move || burn_message.get()
                                                 on:input=move |ev| {
                                                     set_burn_message.set(event_target_value(&ev));
+                                                    // Auto-resize after setting value
+                                                    auto_resize_textarea(event_target(&ev));
                                                 }
                                                 disabled=move || burning.get() || session.with(|s| s.get_sol_balance()) < 0.005
                                             ></textarea>
