@@ -3,6 +3,7 @@ use std::time::{Duration, SystemTime};
 use crate::core::encrypt;
 use crate::core::rpc_base::{RpcConnection, RpcError};
 use crate::core::rpc_mint::MintConfig;
+use crate::core::rpc_profile::{UserProfile, parse_user_profile_new};
 use web_sys::js_sys::Date;
 use secrecy::{Secret, ExposeSecret};
 use zeroize::Zeroize;
@@ -13,17 +14,6 @@ use base64;
 use std::fmt;
 use log;
 
-#[derive(Clone, Debug)]
-pub struct UserProfile {
-    pub pubkey: String,           // pubkey
-    pub total_minted: u64,        // total minted
-    pub total_burned: u64,        // total burned
-    pub mint_count: u64,          // mint count
-    pub burn_count: u64,          // burn count
-    pub created_at: i64,          // created at
-    pub last_updated: i64,        // last updated
-}
-
 #[derive(Debug, Clone)]
 pub enum SessionError {
     Encryption(String),
@@ -31,6 +21,7 @@ pub enum SessionError {
     InvalidPassword,
     NotInitialized,
     InvalidData(String),
+    ProfileError(String),
 }
 
 impl fmt::Display for SessionError {
@@ -41,6 +32,7 @@ impl fmt::Display for SessionError {
             SessionError::InvalidPassword => write!(f, "Invalid password"),
             SessionError::NotInitialized => write!(f, "Session not initialized"),
             SessionError::InvalidData(msg) => write!(f, "Invalid data: {}", msg),
+            SessionError::ProfileError(msg) => write!(f, "Profile error: {}", msg),
         }
     }
 }
@@ -153,13 +145,13 @@ impl Session {
             return Err(SessionError::Expired);
         }
 
-        let session_key = self.session_key.as_ref()
-            .ok_or(SessionError::NotInitialized)?;
-        let encrypted_seed = self.encrypted_seed.as_ref()
-            .ok_or(SessionError::NotInitialized)?;
-
-        encrypt::decrypt(encrypted_seed, session_key.expose_secret())
-            .map_err(|e| SessionError::Encryption(e.to_string()))
+        match (&self.encrypted_seed, &self.session_key) {
+            (Some(encrypted_seed), Some(session_key)) => {
+                encrypt::decrypt(encrypted_seed, session_key.expose_secret())
+                    .map_err(|e| SessionError::Encryption(e.to_string()))
+            },
+            _ => Err(SessionError::NotInitialized),
+        }
     }
 
     // check if operation needs additional password confirmation
@@ -182,12 +174,15 @@ impl Session {
 
     // clear session data
     pub fn clear(&mut self) {
-        if let Some(encrypted_seed) = self.encrypted_seed.as_mut() {
-            encrypted_seed.zeroize();
-        }
+        // clear sensitive data
+        self.session_key = None; // Secret will be dropped automatically
         self.encrypted_seed = None;
-        self.session_key = None;
         self.cached_pubkey = None;
+        self.user_profile = None;
+        self.sol_balance = 0.0;
+        self.token_balance = 0.0;
+        self.balance_update_needed = false;
+        self.ui_locked = false;
     }
 
     // update config
@@ -195,13 +190,16 @@ impl Session {
         self.config = config;
     }
 
+    // get public key
     pub fn get_public_key(&self) -> Result<String, SessionError> {
         if self.is_expired() {
             return Err(SessionError::Expired);
         }
 
-        self.cached_pubkey.clone()
-            .ok_or(SessionError::NotInitialized)
+        match &self.cached_pubkey {
+            Some(pubkey) => Ok(pubkey.clone()),
+            None => Err(SessionError::NotInitialized),
+        }
     }
 
     // lock UI
@@ -265,7 +263,7 @@ impl Session {
         Ok(())
     }
 
-    // fetch and cache user profile
+    // fetch and cache user profile (updated for new profile system)
     pub async fn fetch_and_cache_user_profile(&mut self) -> Result<Option<UserProfile>, SessionError> {
         if self.is_expired() {
             return Err(SessionError::Expired);
@@ -274,46 +272,101 @@ impl Session {
         let pubkey = self.get_public_key()?;
         let rpc = RpcConnection::new();
 
-        match rpc.get_user_profile(&pubkey).await {
-            Ok(account_data) => {
-                // check if account exists
-                let account_info: serde_json::Value = serde_json::from_str(&account_data)
-                    .map_err(|e| SessionError::InvalidData(format!("Failed to parse account data: {}", e)))?;
-
-                if account_info["value"].is_null() {
-                    // account not exists
-                    log::info!("User profile not found for pubkey: {}", pubkey);
-                    self.user_profile = None;
-                    Ok(None)
-                } else {
-                    // parse user profile
-                    match parse_user_profile(&account_data) {
-                        Ok(profile) => {
-                            log::info!("Successfully fetched and cached user profile");
-                            self.user_profile = Some(profile.clone());
-                            Ok(Some(profile))
-                        },
-                        Err(e) => {
-                            log::error!("Failed to parse user profile: {}", e);
-                            Err(e)
-                        }
-                    }
-                }
+        match rpc.get_profile(&pubkey).await {
+            Ok(Some(profile)) => {
+                log::info!("Successfully fetched and cached user profile");
+                self.user_profile = Some(profile.clone());
+                Ok(Some(profile))
+            },
+            Ok(None) => {
+                log::info!("User profile not found for pubkey: {}", pubkey);
+                self.user_profile = None;
+                Ok(None)
             },
             Err(e) => {
                 log::error!("Failed to fetch user profile: {}", e);
-                Err(SessionError::InvalidData(format!("RPC error: {}", e)))
+                Err(SessionError::ProfileError(format!("RPC error: {}", e)))
             }
         }
     }
 
-    // mint tokens using memo - internal handle all key operations
-    pub async fn mint(&mut self, memo: &str) -> Result<String, SessionError> {
+    /// Create user profile
+    pub async fn create_profile(
+        &mut self,
+        burn_amount: u64,
+        username: String,
+        image: String,
+        about_me: Option<String>,
+    ) -> Result<String, SessionError> {
+        // get keypair using the correct method
+        let seed = self.get_seed()?;
+        let seed_bytes = hex::decode(&seed)
+            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
+        let seed_array: [u8; 64] = seed_bytes.try_into()
+            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
+        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
+            &seed_array, crate::core::wallet::get_default_derivation_path()
+        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
+
+        let rpc = RpcConnection::new();
+        
+        // Convert parameters to the expected types
+        let about_me_str = about_me.unwrap_or_default();
+        
+        match rpc.create_profile(&keypair, burn_amount, &username, &image, &about_me_str).await {
+            Ok(tx_hash) => {
+                log::info!("Profile created successfully: {}", tx_hash);
+                // Refresh profile cache after successful creation
+                let _ = self.fetch_and_cache_user_profile().await;
+                Ok(tx_hash)
+            },
+            Err(e) => {
+                log::error!("Failed to create profile: {}", e);
+                Err(SessionError::ProfileError(format!("Failed to create profile: {}", e)))
+            }
+        }
+    }
+
+    /// Update user profile
+    pub async fn update_profile(
+        &mut self,
+        burn_amount: u64,
+        username: Option<String>,
+        image: Option<String>,
+        about_me: Option<String>, 
+    ) -> Result<String, SessionError> {
+        // get keypair using the correct method
+        let seed = self.get_seed()?;
+        let seed_bytes = hex::decode(&seed)
+            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
+        let seed_array: [u8; 64] = seed_bytes.try_into()
+            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
+        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
+            &seed_array, crate::core::wallet::get_default_derivation_path()
+        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
+
+        let rpc = RpcConnection::new();
+        
+        match rpc.update_profile(&keypair, burn_amount, username, image, about_me).await {
+            Ok(tx_hash) => {
+                log::info!("Profile updated successfully: {}", tx_hash);
+                // Refresh profile cache after successful update
+                let _ = self.fetch_and_cache_user_profile().await;
+                Ok(tx_hash)
+            },
+            Err(e) => {
+                log::error!("Failed to update profile: {}", e);
+                Err(SessionError::ProfileError(format!("Failed to update profile: {}", e)))
+            }
+        }
+    }
+
+    // delete user profile
+    pub async fn delete_profile(&mut self) -> Result<String, SessionError> {
         if self.is_expired() {
             return Err(SessionError::Expired);
         }
 
-        // internal get and handle keypair
         let seed = self.get_seed()?;
         let seed_bytes = hex::decode(&seed)
             .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
@@ -324,19 +377,61 @@ impl Session {
         let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
             &seed_array,
             crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
+        ).map_err(|e| SessionError::Encryption("Failed to derive keypair".to_string()))?;
 
-        let keypair_bytes = keypair.to_bytes().to_vec();
-
-        // call RPC mint method
         let rpc = RpcConnection::new();
-        let result = rpc.mint(memo, &keypair_bytes).await
-            .map_err(|e| SessionError::InvalidData(format!("Mint failed: {}", e)))?;
-
-        // mark that balances need to be updated after successful mint
-        self.mark_balance_update_needed();
         
-        Ok(result)
+        match rpc.delete_profile(&keypair).await {
+            Ok(tx_hash) => {
+                log::info!("Profile deleted successfully: {}", tx_hash);
+                // Clear profile cache after successful deletion
+                self.user_profile = None;
+                Ok(tx_hash)
+            },
+            Err(e) => {
+                log::error!("Failed to delete profile: {}", e);
+                Err(SessionError::ProfileError(format!("Delete profile error: {}", e)))
+            }
+        }
+    }
+
+    // helper function to get keypair bytes
+    fn get_keypair_bytes(&self) -> Result<Vec<u8>, SessionError> {
+        let seed = self.get_seed()?;
+        let seed_bytes = hex::decode(&seed)
+            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
+        
+        let seed_array: [u8; 64] = seed_bytes.try_into()
+            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
+
+        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
+            &seed_array,
+            crate::core::wallet::get_default_derivation_path()
+        ).map_err(|e| SessionError::Encryption("Failed to derive keypair".to_string()))?;
+
+        Ok(keypair.to_bytes().to_vec())
+    }
+
+    // mint tokens using memo - internal handle all key operations
+    pub async fn mint(&mut self, memo: &str) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let keypair_bytes = self.get_keypair_bytes()?;
+        let rpc = RpcConnection::new();
+        
+        match rpc.mint_legacy(memo, &keypair_bytes).await {
+            Ok(tx_hash) => {
+                log::info!("Mint transaction sent: {}", tx_hash);
+                self.balance_update_needed = true;
+                Ok(tx_hash)
+            },
+            Err(e) => {
+                log::error!("Mint transaction failed: {}", e);
+                Err(SessionError::InvalidData(format!("Mint error: {}", e)))
+            }
+        }
     }
 
     // check if user has profile
@@ -453,35 +548,25 @@ impl Session {
     }
 
     // burn tokens using message and signature - internal handle all key operations
-    pub async fn burn(&mut self, amount: u64, message: &str, signature: &str) -> Result<String, SessionError> {
+    pub async fn burn(&mut self, amount: u64, message: &str) -> Result<String, SessionError> {
         if self.is_expired() {
             return Err(SessionError::Expired);
         }
 
-        // internal get and handle keypair
-        let seed = self.get_seed()?;
-        let seed_bytes = hex::decode(&seed)
-            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
-        
-        let seed_array: [u8; 64] = seed_bytes.try_into()
-            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
-
-        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
-            &seed_array,
-            crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
-
-        let keypair_bytes = keypair.to_bytes().to_vec();
-
-        // call RPC burn method
+        let keypair_bytes = self.get_keypair_bytes()?;
         let rpc = RpcConnection::new();
-        let result = rpc.burn(amount, message, signature, &keypair_bytes).await
-            .map_err(|e| SessionError::InvalidData(format!("Burn failed: {}", e)))?;
-
-        // mark that balances need to be updated after successful burn
-        self.mark_balance_update_needed();
         
-        Ok(result)
+        match rpc.burn(amount, "", message, &keypair_bytes).await {
+            Ok(tx_hash) => {
+                log::info!("Burn transaction sent: {}", tx_hash);
+                self.balance_update_needed = true;
+                Ok(tx_hash)
+            },
+            Err(e) => {
+                log::error!("Burn transaction failed: {}", e);
+                Err(SessionError::InvalidData(format!("Burn error: {}", e)))
+            }
+        }
     }
 
     // burn with history - for future use
@@ -490,30 +575,20 @@ impl Session {
             return Err(SessionError::Expired);
         }
 
-        // internal get and handle keypair
-        let seed = self.get_seed()?;
-        let seed_bytes = hex::decode(&seed)
-            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
-        
-        let seed_array: [u8; 64] = seed_bytes.try_into()
-            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
-
-        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
-            &seed_array,
-            crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
-
-        let keypair_bytes = keypair.to_bytes().to_vec();
-
-        // call RPC burn_with_history method
+        let keypair_bytes = self.get_keypair_bytes()?;
         let rpc = RpcConnection::new();
-        let result = rpc.burn_with_history(amount, message, signature, &keypair_bytes).await
-            .map_err(|e| SessionError::InvalidData(format!("Burn with history failed: {}", e)))?;
-
-        // mark that balances need to be updated after successful burn
-        self.mark_balance_update_needed();
         
-        Ok(result)
+        match rpc.burn_with_history(amount, signature, message, &keypair_bytes).await {
+            Ok(tx_hash) => {
+                log::info!("Burn with history transaction sent: {}", tx_hash);
+                self.balance_update_needed = true;
+                Ok(tx_hash)
+            },
+            Err(e) => {
+                log::error!("Burn with history transaction failed: {}", e);
+                Err(SessionError::InvalidData(format!("Burn with history error: {}", e)))
+            }
+        }
     }
 
     /// Send chat message to group - internal handle all key operations
@@ -528,30 +603,20 @@ impl Session {
             return Err(SessionError::Expired);
         }
 
-        // internal get and handle keypair
-        let seed = self.get_seed()?;
-        let seed_bytes = hex::decode(&seed)
-            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
-        
-        let seed_array: [u8; 64] = seed_bytes.try_into()
-            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
-
-        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
-            &seed_array,
-            crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
-
-        let keypair_bytes = keypair.to_bytes().to_vec();
-
-        // call RPC send_chat_message method
+        let keypair_bytes = self.get_keypair_bytes()?;
         let rpc = RpcConnection::new();
-        let result = rpc.send_chat_message(group_id, message, &keypair_bytes, receiver, reply_to_sig).await
-            .map_err(|e| SessionError::InvalidData(format!("Send chat message failed: {}", e)))?;
-
-        // mark that balances need to be updated after successful message send (user gets mint reward)
-        self.mark_balance_update_needed();
         
-        Ok(result)
+        match rpc.send_chat_message(group_id, message, &keypair_bytes, receiver, reply_to_sig).await {
+            Ok(tx_hash) => {
+                log::info!("Send chat message transaction sent: {}", tx_hash);
+                self.balance_update_needed = true;
+                Ok(tx_hash)
+            },
+            Err(e) => {
+                log::error!("Send chat message transaction failed: {}", e);
+                Err(SessionError::InvalidData(format!("Send chat message error: {}", e)))
+            }
+        }
     }
 
     /// Send a chat message to a group with timeout
@@ -567,39 +632,20 @@ impl Session {
             return Err(SessionError::Expired);
         }
 
-        // internal get and handle keypair
-        let seed = self.get_seed()?;
-        let seed_bytes = hex::decode(&seed)
-            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
-        
-        let seed_array: [u8; 64] = seed_bytes.try_into()
-            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
-
-        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
-            &seed_array,
-            crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
-
-        let keypair_bytes = keypair.to_bytes().to_vec();
-
-        // call RPC send_chat_message_with_timeout method
+        let keypair_bytes = self.get_keypair_bytes()?;
         let rpc = RpcConnection::new();
-        let result = rpc.send_chat_message_with_timeout(group_id, message, &keypair_bytes, receiver, reply_to_sig, timeout_ms).await
-            .map_err(|e| {
-                log::error!("Session: RPC send_chat_message_with_timeout failed: {}", e);
-                if e.to_string().contains("timeout") {
-                    SessionError::InvalidData(format!("Message send timeout: {}", e))
-                } else {
-                    SessionError::InvalidData(format!("Send chat message failed: {}", e))
-                }
-            })?;
-
-        log::info!("Session: Chat message sent successfully");
-
-        // mark that balances need to be updated after successful message send (user gets mint reward)
-        self.mark_balance_update_needed();
         
-        Ok(result)
+        match rpc.send_chat_message_with_timeout(group_id, message, &keypair_bytes, receiver, reply_to_sig, timeout_ms).await {
+            Ok(tx_hash) => {
+                log::info!("Send chat message with timeout transaction sent: {}", tx_hash);
+                self.balance_update_needed = true;
+                Ok(tx_hash)
+            },
+            Err(e) => {
+                log::error!("Send chat message with timeout transaction failed: {}", e);
+                Err(SessionError::InvalidData(format!("Send chat message with timeout error: {}", e)))
+            }
+        }
     }
 
     /// Create a new chat group - internal handle all key operations
@@ -708,94 +754,32 @@ impl Session {
     }
 }
 
-// implement Drop trait to ensure session data is properly cleaned up
+// implement zeroize for Session to ensure sensitive data is cleared
+impl Zeroize for Session {
+    fn zeroize(&mut self) {
+        self.clear();
+    }
+}
+
+// implement drop for Session to ensure sensitive data is cleared
 impl Drop for Session {
     fn drop(&mut self) {
         self.clear();
     }
 }
 
+// Legacy parse function for compatibility (now uses new profile system)
 pub fn parse_user_profile(account_data: &str) -> Result<UserProfile, SessionError> {
-    log::info!("Starting to parse user profile from account data");
+    log::info!("Starting to parse user profile from account data using new format");
     
-    let value: serde_json::Value = serde_json::from_str(account_data)
-        .map_err(|e| {
-            log::error!("Failed to parse account data as JSON: {}", e);
-            SessionError::InvalidData(e.to_string())
-        })?;
-
-    // get data from JSON
-    if let Some(data) = value.get("value").and_then(|v| v.get("data")) {
-        if let Some(data_str) = data.get(0).and_then(|v| v.as_str()) {
-            log::info!("Found base64 encoded data");
-            
-            // decode base64 data to bytes
-            let data_bytes = base64::decode(data_str)
-                .map_err(|e| {
-                    log::error!("Failed to decode base64: {}", e);
-                    SessionError::InvalidData(format!("Failed to decode base64: {}", e))
-                })?;
-            
-            log::info!("Successfully decoded base64 data, length: {}", data_bytes.len());
-            
-            // ensure data length is enough
-            if data_bytes.len() < 8 {
-                log::error!("Data too short: {}", data_bytes.len());
-                return Err(SessionError::InvalidData("Data too short".to_string()));
-            }
-            
-            // skip discriminator
-            let mut data = &data_bytes[8..];
-            
-            // read pubkey
-            if data.len() < 32 {
-                log::error!("Invalid pubkey length: {}", data.len());
-                return Err(SessionError::InvalidData("Invalid pubkey length".to_string()));
-            }
-            let pubkey = Pubkey::new_from_array(data[..32].try_into().unwrap()).to_string();
-            log::info!("Parsed pubkey: {}", pubkey);
-            data = &data[32..];
-            
-            // read stats data (mint/burn data only)
-            if data.len() < 32 {
-                log::error!("Invalid stats data length");
-                return Err(SessionError::InvalidData("Invalid stats data".to_string()));
-            }
-            let total_minted = u64::from_le_bytes(data[..8].try_into().unwrap());
-            let total_burned = u64::from_le_bytes(data[8..16].try_into().unwrap());
-            let mint_count = u64::from_le_bytes(data[16..24].try_into().unwrap());
-            let burn_count = u64::from_le_bytes(data[24..32].try_into().unwrap());
-            log::info!("Parsed stats - minted: {}, burned: {}, mint_count: {}, burn_count: {}", 
-                total_minted, total_burned, mint_count, burn_count);
-            data = &data[32..];
-            
-            // read timestamp
-            if data.len() < 16 {
-                log::error!("Invalid timestamp data length");
-                return Err(SessionError::InvalidData("Invalid timestamp data".to_string()));
-            }
-            let created_at = i64::from_le_bytes(data[..8].try_into().unwrap());
-            let last_updated = i64::from_le_bytes(data[8..16].try_into().unwrap());
-            log::info!("Parsed timestamps - created: {}, updated: {}", created_at, last_updated);
-
-            let profile = UserProfile {
-                pubkey,
-                total_minted,
-                total_burned,
-                mint_count,
-                burn_count,
-                created_at,
-                last_updated,
-            };
-            
-            log::info!("Successfully parsed user profile");
+    match parse_user_profile_new(account_data) {
+        Ok(profile) => {
+            log::info!("Successfully parsed new format user profile");
             Ok(profile)
-        } else {
-            log::error!("Data field is not a string");
-            Err(SessionError::InvalidData("Data field is not a string".to_string()))
+        },
+        Err(e) => {
+            log::error!("Failed to parse new format user profile: {}", e);
+            Err(SessionError::ProfileError(format!("Parse error: {}", e)))
         }
-    } else {
-        log::error!("Invalid account data format");
-        Err(SessionError::InvalidData("Invalid account data format".to_string()))
     }
 } 

@@ -1,150 +1,58 @@
 use leptos::*;
-use log;
-use web_sys::{
-    HtmlInputElement, 
-    MouseEvent, 
-    File, 
-    FileReader,
-    Event,
-    Window,
-    Document,
-    ProgressEvent,
-    SubmitEvent,
-};
-use crate::core::session::{Session, UserProfile, parse_user_profile};
-use crate::core::rpc_base::RpcConnection;
-use crate::core::rpc_token;  // Import token RPC functionality
-use wasm_bindgen::{JsCast, closure::Closure};
-use wasm_bindgen_futures::JsFuture;
-use image::{ImageBuffer, Luma};
-use crate::core::pixel::Pixel;
-use js_sys::Uint8Array;
-use solana_sdk::signature::Keypair;
-use hex;
-use crate::core::wallet::{derive_keypair_from_seed, get_default_derivation_path};
-use gloo_timers;
+use crate::core::session::Session;
+use crate::core::rpc_profile::UserProfile;
 use crate::pages::pixel_view::PixelView;
-
-#[derive(Clone, Copy, PartialEq)]
-enum ProfileFormState {
-    Create,           // create new profile
-    View,            // view existing profile (not editable)
-    Edit,            // edit existing profile (editable)
-}
-
-#[component]
-pub fn ProfilePage(
-    session: RwSignal<Session>
-) -> impl IntoView {
-    let (user_profile, set_user_profile) = create_signal::<Option<UserProfile>>(None);
-    let (is_loading, set_is_loading) = create_signal(true);
-    let form_state = create_rw_signal(ProfileFormState::Create);
-
-    // get cached profile from session (if there is any)
-    if let Some(profile) = session.get().get_user_profile() {
-        set_user_profile.set(Some(profile));
-        form_state.set(ProfileFormState::View);
-        set_is_loading.set(false);
-    }
-
-    // fetch profile from RPC
-    create_effect(move |_| {
-        // if there is already data, no need to request
-        if user_profile.get().is_some() {
-            return;
-        }
-
-        spawn_local(async move {
-            let mut current_session = session.get();
-            if let Ok(pubkey) = current_session.get_public_key() {
-                log::info!("Fetching profile for pubkey: {}", pubkey);
-                
-                let rpc = RpcConnection::new();
-                match rpc.get_user_profile(&pubkey).await {
-                    Ok(result) => {
-                        log::info!("Raw profile result: {}", result);
-                        match parse_user_profile(&result) {
-                            Ok(profile) => {
-                                log::info!("Successfully parsed profile: {:?}", profile);
-                                current_session.set_user_profile(Some(profile.clone()));
-                                session.set(current_session);
-                                set_user_profile.set(Some(profile));
-                                form_state.set(ProfileFormState::View);
-                            }
-                            Err(e) => {
-                                log::error!("Failed to parse profile: {:?}", e);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("Failed to get user profile: {:?}", e);
-                    }
-                }
-            }
-            set_is_loading.set(false);  // set loading state to false after request
-        });
-    });
-
-    view! {
-        <div class="profile-page">
-            <h2>"User Profile"</h2>
-            
-            <div class="profile-content">
-                {move || {
-                    if is_loading.get() {
-                        view! { 
-                            <div class="profile-content-inner">
-                                <div class="loading">"Loading..."</div>
-                            </div>
-                        }
-                    } else {
-                        view! {
-                            <div class="profile-content-inner">
-                                <ProfileForm 
-                                    session=session
-                                    existing_profile=user_profile.get()
-                                    form_state=form_state
-                                />
-                            </div>
-                        }
-                    }
-                }}
-            </div>
-        </div>
-    }
-}
+use crate::pages::memo_card::LazyPixelView;
+use crate::core::pixel::Pixel;
+use wasm_bindgen::JsValue;
+use wasm_bindgen::JsCast;
+use web_sys::{HtmlInputElement, File, FileReader, Event, ProgressEvent};
+use wasm_bindgen::closure::Closure;
+use js_sys::Uint8Array;
+use std::rc::Rc;
 
 #[component]
-fn ProfileForm(
-    session: RwSignal<Session>,
-    existing_profile: Option<UserProfile>,
-    form_state: RwSignal<ProfileFormState>,
-) -> impl IntoView {
-    let (username, set_username) = create_signal(String::new());
+pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
+    // Profile state
+    let profile = create_rw_signal::<Option<UserProfile>>(None);
+    let loading = create_rw_signal(false);
+    let error_message = create_rw_signal::<Option<String>>(None);
+    let success_message = create_rw_signal::<Option<String>>(None);
     
-    let (pixel_art, set_pixel_art) = create_signal(Pixel::new());
-
-    let (error_message, set_error_message) = create_signal(String::new());
-    let (is_submitting, set_is_submitting) = create_signal(false);
-    let (show_confirm_dialog, set_show_confirm_dialog) = create_signal(false);
-
-    let handle_pixel_click = move |row: usize, col: usize| {
-        if matches!(form_state.get(), ProfileFormState::Create | ProfileFormState::Edit) {
-            let mut new_art = pixel_art.get();
-            new_art.toggle_pixel(row, col);
-            set_pixel_art.set(new_art);
-        }
+    // Form states
+    let show_create_form = create_rw_signal(false);
+    let show_edit_form = create_rw_signal(false);
+    
+    // Form fields
+    let username = create_rw_signal(String::new());
+    let about_me = create_rw_signal(String::new());
+    let pixel_art = create_rw_signal(Pixel::new_with_size(16)); // default 16x16 pixel art
+    let burn_amount = create_rw_signal(420u64); // Default minimum burn amount
+    
+    // Pixel art editor state
+    let grid_size = create_rw_signal(16usize);
+    let show_copied = create_rw_signal(false);
+    
+    // Load profile on page load
+    create_effect(move |_| {
+        let current_profile = session.with(|s| s.get_user_profile());
+        profile.set(current_profile);
+    });
+    
+    // Clear messages after 5 seconds
+    let clear_messages = move || {
+        set_timeout(
+            move || {
+                error_message.set(None);
+                success_message.set(None);
+            },
+            std::time::Duration::from_secs(5),
+        );
     };
 
-    let handle_import = move |ev: MouseEvent| {
-        if !matches!(form_state.get(), ProfileFormState::Create | ProfileFormState::Edit) {
-            return;
-        }
-
-        ev.prevent_default();
-        
-        let window = web_sys::window().unwrap();
-        let document = window.document().unwrap();
+    // Handle pixel art import
+    let handle_import = move |_| {
+        let document = web_sys::window().unwrap().document().unwrap();
         let input: HtmlInputElement = document
             .create_element("input")
             .unwrap()
@@ -154,470 +62,783 @@ fn ProfileForm(
         input.set_type("file");
         input.set_accept("image/*");
         
-        let pixel_art_write = set_pixel_art;
-        let error_signal = set_error_message;
+        let pixel_art_write = pixel_art;
+        let error_signal = error_message;
+        let grid_size_signal = grid_size;
         
         let onchange = Closure::wrap(Box::new(move |event: Event| {
             let input: HtmlInputElement = event.target().unwrap().dyn_into().unwrap();
             if let Some(file) = input.files().unwrap().get(0) {
                 let reader = FileReader::new().unwrap();
                 let reader_clone = reader.clone();
+                let current_grid_size = grid_size_signal.get();
                 
                 let onload = Closure::wrap(Box::new(move |_: ProgressEvent| {
                     if let Ok(buffer) = reader_clone.result() {
                         let array = Uint8Array::new(&buffer);
                         let data = array.to_vec();
                         
-                        match Pixel::from_image_data(&data) {
+                        match Pixel::from_image_data_with_size(&data, current_grid_size) {
                             Ok(new_art) => {
                                 pixel_art_write.set(new_art);
-                                error_signal.set(String::new());
+                                error_signal.set(None);
                             }
                             Err(e) => {
-                                error_signal.set(format!("Failed to process image: {}", e));
+                                error_signal.set(Some(format!("Failed to process image: {}", e)));
                             }
                         }
                     }
-                }) as Box<dyn FnMut(ProgressEvent)>);
+                }) as Box<dyn FnMut(_)>);
                 
                 reader.set_onload(Some(onload.as_ref().unchecked_ref()));
                 onload.forget();
-                
                 reader.read_as_array_buffer(&file).unwrap();
             }
         }) as Box<dyn FnMut(_)>);
         
         input.set_onchange(Some(onchange.as_ref().unchecked_ref()));
         onchange.forget();
-        
         input.click();
     };
 
-    let handle_submit = move |ev: SubmitEvent| {
-        ev.prevent_default();
+    // Handle copy pixel art string
+    let copy_string = move |_| {
+        let art_string = pixel_art.get().to_optimal_string();
         
-        match form_state.get() {
-            ProfileFormState::Create => {
-                let current_username = username.get();
-                let current_pixel_art = pixel_art.get();
-
-                if current_username.trim().is_empty() {
-                    set_error_message.set("Username cannot be empty".to_string());
-                    return;
-                }
-
-                set_is_submitting.set(true);
-                set_error_message.set(String::new());
-
-                let session_clone = session;
-                let set_error_clone = set_error_message;
-                let set_submitting_clone = set_is_submitting;
-                let form_state_clone = form_state;
-
-                spawn_local(async move {
-                    let mut current_session = session_clone.get();
-                    
-                    match current_session.get_public_key() {
-                        Ok(pubkey) => {
-                            match current_session.get_seed() {
-                                Ok(seed) => {
-                                    match hex::decode(&seed) {
-                                        Ok(seed_bytes) => {
-                                            match seed_bytes.try_into() as Result<[u8; 64], Vec<u8>> {
-                                                Ok(seed_array) => {
-                                                    match derive_keypair_from_seed(
-                                                        &seed_array,
-                                                        get_default_derivation_path()
-                                                    ) {
-                                                        Ok((keypair, _)) => {
-                                                            let rpc = RpcConnection::new();
-                                                            
-                                                            match rpc.initialize_user_profile(&keypair.to_bytes()).await {
-                                                                Ok(_) => {
-                                                                    let new_profile = UserProfile {
-                                                                        pubkey: pubkey.clone(),
-                                                                        total_minted: 0,
-                                                                        total_burned: 0,
-                                                                        mint_count: 0,
-                                                                        burn_count: 0,
-                                                                        created_at: js_sys::Date::now() as i64 / 1000,
-                                                                        last_updated: js_sys::Date::now() as i64 / 1000,
-                                                                    };
-
-                                                                    current_session.set_user_profile(Some(new_profile));
-                                                                    session_clone.set(current_session);
-
-                                                                    form_state_clone.set(ProfileFormState::View);
-                                                                    set_error_clone.set("Profile created successfully! (Note: Username and image are for display only and not saved to blockchain)".to_string());
-                                                                }
-                                                                Err(e) => {
-                                                                    set_error_clone.set(format!("Failed to create profile: {}", e));
-                                                                }
-                                                            }
-                                                        }
-                                                        Err(e) => {
-                                                            set_error_clone.set(format!("Failed to derive keypair: {:?}", e));
-                                                        }
-                                                    }
-                                                }
-                                                Err(original_vec) => {
-                                                    set_error_clone.set(format!("Invalid seed length: {} (expected 64)", original_vec.len()));
-                                                }
-                                            }
-                                        }
-                                        Err(e) => {
-                                            set_error_clone.set(format!("Failed to decode seed: {}", e));
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    set_error_clone.set(format!("Failed to get seed: {}", e));
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            set_error_clone.set(format!("Failed to get public key: {}", e));
-                        }
-                    }
-
-                    set_submitting_clone.set(false);
-                });
-            }
-            ProfileFormState::Edit => {
-                set_error_message.set("Edit functionality is temporarily disabled. Username and image will be available through a separate contract soon.".to_string());
-                form_state.set(ProfileFormState::View);
-            }
-            ProfileFormState::View => {
+        if let Some(window) = web_sys::window() {
+            // Fix: navigator().clipboard() returns Clipboard directly, not Option<Clipboard>
+            let navigator = window.navigator();
+            let clipboard = navigator.clipboard();
+            let _ = clipboard.write_text(&art_string);
+            show_copied.set(true);
+            
+            set_timeout(
+                move || show_copied.set(false),
+                std::time::Duration::from_millis(1500),
+            );
+        }
+    };
+    
+    // Create profile action
+    let create_profile = create_action(move |_: &()| async move {
+        loading.set(true);
+        error_message.set(None);
+        success_message.set(None);
+        
+        let username_val = username.get();
+        let image_val = pixel_art.get().to_optimal_string(); // Use pixel art string
+        let about_val = if about_me.get().is_empty() { None } else { Some(about_me.get()) };
+        let burn_val = burn_amount.get(); // remove unit conversion, keep as tokens amount
+        
+        // Validate inputs
+        if username_val.is_empty() {
+            error_message.set(Some("Username is required".to_string()));
+            loading.set(false);
+            clear_messages();
+            return;
+        }
+        
+        if username_val.len() > 32 {
+            error_message.set(Some("Username must be 32 characters or less".to_string()));
+            loading.set(false);
+            clear_messages();
+            return;
+        }
+        
+        if image_val.len() > 256 {
+            error_message.set(Some("Pixel art string too long (max 256 characters)".to_string()));
+            loading.set(false);
+            clear_messages();
+            return;
+        }
+        
+        if let Some(ref about) = about_val {
+            if about.len() > 128 {
+                error_message.set(Some("About me must be 128 characters or less".to_string()));
+                loading.set(false);
+                clear_messages();
                 return;
             }
         }
-    };
-
-    let handle_delete = move |ev: MouseEvent| {
-        ev.prevent_default();
         
-        if !matches!(form_state.get(), ProfileFormState::View) {
-            return;
-        }
-
-        set_show_confirm_dialog.set(true);
-    };
-
-    let handle_confirm_delete = move || {
-        set_show_confirm_dialog.set(false);
-        set_is_submitting.set(true);
-        set_error_message.set(String::new());
-
-        let session_clone = session;
-        let set_error_clone = set_error_message;
-        let set_submitting_clone = set_is_submitting;
-        let form_state_clone = form_state;
-        let set_username_clone = set_username;
-        let set_pixel_art_clone = set_pixel_art;
-
-        spawn_local(async move {
-            let mut current_session = session_clone.get();
-            
-            match current_session.get_public_key() {
-                Ok(pubkey) => {
-                    match current_session.get_seed() {
-                        Ok(seed) => {
-                            match hex::decode(&seed) {
-                                Ok(seed_bytes) => {
-                                    match seed_bytes.try_into() as Result<[u8; 64], Vec<u8>> {
-                                        Ok(seed_array) => {
-                                            match derive_keypair_from_seed(
-                                                &seed_array,
-                                                get_default_derivation_path()
-                                            ) {
-                                                Ok((keypair, _)) => {
-                                                    let rpc = RpcConnection::new();
-                                                    
-                                                    match rpc.close_user_profile(
-                                                        &keypair.to_bytes()
-                                                    ).await {
-                                                        Ok(_) => {
-                                                            current_session.set_user_profile(None);
-                                                            session_clone.set(current_session);
-
-                                                            form_state_clone.set(ProfileFormState::Create);
-                                                            set_username_clone.set(String::new());
-                                                            set_pixel_art_clone.set(Pixel::new());
-                                                            
-                                                            set_error_clone.set("Profile deleted successfully!".to_string());
-                                                        }
-                                                        Err(e) => {
-                                                            set_error_clone.set(format!("Failed to delete profile: {}", e));
-                                                        }
-                                                    }
-                                                }
-                                                Err(e) => {
-                                                    set_error_clone.set(format!("Failed to derive keypair: {:?}", e));
-                                                }
-                                            }
-                                        }
-                                        Err(original_vec) => {
-                                            set_error_clone.set(format!("Invalid seed length: {} (expected 64)", original_vec.len()));
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    set_error_clone.set(format!("Failed to decode seed: {}", e));
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            set_error_clone.set(format!("Failed to get seed: {}", e));
-                        }
-                    }
-                }
-                Err(e) => {
-                    set_error_clone.set(format!("Failed to get public key: {}", e));
-                }
-            }
-
-            set_submitting_clone.set(false);
-        });
-    };
-
-    let handle_cancel_delete = move || {
-        set_show_confirm_dialog.set(false);
-    };
-
-    view! {
-        <form class="profile-form" on:submit=handle_submit>
-            <h3>
-                {move || match form_state.get() {
-                    ProfileFormState::Create => "Create Your Profile",
-                    ProfileFormState::View => "Your Profile",
-                    ProfileFormState::Edit => "Edit Your Profile",
-                }}
-            </h3>
-            
-            <div class="form-group">
-                <label for="username">"Username"</label>
-                <input 
-                    type="text"
-                    id="username"
-                    maxlength="32"
-                    placeholder="Enter your username (max 32 characters)"
-                    autocomplete="off"
-                    on:input=move |ev| {
-                        let input = event_target::<HtmlInputElement>(&ev);
-                        set_username.set(input.value());
-                    }
-                    prop:value=username
-                    prop:disabled=move || {
-                        is_submitting.get() || !matches!(form_state.get(), ProfileFormState::Create | ProfileFormState::Edit)
-                    }
-                />
-                {move || if matches!(form_state.get(), ProfileFormState::Create) {
-                    view! {
-                        <small class="form-note">"Note: Username will be functional when the separate contract is deployed."</small>
-                    }.into_view()
-                } else {
-                    view! { <small></small> }.into_view()
-                }}
-            </div>
-
-            <div class="pixel-art-editor">
-                <div class="pixel-art-header">
-                    <label>"Profile Image (32x32 Pixel Art)"</label>
-                    <button 
-                        type="button"
-                        class="import-btn"
-                        class:hidden=move || !matches!(form_state.get(), ProfileFormState::Create | ProfileFormState::Edit)
-                        on:click=handle_import
-                        prop:disabled=is_submitting
-                    >
-                        "Import Image"
-                    </button>
-                </div>
-                {move || {
-                    let art_string = pixel_art.get().to_optimal_string();
-                    let is_editable = matches!(form_state.get(), ProfileFormState::Create | ProfileFormState::Edit);
-                    let click_handler = Box::new(move |row, col| {
-                        let mut new_art = pixel_art.get();
-                        new_art.toggle_pixel(row, col);
-                        set_pixel_art.set(new_art);
-                    });
+        match session.with_untracked(|s| s.clone()).create_profile(
+            burn_val, // now passing 420 tokens instead of 420,000,000 units
+            username_val,
+            image_val,
+            about_val,
+        ).await {
+            Ok(_) => {
+                success_message.set(Some("Profile created successfully! Loading profile...".to_string()));
+                show_create_form.set(false);
+                
+                // clear form
+                username.set(String::new());
+                pixel_art.set(Pixel::new_with_size(16));
+                about_me.set(String::new());
+                
+                // wait 10 seconds for blockchain state to update, then refresh user profile
+                let session_clone = session.clone();
+                let profile_clone = profile.clone();
+                let success_message_clone = success_message.clone();
+                
+                spawn_local(async move {
+                    // wait 10 seconds
+                    log::info!("Waiting 10 seconds for blockchain state to update...");
                     
-                    view! {
-                        <PixelView
-                            art=art_string
-                            size=256
-                            editable=is_editable
-                            show_grid=is_editable
-                            on_click=click_handler
-                        />
-                    }
-                }}
-                {move || if matches!(form_state.get(), ProfileFormState::Create | ProfileFormState::Edit) {
-                    view! {
-                        <small class="form-note">"Note: Profile image will be functional when the separate contract is deployed."</small>
-                    }.into_view()
-                } else {
-                    view! { <small></small> }.into_view()
-                }}
-            </div>
+                    use gloo_timers::future::TimeoutFuture;
+                    TimeoutFuture::new(10_000).await;
+                    
+                    // now get user profile
+                    log::info!("Fetching updated user profile...");
+                    let updated_profile = session_clone.with(|s| s.get_user_profile());
+                    profile_clone.set(updated_profile);
+                    
+                    success_message_clone.set(Some("Profile created and loaded successfully!".to_string()));
+                });
+                
+                clear_messages();
+            },
+            Err(e) => {
+                error_message.set(Some(format!("Failed to create profile: {}", e)));
+                clear_messages();
+            }
+        }
+        
+        loading.set(false);
+    });
+    
+    // Update profile action
+    let update_profile = create_action(move |_: &()| async move {
+        loading.set(true);
+        error_message.set(None);
+        success_message.set(None);
+        
+        let username_val = if username.get().is_empty() { None } else { Some(username.get()) };
+        let image_val = {
+            let art_string = pixel_art.get().to_optimal_string();
+            if art_string.is_empty() || art_string == Pixel::new_with_size(16).to_optimal_string() {
+                None // No image update
+            } else {
+                Some(art_string)
+            }
+        };
+        let about_val = if about_me.get().is_empty() { None } else { Some(about_me.get()) };
+        let burn_val = burn_amount.get(); // remove unit conversion
+        
+        // Validate inputs
+        if let Some(ref username_str) = username_val {
+            if username_str.len() > 32 {
+                error_message.set(Some("Username must be 32 characters or less".to_string()));
+                loading.set(false);
+                clear_messages();
+                return;
+            }
+        }
+        
+        if let Some(ref image_str) = image_val {
+            if image_str.len() > 256 {
+                error_message.set(Some("Pixel art string too long (max 256 characters)".to_string()));
+                loading.set(false);
+                clear_messages();
+                return;
+            }
+        }
+        
+        // fix: handle simple Option<String> instead of nested
+        if let Some(ref about_str) = about_val {
+            if about_str.len() > 128 {
+                error_message.set(Some("About me must be 128 characters or less".to_string()));
+                loading.set(false);
+                clear_messages();
+                return;
+            }
+        }
+        
+        // simplified call
+        match session.with_untracked(|s| s.clone()).update_profile(
+            burn_val,
+            username_val,
+            image_val,
+            about_val, // now it's a simple Option<String>
+        ).await {
+            Ok(_) => {
+                success_message.set(Some("Profile updated successfully! Loading updated profile...".to_string()));
+                show_edit_form.set(false);
+                
+                // wait 10 seconds for blockchain state to update, then refresh user profile
+                let session_clone = session.clone();
+                let profile_clone = profile.clone();
+                let success_message_clone = success_message.clone();
+                
+                spawn_local(async move {
+                    // wait 10 seconds
+                    log::info!("Waiting 10 seconds for blockchain state to update...");
+                    
+                    use gloo_timers::future::TimeoutFuture;
+                    TimeoutFuture::new(10_000).await;
+                    
+                    // now get user profile
+                    log::info!("Fetching updated user profile...");
+                    let updated_profile = session_clone.with(|s| s.get_user_profile());
+                    profile_clone.set(updated_profile);
+                    
+                    success_message_clone.set(Some("Profile updated and loaded successfully!".to_string()));
+                });
+                
+                clear_messages();
+            },
+            Err(e) => {
+                error_message.set(Some(format!("Failed to update profile: {}", e)));
+                clear_messages();
+            }
+        }
+        
+        loading.set(false);
+    });
+    
+    // Delete profile action
+    let delete_profile = create_action(move |_: &()| async move {
+        loading.set(true);
+        error_message.set(None);
+        success_message.set(None);
+        
+        match session.with_untracked(|s| s.clone()).delete_profile().await {
+            Ok(_) => {
+                success_message.set(Some("Profile deleted successfully!".to_string()));
+                profile.set(None);
+                clear_messages();
+            },
+            Err(e) => {
+                error_message.set(Some(format!("Failed to delete profile: {}", e)));
+                clear_messages();
+            }
+        }
+        
+        loading.set(false);
+    });
+    
+    // Fill form with current profile data for editing
+    let fill_edit_form = move || {
+        if let Some(ref current_profile) = profile.get() {
+            username.set(current_profile.username.clone());
+            // use image field instead of profile_image
+            if let Some(parsed_pixel) = Pixel::from_safe_string(&current_profile.image) {
+                pixel_art.set(parsed_pixel);
+            } else {
+                // If not a valid pixel art string, create new empty pixel art
+                pixel_art.set(Pixel::new_with_size(16));
+            }
+            // about_me is now Option<String>
+            about_me.set(current_profile.about_me.clone().unwrap_or_default());
+        }
+        show_edit_form.set(true);
+    };
 
-            {move || {
-                let profile = existing_profile.clone();
-                if let Some(profile) = profile {
-                    if matches!(form_state.get(), ProfileFormState::View) {
+    // Helper function to format timestamp (modified to handle i64)
+    let format_timestamp = |timestamp: i64| -> String {
+        let date = web_sys::js_sys::Date::new(&JsValue::from_f64(timestamp as f64 * 1000.0));
+        date.to_locale_string("en-US", &web_sys::js_sys::Object::new()).as_string().unwrap_or_else(|| "Invalid Date".to_string())
+    };
+    
+    view! {
+        <div class="profile-page">
+            <div class="container">
+                <h1>
+                    <i class="fas fa-user"></i>
+                    "Profile Management"
+                </h1>
+                
+                // Messages
+                {move || error_message.get().map(|msg| view! {
+                    <div class="alert alert-error">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        {msg}
+                    </div>
+                })}
+                
+                {move || success_message.get().map(|msg| view! {
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle"></i>
+                        {msg}
+                    </div>
+                })}
+                
+                // Profile Display
+                {move || match profile.get() {
+                    Some(user_profile) => {
+                        let created_str = format_timestamp(user_profile.created_at);
+                        let updated_str = format_timestamp(user_profile.last_updated); // use last_updated
+                        
                         view! {
-                            <div class="profile-stats">
-                                <h4>"Mint/Burn Statistics"</h4>
-                                <div class="stats-grid">
-                                    <div class="stat-item">
-                                        <label>"Total Minted:"</label>
-                                        <span>{format!("{} tokens", profile.total_minted)}</span>
+                            <div class="profile-display">
+                                <div class="profile-header">
+                                    <div class="profile-info">
+                                        <h2>
+                                            <i class="fas fa-user"></i>
+                                            {user_profile.username.clone()}
+                                        </h2>
+                                        <div class="profile-dates">
+                                            <div class="date-item">
+                                                <i class="fas fa-calendar-plus"></i>
+                                                <span>"Created: " {created_str.clone()}</span>
+                                            </div>
+                                            <div class="date-item">
+                                                <i class="fas fa-calendar-edit"></i>
+                                                <span>"Updated: " {updated_str.clone()}</span>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="stat-item">
-                                        <label>"Total Burned:"</label>
-                                        <span>{format!("{} tokens", profile.total_burned)}</span>
-                                    </div>
-                                    <div class="stat-item">
-                                        <label>"Net Balance:"</label>
-                                        <span class={if profile.total_minted >= profile.total_burned { "positive" } else { "negative" }}>
-                                            {format!("{} tokens", (profile.total_minted as i64 - profile.total_burned as i64))}
-                                        </span>
-                                    </div>
-                                    <div class="stat-item">
-                                        <label>"Mint Operations:"</label>
-                                        <span>{format!("{}", profile.mint_count)}</span>
-                                    </div>
-                                    <div class="stat-item">
-                                        <label>"Burn Operations:"</label>
-                                        <span>{format!("{}", profile.burn_count)}</span>
-                                    </div>
+                                    
+                                    {if !user_profile.image.is_empty() { // use image field
+                                        // Check if it's a valid pixel art string
+                                        if user_profile.image.starts_with("c:") || user_profile.image.starts_with("n:") {
+                                            view! {
+                                                <div class="profile-image">
+                                                    <LazyPixelView
+                                                        art={user_profile.image.clone()}
+                                                        size=200
+                                                    />
+                                                </div>
+                                            }.into_view()
+                                        } else {
+                                            view! {
+                                                <div class="profile-image">
+                                                    <img src={user_profile.image.clone()} alt="Profile Image" />
+                                                </div>
+                                            }.into_view()
+                                        }
+                                    } else {
+                                        view! { 
+                                            <div class="profile-image placeholder">
+                                                <i class="fas fa-user-circle"></i>
+                                            </div> 
+                                        }.into_view()
+                                    }}
+                                </div>
+                                
+                                {if let Some(about_me_text) = &user_profile.about_me { // about_me is Option<String>
+                                    view! {
+                                        <div class="profile-about">
+                                            <h3>
+                                                <i class="fas fa-info-circle"></i>
+                                                "About Me"
+                                            </h3>
+                                            <p>{about_me_text.clone()}</p>
+                                        </div>
+                                    }.into_view()
+                                } else {
+                                    view! { <span></span> }.into_view()
+                                }}
+                                
+                                <div class="profile-meta">
+                                    <p><strong>"User Address:"</strong> {user_profile.user.clone()}</p>
+                                    <p><strong>"Created:"</strong> {created_str}</p>
+                                    <p><strong>"Last Updated:"</strong> {updated_str}</p>
+                                    <p><strong>"Bump:"</strong> {user_profile.bump.to_string()}</p>
                                 </div>
                             </div>
                         }.into_view()
-                    } else {
-                        view! { <div></div> }.into_view()
-                    }
-                } else {
-                    view! { <div></div> }.into_view()
-                }
-            }}
-
-            {move || {
-                let message = error_message.get();
-                view! {
-                    <div class="error-message" 
-                        class:success=message.contains("success")
-                        style:display={if message.is_empty() { "none" } else { "block" }}
-                    >
-                        {message}
-                    </div>
-                }
-            }}
-
-            <div class="button-group">
-                {move || match form_state.get() {
-                    ProfileFormState::Create => view! {
-                        <div class="button-group create-mode">
-                            <button 
-                                type="submit" 
-                                class="create-btn"
-                                prop:disabled=is_submitting
-                            >
-                                {move || if is_submitting.get() { "Creating Profile..." } else { "Create Profile" }}
-                            </button>
-                        </div>
                     },
-                    ProfileFormState::View => view! {
-                        <div class="button-group view-mode">
-                            <button 
-                                type="button" 
-                                class="edit-btn"
-                                on:click=move |_| form_state.set(ProfileFormState::Edit)
-                                prop:disabled=is_submitting
-                            >
-                                "Edit Profile"
-                            </button>
-                            <button 
-                                type="button"
-                                class="delete-btn"
-                                on:click=handle_delete
-                                prop:disabled=is_submitting
-                            >
-                                {move || if is_submitting.get() { "Deleting Profile..." } else { "Delete Profile" }}
-                            </button>
+                    None => view! {
+                        <div class="no-profile">
+                            <div class="no-profile-card">
+                                <i class="fas fa-user-plus" style="font-size: 3rem; color: #667eea; margin-bottom: 20px;"></i>
+                                <h2>"No Profile Found"</h2>
+                                <p>"You don't have a profile yet. Create one to get started!"</p>
+                                <button 
+                                    class="btn btn-primary"
+                                    on:click=move |_| show_create_form.set(true)
+                                    disabled=move || loading.get()
+                                >
+                                    <i class="fas fa-plus"></i>
+                                    "Create Profile"
+                                </button>
+                            </div>
                         </div>
-                    },
-                    ProfileFormState::Edit => view! {
-                        <div class="button-group edit-mode">
-                            <button 
-                                type="submit" 
-                                class="update-btn"
-                                prop:disabled=is_submitting
-                            >
-                                {move || if is_submitting.get() { "Updating Profile..." } else { "Update Profile" }}
-                            </button>
-                            <button 
-                                type="button"
-                                class="cancel-btn"
-                                on:click=move |_| form_state.set(ProfileFormState::View)
-                                prop:disabled=is_submitting
-                            >
-                                "Cancel"
-                            </button>
-                        </div>
-                    }
+                    }.into_view()
                 }}
-            </div>
+                
+                // Create Profile Form
+                {move || show_create_form.get().then(|| view! {
+                    <div class="profile-form">
+                        <div class="form-card">
+                            <h2>
+                                <i class="fas fa-user-plus"></i>
+                                "Create Profile"
+                            </h2>
+                            <form on:submit=move |e| {
+                                e.prevent_default();
+                                create_profile.dispatch(());
+                            }>
+                                <div class="form-group">
+                                    <label for="username">
+                                        <i class="fas fa-user"></i>
+                                        "Username (required, max 32 characters)"
+                                    </label>
+                                    <input 
+                                        type="text"
+                                        id="username"
+                                        prop:value=move || username.get()
+                                        on:input=move |e| username.set(event_target_value(&e))
+                                        maxlength="32"
+                                        required
+                                    />
+                                </div>
+                                
+                                // Pixel Art Editor
+                                <div class="form-group">
+                                    <div class="pixel-art-editor">
+                                        <div class="pixel-art-header">
+                                            <label>
+                                                <i class="fas fa-image"></i>
+                                                "Profile Image (Pixel Art)"
+                                            </label>
+                                            <div class="pixel-art-controls">
+                                                <select
+                                                    class="size-selector"
+                                                    prop:value=move || grid_size.get().to_string()
+                                                    on:change=move |ev| {
+                                                        let value = event_target_value(&ev);
+                                                        if let Ok(size) = value.parse::<usize>() {
+                                                            grid_size.set(size);
+                                                            pixel_art.set(Pixel::new_with_size(size));
+                                                        }
+                                                    }
+                                                    prop:disabled=move || loading.get()
+                                                >
+                                                    <option value="16">"16×16 pixels"</option>
+                                                    <option value="32">"32×32 pixels"</option>
+                                                </select>
+                                                <button 
+                                                    type="button"
+                                                    class="import-btn"
+                                                    on:click=handle_import
+                                                    prop:disabled=move || loading.get()
+                                                >
+                                                    <i class="fas fa-upload"></i>
+                                                    "Import Image"
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        // Pixel Art Canvas
+                                        {move || {
+                                            let art_string = pixel_art.get().to_optimal_string();
+                                            let click_handler = Box::new(move |row, col| {
+                                                let mut new_art = pixel_art.get();
+                                                new_art.toggle_pixel(row, col);
+                                                pixel_art.set(new_art);
+                                            });
+                                            
+                                            view! {
+                                                <PixelView
+                                                    art=art_string
+                                                    size=256
+                                                    editable=true
+                                                    show_grid=true
+                                                    on_click=click_handler
+                                                />
+                                            }
+                                        }}
 
-            {move || if show_confirm_dialog.get() {
-                view! {
-                    <div class="confirm-modal-overlay">
-                        <div class="confirm-modal-content">
-                            <div class="confirm-modal-header">
-                                <h4>"Delete Profile"</h4>
-                            </div>
-                            <div class="confirm-modal-body">
-                                <p>"Are you sure you want to delete your profile? This action cannot be undone and you will need to create a new profile."</p>
-                            </div>
-                            <div class="confirm-modal-footer">
-                                <button
-                                    type="button"
-                                    class="confirm-modal-btn cancel"
-                                    on:click=move |_| handle_cancel_delete()
-                                >
-                                    "Cancel"
-                                </button>
-                                <button
-                                    type="button"
-                                    class="confirm-modal-btn delete"
-                                    on:click=move |_| handle_confirm_delete()
-                                >
-                                    "Delete"
-                                </button>
-                            </div>
+                                        // Pixel art info
+                                        <div class="pixel-string-info">
+                                            <div class="string-display">
+                                                <span class="label">
+                                                    <i class="fas fa-code"></i>
+                                                    "Encoded String: "
+                                                </span>
+                                                <span class="value">
+                                                    {move || {
+                                                        let art_string = pixel_art.get().to_optimal_string();
+                                                        if art_string.len() <= 20 {
+                                                            art_string
+                                                        } else {
+                                                            format!("{}...{}", &art_string[..10], &art_string[art_string.len()-10..])
+                                                        }
+                                                    }}
+                                                </span>
+                                                <div class="copy-container">
+                                                    <button
+                                                        type="button"
+                                                        class="copy-button"
+                                                        on:click=copy_string
+                                                        title="Copy encoded string to clipboard"
+                                                    >
+                                                        <i class="fas fa-copy"></i>
+                                                    </button>
+                                                    <div 
+                                                        class="copy-tooltip"
+                                                        class:show=move || show_copied.get()
+                                                    >
+                                                        "Copied!"
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="string-length">
+                                                <span class="label">
+                                                    <i class="fas fa-ruler"></i>
+                                                    "Length: "
+                                                </span>
+                                                <span class="value">
+                                                    {move || format!("{} bytes", pixel_art.get().to_optimal_string().len())}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="about-me">
+                                        <i class="fas fa-info-circle"></i>
+                                        "About Me"
+                                    </label>
+                                    <textarea 
+                                        id="about-me"
+                                        prop:value=move || about_me.get()
+                                        on:input=move |e| about_me.set(event_target_value(&e))
+                                        maxlength="128"
+                                        rows="3"
+                                        placeholder="Tell us about yourself..."
+                                    ></textarea>
+                                    <div class="char-count">
+                                        {move || format!("{}/128", about_me.get().len())}
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="burn-amount">
+                                        <i class="fas fa-fire"></i>
+                                        "Burn Amount (tokens, minimum 420)"
+                                    </label>
+                                    <input 
+                                        type="number"
+                                        id="burn-amount"
+                                        prop:value=move || burn_amount.get()
+                                        on:input=move |e| {
+                                            if let Ok(val) = event_target_value(&e).parse::<u64>() {
+                                                burn_amount.set(val.max(420));
+                                            }
+                                        }
+                                        min="420"
+                                        required
+                                    />
+                                </div>
+                                
+                                <div class="form-actions">
+                                    <button 
+                                        type="submit"
+                                        class="btn btn-primary"
+                                        disabled=move || loading.get()
+                                    >
+                                        <i class="fas fa-check"></i>
+                                        {move || if loading.get() { "Creating..." } else { "Create Profile" }}
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        class="btn btn-secondary"
+                                        on:click=move |_| show_create_form.set(false)
+                                        disabled=move || loading.get()
+                                    >
+                                        <i class="fas fa-times"></i>
+                                        "Cancel"
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
-                }
-            } else {
-                view! { <div></div> }
-            }}
-        </form>
-    }
-}
+                })}
+                
+                // Edit Profile Form
+                {move || show_edit_form.get().then(|| view! {
+                    <div class="profile-form">
+                        <div class="form-card">
+                            <h2>
+                                <i class="fas fa-edit"></i>
+                                "Edit Profile"
+                            </h2>
+                            <form on:submit=move |e| {
+                                e.prevent_default();
+                                update_profile.dispatch(());
+                            }>
+                                <div class="form-group">
+                                    <label for="edit-username">
+                                        <i class="fas fa-user"></i>
+                                        "Username (leave empty to keep current, max 32 characters)"
+                                    </label>
+                                    <input 
+                                        type="text"
+                                        id="edit-username"
+                                        prop:value=move || username.get()
+                                        on:input=move |e| username.set(event_target_value(&e))
+                                        maxlength="32"
+                                    />
+                                </div>
+                                
+                                // Pixel Art Editor (same as create form)
+                                <div class="form-group">
+                                    <div class="pixel-art-editor">
+                                        <div class="pixel-art-header">
+                                            <label>
+                                                <i class="fas fa-image"></i>
+                                                "Profile Image (Pixel Art) - leave empty to keep current"
+                                            </label>
+                                            <div class="pixel-art-controls">
+                                                <select
+                                                    class="size-selector"
+                                                    prop:value=move || grid_size.get().to_string()
+                                                    on:change=move |ev| {
+                                                        let value = event_target_value(&ev);
+                                                        if let Ok(size) = value.parse::<usize>() {
+                                                            grid_size.set(size);
+                                                            pixel_art.set(Pixel::new_with_size(size));
+                                                        }
+                                                    }
+                                                    prop:disabled=move || loading.get()
+                                                >
+                                                    <option value="16">"16×16 pixels"</option>
+                                                    <option value="32">"32×32 pixels"</option>
+                                                </select>
+                                                <button 
+                                                    type="button"
+                                                    class="import-btn"
+                                                    on:click=handle_import
+                                                    prop:disabled=move || loading.get()
+                                                >
+                                                    <i class="fas fa-upload"></i>
+                                                    "Import Image"
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        // Pixel Art Canvas
+                                        {move || {
+                                            let art_string = pixel_art.get().to_optimal_string();
+                                            let click_handler = Box::new(move |row, col| {
+                                                let mut new_art = pixel_art.get();
+                                                new_art.toggle_pixel(row, col);
+                                                pixel_art.set(new_art);
+                                            });
+                                            
+                                            view! {
+                                                <PixelView
+                                                    art=art_string
+                                                    size=256
+                                                    editable=true
+                                                    show_grid=true
+                                                    on_click=click_handler
+                                                />
+                                            }
+                                        }}
 
-async fn process_image(data: &[u8]) -> Result<Pixel, String> {
-    let img = image::load_from_memory(data)
-        .map_err(|e| format!("Failed to load image: {}", e))?;
-    
-    let resized = img.resize_exact(32, 32, image::imageops::FilterType::Lanczos3);
-    let gray = resized.into_luma8();
-    
-    let threshold = 128u8;
-    let mut pixel_art = Pixel::new();
-    
-    for (x, y, pixel) in gray.enumerate_pixels() {
-        pixel_art.set_pixels_from_image(x as usize, y as usize, pixel[0] < threshold);
+                                        // Pixel art info
+                                        <div class="pixel-string-info">
+                                            <div class="string-display">
+                                                <span class="label">
+                                                    <i class="fas fa-code"></i>
+                                                    "Encoded String: "
+                                                </span>
+                                                <span class="value">
+                                                    {move || {
+                                                        let art_string = pixel_art.get().to_optimal_string();
+                                                        if art_string.len() <= 20 {
+                                                            art_string
+                                                        } else {
+                                                            format!("{}...{}", &art_string[..10], &art_string[art_string.len()-10..])
+                                                        }
+                                                    }}
+                                                </span>
+                                                <div class="copy-container">
+                                                    <button
+                                                        type="button"
+                                                        class="copy-button"
+                                                        on:click=copy_string
+                                                        title="Copy encoded string to clipboard"
+                                                    >
+                                                        <i class="fas fa-copy"></i>
+                                                    </button>
+                                                    <div 
+                                                        class="copy-tooltip"
+                                                        class:show=move || show_copied.get()
+                                                    >
+                                                        "Copied!"
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="string-length">
+                                                <span class="label">
+                                                    <i class="fas fa-ruler"></i>
+                                                    "Length: "
+                                                </span>
+                                                <span class="value">
+                                                    {move || format!("{} bytes", pixel_art.get().to_optimal_string().len())}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="edit-about-me">
+                                        <i class="fas fa-info-circle"></i>
+                                        "About Me (leave empty to keep current, max 128 characters)"
+                                    </label>
+                                    <textarea 
+                                        id="edit-about-me"
+                                        prop:value=move || about_me.get()
+                                        on:input=move |e| about_me.set(event_target_value(&e))
+                                        maxlength="128"
+                                        rows="3"
+                                        placeholder="Tell us about yourself..."
+                                    ></textarea>
+                                    <div class="char-count">
+                                        {move || format!("{}/128", about_me.get().len())}
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="edit-burn-amount">
+                                        <i class="fas fa-fire"></i>
+                                        "Burn Amount (tokens, minimum 420)"
+                                    </label>
+                                    <input 
+                                        type="number"
+                                        id="edit-burn-amount"
+                                        prop:value=move || burn_amount.get()
+                                        on:input=move |e| {
+                                            if let Ok(val) = event_target_value(&e).parse::<u64>() {
+                                                burn_amount.set(val.max(420));
+                                            }
+                                        }
+                                        min="420"
+                                        required
+                                    />
+                                </div>
+                                
+                                <div class="form-actions">
+                                    <button 
+                                        type="submit"
+                                        class="btn btn-primary"
+                                        disabled=move || loading.get()
+                                    >
+                                        <i class="fas fa-save"></i>
+                                        {move || if loading.get() { "Updating..." } else { "Update Profile" }}
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        class="btn btn-secondary"
+                                        on:click=move |_| show_edit_form.set(false)
+                                        disabled=move || loading.get()
+                                    >
+                                        <i class="fas fa-times"></i>
+                                        "Cancel"
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                })}
+            </div>
+        </div>
     }
-    
-    Ok(pixel_art)
 } 

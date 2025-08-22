@@ -354,10 +354,11 @@ async fn perform_burn(
         let mut session_data = session.get();
         
         if burn_options.personal_collection {
-            // TODO: future support burn_with_history 
-            session_data.burn(amount, burn_message, &signature).await
+            // Use burn_with_history for personal collection
+            session_data.burn_with_history(amount, burn_message, &signature).await
         } else {
-            session_data.burn(amount, burn_message, &signature).await
+            // Use regular burn (correct parameter order: amount, message)
+            session_data.burn(amount, burn_message).await
         }
     }.map_err(|e| format!("Session burn failed: {}", e))?;
 

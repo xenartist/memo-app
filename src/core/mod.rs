@@ -11,6 +11,7 @@ pub mod storage_burn;
 pub mod transaction;
 pub mod rpc_mint;
 pub mod rpc_chat;
+pub mod rpc_profile;
 
 #[cfg(test)]
 pub mod rpc_tests;

@@ -175,7 +175,9 @@ pub fn MintForm(
                                     s.set_user_profile(Some(profile.clone()));
                                     s.mark_balance_update_needed();
                                 });
-                                Ok((signature, 1u64, profile.total_minted))
+                                // Since we don't have mint statistics in the new profile structure,
+                                // we'll return 0 for backward compatibility
+                                Ok((signature, 1u64, 0u64))
                             },
                             _ => {
                                 session.update(|s| s.mark_balance_update_needed());
