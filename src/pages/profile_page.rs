@@ -22,6 +22,7 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
     // Form states
     let show_create_form = create_rw_signal(false);
     let show_edit_form = create_rw_signal(false);
+    let show_delete_confirm = create_rw_signal(false);
     
     // Form fields
     let username = create_rw_signal(String::new());
@@ -305,11 +306,17 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
         match session.with_untracked(|s| s.clone()).delete_profile().await {
             Ok(_) => {
                 success_message.set(Some("Profile deleted successfully!".to_string()));
+                show_delete_confirm.set(false);
+                
+                // clear profile cache and refresh
+                session.update(|s| s.set_user_profile(None));
                 profile.set(None);
+                
                 clear_messages();
             },
             Err(e) => {
                 error_message.set(Some(format!("Failed to delete profile: {}", e)));
+                show_delete_confirm.set(false);
                 clear_messages();
             }
         }
@@ -435,6 +442,31 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                     <p><strong>"Created:"</strong> {created_str}</p>
                                     <p><strong>"Last Updated:"</strong> {updated_str}</p>
                                     <p><strong>"Bump:"</strong> {user_profile.bump.to_string()}</p>
+                                </div>
+                                
+                                // action buttons area
+                                <div class="profile-actions">
+                                    <button 
+                                        class="btn btn-primary"
+                                        on:click=move |_| {
+                                            fill_edit_form();
+                                        }
+                                        disabled=move || loading.get()
+                                    >
+                                        <i class="fas fa-edit"></i>
+                                        "Update Profile"
+                                    </button>
+                                    
+                                    <button 
+                                        class="btn btn-danger"
+                                        on:click=move |_| {
+                                            show_delete_confirm.set(true);
+                                        }
+                                        disabled=move || loading.get()
+                                    >
+                                        <i class="fas fa-trash"></i>
+                                        "Delete Profile"
+                                    </button>
                                 </div>
                             </div>
                         }.into_view()
@@ -840,5 +872,57 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                 })}
             </div>
         </div>
+        
+        // delete confirm dialog
+        {move || if show_delete_confirm.get() {
+            view! {
+                <div class="modal-overlay">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>
+                                <i class="fas fa-exclamation-triangle"></i>
+                                "Confirm Delete Profile"
+                            </h3>
+                        </div>
+                        
+                        <div class="modal-body">
+                            <p><strong>"Warning:"</strong> " This action cannot be undone!"</p>
+                            <p>"Are you sure you want to permanently delete your profile?"</p>
+                            <p class="delete-info">
+                                <i class="fas fa-info-circle"></i>
+                                "Your profile data will be removed from the blockchain and cannot be recovered."
+                            </p>
+                        </div>
+                        
+                        <div class="modal-actions">
+                            <button 
+                                class="btn btn-danger"
+                                on:click=move |_| {
+                                    show_delete_confirm.set(false);
+                                    delete_profile.dispatch(());
+                                }
+                                disabled=move || loading.get()
+                            >
+                                <i class="fas fa-trash"></i>
+                                {move || if loading.get() { "Deleting..." } else { "Yes, Delete Profile" }}
+                            </button>
+                            
+                            <button 
+                                class="btn btn-secondary"
+                                on:click=move |_| {
+                                    show_delete_confirm.set(false);
+                                }
+                                disabled=move || loading.get()
+                            >
+                                <i class="fas fa-times"></i>
+                                "Cancel"
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }.into_view()
+        } else {
+            view! { <span></span> }.into_view()
+        }}
     }
 } 
