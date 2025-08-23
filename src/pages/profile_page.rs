@@ -30,9 +30,25 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
     let pixel_art = create_rw_signal(Pixel::new_with_size(16)); // default 16x16 pixel art
     let burn_amount = create_rw_signal(420u64); // Default minimum burn amount
     
+    // Original values for change detection
+    let original_username = create_rw_signal(String::new());
+    let original_about_me = create_rw_signal(String::new());
+    let original_pixel_art = create_rw_signal(Pixel::new_with_size(16));
+    
     // Pixel art editor state
     let grid_size = create_rw_signal(16usize);
+    let current_pixel_size = create_rw_signal(16usize);
     let show_copied = create_rw_signal(false);
+    
+    // Change detection signals
+    let username_changed = create_memo(move |_| username.get() != original_username.get());
+    let about_me_changed = create_memo(move |_| about_me.get() != original_about_me.get());
+    let pixel_art_changed = create_memo(move |_| {
+        pixel_art.get().to_optimal_string() != original_pixel_art.get().to_optimal_string()
+    });
+    let has_changes = create_memo(move |_| {
+        username_changed.get() || about_me_changed.get() || pixel_art_changed.get()
+    });
     
     // Load profile on page load
     create_effect(move |_| {
@@ -214,38 +230,27 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
         error_message.set(None);
         success_message.set(None);
         
-        let username_val = if username.get().is_empty() { None } else { Some(username.get()) };
-        let image_val = {
-            let art_string = pixel_art.get().to_optimal_string();
-            if art_string.is_empty() || art_string == Pixel::new_with_size(16).to_optimal_string() {
-                None // No image update
-            } else {
-                Some(art_string)
-            }
-        };
+        // Always send complete profile data, not just changes
+        let username_val = Some(username.get());
+        let image_val = Some(pixel_art.get().to_optimal_string());
         let about_val = if about_me.get().is_empty() { None } else { Some(about_me.get()) };
-        let burn_val = burn_amount.get(); // remove unit conversion
+        let burn_val = burn_amount.get();
         
         // Validate inputs
-        if let Some(ref username_str) = username_val {
-            if username_str.len() > 32 {
-                error_message.set(Some("Username must be 32 characters or less".to_string()));
-                loading.set(false);
-                clear_messages();
-                return;
-            }
+        if username.get().len() > 32 {
+            error_message.set(Some("Username must be 32 characters or less".to_string()));
+            loading.set(false);
+            clear_messages();
+            return;
         }
         
-        if let Some(ref image_str) = image_val {
-            if image_str.len() > 256 {
-                error_message.set(Some("Pixel art string too long (max 256 characters)".to_string()));
-                loading.set(false);
-                clear_messages();
-                return;
-            }
+        if pixel_art.get().to_optimal_string().len() > 256 {
+            error_message.set(Some("Pixel art string too long (max 256 characters)".to_string()));
+            loading.set(false);
+            clear_messages();
+            return;
         }
         
-        // fix: handle simple Option<String> instead of nested
         if let Some(ref about_str) = about_val {
             if about_str.len() > 128 {
                 error_message.set(Some("About me must be 128 characters or less".to_string()));
@@ -255,12 +260,11 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
             }
         }
         
-        // simplified call
         match session.with_untracked(|s| s.clone()).update_profile(
             burn_val,
             username_val,
             image_val,
-            about_val, // now it's a simple Option<String>
+            about_val,
         ).await {
             Ok(_) => {
                 success_message.set(Some("Profile updated successfully! Loading updated profile...".to_string()));
@@ -327,16 +331,39 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
     // Fill form with current profile data for editing
     let fill_edit_form = move || {
         if let Some(ref current_profile) = profile.get() {
+            // Set current values
             username.set(current_profile.username.clone());
-            // use image field instead of profile_image
-            if let Some(parsed_pixel) = Pixel::from_safe_string(&current_profile.image) {
-                pixel_art.set(parsed_pixel);
+            
+            // Debug: log the current profile image string
+            log::info!("Current profile image string: {}", current_profile.image);
+            
+            // Set pixel art - use from_optimal_string to match PixelView component
+            if let Some(parsed_pixel) = Pixel::from_optimal_string(&current_profile.image) {
+                log::info!("Successfully parsed pixel art from string");
+                // Set the grid size to match the parsed pixel art size
+                let (width, height) = parsed_pixel.dimensions();
+                log::info!("Parsed pixel art dimensions: {}x{}", width, height);
+                grid_size.set(width);
+                current_pixel_size.set(width);
+                log::info!("Set grid_size and current_pixel_size to: {}", width);
+                pixel_art.set(parsed_pixel.clone());
+                original_pixel_art.set(parsed_pixel);
             } else {
+                log::warn!("Failed to parse pixel art from string: {}", current_profile.image);
                 // If not a valid pixel art string, create new empty pixel art
+                grid_size.set(16);
+                current_pixel_size.set(16);
                 pixel_art.set(Pixel::new_with_size(16));
+                original_pixel_art.set(Pixel::new_with_size(16));
             }
-            // about_me is now Option<String>
-            about_me.set(current_profile.about_me.clone().unwrap_or_default());
+            
+            // Set about me
+            let about_text = current_profile.about_me.clone().unwrap_or_default();
+            about_me.set(about_text.clone());
+            
+            // Store original values for change detection
+            original_username.set(current_profile.username.clone());
+            original_about_me.set(about_text);
         }
         show_edit_form.set(true);
     };
@@ -511,7 +538,10 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                         type="text"
                                         id="username"
                                         prop:value=move || username.get()
-                                        on:input=move |e| username.set(event_target_value(&e))
+                                        on:input=move |e| {
+                                            username.set(event_target_value(&e));
+                                            original_username.set(username.get());
+                                        }
                                         maxlength="32"
                                         required
                                     />
@@ -526,21 +556,45 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                                 "Profile Image (Pixel Art)"
                                             </label>
                                             <div class="pixel-art-controls">
-                                                <select
-                                                    class="size-selector"
-                                                    prop:value=move || grid_size.get().to_string()
-                                                    on:change=move |ev| {
-                                                        let value = event_target_value(&ev);
-                                                        if let Ok(size) = value.parse::<usize>() {
-                                                            grid_size.set(size);
-                                                            pixel_art.set(Pixel::new_with_size(size));
-                                                        }
+                                                {
+                                                    let current_size = create_memo(move |_| {
+                                                        let (width, _) = pixel_art.get().dimensions();
+                                                        width
+                                                    });
+                                                    
+                                                    view! {
+                                                        <select
+                                                            class="size-selector"
+                                                            on:change=move |ev| {
+                                                                let value = event_target_value(&ev);
+                                                                if let Ok(size) = value.parse::<usize>() {
+                                                                    grid_size.set(size);
+                                                                    current_pixel_size.set(size); // Update the dedicated signal
+                                                                    // Only create new pixel art if user explicitly changes size
+                                                                    let (current_width, _) = pixel_art.get().dimensions();
+                                                                    if size != current_width {
+                                                                        // Create new pixel art with selected size
+                                                                        pixel_art.set(Pixel::new_with_size(size));
+                                                                    }
+                                                                }
+                                                            }
+                                                            prop:disabled=move || loading.get()
+                                                        >
+                                                            <option 
+                                                                value="16"
+                                                                selected=move || current_pixel_size.get() == 16
+                                                            >
+                                                                "16×16 pixels"
+                                                            </option>
+                                                            <option 
+                                                                value="32"
+                                                                selected=move || current_pixel_size.get() == 32
+                                                            >
+                                                                "32×32 pixels"
+                                                            </option>
+                                                        </select>
                                                     }
-                                                    prop:disabled=move || loading.get()
-                                                >
-                                                    <option value="16">"16×16 pixels"</option>
-                                                    <option value="32">"32×32 pixels"</option>
-                                                </select>
+                                                }
                                                 <button 
                                                     type="button"
                                                     class="import-btn"
@@ -628,7 +682,10 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                     <textarea 
                                         id="about-me"
                                         prop:value=move || about_me.get()
-                                        on:input=move |e| about_me.set(event_target_value(&e))
+                                        on:input=move |e| {
+                                            about_me.set(event_target_value(&e));
+                                            original_about_me.set(about_me.get());
+                                        }
                                         maxlength="128"
                                         rows="3"
                                         placeholder="Tell us about yourself..."
@@ -696,7 +753,17 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                 <div class="form-group">
                                     <label for="edit-username">
                                         <i class="fas fa-user"></i>
-                                        "Username (leave empty to keep current, max 32 characters)"
+                                        "Username (max 32 characters)"
+                                        {move || if username_changed.get() {
+                                            view! { 
+                                                <span class="changed-indicator">
+                                                    <i class="fas fa-edit"></i>
+                                                    "Modified"
+                                                </span> 
+                                            }.into_view()
+                                        } else {
+                                            view! { <span></span> }.into_view()
+                                        }}
                                     </label>
                                     <input 
                                         type="text"
@@ -704,26 +771,44 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                         prop:value=move || username.get()
                                         on:input=move |e| username.set(event_target_value(&e))
                                         maxlength="32"
+                                        class:changed=move || username_changed.get()
+                                        required
                                     />
                                 </div>
                                 
-                                // Pixel Art Editor (same as create form)
+                                // Pixel Art Editor
                                 <div class="form-group">
                                     <div class="pixel-art-editor">
                                         <div class="pixel-art-header">
                                             <label>
                                                 <i class="fas fa-image"></i>
-                                                "Profile Image (Pixel Art) - leave empty to keep current"
+                                                "Profile Image (Pixel Art)"
+                                                {move || if pixel_art_changed.get() {
+                                                    view! { 
+                                                        <span class="changed-indicator">
+                                                            <i class="fas fa-edit"></i>
+                                                            "Modified"
+                                                        </span> 
+                                                    }.into_view()
+                                                } else {
+                                                    view! { <span></span> }.into_view()
+                                                }}
                                             </label>
                                             <div class="pixel-art-controls">
                                                 <select
                                                     class="size-selector"
-                                                    prop:value=move || grid_size.get().to_string()
+                                                    prop:value=move || current_pixel_size.get().to_string()
                                                     on:change=move |ev| {
                                                         let value = event_target_value(&ev);
                                                         if let Ok(size) = value.parse::<usize>() {
                                                             grid_size.set(size);
-                                                            pixel_art.set(Pixel::new_with_size(size));
+                                                            current_pixel_size.set(size);
+                                                            // Only create new pixel art if user explicitly changes size
+                                                            let (current_width, _) = pixel_art.get().dimensions();
+                                                            if size != current_width {
+                                                                // Create new pixel art with selected size
+                                                                pixel_art.set(Pixel::new_with_size(size));
+                                                            }
                                                         }
                                                     }
                                                     prop:disabled=move || loading.get()
@@ -744,24 +829,26 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                         </div>
                                         
                                         // Pixel Art Canvas
-                                        {move || {
-                                            let art_string = pixel_art.get().to_optimal_string();
-                                            let click_handler = Box::new(move |row, col| {
-                                                let mut new_art = pixel_art.get();
-                                                new_art.toggle_pixel(row, col);
-                                                pixel_art.set(new_art);
-                                            });
-                                            
-                                            view! {
-                                                <PixelView
-                                                    art=art_string
-                                                    size=256
-                                                    editable=true
-                                                    show_grid=true
-                                                    on_click=click_handler
-                                                />
-                                            }
-                                        }}
+                                        <div class:changed=move || pixel_art_changed.get()>
+                                            {move || {
+                                                let art_string = pixel_art.get().to_optimal_string();
+                                                let click_handler = Box::new(move |row, col| {
+                                                    let mut new_art = pixel_art.get();
+                                                    new_art.toggle_pixel(row, col);
+                                                    pixel_art.set(new_art);
+                                                });
+                                                
+                                                view! {
+                                                    <PixelView
+                                                        art=art_string
+                                                        size=256
+                                                        editable=true
+                                                        show_grid=true
+                                                        on_click=click_handler
+                                                    />
+                                                }
+                                            }}
+                                        </div>
 
                                         // Pixel art info
                                         <div class="pixel-string-info">
@@ -813,7 +900,17 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                 <div class="form-group">
                                     <label for="edit-about-me">
                                         <i class="fas fa-info-circle"></i>
-                                        "About Me (leave empty to keep current, max 128 characters)"
+                                        "About Me (max 128 characters)"
+                                        {move || if about_me_changed.get() {
+                                            view! { 
+                                                <span class="changed-indicator">
+                                                    <i class="fas fa-edit"></i>
+                                                    "Modified"
+                                                </span> 
+                                            }.into_view()
+                                        } else {
+                                            view! { <span></span> }.into_view()
+                                        }}
                                     </label>
                                     <textarea 
                                         id="edit-about-me"
@@ -822,6 +919,7 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                         maxlength="128"
                                         rows="3"
                                         placeholder="Tell us about yourself..."
+                                        class:changed=move || about_me_changed.get()
                                     ></textarea>
                                     <div class="char-count">
                                         {move || format!("{}/128", about_me.get().len())}
@@ -847,14 +945,83 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                     />
                                 </div>
                                 
+                                // Changes summary
+                                {move || if has_changes.get() {
+                                    view! {
+                                        <div class="changes-summary">
+                                            <h4>
+                                                <i class="fas fa-exclamation-circle"></i>
+                                                "Pending Changes"
+                                            </h4>
+                                            <ul>
+                                                {move || if username_changed.get() {
+                                                    view! {
+                                                        <li>
+                                                            "Username: "
+                                                            <span class="old-value">{original_username.get()}</span>
+                                                            " → "
+                                                            <span class="new-value">{username.get()}</span>
+                                                        </li>
+                                                    }.into_view()
+                                                } else {
+                                                    view! { <span></span> }.into_view()
+                                                }}
+                                                
+                                                {move || if about_me_changed.get() {
+                                                    view! {
+                                                        <li>
+                                                            "About Me: "
+                                                            <span class="old-value">
+                                                                {if original_about_me.get().is_empty() { 
+                                                                    "(empty)".to_string() 
+                                                                } else { 
+                                                                    original_about_me.get() 
+                                                                }}
+                                                            </span>
+                                                            " → "
+                                                            <span class="new-value">
+                                                                {if about_me.get().is_empty() { 
+                                                                    "(empty)".to_string() 
+                                                                } else { 
+                                                                    about_me.get() 
+                                                                }}
+                                                            </span>
+                                                        </li>
+                                                    }.into_view()
+                                                } else {
+                                                    view! { <span></span> }.into_view()
+                                                }}
+                                                
+                                                {move || if pixel_art_changed.get() {
+                                                    view! {
+                                                        <li>
+                                                            "Pixel Art: Modified"
+                                                        </li>
+                                                    }.into_view()
+                                                } else {
+                                                    view! { <span></span> }.into_view()
+                                                }}
+                                            </ul>
+                                        </div>
+                                    }.into_view()
+                                } else {
+                                    view! { <span></span> }.into_view()
+                                }}
+                                
                                 <div class="form-actions">
                                     <button 
                                         type="submit"
                                         class="btn btn-primary"
-                                        disabled=move || loading.get()
+                                        disabled=move || loading.get() || !has_changes.get()
                                     >
                                         <i class="fas fa-save"></i>
-                                        {move || if loading.get() { "Updating..." } else { "Update Profile" }}
+                                        {move || if loading.get() { 
+                                            "Updating..." 
+                                        } else if !has_changes.get() {
+                                            "No Changes to Save"
+                                        } else { 
+                                            "Update Profile" 
+                                        }}
                                     </button>
                                     <button 
                                         type="button"
