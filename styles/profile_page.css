@@ -836,19 +836,19 @@
 /* responsive adjustments */
 @media (max-width: 768px) {
     .no-profile {
-        padding-top: 20px;        /* reduce top spacing on mobile */
-        padding-left: 16px;
-        padding-right: 16px;
+        top: 15%;             /* slightly higher on mobile */
+        width: calc(100% - 32px);
     }
     
     .no-profile-card {
-        padding: 32px 24px;       /* reduce padding on mobile */
+        padding: 32px 24px;   /* reduce padding on mobile */
     }
 }
 
 @media (max-width: 480px) {
     .no-profile {
-        padding-top: 15px;        /* further reduce spacing on small screens */
+        top: 10%;             /* even higher on small screens */
+        width: calc(100% - 24px);
     }
     
     .no-profile-card {
