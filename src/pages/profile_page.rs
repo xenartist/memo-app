@@ -175,6 +175,10 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
             }
         }
         
+        // Give UI time to update the loading state
+        use gloo_timers::future::TimeoutFuture;
+        TimeoutFuture::new(100).await;
+        
         match session.with_untracked(|s| s.clone()).create_profile(
             burn_val, // now passing 420 tokens instead of 420,000,000 units
             username_val,
@@ -199,7 +203,6 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                     // wait 10 seconds
                     log::info!("Waiting 10 seconds for blockchain state to update...");
                     
-                    use gloo_timers::future::TimeoutFuture;
                     TimeoutFuture::new(10_000).await;
                     
                     // now get user profile
@@ -257,6 +260,10 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
             }
         }
         
+        // Give UI time to update the loading state
+        use gloo_timers::future::TimeoutFuture;
+        TimeoutFuture::new(100).await;
+        
         match session.with_untracked(|s| s.clone()).update_profile(
             burn_val,
             username_val,
@@ -276,7 +283,6 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                     // wait 20 seconds (shorten the waiting time, because session has already tried to get once)
                     log::info!("Waiting 20 seconds for blockchain state to update...");
                     
-                    use gloo_timers::future::TimeoutFuture;
                     TimeoutFuture::new(20_000).await;
                     
                     // re-get user profile
