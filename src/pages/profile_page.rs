@@ -357,16 +357,26 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                 success_message.set(Some("Profile updated successfully! Loading updated profile...".to_string()));
                 show_edit_form.set(false);
                 
+                // start countdown - same as create_profile
+                is_waiting_for_blockchain.set(true);
+                countdown_seconds.set(20);
+                
                 // wait 20 seconds for blockchain state to update, then refresh user profile
                 let session_clone = session.clone();
                 let profile_clone = profile.clone();
                 let success_message_clone = success_message.clone();
+                let countdown_clone = countdown_seconds.clone();
+                let waiting_clone = is_waiting_for_blockchain.clone();
+                let error_message_clone = error_message.clone();
                 
                 spawn_local(async move {
-                    // wait 20 seconds (shorten the waiting time, because session has already tried to get once in update_profile)
-                    log::info!("Waiting 20 seconds for blockchain state to update...");
+                    // countdown loop - same as create_profile
+                    for i in (1..=20).rev() {
+                        countdown_clone.set(i);
+                        TimeoutFuture::new(1_000).await; // wait 1 second
+                    }
                     
-                    TimeoutFuture::new(20_000).await;
+                    countdown_clone.set(0);
                     
                     // re-get user profile from blockchain, not from cache
                     log::info!("Fetching updated user profile...");
@@ -374,23 +384,57 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                         Ok(Some(updated_profile)) => {
                             profile_clone.set(Some(updated_profile));
                             success_message_clone.set(Some("Profile updated and loaded successfully!".to_string()));
+                            waiting_clone.set(false);
+                            
+                            // call clear_messages
+                            set_timeout(
+                                move || {
+                                    error_message_clone.set(None);
+                                    success_message_clone.set(None);
+                                },
+                                std::time::Duration::from_secs(5),
+                            );
                         },
                         Ok(None) => {
-                            // Profile not found, clear the cache in update_profile
-                            profile_clone.set(None);
-                            success_message_clone.set(Some("Profile updated successfully!".to_string()));
+                            log::warn!("Profile still not found after update, retrying...");
+                            success_message_clone.set(Some("Still loading... Please wait a moment more.".to_string()));
+                            
+                            // show retry countdown
+                            countdown_clone.set(5);
+                            for i in (1..=5).rev() {
+                                countdown_clone.set(i);
+                                TimeoutFuture::new(1_000).await;
+                            }
+                            
+                            // if still not found, wait 5 seconds and retry
+                            match session_clone.with_untracked(|s| s.clone()).fetch_and_cache_user_profile().await {
+                                Ok(Some(retry_profile)) => {
+                                    profile_clone.set(Some(retry_profile));
+                                    success_message_clone.set(Some("Profile updated and loaded successfully!".to_string()));
+                                },
+                                _ => {
+                                    // if failed to get, at least get from cache
+                                    let cached_profile = session_clone.with(|s| s.get_user_profile());
+                                    profile_clone.set(cached_profile);
+                                    success_message_clone.set(Some("Profile updated successfully! (using cached data)".to_string()));
+                                }
+                            }
+                            countdown_clone.set(0);
+                            waiting_clone.set(false);
                         },
                         Err(e) => {
                             log::error!("Failed to fetch updated profile: {}", e);
-                            // if failed to get, at least get from cache in update_profile
+                            // if failed to get, at least get from cache
                             let cached_profile = session_clone.with(|s| s.get_user_profile());
                             profile_clone.set(cached_profile);
                             success_message_clone.set(Some("Profile updated successfully! (using cached data)".to_string()));
+                            countdown_clone.set(0);
+                            waiting_clone.set(false);
                         }
                     }
                 });
                 
-                clear_messages();
+                // don't call clear_messages immediately, wait for countdown to end
             },
             Err(e) => {
                 error_message.set(Some(format!("Failed to update profile: {}", e)));
