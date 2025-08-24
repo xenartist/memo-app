@@ -387,11 +387,6 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
     view! {
         <div class="profile-page">
             <div class="container">
-                <h1>
-                    <i class="fas fa-user"></i>
-                    "Profile Management"
-                </h1>
-                
                 // Messages
                 {move || error_message.get().map(|msg| view! {
                     <div class="alert alert-error">
@@ -529,7 +524,7 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                 
                 // Create Profile Form
                 {move || show_create_form.get().then(|| view! {
-                    <div class="profile-form">
+                    <div class="modal-overlay">
                         <div class="form-card">
                             <h2>
                                 <i class="fas fa-user-plus"></i>
@@ -711,7 +706,7 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                 
                 // Edit Profile Form
                 {move || show_edit_form.get().then(|| view! {
-                    <div class="profile-form">
+                    <div class="modal-overlay">
                         <div class="form-card">
                             <h2>
                                 <i class="fas fa-edit"></i>
