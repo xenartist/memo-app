@@ -1117,3 +1117,19 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.6; }
 } 
+
+/* spacing for pixel string info icons */
+.pixel-string-info .label i {
+    margin-right: 8px;
+}
+
+.pixel-string-info .string-display .label i,
+.pixel-string-info .string-length .label i {
+    margin-right: 8px;
+}
+
+/* ensure spacing for pixel string info icons in form */
+.form-card .pixel-string-info .label i {
+    margin-right: 8px;
+    color: #667eea;
+} 
