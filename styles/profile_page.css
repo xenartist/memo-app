@@ -15,6 +15,12 @@
     overflow-y: auto;
 }
 
+/* when container only contains no-profile, don't take up all height */
+.container:has(.no-profile) {
+    flex: none;
+    min-height: auto;
+}
+
 .profile-page h1 {
     font-size: 2.5rem;
     color: #333;
@@ -185,12 +191,15 @@
     font-weight: 600;
 }
 
-/* No Profile State */
+/* No Profile State*/
 .no-profile {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 400px;
+    position: absolute;
+    top: 20%;              /* distance from top */
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 40px);
+    max-width: 500px;
+    z-index: 1;
 }
 
 .no-profile-card {
@@ -200,7 +209,7 @@
     text-align: center;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
     border: 1px solid #e0e0e0;
-    max-width: 500px;
+    width: 100%;
 }
 
 .no-profile-card h2 {
@@ -822,4 +831,37 @@
     text-align: right;
     margin-top: 4px;
     font-style: italic;
+} 
+
+/* responsive adjustments */
+@media (max-width: 768px) {
+    .no-profile {
+        padding-top: 20px;        /* reduce top spacing on mobile */
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+    
+    .no-profile-card {
+        padding: 32px 24px;       /* reduce padding on mobile */
+    }
+}
+
+@media (max-width: 480px) {
+    .no-profile {
+        padding-top: 15px;        /* further reduce spacing on small screens */
+    }
+    
+    .no-profile-card {
+        padding: 24px 20px;
+    }
+    
+    .no-profile-card h2 {
+        font-size: 20px;
+    }
+} 
+
+.no-profile-container {
+    flex: none !important;
+    height: auto !important;
+    min-height: auto !important;
 } 

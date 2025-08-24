@@ -411,7 +411,7 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
     
     view! {
         <div class="profile-page">
-            <div class="container">
+            <div class={move || if profile.get().is_none() { "container no-profile-container" } else { "container" }}>
                 // Messages
                 {move || error_message.get().map(|msg| view! {
                     <div class="alert alert-error">
