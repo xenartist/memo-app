@@ -27,17 +27,15 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
     // Form fields
     let username = create_rw_signal(String::new());
     let about_me = create_rw_signal(String::new());
-    let pixel_art = create_rw_signal(Pixel::new_with_size(16)); // default 16x16 pixel art
+    let pixel_art = create_rw_signal(Pixel::new_with_size(32)); // fixed size 32x32
     let burn_amount = create_rw_signal(420u64); // Default minimum burn amount
     
     // Original values for change detection
     let original_username = create_rw_signal(String::new());
     let original_about_me = create_rw_signal(String::new());
-    let original_pixel_art = create_rw_signal(Pixel::new_with_size(16));
+    let original_pixel_art = create_rw_signal(Pixel::new_with_size(32)); // fixed size 32x32
     
-    // Pixel art editor state
-    let grid_size = create_rw_signal(16usize);
-    let current_pixel_size = create_rw_signal(16usize);
+    // Pixel art editor state - remove grid_size and current_pixel_size, because fixed size 32x32
     let show_copied = create_rw_signal(false);
     
     // Change detection signals
@@ -67,7 +65,7 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
         );
     };
 
-    // Handle pixel art import
+    // Handle pixel art import - fixed size 32x32
     let handle_import = move |_| {
         let document = web_sys::window().unwrap().document().unwrap();
         let input: HtmlInputElement = document
@@ -81,21 +79,20 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
         
         let pixel_art_write = pixel_art;
         let error_signal = error_message;
-        let grid_size_signal = grid_size;
         
         let onchange = Closure::wrap(Box::new(move |event: Event| {
             let input: HtmlInputElement = event.target().unwrap().dyn_into().unwrap();
             if let Some(file) = input.files().unwrap().get(0) {
                 let reader = FileReader::new().unwrap();
                 let reader_clone = reader.clone();
-                let current_grid_size = grid_size_signal.get();
                 
                 let onload = Closure::wrap(Box::new(move |_: ProgressEvent| {
                     if let Ok(buffer) = reader_clone.result() {
                         let array = Uint8Array::new(&buffer);
                         let data = array.to_vec();
                         
-                        match Pixel::from_image_data_with_size(&data, current_grid_size) {
+                        // fixed size 32x32
+                        match Pixel::from_image_data_with_size(&data, 32) {
                             Ok(new_art) => {
                                 pixel_art_write.set(new_art);
                                 error_signal.set(None);
@@ -190,7 +187,7 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                 
                 // clear form
                 username.set(String::new());
-                pixel_art.set(Pixel::new_with_size(16));
+                pixel_art.set(Pixel::new_with_size(32));
                 about_me.set(String::new());
                 
                 // wait 10 seconds for blockchain state to update, then refresh user profile
@@ -334,27 +331,16 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
             // Set current values
             username.set(current_profile.username.clone());
             
-            // Debug: log the current profile image string
-            log::info!("Current profile image string: {}", current_profile.image);
-            
-            // Set pixel art - use from_optimal_string to match PixelView component
+            // Set pixel art - always use 32x32
             if let Some(parsed_pixel) = Pixel::from_optimal_string(&current_profile.image) {
                 log::info!("Successfully parsed pixel art from string");
-                // Set the grid size to match the parsed pixel art size
-                let (width, height) = parsed_pixel.dimensions();
-                log::info!("Parsed pixel art dimensions: {}x{}", width, height);
-                grid_size.set(width);
-                current_pixel_size.set(width);
-                log::info!("Set grid_size and current_pixel_size to: {}", width);
                 pixel_art.set(parsed_pixel.clone());
                 original_pixel_art.set(parsed_pixel);
             } else {
-                log::warn!("Failed to parse pixel art from string: {}", current_profile.image);
-                // If not a valid pixel art string, create new empty pixel art
-                grid_size.set(16);
-                current_pixel_size.set(16);
-                pixel_art.set(Pixel::new_with_size(16));
-                original_pixel_art.set(Pixel::new_with_size(16));
+                log::warn!("Failed to parse pixel art from string, using empty 32x32: {}", current_profile.image);
+                // always create 32x32 pixel art
+                pixel_art.set(Pixel::new_with_size(32));
+                original_pixel_art.set(Pixel::new_with_size(32));
             }
             
             // Set about me
@@ -553,48 +539,9 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                         <div class="pixel-art-header">
                                             <label>
                                                 <i class="fas fa-image"></i>
-                                                "Profile Image (Pixel Art)"
+                                                "Profile Image (Pixel Art - 32×32)"
                                             </label>
                                             <div class="pixel-art-controls">
-                                                {
-                                                    let current_size = create_memo(move |_| {
-                                                        let (width, _) = pixel_art.get().dimensions();
-                                                        width
-                                                    });
-                                                    
-                                                    view! {
-                                                        <select
-                                                            class="size-selector"
-                                                            on:change=move |ev| {
-                                                                let value = event_target_value(&ev);
-                                                                if let Ok(size) = value.parse::<usize>() {
-                                                                    grid_size.set(size);
-                                                                    current_pixel_size.set(size); // Update the dedicated signal
-                                                                    // Only create new pixel art if user explicitly changes size
-                                                                    let (current_width, _) = pixel_art.get().dimensions();
-                                                                    if size != current_width {
-                                                                        // Create new pixel art with selected size
-                                                                        pixel_art.set(Pixel::new_with_size(size));
-                                                                    }
-                                                                }
-                                                            }
-                                                            prop:disabled=move || loading.get()
-                                                        >
-                                                            <option 
-                                                                value="16"
-                                                                selected=move || current_pixel_size.get() == 16
-                                                            >
-                                                                "16×16 pixels"
-                                                            </option>
-                                                            <option 
-                                                                value="32"
-                                                                selected=move || current_pixel_size.get() == 32
-                                                            >
-                                                                "32×32 pixels"
-                                                            </option>
-                                                        </select>
-                                                    }
-                                                }
                                                 <button 
                                                     type="button"
                                                     class="import-btn"
@@ -607,7 +554,7 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                             </div>
                                         </div>
                                         
-                                        // Pixel Art Canvas
+                                        // Pixel Art Canvas - fixed size 32x32
                                         {move || {
                                             let art_string = pixel_art.get().to_optimal_string();
                                             let click_handler = Box::new(move |row, col| {
@@ -782,7 +729,7 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                         <div class="pixel-art-header">
                                             <label>
                                                 <i class="fas fa-image"></i>
-                                                "Profile Image (Pixel Art)"
+                                                "Profile Image (Pixel Art - 32×32)"
                                                 {move || if pixel_art_changed.get() {
                                                     view! { 
                                                         <span class="changed-indicator">
@@ -795,27 +742,6 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                                 }}
                                             </label>
                                             <div class="pixel-art-controls">
-                                                <select
-                                                    class="size-selector"
-                                                    prop:value=move || current_pixel_size.get().to_string()
-                                                    on:change=move |ev| {
-                                                        let value = event_target_value(&ev);
-                                                        if let Ok(size) = value.parse::<usize>() {
-                                                            grid_size.set(size);
-                                                            current_pixel_size.set(size);
-                                                            // Only create new pixel art if user explicitly changes size
-                                                            let (current_width, _) = pixel_art.get().dimensions();
-                                                            if size != current_width {
-                                                                // Create new pixel art with selected size
-                                                                pixel_art.set(Pixel::new_with_size(size));
-                                                            }
-                                                        }
-                                                    }
-                                                    prop:disabled=move || loading.get()
-                                                >
-                                                    <option value="16">"16×16 pixels"</option>
-                                                    <option value="32">"32×32 pixels"</option>
-                                                </select>
                                                 <button 
                                                     type="button"
                                                     class="import-btn"
@@ -828,7 +754,7 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                             </div>
                                         </div>
                                         
-                                        // Pixel Art Canvas
+                                        // Pixel Art Canvas - fixed size 32x32
                                         <div class:changed=move || pixel_art_changed.get()>
                                             {move || {
                                                 let art_string = pixel_art.get().to_optimal_string();
