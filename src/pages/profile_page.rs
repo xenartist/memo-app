@@ -67,6 +67,8 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
 
     // Handle pixel art import - fixed size 32x32
     let handle_import = move |_| {
+        log::info!("Starting image import...");
+        
         let document = web_sys::window().unwrap().document().unwrap();
         let input: HtmlInputElement = document
             .create_element("input")
@@ -81,32 +83,55 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
         let error_signal = error_message;
         
         let onchange = Closure::wrap(Box::new(move |event: Event| {
+            log::info!("File selected...");
             let input: HtmlInputElement = event.target().unwrap().dyn_into().unwrap();
             if let Some(file) = input.files().unwrap().get(0) {
+                log::info!("Processing file: {}", file.name());
                 let reader = FileReader::new().unwrap();
                 let reader_clone = reader.clone();
                 
+                // Clone the signals for use in the closure
+                let pixel_art_clone = pixel_art_write;
+                let error_clone = error_signal;
+                
                 let onload = Closure::wrap(Box::new(move |_: ProgressEvent| {
+                    log::info!("File read complete, processing image...");
                     if let Ok(buffer) = reader_clone.result() {
                         let array = Uint8Array::new(&buffer);
                         let data = array.to_vec();
+                        log::info!("Image data size: {} bytes", data.len());
                         
-                        // fixed size 32x32
+                        // Fixed size 32x32
                         match Pixel::from_image_data_with_size(&data, 32) {
                             Ok(new_art) => {
-                                pixel_art_write.set(new_art);
-                                error_signal.set(None);
+                                log::info!("Successfully created pixel art from image");
+                                pixel_art_clone.set(new_art);
+                                error_clone.set(None);
                             }
                             Err(e) => {
-                                error_signal.set(Some(format!("Failed to process image: {}", e)));
+                                log::error!("Failed to process image: {}", e);
+                                error_clone.set(Some(format!("Failed to process image: {}", e)));
                             }
                         }
+                    } else {
+                        log::error!("Failed to read file buffer");
+                        error_clone.set(Some("Failed to read file".to_string()));
                     }
                 }) as Box<dyn FnMut(_)>);
                 
+                let onerror = Closure::wrap(Box::new(move |_: Event| {
+                    log::error!("FileReader error occurred");
+                    error_signal.set(Some("Failed to read file".to_string()));
+                }) as Box<dyn FnMut(_)>);
+                
                 reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+                reader.set_onerror(Some(onerror.as_ref().unchecked_ref()));
                 onload.forget();
+                onerror.forget();
+                
                 reader.read_as_array_buffer(&file).unwrap();
+            } else {
+                log::warn!("No file selected");
             }
         }) as Box<dyn FnMut(_)>);
         
@@ -643,7 +668,7 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                 <div class="form-group">
                                     <label for="about-me">
                                         <i class="fas fa-info-circle"></i>
-                                        "About Me"
+                                        "About Me (max 128 characters)"
                                     </label>
                                     <textarea 
                                         id="about-me"

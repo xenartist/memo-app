@@ -260,6 +260,7 @@
 /* Form Groups */
 .form-group {
     margin-bottom: 20px;
+    width: 100%;
 }
 
 .form-group label {
@@ -280,6 +281,8 @@
     transition: border-color 0.3s ease, box-shadow 0.3s ease;
     background: white;
     box-sizing: border-box;
+    margin: 0;
+    max-width: none;
 }
 
 .form-group input:focus,
@@ -763,4 +766,60 @@
 .modal-header h3 i.fa-spin {
     color: #e74c3c;
     margin-right: 8px;
+} 
+
+.form-card h2 i {
+    margin-right: 10px;
+    color: #667eea;
+}
+
+/* add spacing to other labels with icons */
+.form-group label i {
+    margin-right: 8px;
+}
+
+/* add spacing to icons in buttons */
+.btn i {
+    margin-right: 8px;
+}
+
+/* add spacing to icons in modal dialog titles */
+.modal-header h3 i {
+    margin-right: 10px;
+} 
+
+/* ensure form input fields have correct width */
+.form-group {
+    margin-bottom: 20px;
+    width: 100%;
+}
+
+.form-group input,
+.form-group textarea {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #e1e5e9;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    background: white;
+    box-sizing: border-box;
+    margin: 0;
+    max-width: none;
+}
+
+/* ensure form container has correct layout */
+.form-card form {
+    padding: 24px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* character counter styles */
+.char-count {
+    font-size: 12px;
+    color: #666;
+    text-align: right;
+    margin-top: 4px;
+    font-style: italic;
 } 
