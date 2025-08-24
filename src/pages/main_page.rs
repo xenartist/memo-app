@@ -62,9 +62,7 @@ pub fn MainPage(
         session.with(|s| {
             match s.get_user_profile() {
                 Some(profile) => {
-                    // Display profile creation status and basic stats
-                    format!("Profile Active (Minted: {}, Burned: {})", 
-                        profile.total_minted, profile.total_burned)
+                    format!("Profile: {}", profile.username)
                 },
                 None => "No Profile".to_string()
             }
@@ -93,6 +91,31 @@ pub fn MainPage(
                 }
             });
         }
+    });
+    
+    // check and get user profile on startup
+    create_effect(move |_| {
+        let session_clone = session;
+        spawn_local(async move {
+            let mut session_update = session_clone.get_untracked();
+            
+            // check if there is a cached profile
+            if session_update.get_user_profile().is_none() {
+                log::info!("No cached profile found, fetching from blockchain...");
+                match session_update.fetch_and_cache_user_profile().await {
+                    Ok(Some(_)) => {
+                        log::info!("User profile loaded successfully on startup");
+                        session_clone.set(session_update);
+                    },
+                    Ok(None) => {
+                        log::info!("No user profile exists on blockchain");
+                    },
+                    Err(e) => {
+                        log::warn!("Failed to fetch user profile on startup: {}", e);
+                    }
+                }
+            }
+        });
     });
     
     // test rpc connection
@@ -241,7 +264,15 @@ pub fn MainPage(
                         <i class="fas fa-comments"></i>
                         <span>"Chat"</span>
                     </div>
-                    // Temporarily commented out for release - only showing Mint and Chat
+                    <div 
+                        class="menu-item"
+                        class:active=move || current_menu.get() == MenuItem::Profile
+                        on:click=move |_| set_current_menu.set(MenuItem::Profile)
+                    >
+                        <i class="fas fa-user"></i>
+                        <span>"Profile"</span>
+                    </div>
+                    // Temporarily commented out for release - only showing Mint, Chat and Profile
                     /*
                     <div 
                         class="menu-item"
@@ -258,14 +289,6 @@ pub fn MainPage(
                     >
                         <i class="fas fa-fire"></i>
                         <span>"Burn"</span>
-                    </div>
-                    <div 
-                        class="menu-item"
-                        class:active=move || current_menu.get() == MenuItem::Profile
-                        on:click=move |_| set_current_menu.set(MenuItem::Profile)
-                    >
-                        <i class="fas fa-user"></i>
-                        <span>"Profile"</span>
                     </div>
                     <div 
                         class="menu-item"
@@ -288,16 +311,16 @@ pub fn MainPage(
                     <div style=move || if current_menu.get() == MenuItem::Chat { "display: block;" } else { "display: none;" }>
                         <ChatPage session=session/>
                     </div>
-                    // Temporarily commented out for release - only showing Home, Mint and Chat content
+                    <div style=move || if current_menu.get() == MenuItem::Profile { "display: block;" } else { "display: none;" }>
+                        <ProfilePage session=session/>
+                    </div>
+                    // Temporarily commented out for release - only showing Home, Mint, Chat and Profile content
                     /*
                     <div style=move || if current_menu.get() == MenuItem::MintLegacy { "display: block;" } else { "display: none;" }>
                         <MintPageLegacy session=session/>
                     </div>
                     <div style=move || if current_menu.get() == MenuItem::Burn { "display: block;" } else { "display: none;" }>
                         <BurnPage session=session/>
-                    </div>
-                    <div style=move || if current_menu.get() == MenuItem::Profile { "display: block;" } else { "display: none;" }>
-                        <ProfilePage session=session/>
                     </div>
                     <div style=move || if current_menu.get() == MenuItem::Settings { "display: block;" } else { "display: none;" }>
                         <SettingsPage/>
