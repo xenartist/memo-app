@@ -324,6 +324,10 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
         error_message.set(None);
         success_message.set(None);
         
+        // Give UI time to update the loading state
+        use gloo_timers::future::TimeoutFuture;
+        TimeoutFuture::new(100).await;
+        
         match session.with_untracked(|s| s.clone()).delete_profile().await {
             Ok(_) => {
                 success_message.set(Some("Profile deleted successfully!".to_string()));
@@ -991,46 +995,69 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
             view! {
                 <div class="modal-overlay">
                     <div class="modal-content">
-                        <div class="modal-header">
-                            <h3>
-                                <i class="fas fa-exclamation-triangle"></i>
-                                "Confirm Delete Profile"
-                            </h3>
-                        </div>
-                        
-                        <div class="modal-body">
-                            <p><strong>"Warning:"</strong> " This action cannot be undone!"</p>
-                            <p>"Are you sure you want to permanently delete your profile?"</p>
-                            <p class="delete-info">
-                                <i class="fas fa-info-circle"></i>
-                                "Your profile data will be removed from the blockchain and cannot be recovered."
-                            </p>
-                        </div>
-                        
-                        <div class="modal-actions">
-                            <button 
-                                class="btn btn-danger"
-                                on:click=move |_| {
-                                    show_delete_confirm.set(false);
-                                    delete_profile.dispatch(());
-                                }
-                                disabled=move || loading.get()
-                            >
-                                <i class="fas fa-trash"></i>
-                                {move || if loading.get() { "Deleting..." } else { "Yes, Delete Profile" }}
-                            </button>
-                            
-                            <button 
-                                class="btn btn-secondary"
-                                on:click=move |_| {
-                                    show_delete_confirm.set(false);
-                                }
-                                disabled=move || loading.get()
-                            >
-                                <i class="fas fa-times"></i>
-                                "Cancel"
-                            </button>
-                        </div>
+                        {move || if loading.get() {
+                            // deleting status
+                            view! {
+                                <div class="modal-header">
+                                    <h3>
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        "Deleting Profile"
+                                    </h3>
+                                </div>
+                                
+                                <div class="modal-body">
+                                    <div class="deleting-status">
+                                        <div class="loading-spinner"></div>
+                                        <p>"Please wait while we delete your profile from the blockchain..."</p>
+                                        <p class="warning-text">
+                                            <i class="fas fa-clock"></i>
+                                            "This may take a few moments."
+                                        </p>
+                                    </div>
+                                </div>
+                            }.into_view()
+                        } else {
+                            // confirm delete status
+                            view! {
+                                <div class="modal-header">
+                                    <h3>
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                        "Confirm Delete Profile"
+                                    </h3>
+                                </div>
+                                
+                                <div class="modal-body">
+                                    <p><strong>"Warning:"</strong> " This action cannot be undone!"</p>
+                                    <p>"Are you sure you want to permanently delete your profile?"</p>
+                                    <p class="delete-info">
+                                        <i class="fas fa-info-circle"></i>
+                                        "Your profile data will be removed from the blockchain and cannot be recovered."
+                                    </p>
+                                </div>
+                                
+                                <div class="modal-actions">
+                                    <button 
+                                        class="btn btn-danger"
+                                        on:click=move |_| {
+                                            delete_profile.dispatch(());
+                                        }
+                                    >
+                                        <i class="fas fa-trash"></i>
+                                        "Yes, Delete Profile"
+                                    </button>
+                                    
+                                    <button 
+                                        class="btn btn-secondary"
+                                        on:click=move |_| {
+                                            show_delete_confirm.set(false);
+                                        }
+                                    >
+                                        <i class="fas fa-times"></i>
+                                        "Cancel"
+                                    </button>
+                                </div>
+                            }.into_view()
+                        }}
                     </div>
                 </div>
             }.into_view()

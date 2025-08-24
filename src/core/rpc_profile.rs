@@ -601,8 +601,86 @@ impl RpcConnection {
 
     /// delete user profile
     pub async fn delete_profile(&self, keypair: &Keypair) -> Result<String, RpcError> {
-        // TODO: implement delete profile functionality
-        Err(RpcError::Other("Delete profile not yet implemented".to_string()))
+        let program_id = ProfileConfig::get_program_id()?;
+        let target_pubkey = keypair.pubkey();
+        
+        // Calculate user profile PDA - should match contract seeds: [b"profile", user.key().as_ref()]
+        let (user_profile_pda, bump) = Pubkey::find_program_address(
+            &[b"profile", target_pubkey.as_ref()],
+            &program_id
+        );
+        
+        // Get latest blockhash
+        let blockhash: serde_json::Value = self.send_request(
+            "getLatestBlockhash",
+            serde_json::json!([{
+                "commitment": "confirmed",
+                "minContextSlot": 0
+            }])
+        ).await?;
+
+        let recent_blockhash = blockhash["value"]["blockhash"]
+            .as_str()
+            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
+
+        // Create delete_profile instruction data (discriminator)
+        // For Anchor programs, the discriminator is the first 8 bytes of sha256("global:delete_profile")
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(b"global:delete_profile");
+        let hash = hasher.finalize();
+        let instruction_data = hash[..8].to_vec();
+
+        // Create the instruction with correct accounts for new contract
+        let instruction = Instruction::new_with_bytes(
+            program_id,
+            &instruction_data,
+            vec![
+                AccountMeta::new(target_pubkey, true),      // user (signer, mutable)
+                AccountMeta::new(user_profile_pda, false),  // profile (mutable, PDA)
+            ],
+        );
+
+        // Create transaction
+        let message = Message::new(
+            &[instruction],
+            Some(&target_pubkey), // fee payer
+        );
+
+        let mut transaction = Transaction::new_unsigned(message);
+        transaction.message.recent_blockhash = recent_blockhash.parse()
+            .map_err(|_| RpcError::Other("Invalid blockhash format".to_string()))?;
+
+        // Sign transaction
+        transaction.sign(&[keypair], transaction.message.recent_blockhash);
+
+        // Serialize and send transaction
+        let serialized = bincode::serialize(&transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?;
+
+        let base64_tx = base64::encode(&serialized);
+
+        let response: serde_json::Value = self.send_request(
+            "sendTransaction",
+            serde_json::json!([
+                base64_tx,
+                {
+                    "skipPreflight": false,
+                    "preflightCommitment": "confirmed",
+                    "encoding": "base64",
+                    "maxRetries": 3
+                }
+            ])
+        ).await?;
+
+        if let Some(error) = response.get("error") {
+            return Err(RpcError::Other(format!("Transaction failed: {}", error)));
+        }
+
+        let signature = response.as_str()
+            .ok_or_else(|| RpcError::Other("Invalid response format".to_string()))?;
+
+        log::info!("Delete profile transaction sent: {}", signature);
+        Ok(signature.to_string())
     }
 
     /// get user profile
