@@ -24,6 +24,10 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
     let show_edit_form = create_rw_signal(false);
     let show_delete_confirm = create_rw_signal(false);
     
+    // add countdown state
+    let countdown_seconds = create_rw_signal(0i32);
+    let is_waiting_for_blockchain = create_rw_signal(false);
+    
     // Form fields
     let username = create_rw_signal(String::new());
     let about_me = create_rw_signal(String::new());
@@ -219,23 +223,77 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                 pixel_art.set(Pixel::new_with_size(32));
                 about_me.set(String::new());
                 
-                // wait 10 seconds for blockchain state to update, then refresh user profile
+                // start countdown
+                is_waiting_for_blockchain.set(true);
+                countdown_seconds.set(20);
+                
+                // don't call clear_messages immediately, wait for countdown to end
+                
+                // wait 20 seconds for blockchain state to update, then refresh user profile
                 let session_clone = session.clone();
                 let profile_clone = profile.clone();
                 let success_message_clone = success_message.clone();
+                let countdown_clone = countdown_seconds.clone();
+                let waiting_clone = is_waiting_for_blockchain.clone();
+                let error_message_clone = error_message.clone();
                 
                 spawn_local(async move {
-                    // wait 10 seconds
-                    log::info!("Waiting 10 seconds for blockchain state to update...");
+                    // countdown loop
+                    for i in (1..=20).rev() {
+                        countdown_clone.set(i);
+                        TimeoutFuture::new(1_000).await; // wait 1 second
+                    }
                     
-                    TimeoutFuture::new(10_000).await;
+                    countdown_clone.set(0);
                     
-                    // now get user profile
-                    log::info!("Fetching updated user profile...");
-                    let updated_profile = session_clone.with(|s| s.get_user_profile());
-                    profile_clone.set(updated_profile);
-                    
-                    success_message_clone.set(Some("Profile created and loaded successfully!".to_string()));
+                    // fetch user profile from blockchain, not from cache
+                    log::info!("Fetching updated user profile from blockchain...");
+                    match session_clone.with_untracked(|s| s.clone()).fetch_and_cache_user_profile().await {
+                        Ok(Some(updated_profile)) => {
+                            profile_clone.set(Some(updated_profile));
+                            success_message_clone.set(Some("Profile created and loaded successfully!".to_string()));
+                            waiting_clone.set(false);
+                            
+                            // call clear_messages
+                            set_timeout(
+                                move || {
+                                    error_message_clone.set(None);
+                                    success_message_clone.set(None);
+                                },
+                                std::time::Duration::from_secs(5),
+                            );
+                        },
+                        Ok(None) => {
+                            log::warn!("Profile still not found after creation, retrying...");
+                            success_message_clone.set(Some("Still loading... Please wait a moment more.".to_string()));
+                            
+                            // show retry countdown
+                            countdown_clone.set(5);
+                            for i in (1..=5).rev() {
+                                countdown_clone.set(i);
+                                TimeoutFuture::new(1_000).await;
+                            }
+                            
+                            // if still not found, wait 5 seconds and retry
+                            match session_clone.with_untracked(|s| s.clone()).fetch_and_cache_user_profile().await {
+                                Ok(Some(retry_profile)) => {
+                                    profile_clone.set(Some(retry_profile));
+                                    success_message_clone.set(Some("Profile created and loaded successfully!".to_string()));
+                                },
+                                _ => {
+                                    success_message_clone.set(Some("Profile created successfully! Please refresh the page if it doesn't appear.".to_string()));
+                                }
+                            }
+                            countdown_clone.set(0);
+                            waiting_clone.set(false);
+                        },
+                        Err(e) => {
+                            log::error!("Failed to fetch updated profile: {}", e);
+                            success_message_clone.set(Some("Profile created successfully! Please refresh the page if it doesn't appear.".to_string()));
+                            countdown_clone.set(0);
+                            waiting_clone.set(false);
+                        }
+                    }
                 });
                 
                 clear_messages();
@@ -305,12 +363,12 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                 let success_message_clone = success_message.clone();
                 
                 spawn_local(async move {
-                    // wait 20 seconds (shorten the waiting time, because session has already tried to get once)
+                    // wait 20 seconds (shorten the waiting time, because session has already tried to get once in update_profile)
                     log::info!("Waiting 20 seconds for blockchain state to update...");
                     
                     TimeoutFuture::new(20_000).await;
                     
-                    // re-get user profile
+                    // re-get user profile from blockchain, not from cache
                     log::info!("Fetching updated user profile...");
                     match session_clone.with_untracked(|s| s.clone()).fetch_and_cache_user_profile().await {
                         Ok(Some(updated_profile)) => {
@@ -318,13 +376,13 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                             success_message_clone.set(Some("Profile updated and loaded successfully!".to_string()));
                         },
                         Ok(None) => {
-                            // Profile not found, clear the cache
+                            // Profile not found, clear the cache in update_profile
                             profile_clone.set(None);
                             success_message_clone.set(Some("Profile updated successfully!".to_string()));
                         },
                         Err(e) => {
                             log::error!("Failed to fetch updated profile: {}", e);
-                            // if failed to get, at least get from cache
+                            // if failed to get, at least get from cache in update_profile
                             let cached_profile = session_clone.with(|s| s.get_user_profile());
                             profile_clone.set(cached_profile);
                             success_message_clone.set(Some("Profile updated successfully! (using cached data)".to_string()));
@@ -358,7 +416,7 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                 success_message.set(Some("Profile deleted successfully!".to_string()));
                 show_delete_confirm.set(false);
                 
-                // clear profile cache and refresh
+                // clear profile cache and refresh in delete_profile
                 session.update(|s| s.set_user_profile(None));
                 profile.set(None);
                 
@@ -426,6 +484,30 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                         {msg}
                     </div>
                 })}
+                
+                // add independent countdown display after success message
+                {move || if is_waiting_for_blockchain.get() && countdown_seconds.get() > 0 {
+                    view! {
+                        <div class="alert alert-info">
+                            <div class="countdown-display">
+                                <div class="countdown-progress">
+                                    <i class="fas fa-clock"></i>
+                                    "Loading from blockchain... " 
+                                    <span class="countdown-number">{countdown_seconds.get()}</span>
+                                    " seconds remaining"
+                                </div>
+                                <div class="progress-bar">
+                                    <div 
+                                        class="progress-fill"
+                                        style=move || format!("width: {}%", ((20 - countdown_seconds.get()) * 100 / 20))
+                                    ></div>
+                                </div>
+                            </div>
+                        </div>
+                    }.into_view()
+                } else {
+                    view! { <span></span> }.into_view()
+                }}
                 
                 // Profile Display
                 {move || match profile.get() {

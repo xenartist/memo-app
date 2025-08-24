@@ -13,6 +13,8 @@
 .container {
     flex: 1;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;  /* specify vertical arrangement */
 }
 
 /* when container only contains no-profile, don't take up all height */
@@ -34,7 +36,7 @@
     padding-bottom: 20px;
 }
 
-/* Alert Messages */
+/* Alert Messages - same width as profile */
 .alert {
     padding: 12px 16px;
     border-radius: 8px;
@@ -44,6 +46,12 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    max-width: 800px;        /* same width as profile-display */
+    margin-left: auto;       /* horizontal center */
+    margin-right: auto;      /* horizontal center */
+    box-sizing: border-box;
+    position: relative;
+    z-index: auto;
 }
 
 .alert-success {
@@ -58,9 +66,25 @@
     border: 1px solid #f5c6cb;
 }
 
-/* Profile Display Card */
+.alert-info {
+    background: #d1ecf1;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
+}
+
+/* ensure elements in container are correctly arranged */
+.container {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;  /* specify vertical arrangement */
+}
+
+/* Profile Display Card - limit maximum width */
 .profile-display {
     margin-bottom: 30px;
+    max-width: 800px;        /* limit maximum width */
+    margin: 0 auto 30px;     /* horizontal center */
 }
 
 .profile-card {
@@ -194,7 +218,7 @@
 /* No Profile State*/
 .no-profile {
     position: absolute;
-    top: 20%;              /* distance from top */
+    top: 50%;              /* distance from top, so it's centered vertically */
     left: 50%;
     transform: translateX(-50%);
     width: calc(100% - 40px);
@@ -836,7 +860,7 @@
 /* responsive adjustments */
 @media (max-width: 768px) {
     .no-profile {
-        top: 15%;             /* slightly higher on mobile */
+        top: 50%;             /* slightly higher on mobile, so it's centered vertically */
         width: calc(100% - 32px);
     }
     
@@ -847,7 +871,7 @@
 
 @media (max-width: 480px) {
     .no-profile {
-        top: 10%;             /* even higher on small screens */
+        top: 50%;             /* even higher on small screens, so it's centered vertically */
         width: calc(100% - 24px);
     }
     
@@ -864,4 +888,58 @@
     flex: none !important;
     height: auto !important;
     min-height: auto !important;
+} 
+
+/* countdown display style */
+.countdown-display {
+    margin-top: 15px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.countdown-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    margin-bottom: 8px;
+}
+
+.countdown-number {
+    font-weight: 700;
+    font-size: 16px;
+    color: #2c5530;
+    background: rgba(255, 255, 255, 0.8);
+    padding: 2px 8px;
+    border-radius: 4px;
+    min-width: 24px;
+    text-align: center;
+    display: inline-block;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #28a745, #20c997);
+    border-radius: 3px;
+    transition: width 1s ease;
+}
+
+.countdown-progress i {
+    color: #2c5530;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
 } 
