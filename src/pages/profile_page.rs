@@ -162,6 +162,22 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
         }
     };
     
+    // Handle copy user address
+    let copy_address = move |address: String| {
+        if let Some(window) = web_sys::window() {
+            let navigator = window.navigator();
+            let clipboard = navigator.clipboard();
+            let _ = clipboard.write_text(&address);
+            
+            // temporary success message
+            success_message.set(Some("Address copied to clipboard!".to_string()));
+            set_timeout(
+                move || success_message.set(None),
+                std::time::Duration::from_millis(2000),
+            );
+        }
+    };
+
     // Create profile action
     let create_profile = create_action(move |_: &()| async move {
         loading.set(true);
@@ -561,95 +577,124 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                         
                         view! {
                             <div class="profile-display">
-                                <div class="profile-header">
-                                    <div class="profile-info">
-                                        <h2>
-                                            <i class="fas fa-user"></i>
-                                            {user_profile.username.clone()}
-                                        </h2>
-                                        <div class="profile-dates">
-                                            <div class="date-item">
-                                                <i class="fas fa-calendar-plus"></i>
-                                                <span>"Created: " {created_str.clone()}</span>
-                                            </div>
-                                            <div class="date-item">
-                                                <i class="fas fa-calendar-edit"></i>
-                                                <span>"Updated: " {updated_str.clone()}</span>
-                                            </div>
+                                <div class="profile-card">
+                                    // 1. user image (top center)
+                                    <div class="profile-avatar-section">
+                                        {if !user_profile.image.is_empty() {
+                                            if user_profile.image.starts_with("c:") || user_profile.image.starts_with("n:") {
+                                                view! {
+                                                    <div class="profile-avatar">
+                                                        <LazyPixelView
+                                                            art={user_profile.image.clone()}
+                                                            size=160
+                                                        />
+                                                    </div>
+                                                }.into_view()
+                                            } else {
+                                                view! {
+                                                    <div class="profile-avatar">
+                                                        <img src={user_profile.image.clone()} alt="Profile Image" />
+                                                    </div>
+                                                }.into_view()
+                                            }
+                                        } else {
+                                            view! { 
+                                                <div class="profile-avatar placeholder">
+                                                    <i class="fas fa-user-circle"></i>
+                                                </div> 
+                                            }.into_view()
+                                        }}
+                                    </div>
+                                    
+                                    // 2. username
+                                    <div class="profile-username">
+                                        <h2>{user_profile.username.clone()}</h2>
+                                    </div>
+                                    
+                                    // 3. user address (with copy button)
+                                    <div class="profile-field">
+                                        <div class="field-label">
+                                            <i class="fas fa-wallet"></i>
+                                            "User Address"
+                                        </div>
+                                        <div class="field-value address-field">
+                                            <span class="address-text">{user_profile.user.clone()}</span>
+                                            <button 
+                                                class="copy-address-btn"
+                                                on:click={
+                                                    let address = user_profile.user.clone();
+                                                    move |_| copy_address(address.clone())
+                                                }
+                                                title="Copy address to clipboard"
+                                            >
+                                                <i class="fas fa-copy"></i>
+                                            </button>
                                         </div>
                                     </div>
                                     
-                                    {if !user_profile.image.is_empty() { // use image field
-                                        // Check if it's a valid pixel art string
-                                        if user_profile.image.starts_with("c:") || user_profile.image.starts_with("n:") {
-                                            view! {
-                                                <div class="profile-image">
-                                                    <LazyPixelView
-                                                        art={user_profile.image.clone()}
-                                                        size=200
-                                                    />
+                                    // 4. about me (if there is one)
+                                    {if let Some(about_me_text) = &user_profile.about_me {
+                                        view! {
+                                            <div class="profile-field">
+                                                <div class="field-label">
+                                                    <i class="fas fa-info-circle"></i>
+                                                    "About Me"
                                                 </div>
-                                            }.into_view()
-                                        } else {
-                                            view! {
-                                                <div class="profile-image">
-                                                    <img src={user_profile.image.clone()} alt="Profile Image" />
+                                                <div class="field-value">
+                                                    <p>{about_me_text.clone()}</p>
                                                 </div>
-                                            }.into_view()
-                                        }
-                                    } else {
-                                        view! { 
-                                            <div class="profile-image placeholder">
-                                                <i class="fas fa-user-circle"></i>
-                                            </div> 
+                                            </div>
                                         }.into_view()
+                                    } else {
+                                        view! { <span></span> }.into_view()
                                     }}
-                                </div>
-                                
-                                {if let Some(about_me_text) = &user_profile.about_me { // about_me is Option<String>
-                                    view! {
-                                        <div class="profile-about">
-                                            <h3>
-                                                <i class="fas fa-info-circle"></i>
-                                                "About Me"
-                                            </h3>
-                                            <p>{about_me_text.clone()}</p>
-                                        </div>
-                                    }.into_view()
-                                } else {
-                                    view! { <span></span> }.into_view()
-                                }}
-                                
-                                <div class="profile-meta">
-                                    <p><strong>"User Address:"</strong> {user_profile.user.clone()}</p>
-                                    <p><strong>"Created:"</strong> {created_str}</p>
-                                    <p><strong>"Last Updated:"</strong> {updated_str}</p>
-                                    <p><strong>"Bump:"</strong> {user_profile.bump.to_string()}</p>
-                                </div>
-                                
-                                // action buttons area
-                                <div class="profile-actions">
-                                    <button 
-                                        class="btn btn-primary"
-                                        on:click=move |_| {
-                                            fill_edit_form();
-                                        }
-                                        disabled=move || loading.get()
-                                    >
-                                        <i class="fas fa-edit"></i>
-                                        "Update Profile"
-                                    </button>
                                     
-                                    <button 
-                                        class="btn btn-danger"
-                                        on:click=move |_| {
-                                            show_delete_confirm.set(true);
-                                        }
-                                        disabled=move || loading.get()
-                                    >
-                                        <i class="fas fa-trash"></i>
-                                        "Delete Profile"
-                                    </button>
+                                    // 5. created time
+                                    <div class="profile-field">
+                                        <div class="field-label">
+                                            <i class="fas fa-calendar-plus"></i>
+                                            "Created"
+                                        </div>
+                                        <div class="field-value">
+                                            <span>{created_str.clone()}</span>
+                                        </div>
+                                    </div>
+                                    
+                                    // 6. last updated time
+                                    <div class="profile-field">
+                                        <div class="field-label">
+                                            <i class="fas fa-clock"></i>
+                                            "Last Updated"
+                                        </div>
+                                        <div class="field-value">
+                                            <span>{updated_str}</span>
+                                        </div>
+                                    </div>
+                                    
+                                    // actions buttons
+                                    <div class="profile-actions">
+                                        <button 
+                                            class="btn btn-primary"
+                                            on:click=move |_| {
+                                                fill_edit_form();
+                                            }
+                                            disabled=move || loading.get()
+                                        >
+                                            <i class="fas fa-edit"></i>
+                                            "Update Profile"
+                                        </button>
+                                        
+                                        <button 
+                                            class="btn btn-danger"
+                                            on:click=move |_| {
+                                                show_delete_confirm.set(true);
+                                            }
+                                            disabled=move || loading.get()
+                                        >
+                                            <i class="fas fa-trash"></i>
+                                            "Delete Profile"
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         }.into_view()
