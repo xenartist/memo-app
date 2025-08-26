@@ -4,6 +4,7 @@ use wasm_bindgen::JsCast;
 use crate::core::session::Session;
 use crate::core::rpc_base::RpcConnection;
 use crate::core::rpc_chat::{ChatStatistics, ChatGroupInfo, ChatMessage, ChatMessagesResponse, LocalChatMessage, MessageStatus, BurnLeaderboardResponse, LeaderboardEntry};
+use crate::core::rpc_profile::{UserDisplayInfo};
 use crate::core::rpc_mint::MintConfig;
 use crate::pages::log_view::add_log_entry;
 use crate::pages::memo_card::LazyPixelView;
@@ -15,6 +16,7 @@ use web_sys::{HtmlInputElement, File, FileReader, Event, ProgressEvent, window};
 use wasm_bindgen::{closure::Closure};
 use js_sys::Uint8Array;
 use std::rc::Rc;
+use std::collections::HashMap;
 use futures;
 
 // Chat page view mode
@@ -83,6 +85,9 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     // Create Chat Group Dialog states
     let (show_create_dialog, set_show_create_dialog) = create_signal(false);
     
+    // Add user display cache state
+    let (user_display_cache, set_user_display_cache) = create_signal::<HashMap<String, UserDisplayInfo>>(HashMap::new());
+
     // Auto-scroll to bottom when messages change
     create_effect(move |_| {
         let _ = messages.get(); // Track messages changes
@@ -223,11 +228,40 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
             match rpc.get_chat_messages(group_id, Some(20), None).await {
                 Ok(messages_response) => {
                     add_log_entry("INFO", &format!("Loaded {} messages", messages_response.messages.len()));
+                    
                     // Convert chain messages to local messages
                     let local_messages: Vec<LocalChatMessage> = messages_response.messages
                         .into_iter()
                         .map(LocalChatMessage::from_chain_message)
                         .collect();
+                    
+                    // batch get user display info
+                    let unique_senders: Vec<String> = local_messages
+                        .iter()
+                        .map(|msg| msg.message.sender.clone())
+                        .collect::<std::collections::HashSet<_>>() // 去重
+                        .into_iter()
+                        .collect();
+                    
+                    if !unique_senders.is_empty() {
+                        let sender_refs: Vec<&str> = unique_senders.iter().map(|s| s.as_str()).collect();
+                        
+                        // batch get user display info
+                        match rpc.get_user_display_info_batch(&sender_refs).await {
+                            Ok(display_infos) => {
+                                let mut cache = user_display_cache.get();
+                                for display_info in display_infos {
+                                    cache.insert(display_info.pubkey.clone(), display_info);
+                                }
+                                set_user_display_cache.set(cache);
+                                add_log_entry("INFO", &format!("Loaded display info for {} users", sender_refs.len()));
+                            },
+                            Err(e) => {
+                                add_log_entry("WARN", &format!("Failed to load user display info: {}", e));
+                            }
+                        }
+                    }
+                    
                     set_messages.set(local_messages);
                     set_error_message.set(None);
                 },
@@ -313,15 +347,14 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     };
 
     // Refresh messages function for chat room
-    let refresh_messages = move |_| {
-        if let ChatView::ChatRoom(group_id) = current_view.get() {
-            spawn_local(async move {
-                add_log_entry("INFO", "Refreshing messages...");
-                
-                let rpc = RpcConnection::new();
-                match rpc.get_chat_messages(group_id, Some(20), None).await {
-                    Ok(messages_response) => {
+    let refresh_messages = move |group_id: u64| {
+        spawn_local(async move {
+            let rpc = RpcConnection::new();
+            match rpc.get_chat_messages(group_id, Some(20), None).await {
+                Ok(messages_response) => {
+                    if !messages_response.messages.is_empty() {
                         add_log_entry("INFO", &format!("Refreshed {} messages", messages_response.messages.len()));
+                        
                         // Convert chain messages to local messages, preserving any local pending messages
                         let current_messages = messages.get();
                         let mut new_local_messages: Vec<LocalChatMessage> = messages_response.messages
@@ -331,42 +364,56 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                         
                         // Add any local pending messages that are not yet on chain
                         for local_msg in current_messages {
-                            if local_msg.is_local && local_msg.status == MessageStatus::Sending {
-                                // Check if this local message appears in chain messages by comparing content and sender
-                                let found_on_chain = new_local_messages.iter().any(|chain_msg| {
-                                    chain_msg.message.message == local_msg.message.message &&
-                                    chain_msg.message.sender == local_msg.message.sender
+                            if local_msg.is_local && local_msg.status != MessageStatus::Sent {
+                                // Check if this message is already on chain
+                                let is_on_chain = new_local_messages.iter().any(|chain_msg| {
+                                    chain_msg.message.sender == local_msg.message.sender 
+                                    && chain_msg.message.message == local_msg.message.message
+                                    && (chain_msg.message.timestamp - local_msg.message.timestamp).abs() < 10
                                 });
                                 
-                                if found_on_chain {
-                                    // Update local message to sent status
-                                    if let Some(chain_msg) = new_local_messages.iter_mut().find(|chain_msg| {
-                                        chain_msg.message.message == local_msg.message.message &&
-                                        chain_msg.message.sender == local_msg.message.sender
-                                    }) {
-                                        chain_msg.status = MessageStatus::Sent;
-                                    }
-                                } else {
-                                    // Keep the local pending message
+                                if !is_on_chain {
                                     new_local_messages.push(local_msg);
+                                }
+                            }
+                        }
+                        
+                        // batch get user display info
+                        let unique_senders: Vec<String> = new_local_messages
+                            .iter()
+                            .map(|msg| msg.message.sender.clone())
+                            .collect::<std::collections::HashSet<_>>()
+                            .into_iter()
+                            .filter(|sender| !user_display_cache.get().contains_key(sender)) // 只获取缓存中没有的
+                            .collect();
+                        
+                        if !unique_senders.is_empty() {
+                            let sender_refs: Vec<&str> = unique_senders.iter().map(|s| s.as_str()).collect();
+                            
+                            match rpc.get_user_display_info_batch(&sender_refs).await {
+                                Ok(display_infos) => {
+                                    let mut cache = user_display_cache.get();
+                                    for display_info in display_infos {
+                                        cache.insert(display_info.pubkey.clone(), display_info);
+                                    }
+                                    set_user_display_cache.set(cache);
+                                },
+                                Err(e) => {
+                                    add_log_entry("WARN", &format!("Failed to load user display info: {}", e));
                                 }
                             }
                         }
                         
                         // Sort by timestamp
                         new_local_messages.sort_by(|a, b| a.message.timestamp.cmp(&b.message.timestamp));
-                        
                         set_messages.set(new_local_messages);
-                        set_error_message.set(None);
-                    },
-                    Err(e) => {
-                        let error_msg = format!("Failed to refresh messages: {}", e);
-                        add_log_entry("ERROR", &error_msg);
-                        set_error_message.set(Some(error_msg));
                     }
+                },
+                Err(e) => {
+                    add_log_entry("ERROR", &format!("Failed to refresh messages: {}", e));
                 }
-            });
-        }
+            }
+        });
     };
 
     // Handle message sending
@@ -1245,7 +1292,11 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                 <div class="header-right">
                                     <button 
                                         class="refresh-button"
-                                        on:click=refresh_messages
+                                        on:click=move |_| {
+                                            if let ChatView::ChatRoom(group_id) = current_view.get() {
+                                                refresh_messages(group_id);
+                                            }
+                                        }
                                         disabled=move || loading.get()
                                     >
                                         <i class="fas fa-sync-alt"></i>
@@ -1295,6 +1346,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                                                 message=message 
                                                                 current_mint_reward=current_mint_reward 
                                                                 session=session 
+                                                                user_display_cache=user_display_cache
                                                                 retry_callback=retry_message
                                                                 retry_burn_callback=retry_burn_message
                                                             /> 
@@ -1836,6 +1888,7 @@ fn MessageItem(
     message: LocalChatMessage, 
     current_mint_reward: ReadSignal<Option<String>>, 
     session: RwSignal<Session>,
+    user_display_cache: ReadSignal<HashMap<String, UserDisplayInfo>>,
     retry_callback: impl Fn(String) + 'static + Copy,
     retry_burn_callback: impl Fn(String, u64) + 'static + Copy
 ) -> impl IntoView {
@@ -1863,14 +1916,29 @@ fn MessageItem(
         }
     });
     
-    // Helper function to format sender address (first 4 + last 4 chars)
-    let format_sender = move |sender: &str| -> String {
-        if sender.is_empty() {
-            "Anonymous".to_string()
+    // Helper function to format sender with username and pubkey
+    let get_display_name = move |sender: &str| -> String {
+        let cache = user_display_cache.get();
+        
+        // create short pubkey display
+        let short_pubkey = if sender.is_empty() {
+            "unknown".to_string()
         } else if sender.len() >= 8 {
             format!("{}...{}", &sender[..4], &sender[sender.len()-4..])
         } else {
             sender.to_string()
+        };
+        
+        if let Some(display_info) = cache.get(sender) {
+            // if has username, display "username (abcd...efgh)" format
+            format!("{} ({})", display_info.username, short_pubkey)
+        } else {
+            // if no username in cache, only display short pubkey
+            if sender.is_empty() {
+                "Anonymous".to_string()
+            } else {
+                short_pubkey
+            }
         }
     };
     
@@ -1882,8 +1950,8 @@ fn MessageItem(
             class:message-burn=move || message_type_for_class == "burn"
         >
             <div class="message-header">
-                <span class="sender">
-                    {format_sender(&sender)}
+                <span class="sender" title=format!("Full address: {}", sender)>
+                    {get_display_name(&sender)}
                 </span>
                 <span class="timestamp">
                     {move || {

@@ -820,6 +820,113 @@ impl RpcConnection {
             Err(RpcError::Other(format!("Invalid option flag: {}", option_flag)))
         }
     }
+
+    /// get username by pubkey (lightweight interface for chat display)
+    pub async fn get_username_by_pubkey(&self, user_pubkey: &str) -> Result<Option<String>, RpcError> {
+        log::info!("Fetching username for user: {}", user_pubkey);
+        
+        match self.get_profile(user_pubkey).await? {
+            Some(profile) => Ok(Some(profile.username)),
+            None => Ok(None),
+        }
+    }
+
+    /// batch get profiles for multiple users (optimized for chat loading)
+    pub async fn get_profiles_batch(&self, user_pubkeys: &[&str]) -> Result<Vec<(String, Option<UserProfile>)>, RpcError> {
+        log::info!("Batch fetching profiles for {} users", user_pubkeys.len());
+        
+        let mut results = Vec::new();
+        
+        // Note: This is a simple sequential implementation
+        // For better performance, could be optimized with concurrent requests
+        for pubkey in user_pubkeys {
+            match self.get_profile(pubkey).await {
+                Ok(profile) => results.push((pubkey.to_string(), profile)),
+                Err(e) => {
+                    log::warn!("Failed to fetch profile for {}: {}", pubkey, e);
+                    results.push((pubkey.to_string(), None));
+                }
+            }
+        }
+        
+        Ok(results)
+    }
+
+    /// batch get usernames for multiple users (lightweight for chat display)
+    pub async fn get_usernames_batch(&self, user_pubkeys: &[&str]) -> Result<Vec<(String, Option<String>)>, RpcError> {
+        log::info!("Batch fetching usernames for {} users", user_pubkeys.len());
+        
+        let mut results = Vec::new();
+        
+        for pubkey in user_pubkeys {
+            match self.get_username_by_pubkey(pubkey).await {
+                Ok(username) => results.push((pubkey.to_string(), username)),
+                Err(e) => {
+                    log::warn!("Failed to fetch username for {}: {}", pubkey, e);
+                    results.push((pubkey.to_string(), None));
+                }
+            }
+        }
+        
+        Ok(results)
+    }
+
+    /// get user display info (pubkey + username) for chat display
+    pub async fn get_user_display_info(&self, user_pubkey: &str) -> Result<UserDisplayInfo, RpcError> {
+        let username = self.get_username_by_pubkey(user_pubkey).await?;
+        
+        // Save the has_profile info before consuming username
+        let has_profile = username.is_some();
+        
+        Ok(UserDisplayInfo {
+            pubkey: user_pubkey.to_string(),
+            username: username.unwrap_or_else(|| {
+                // If no username found, show shortened pubkey as fallback
+                if user_pubkey.len() > 8 {
+                    format!("{}...{}", &user_pubkey[..4], &user_pubkey[user_pubkey.len()-4..])
+                } else {
+                    user_pubkey.to_string()
+                }
+            }),
+            has_profile,
+        })
+    }
+
+    /// batch get user display info for chat
+    pub async fn get_user_display_info_batch(&self, user_pubkeys: &[&str]) -> Result<Vec<UserDisplayInfo>, RpcError> {
+        log::info!("Batch fetching display info for {} users", user_pubkeys.len());
+        
+        let usernames = self.get_usernames_batch(user_pubkeys).await?;
+        
+        let mut results = Vec::new();
+        for (pubkey, username) in usernames {
+            // Save the has_profile info before consuming username
+            let has_profile = username.is_some();
+            
+            results.push(UserDisplayInfo {
+                pubkey: pubkey.clone(),
+                username: username.unwrap_or_else(|| {
+                    // If no username found, show shortened pubkey as fallback
+                    if pubkey.len() > 8 {
+                        format!("{}...{}", &pubkey[..4], &pubkey[pubkey.len()-4..])
+                    } else {
+                        pubkey.clone()
+                    }
+                }),
+                has_profile,
+            });
+        }
+        
+        Ok(results)
+    }
+}
+
+/// User display information for chat interface
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserDisplayInfo {
+    pub pubkey: String,
+    pub username: String,
+    pub has_profile: bool,
 }
 
 /// exported helper function for session use
