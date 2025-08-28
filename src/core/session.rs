@@ -421,7 +421,7 @@ impl Session {
         let keypair_bytes = self.get_keypair_bytes()?;
         let rpc = RpcConnection::new();
         
-        match rpc.mint_legacy(memo, &keypair_bytes).await {
+        match rpc.mint(memo, &keypair_bytes).await {
             Ok(tx_hash) => {
                 log::info!("Mint transaction sent: {}", tx_hash);
                 self.balance_update_needed = true;
