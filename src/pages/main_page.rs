@@ -8,6 +8,7 @@ use crate::pages::mint_page::MintPage;
 use crate::pages::mint_page_legacy::MintPage as MintPageLegacy;
 use crate::pages::burn_page::BurnPage;
 use crate::pages::chat_page::ChatPage;
+use crate::pages::faucet_page::FaucetPage;
 use crate::pages::log_view::{LogView, add_log_entry};
 
 use wasm_bindgen::prelude::*;
@@ -21,6 +22,7 @@ enum MenuItem {
     Home,
     Mint,
     Chat,
+    Faucet,
     MintLegacy,
     Burn,
     Profile,
@@ -266,6 +268,14 @@ pub fn MainPage(
                     </div>
                     <div 
                         class="menu-item"
+                        class:active=move || current_menu.get() == MenuItem::Faucet
+                        on:click=move |_| set_current_menu.set(MenuItem::Faucet)
+                    >
+                        <i class="fas fa-faucet"></i>
+                        <span>"Faucet (testnet)"</span>
+                    </div>
+                    <div 
+                        class="menu-item"
                         class:active=move || current_menu.get() == MenuItem::Profile
                         on:click=move |_| set_current_menu.set(MenuItem::Profile)
                     >
@@ -310,6 +320,9 @@ pub fn MainPage(
                     </div>
                     <div style=move || if current_menu.get() == MenuItem::Chat { "display: block;" } else { "display: none;" }>
                         <ChatPage session=session/>
+                    </div>
+                    <div style=move || if current_menu.get() == MenuItem::Faucet { "display: block;" } else { "display: none;" }>
+                        <FaucetPage session=session/>
                     </div>
                     <div style=move || if current_menu.get() == MenuItem::Profile { "display: block;" } else { "display: none;" }>
                         <ProfilePage session=session/>
