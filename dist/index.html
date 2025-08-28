@@ -21,11 +21,12 @@
     <link rel="stylesheet" href="/profile_page-db2dfb5936784757.css" integrity="sha384-0PIZ2+R8aonClcceqSz0ouXHtHgn8qX8BLxfDvKDYIqtGsEkfDZwwAMewxQ9jbhX"/>
     <link rel="stylesheet" href="/settings_page-9ffae577d458d16d.css" integrity="sha384-2kIB6IlwY2gwAcVZlfnJ9pyKTy3YZeqoZeF3QDiHj+CG+BFAjWPjPwAymyOeDuYE"/>
     <link rel="stylesheet" href="/chat_page-17ddd805891e7522.css" integrity="sha384-WLcueQKeivy+6w/oLLschFUxuFf4xu/5La6ln3yeIY/2FPjEGb/Ii1wz9y+xMqyB"/>
+    <link rel="stylesheet" href="/faucet_page-d153ff9c259e38f7.css" integrity="sha384-G8mKaXynSxI4PkEcZMyS+CbDwwcF2e9oYgKTMxKtshL6g2GE6+J4aLq9J4ysHX8Z"/>
     
     
 <script type="module">
-import init, * as bindings from '/memo-app-ui-9d3aa68ce564d95d.js';
-const wasm = await init({ module_or_path: '/memo-app-ui-9d3aa68ce564d95d_bg.wasm' });
+import init, * as bindings from '/memo-app-ui-fe957c6d7d3aecdd.js';
+const wasm = await init({ module_or_path: '/memo-app-ui-fe957c6d7d3aecdd_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -35,6 +36,6 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
 
 </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="modulepreload" href="/memo-app-ui-9d3aa68ce564d95d.js" crossorigin="anonymous" integrity="sha384-cciEJIA/ux/DFa8RB0eTxKSIxBr8x4yz78iatHhblU74hquAEGOfx4jmEKPrRUED"><link rel="preload" href="/memo-app-ui-9d3aa68ce564d95d_bg.wasm" crossorigin="anonymous" integrity="sha384-/hxEKXRx7c6GqFMi6/tf0/mp8pqkSunMEzECDx+u2hhB9xaRk+FPfHyUL2XbdIBS" as="fetch" type="application/wasm"></head>
+  <link rel="modulepreload" href="/memo-app-ui-fe957c6d7d3aecdd.js" crossorigin="anonymous" integrity="sha384-U/dtvXoG4YaONWvk3jbnSlHMkCeJ1OwEqEoT/jY/Zamktj2aNKxR0lNY2THee1Et"><link rel="preload" href="/memo-app-ui-fe957c6d7d3aecdd_bg.wasm" crossorigin="anonymous" integrity="sha384-djFmXjnJD5UhIkqYuI2ONqYMabnoh6fTanX7xglKxgxWppJ758ap+oxFHtNdbB4m" as="fetch" type="application/wasm"></head>
   <body></body>
 </html>
