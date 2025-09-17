@@ -79,8 +79,6 @@ pub struct Session {
     balance_update_needed: bool,
     // user global burn stats
     user_burn_stats: Option<UserGlobalBurnStats>,
-    // burn stats initialization status
-    burn_stats_initialized: bool,
 }
 
 impl Session {
@@ -97,7 +95,6 @@ impl Session {
             token_balance: 0.0,
             balance_update_needed: false,
             user_burn_stats: None,
-            burn_stats_initialized: false,
         }
     }
 
@@ -192,7 +189,6 @@ impl Session {
         self.balance_update_needed = false;
         self.ui_locked = false;
         self.user_burn_stats = None;
-        self.burn_stats_initialized = false;
     }
 
     // update config
@@ -1025,13 +1021,11 @@ impl Session {
             Ok(Some(stats)) => {
                 log::info!("Successfully fetched and cached user burn stats");
                 self.user_burn_stats = Some(stats.clone());
-                self.burn_stats_initialized = true;
                 Ok(Some(stats))
             },
             Ok(None) => {
                 log::info!("User burn stats not found for pubkey: {}", pubkey);
                 self.user_burn_stats = None;
-                self.burn_stats_initialized = false;
                 Ok(None)
             },
             Err(e) => {
@@ -1071,7 +1065,7 @@ impl Session {
         }
 
         // Check if burn stats are initialized, if not, initialize them first
-        if !self.burn_stats_initialized {
+        if self.user_burn_stats.is_none() {
             log::info!("Burn stats not initialized, initializing first...");
             self.initialize_user_burn_stats().await?;
         }
@@ -1096,7 +1090,7 @@ impl Session {
 
     // check if user has burn stats initialized
     pub fn has_burn_stats_initialized(&self) -> bool {
-        self.burn_stats_initialized
+        self.user_burn_stats.is_some()
     }
 
     // get user burn stats
