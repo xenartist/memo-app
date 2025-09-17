@@ -5,6 +5,7 @@ use crate::core::rpc_base::{RpcConnection, RpcError};
 use crate::core::rpc_mint::MintConfig;
 use crate::core::rpc_profile::{UserProfile, parse_user_profile_new};
 use crate::core::rpc_project::{ProjectConfig, ProjectInfo, ProjectStatistics, ProjectBurnLeaderboardResponse};
+use crate::core::rpc_burn::{UserGlobalBurnStats};
 use web_sys::js_sys::Date;
 use secrecy::{Secret, ExposeSecret};
 use zeroize::Zeroize;
@@ -76,6 +77,10 @@ pub struct Session {
     token_balance: f64,
     // balance update trigger
     balance_update_needed: bool,
+    // user global burn stats
+    user_burn_stats: Option<UserGlobalBurnStats>,
+    // burn stats initialization status
+    burn_stats_initialized: bool,
 }
 
 impl Session {
@@ -91,6 +96,8 @@ impl Session {
             sol_balance: 0.0,
             token_balance: 0.0,
             balance_update_needed: false,
+            user_burn_stats: None,
+            burn_stats_initialized: false,
         }
     }
 
@@ -184,6 +191,8 @@ impl Session {
         self.token_balance = 0.0;
         self.balance_update_needed = false;
         self.ui_locked = false;
+        self.user_burn_stats = None;
+        self.burn_stats_initialized = false;
     }
 
     // update config
@@ -1001,6 +1010,98 @@ impl Session {
         let rpc = crate::core::rpc_base::RpcConnection::new();
         rpc.get_total_projects().await
             .map_err(|e| SessionError::InvalidData(format!("Get total projects failed: {}", e)))
+    }
+
+    // fetch and cache user burn stats
+    pub async fn fetch_and_cache_user_burn_stats(&mut self) -> Result<Option<UserGlobalBurnStats>, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey = self.get_public_key()?;
+        let rpc = RpcConnection::new();
+
+        match rpc.get_user_global_burn_stats(&pubkey).await {
+            Ok(Some(stats)) => {
+                log::info!("Successfully fetched and cached user burn stats");
+                self.user_burn_stats = Some(stats.clone());
+                self.burn_stats_initialized = true;
+                Ok(Some(stats))
+            },
+            Ok(None) => {
+                log::info!("User burn stats not found for pubkey: {}", pubkey);
+                self.user_burn_stats = None;
+                self.burn_stats_initialized = false;
+                Ok(None)
+            },
+            Err(e) => {
+                log::error!("Failed to fetch user burn stats: {}", e);
+                Err(SessionError::InvalidData(format!("RPC error: {}", e)))
+            }
+        }
+    }
+
+    // initialize user global burn stats
+    pub async fn initialize_user_burn_stats(&mut self) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let keypair_bytes = self.get_keypair_bytes()?;
+        let rpc = RpcConnection::new();
+        
+        match rpc.initialize_user_global_burn_stats(&keypair_bytes).await {
+            Ok(tx_hash) => {
+                log::info!("User burn stats initialized successfully: {}", tx_hash);
+                // Refresh burn stats cache after successful initialization
+                let _ = self.fetch_and_cache_user_burn_stats().await;
+                Ok(tx_hash)
+            },
+            Err(e) => {
+                log::error!("Failed to initialize user burn stats: {}", e);
+                Err(SessionError::InvalidData(format!("Failed to initialize burn stats: {}", e)))
+            }
+        }
+    }
+
+    // burn tokens using memo-burn contract
+    pub async fn burn_tokens(&mut self, amount: u64, message: &str) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        // Check if burn stats are initialized, if not, initialize them first
+        if !self.burn_stats_initialized {
+            log::info!("Burn stats not initialized, initializing first...");
+            self.initialize_user_burn_stats().await?;
+        }
+
+        let keypair_bytes = self.get_keypair_bytes()?;
+        let rpc = RpcConnection::new();
+        
+        match rpc.burn_tokens(amount, message, &keypair_bytes).await {
+            Ok(tx_hash) => {
+                log::info!("Burn transaction sent: {}", tx_hash);
+                self.balance_update_needed = true;
+                // Refresh burn stats cache after successful burn
+                let _ = self.fetch_and_cache_user_burn_stats().await;
+                Ok(tx_hash)
+            },
+            Err(e) => {
+                log::error!("Burn transaction failed: {}", e);
+                Err(SessionError::InvalidData(format!("Burn error: {}", e)))
+            }
+        }
+    }
+
+    // check if user has burn stats initialized
+    pub fn has_burn_stats_initialized(&self) -> bool {
+        self.burn_stats_initialized
+    }
+
+    // get user burn stats
+    pub fn get_user_burn_stats(&self) -> Option<UserGlobalBurnStats> {
+        self.user_burn_stats.clone()
     }
 }
 

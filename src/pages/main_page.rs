@@ -122,6 +122,32 @@ pub fn MainPage(
         });
     });
     
+    // check and get user burn stats on startup
+    create_effect(move |_| {
+        let session_clone = session;
+        spawn_local(async move {
+            let mut session_update = session_clone.get_untracked();
+            
+            // check if burn stats are not initialized
+            if !session_update.has_burn_stats_initialized() {
+                log::info!("Burn stats not initialized, fetching from blockchain...");
+                match session_update.fetch_and_cache_user_burn_stats().await {
+                    Ok(Some(_)) => {
+                        log::info!("User burn stats loaded successfully on startup");
+                        session_clone.set(session_update);
+                    },
+                    Ok(None) => {
+                        log::info!("No user burn stats exist on blockchain");
+                        session_clone.set(session_update);
+                    },
+                    Err(e) => {
+                        log::warn!("Failed to fetch user burn stats on startup: {}", e);
+                    }
+                }
+            }
+        });
+    });
+    
     // test rpc connection
     spawn_local(async move {
         let addr = session.get_untracked().get_public_key().unwrap_or_else(|_| "Not initialized".to_string());

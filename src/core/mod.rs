@@ -13,6 +13,7 @@ pub mod rpc_mint;
 pub mod rpc_chat;
 pub mod rpc_project;
 pub mod rpc_profile;
+pub mod rpc_burn;
 
 #[cfg(test)]
 pub mod rpc_tests;
