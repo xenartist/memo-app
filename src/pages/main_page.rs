@@ -8,6 +8,7 @@ use crate::pages::mint_page::MintPage;
 use crate::pages::mint_page_legacy::MintPage as MintPageLegacy;
 use crate::pages::burn_page::BurnPage;
 use crate::pages::chat_page::ChatPage;
+use crate::pages::project_page::ProjectPage;
 use crate::pages::faucet_page::FaucetPage;
 use crate::pages::log_view::{LogView, add_log_entry};
 
@@ -21,6 +22,7 @@ use serde_json;
 enum MenuItem {
     Home,
     Mint,
+    Project,
     Chat,
     Faucet,
     MintLegacy,
@@ -260,6 +262,14 @@ pub fn MainPage(
                     </div>
                     <div 
                         class="menu-item"
+                        class:active=move || current_menu.get() == MenuItem::Project
+                        on:click=move |_| set_current_menu.set(MenuItem::Project)
+                    >
+                        <i class="fas fa-project-diagram"></i>
+                        <span>"Project"</span>
+                    </div>
+                    <div 
+                        class="menu-item"
                         class:active=move || current_menu.get() == MenuItem::Chat
                         on:click=move |_| set_current_menu.set(MenuItem::Chat)
                     >
@@ -317,6 +327,9 @@ pub fn MainPage(
                     </div>
                     <div style=move || if current_menu.get() == MenuItem::Mint { "display: block;" } else { "display: none;" }>
                         <MintPage session=session/>
+                    </div>
+                    <div style=move || if current_menu.get() == MenuItem::Project { "display: block;" } else { "display: none;" }>
+                        <ProjectPage session=session/>
                     </div>
                     <div style=move || if current_menu.get() == MenuItem::Chat { "display: block;" } else { "display: none;" }>
                         <ChatPage session=session/>

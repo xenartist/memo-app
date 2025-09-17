@@ -869,51 +869,6 @@ impl RpcConnection {
         })
     }
     
-    /// Helper function to read a String from account data
-    fn read_string_from_data(&self, data: &[u8], offset: usize) -> Result<(String, usize), RpcError> {
-        if data.len() < offset + 4 {
-            return Err(RpcError::Other("Data too short for string length".to_string()));
-        }
-        
-        let len = u32::from_le_bytes(
-            data[offset..offset + 4].try_into()
-                .map_err(|e| RpcError::Other(format!("Failed to parse string length: {:?}", e)))?
-        ) as usize;
-        let new_offset = offset + 4;
-        
-        if data.len() < new_offset + len {
-            return Err(RpcError::Other("Data too short for string content".to_string()));
-        }
-        
-        let string_data = &data[new_offset..new_offset + len];
-        let string = String::from_utf8(string_data.to_vec())
-            .map_err(|e| RpcError::Other(format!("Failed to parse string as UTF-8: {}", e)))?;
-        
-        Ok((string, new_offset + len))
-    }
-    
-    /// Helper function to read a Vec<String> from account data
-    fn read_string_vec_from_data(&self, data: &[u8], offset: usize) -> Result<(Vec<String>, usize), RpcError> {
-        if data.len() < offset + 4 {
-            return Err(RpcError::Other("Data too short for vec length".to_string()));
-        }
-        
-        let vec_len = u32::from_le_bytes(
-            data[offset..offset + 4].try_into()
-                .map_err(|e| RpcError::Other(format!("Failed to parse vec length: {:?}", e)))?
-        ) as usize;
-        let mut new_offset = offset + 4;
-        let mut strings = Vec::new();
-        
-        for _ in 0..vec_len {
-            let (string, next_offset) = self.read_string_from_data(data, new_offset)?;
-            strings.push(string);
-            new_offset = next_offset;
-        }
-        
-        Ok((strings, new_offset))
-    }
-    
     /// Check if a specific chat group exists
     /// 
     /// # Parameters

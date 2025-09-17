@@ -14,6 +14,7 @@ pub mod pixel_view;
 pub mod burn_onchain;
 pub mod chat_page;
 pub mod faucet_page;
+pub mod project_page;
 
 pub use main_page::MainPage;
 pub use home_page::HomePage;
@@ -30,3 +31,4 @@ pub use pixel_view::PixelView;
 pub use burn_onchain::{BurnOnchain, BurnOptions};
 pub use chat_page::ChatPage;
 pub use faucet_page::FaucetPage;
+pub use project_page::{ProjectPage};
