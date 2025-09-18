@@ -50,9 +50,6 @@ pub fn MainPage(
     let (show_welcome_info, set_show_welcome_info) = create_signal(false);
     let (has_shown_welcome, set_has_shown_welcome) = create_signal(false);
     
-    // Burn stats loading state - prevents button from showing during initial load
-    let (burn_stats_loading, set_burn_stats_loading) = create_signal(true);
-    
     // Force refresh signal to trigger UI updates
     let (force_refresh, set_force_refresh) = create_signal(0u32);
     
@@ -89,9 +86,9 @@ pub fn MainPage(
         })
     };
     
-    // check if burn stats need initialization - only show button if not loading and actually needed
+    // simplify button display logic, like balance directly from session
     let needs_burn_stats_init = move || {
-        !burn_stats_loading.get() && session.with(|s| !s.has_burn_stats_initialized())
+        session.with(|s| !s.has_burn_stats_initialized())
     };
     
     // listen to balance update needed in session
@@ -143,7 +140,7 @@ pub fn MainPage(
         });
     });
     
-    // check and get user burn stats on startup
+    // simplify burn stats check logic
     create_effect(move |_| {
         let session_clone = session;
         spawn_local(async move {
@@ -155,19 +152,15 @@ pub fn MainPage(
                 match session_update.fetch_and_cache_user_burn_stats().await {
                     Ok(Some(_)) => {
                         log::info!("User burn stats loaded successfully on startup");
-                        // Update session with the loaded burn stats
+                        // key: use set() to trigger reactive update
                         session_clone.set(session_update);
-                        // Mark loading as complete
-                        set_burn_stats_loading.set(false);
                     },
                     Ok(None) => {
                         log::info!("No user burn stats exist on blockchain");
-                        // Update session even if no stats found (to mark as checked)
+                        // key: even if not found, use set() to mark as checked
                         session_clone.set(session_update);
-                        // Mark loading as complete - now the button should show
-                        set_burn_stats_loading.set(false);
                         
-                        // Show welcome info dialog after a short delay if not shown before
+                        // Show welcome info dialog after a short delay
                         if !has_shown_welcome.get_untracked() {
                             set_timeout(move || {
                                 set_show_welcome_info.set(true);
@@ -177,16 +170,12 @@ pub fn MainPage(
                     },
                     Err(e) => {
                         log::warn!("Failed to fetch user burn stats on startup: {}", e);
-                        // Update session even if fetch failed (to avoid repeated attempts)
+                        // key: even if error, use set() to mark as tried
                         session_clone.set(session_update);
-                        // Mark loading as complete - assume user needs to initialize
-                        set_burn_stats_loading.set(false);
                     }
                 }
             } else {
                 log::info!("Burn stats already initialized in session, skipping fetch");
-                // Mark loading as complete immediately if already initialized
-                set_burn_stats_loading.set(false);
             }
         });
     });
