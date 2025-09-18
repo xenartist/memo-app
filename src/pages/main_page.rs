@@ -16,6 +16,7 @@ use wasm_bindgen::prelude::*;
 use web_sys::{window, Navigator, Clipboard};
 use std::time::Duration;
 use serde_json;
+use gloo_timers::future::TimeoutFuture;
 
 // menu item enum
 #[derive(Clone, PartialEq)]
@@ -39,6 +40,11 @@ pub fn MainPage(
     let (blockhash_status, set_blockhash_status) = create_signal(String::from("Getting latest blockhash..."));
     
     let (show_copied, set_show_copied) = create_signal(false);
+    
+    // Initialize Burn Stats dialog states
+    let (show_init_dialog, set_show_init_dialog) = create_signal(false);
+    let (init_loading, set_init_loading) = create_signal(false);
+    let (init_message, set_init_message) = create_signal(String::new());
     
     // Now using global constant - no need to define locally
     
@@ -71,6 +77,11 @@ pub fn MainPage(
                 None => "No Profile".to_string()
             }
         })
+    };
+    
+    // check if burn stats need initialization
+    let needs_burn_stats_init = move || {
+        session.with(|s| !s.has_burn_stats_initialized())
     };
     
     // listen to balance update needed in session
@@ -220,18 +231,76 @@ pub fn MainPage(
         }
     };
 
+    // initialize burn stats handler
+    let initialize_burn_stats = move |_| {
+        // 1. immediately update UI state (sync)
+        set_init_loading.set(true);
+        set_init_message.set("Initializing Burn Stats...".to_string());
+        
+        let session_clone = session;
+        
+        // 2. async delay execution (give UI time to update)
+        spawn_local(async move {
+            // add short delay, let UI have time to update state, avoid lag
+            TimeoutFuture::new(100).await;
+            
+            let mut session_update = session_clone.get_untracked();
+            
+            match session_update.initialize_user_burn_stats().await {
+                Ok(tx_hash) => {
+                    log::info!("Burn stats initialized successfully: {}", tx_hash);
+                    add_log_entry("INFO", &format!("Burn stats initialized: {}", tx_hash));
+                    
+                    // Update session with the new data
+                    session_clone.set(session_update);
+                    
+                    set_init_message.set("Initialization successful!".to_string());
+                    
+                    // Close dialog after 2 seconds
+                    set_timeout(move || {
+                        set_show_init_dialog.set(false);
+                        set_init_loading.set(false);
+                        set_init_message.set(String::new());
+                    }, Duration::from_millis(2000));
+                },
+                Err(e) => {
+                    log::error!("Failed to initialize burn stats: {}", e);
+                    add_log_entry("ERROR", &format!("Failed to initialize burn stats: {}", e));
+                    set_init_message.set(format!("Initialization failed: {}", e));
+                    set_init_loading.set(false);
+                }
+            }
+        });
+    };
+
     // current selected menu item - changed default from Home to Mint
     let (current_menu, set_current_menu) = create_signal(MenuItem::Mint);
 
     view! {
         <div class="main-page">
             <div class="top-bar">
+                // Left side - Initialize Burn Stats button (only show if needed)
+                <div class="left-controls">
+                    <Show when=move || needs_burn_stats_init()>
+                        <button
+                            class="init-burn-stats-btn"
+                            on:click=move |_| set_show_init_dialog.set(true)
+                            title="Initialize your burn statistics"
+                        >
+                            <i class="fas fa-fire"></i>
+                            <span>"Initialize Burn Stats"</span>
+                        </button>
+                    </Show>
+                </div>
+                
                 // Temporarily commented out profile info for release
                 /*
                 <div class="user-info">
                     <span class="profile-status">{profile_status}</span>
                 </div>
                 */
+                
+                // Right side - wallet info
                 <div class="wallet-address">
                     <span class="token-balance">{move || format!("{:.2} MEMO", token_balance())}</span>
                     <span class="balance">{move || format!("{:.4} XNT", sol_balance())}</span>
@@ -383,6 +452,74 @@ pub fn MainPage(
 
             // Global log viewer - always visible at the bottom
             <LogView/>
+            
+            // Initialize Burn Stats Dialog
+            <Show when=move || show_init_dialog.get()>
+                <div class="modal-overlay" on:click=move |_| {
+                    if !init_loading.get() {
+                        set_show_init_dialog.set(false);
+                        set_init_message.set(String::new());
+                    }
+                }>
+                    <div class="modal-content init-burn-stats-dialog" on:click=|e| e.stop_propagation()>
+                        <div class="modal-header">
+                            <h3>"Initialize Burn Statistics"</h3>
+                            <Show when=move || !init_loading.get()>
+                                <button 
+                                    class="modal-close"
+                                    on:click=move |_| {
+                                        set_show_init_dialog.set(false);
+                                        set_init_message.set(String::new());
+                                    }
+                                >
+                                    "×"
+                                </button>
+                            </Show>
+                        </div>
+                        
+                        <div class="modal-body">
+                            <Show 
+                                when=move || init_message.get().is_empty() && !init_loading.get()
+                                fallback=move || view! {
+                                    <div class="init-status">
+                                        <Show when=move || init_loading.get()>
+                                            <div class="loading-spinner"></div>
+                                        </Show>
+                                        <p class="init-message">{init_message}</p>
+                                    </div>
+                                }
+                            >
+                                <div class="init-explanation">
+                                    <p>"Please initialize your Burn Statistics to use burn features."</p>
+                                    <p>"This operation only needs to be performed once and will create your personal burn statistics record on the blockchain."</p>
+                                    <p class="warning-text">"⚠️ This operation requires a small amount of XNT for transaction fees."</p>
+                                </div>
+                            </Show>
+                        </div>
+                        
+                        <Show when=move || !init_loading.get() && init_message.get().is_empty()>
+                            <div class="modal-footer">
+                                <button 
+                                    class="btn-secondary"
+                                    on:click=move |_| {
+                                        set_show_init_dialog.set(false);
+                                        set_init_message.set(String::new());
+                                    }
+                                >
+                                    "Cancel"
+                                </button>
+                                <button 
+                                    class="btn-primary init-confirm-btn"
+                                    on:click=initialize_burn_stats
+                                >
+                                    <i class="fas fa-fire"></i>
+                                    "Initialize"
+                                </button>
+                            </div>
+                        </Show>
+                    </div>
+                </div>
+            </Show>
         </div>
     }
 } 
