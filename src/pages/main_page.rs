@@ -119,18 +119,26 @@ pub fn MainPage(
     create_effect(move |_| {
         let session_clone = session;
         spawn_local(async move {
-            let mut session_update = session_clone.get_untracked();
+            let has_profile = session_clone.with_untracked(|s| s.get_user_profile().is_some());
             
-            // check if there is a cached profile
-            if session_update.get_user_profile().is_none() {
+            if !has_profile {
                 log::info!("No cached profile found, fetching from blockchain...");
-                match session_update.fetch_and_cache_user_profile().await {
+                
+                // create temporary session for fetching data
+                let mut temp_session = session_clone.get_untracked();
+                match temp_session.fetch_and_cache_user_profile().await {
                     Ok(Some(_)) => {
                         log::info!("User profile loaded successfully on startup");
-                        session_clone.set(session_update);
+                        // use update instead of set, avoid overwriting other updates
+                        session_clone.update(|s| {
+                            if let Some(profile) = temp_session.get_user_profile() {
+                                s.set_user_profile(Some(profile));
+                            }
+                        });
                     },
                     Ok(None) => {
                         log::info!("No user profile exists on blockchain");
+                        // mark as checked (maybe not needed)
                     },
                     Err(e) => {
                         log::warn!("Failed to fetch user profile on startup: {}", e);
@@ -140,26 +148,29 @@ pub fn MainPage(
         });
     });
     
-    // simplify burn stats check logic
+    // simplify burn stats check logic  
     create_effect(move |_| {
         let session_clone = session;
         spawn_local(async move {
-            let mut session_update = session_clone.get_untracked();
+            let has_burn_stats = session_clone.with_untracked(|s| s.has_burn_stats_initialized());
             
-            // check if burn stats are not initialized
-            if !session_update.has_burn_stats_initialized() {
+            if !has_burn_stats {
                 log::info!("Burn stats not initialized, fetching from blockchain...");
-                match session_update.fetch_and_cache_user_burn_stats().await {
+                
+                // create temporary session for fetching data
+                let mut temp_session = session_clone.get_untracked();
+                match temp_session.fetch_and_cache_user_burn_stats().await {
                     Ok(Some(_)) => {
                         log::info!("User burn stats loaded successfully on startup");
-                        // key: use set() to trigger reactive update
-                        session_clone.set(session_update);
+                        // use update instead of set, avoid overwriting other updates
+                        session_clone.update(|s| {
+                            if let Some(stats) = temp_session.get_user_burn_stats() {
+                                *s = temp_session; // or more precise update
+                            }
+                        });
                     },
                     Ok(None) => {
                         log::info!("No user burn stats exist on blockchain");
-                        // key: even if not found, use set() to mark as checked
-                        session_clone.set(session_update);
-                        
                         // Show welcome info dialog after a short delay
                         if !has_shown_welcome.get_untracked() {
                             set_timeout(move || {
@@ -170,8 +181,6 @@ pub fn MainPage(
                     },
                     Err(e) => {
                         log::warn!("Failed to fetch user burn stats on startup: {}", e);
-                        // key: even if error, use set() to mark as tried
-                        session_clone.set(session_update);
                     }
                 }
             } else {
