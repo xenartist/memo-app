@@ -17,6 +17,7 @@ use base64;
 use std::str::FromStr;
 use log;
 use bincode;
+use sha2::{Sha256, Digest};
 
 /// Borsh serialization version constants
 pub const BURN_MEMO_VERSION: u8 = 1;
@@ -95,6 +96,16 @@ impl BurnConfig {
             return Err(RpcError::Other(format!("Memo too long: {} bytes (max: {})", len, Self::MAX_MEMO_LENGTH)));
         }
         Ok(())
+    }
+    
+    /// Generate Anchor instruction discriminator using SHA256
+    pub fn get_instruction_discriminator(instruction_name: &str) -> [u8; 8] {
+        let mut hasher = Sha256::new();
+        hasher.update(format!("global:{}", instruction_name).as_bytes());
+        let result = hasher.finalize();
+        let mut discriminator = [0u8; 8];
+        discriminator.copy_from_slice(&result[..8]);
+        discriminator
     }
 }
 
@@ -218,10 +229,11 @@ impl RpcConnection {
         let (stats_pda, _) = BurnConfig::get_user_global_burn_stats_pda(&user_pubkey)?;
         let system_program = solana_sdk::system_program::id();
         
-        // Create instruction data (discriminator for initialize_user_global_burn_stats)
-        let mut instruction_data = Vec::new();
-        let discriminator = [175, 175, 109, 31, 13, 152, 155, 237];
-        instruction_data.extend_from_slice(&discriminator);
+        // Generate instruction discriminator using SHA256
+        let discriminator = BurnConfig::get_instruction_discriminator("initialize_user_global_burn_stats");
+        let instruction_data = discriminator.to_vec();
+        
+        log::info!("Using discriminator: {:?}", discriminator);
         
         // Create instruction
         let instruction = Instruction {
@@ -235,8 +247,19 @@ impl RpcConnection {
         };
         
         // Build transaction for simulation
-        let recent_blockhash = self.get_latest_blockhash().await?;
-        let blockhash = Hash::from_str(&recent_blockhash)
+        let recent_blockhash_response = self.get_latest_blockhash().await?;
+        
+        // Parse the JSON response to extract the actual blockhash
+        let blockhash_json: serde_json::Value = serde_json::from_str(&recent_blockhash_response)
+            .map_err(|e| RpcError::Other(format!("Failed to parse blockhash response: {}", e)))?;
+        
+        let recent_blockhash = blockhash_json
+            .get("value")
+            .and_then(|v| v.get("blockhash"))
+            .and_then(|b| b.as_str())
+            .ok_or_else(|| RpcError::Other(format!("Failed to extract blockhash from response: {}", recent_blockhash_response)))?;
+        
+        let blockhash = Hash::from_str(recent_blockhash)
             .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
         let message = Message::new(&[instruction.clone()], Some(&user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
@@ -300,7 +323,7 @@ impl RpcConnection {
         
         Ok(signature)
     }
-    
+
     /// Burn tokens using the memo-burn contract
     /// 
     /// # Parameters
@@ -375,11 +398,12 @@ impl RpcConnection {
             &[&user_pubkey],
         );
         
-        // Create burn instruction data (discriminator for process_burn)
-        let mut instruction_data = Vec::new();
-        let discriminator = [51, 57, 225, 47, 182, 146, 137, 166];
-        instruction_data.extend_from_slice(&discriminator);
+        // Generate instruction discriminator using SHA256 and add burn amount parameter
+        let discriminator = BurnConfig::get_instruction_discriminator("process_burn");
+        let mut instruction_data = discriminator.to_vec();
         instruction_data.extend_from_slice(&amount_units.to_le_bytes());
+        
+        log::info!("Using process_burn discriminator: {:?}", discriminator);
         
         // Create burn instruction
         let burn_instruction = Instruction {
@@ -396,8 +420,19 @@ impl RpcConnection {
         };
         
         // Build transaction for simulation
-        let recent_blockhash = self.get_latest_blockhash().await?;
-        let blockhash = Hash::from_str(&recent_blockhash)
+        let recent_blockhash_response = self.get_latest_blockhash().await?;
+        
+        // Parse the JSON response to extract the actual blockhash
+        let blockhash_json: serde_json::Value = serde_json::from_str(&recent_blockhash_response)
+            .map_err(|e| RpcError::Other(format!("Failed to parse blockhash response: {}", e)))?;
+        
+        let recent_blockhash = blockhash_json
+            .get("value")
+            .and_then(|v| v.get("blockhash"))
+            .and_then(|b| b.as_str())
+            .ok_or_else(|| RpcError::Other(format!("Failed to extract blockhash from response: {}", recent_blockhash_response)))?;
+        
+        let blockhash = Hash::from_str(recent_blockhash)
             .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
         let base_instructions = vec![memo_instruction.clone(), burn_instruction.clone()];
         let message = Message::new(&base_instructions, Some(&user_pubkey));

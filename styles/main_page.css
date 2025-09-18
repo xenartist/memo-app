@@ -218,7 +218,7 @@
     border-color: rgba(0, 0, 0, 0.7) transparent transparent transparent;
 }
 
-/* Modal styles for Initialize Burn Stats dialog */
+/* Modal styles for dialogs */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -257,6 +257,11 @@
 .init-burn-stats-dialog {
     width: 500px;
     min-height: 300px;
+}
+
+.welcome-info-dialog {
+    width: 550px;
+    min-height: 350px;
 }
 
 .modal-header {
@@ -347,6 +352,54 @@
     text-align: center;
 }
 
+/* Welcome info dialog specific styles */
+.welcome-info-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    text-align: left;
+}
+
+.info-icon {
+    flex-shrink: 0;
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, #dc3545, #c82333);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 24px;
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+}
+
+.info-text {
+    flex: 1;
+}
+
+.info-text h4 {
+    margin: 0 0 16px 0;
+    color: #333;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.info-text p {
+    margin: 12px 0;
+    color: #666;
+    line-height: 1.6;
+}
+
+.info-note {
+    background: #f8f9fa;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border-left: 4px solid #007bff;
+    color: #495057 !important;
+    font-size: 14px;
+}
+
 .modal-footer {
     padding: 16px 24px 24px 24px;
     border-top: 1px solid #eee;
@@ -381,10 +434,19 @@
     color: white;
 }
 
-.init-confirm-btn {
+.init-confirm-btn, .got-it-btn {
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+.got-it-btn {
+    background: #28a745;
+}
+
+.got-it-btn:hover {
+    background: #218838;
+    box-shadow: 0 2px 4px rgba(40, 167, 69, 0.2);
 }
 
 .btn-primary:hover {
@@ -392,7 +454,7 @@
     box-shadow: 0 2px 4px rgba(220, 53, 69, 0.2);
 }
 
-.btn-primary:active {
+.btn-primary:active, .got-it-btn:active {
     transform: translateY(1px);
 }
 
@@ -713,9 +775,15 @@
         padding: 16px;
     }
 
-    .init-burn-stats-dialog {
+    .init-burn-stats-dialog, .welcome-info-dialog {
         width: 90%;
         margin: 0 auto;
+    }
+
+    .welcome-info-content {
+        flex-direction: column;
+        text-align: center;
+        gap: 16px;
     }
 }
 
@@ -798,7 +866,8 @@
 .import-btn:focus,
 .init-burn-stats-btn:focus,
 .btn-primary:focus,
-.btn-secondary:focus {
+.btn-secondary:focus,
+.got-it-btn:focus {
     outline: 2px solid #007bff;
     outline-offset: 2px;
 }

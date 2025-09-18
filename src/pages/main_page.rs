@@ -46,6 +46,16 @@ pub fn MainPage(
     let (init_loading, set_init_loading) = create_signal(false);
     let (init_message, set_init_message) = create_signal(String::new());
     
+    // Welcome info dialog states (for new users)
+    let (show_welcome_info, set_show_welcome_info) = create_signal(false);
+    let (has_shown_welcome, set_has_shown_welcome) = create_signal(false);
+    
+    // Burn stats loading state - prevents button from showing during initial load
+    let (burn_stats_loading, set_burn_stats_loading) = create_signal(true);
+    
+    // Force refresh signal to trigger UI updates
+    let (force_refresh, set_force_refresh) = create_signal(0u32);
+    
     // Now using global constant - no need to define locally
     
     // get wallet address from session
@@ -79,9 +89,9 @@ pub fn MainPage(
         })
     };
     
-    // check if burn stats need initialization
+    // check if burn stats need initialization - only show button if not loading and actually needed
     let needs_burn_stats_init = move || {
-        session.with(|s| !s.has_burn_stats_initialized())
+        !burn_stats_loading.get() && session.with(|s| !s.has_burn_stats_initialized())
     };
     
     // listen to balance update needed in session
@@ -145,16 +155,38 @@ pub fn MainPage(
                 match session_update.fetch_and_cache_user_burn_stats().await {
                     Ok(Some(_)) => {
                         log::info!("User burn stats loaded successfully on startup");
+                        // Update session with the loaded burn stats
                         session_clone.set(session_update);
+                        // Mark loading as complete
+                        set_burn_stats_loading.set(false);
                     },
                     Ok(None) => {
                         log::info!("No user burn stats exist on blockchain");
+                        // Update session even if no stats found (to mark as checked)
                         session_clone.set(session_update);
+                        // Mark loading as complete - now the button should show
+                        set_burn_stats_loading.set(false);
+                        
+                        // Show welcome info dialog after a short delay if not shown before
+                        if !has_shown_welcome.get_untracked() {
+                            set_timeout(move || {
+                                set_show_welcome_info.set(true);
+                                set_has_shown_welcome.set(true);
+                            }, Duration::from_millis(1500));
+                        }
                     },
                     Err(e) => {
                         log::warn!("Failed to fetch user burn stats on startup: {}", e);
+                        // Update session even if fetch failed (to avoid repeated attempts)
+                        session_clone.set(session_update);
+                        // Mark loading as complete - assume user needs to initialize
+                        set_burn_stats_loading.set(false);
                     }
                 }
+            } else {
+                log::info!("Burn stats already initialized in session, skipping fetch");
+                // Mark loading as complete immediately if already initialized
+                set_burn_stats_loading.set(false);
             }
         });
     });
@@ -251,17 +283,46 @@ pub fn MainPage(
                     log::info!("Burn stats initialized successfully: {}", tx_hash);
                     add_log_entry("INFO", &format!("Burn stats initialized: {}", tx_hash));
                     
-                    // Update session with the new data
-                    session_clone.set(session_update);
-                    
-                    set_init_message.set("Initialization successful!".to_string());
-                    
-                    // Close dialog after 2 seconds
-                    set_timeout(move || {
-                        set_show_init_dialog.set(false);
-                        set_init_loading.set(false);
-                        set_init_message.set(String::new());
-                    }, Duration::from_millis(2000));
+                    // Fetch and cache the newly initialized burn stats
+                    match session_update.fetch_and_cache_user_burn_stats().await {
+                        Ok(Some(_)) => {
+                            log::info!("Successfully fetched and cached burn stats after initialization");
+                            // Update session with the new data including burn stats
+                            session_clone.set(session_update);
+                            
+                            // Force UI refresh to hide the button immediately
+                            set_force_refresh.update(|n| *n += 1);
+                            
+                            set_init_message.set("Initialization successful!".to_string());
+                            
+                            // Close dialog after 2 seconds
+                            set_timeout(move || {
+                                set_show_init_dialog.set(false);
+                                set_init_loading.set(false);
+                                set_init_message.set(String::new());
+                            }, Duration::from_millis(2000));
+                        },
+                        Ok(None) => {
+                            log::warn!("Burn stats initialized but not found when fetching");
+                            // Still update session but show a warning
+                            session_clone.set(session_update);
+                            set_init_message.set("Initialization completed, but stats not immediately available.".to_string());
+                            set_init_loading.set(false);
+                        },
+                        Err(e) => {
+                            log::error!("Failed to fetch burn stats after initialization: {}", e);
+                            // Still update session as initialization was successful
+                            session_clone.set(session_update);
+                            set_init_message.set("Initialization successful!".to_string());
+                            
+                            // Close dialog after 2 seconds
+                            set_timeout(move || {
+                                set_show_init_dialog.set(false);
+                                set_init_loading.set(false);
+                                set_init_message.set(String::new());
+                            }, Duration::from_millis(2000));
+                        }
+                    }
                 },
                 Err(e) => {
                     log::error!("Failed to initialize burn stats: {}", e);
@@ -452,6 +513,45 @@ pub fn MainPage(
 
             // Global log viewer - always visible at the bottom
             <LogView/>
+            
+            // Welcome Info Dialog (shown after login/registration if burn stats not initialized)
+            <Show when=move || show_welcome_info.get()>
+                <div class="modal-overlay" on:click=move |_| set_show_welcome_info.set(false)>
+                    <div class="modal-content welcome-info-dialog" on:click=|e| e.stop_propagation()>
+                        <div class="modal-header">
+                            <h3>"Welcome to MEMO App!"</h3>
+                        </div>
+                        
+                        <div class="modal-body">
+                            <div class="welcome-info-content">
+                                <div class="info-icon">
+                                    <i class="fas fa-fire"></i>
+                                </div>
+                                <div class="info-text">
+                                    <h4>"Initialize Burn Statistics"</h4>
+                                    <p>"To use burn features in this app, you need to initialize your Burn Statistics account first."</p>
+                                    <p>
+                                        "You can find the red "
+                                        <strong>"Initialize Burn Stats"</strong>
+                                        " button in the top-left corner of your screen."
+                                    </p>
+                                    <p class="info-note">"💡 This is a one-time setup that creates your personal burn statistics record on the blockchain."</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="modal-footer">
+                            <button 
+                                class="btn-primary got-it-btn"
+                                on:click=move |_| set_show_welcome_info.set(false)
+                            >
+                                <i class="fas fa-check"></i>
+                                "Got it!"
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </Show>
             
             // Initialize Burn Stats Dialog
             <Show when=move || show_init_dialog.get()>
