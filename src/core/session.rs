@@ -4,6 +4,8 @@ use crate::core::encrypt;
 use crate::core::rpc_base::{RpcConnection, RpcError};
 use crate::core::rpc_mint::MintConfig;
 use crate::core::rpc_profile::{UserProfile, parse_user_profile_new};
+use crate::core::rpc_project::{ProjectConfig, ProjectInfo, ProjectStatistics, ProjectBurnLeaderboardResponse};
+use crate::core::rpc_burn::{UserGlobalBurnStats};
 use web_sys::js_sys::Date;
 use secrecy::{Secret, ExposeSecret};
 use zeroize::Zeroize;
@@ -75,6 +77,8 @@ pub struct Session {
     token_balance: f64,
     // balance update trigger
     balance_update_needed: bool,
+    // user global burn stats
+    user_burn_stats: Option<UserGlobalBurnStats>,
 }
 
 impl Session {
@@ -90,6 +94,7 @@ impl Session {
             sol_balance: 0.0,
             token_balance: 0.0,
             balance_update_needed: false,
+            user_burn_stats: None,
         }
     }
 
@@ -183,6 +188,7 @@ impl Session {
         self.token_balance = 0.0;
         self.balance_update_needed = false;
         self.ui_locked = false;
+        self.user_burn_stats = None;
     }
 
     // update config
@@ -751,6 +757,345 @@ impl Session {
         }
 
         Ok(signature)
+    }
+
+    /// Create a new project - internal handle all key operations
+    /// 
+    /// # Parameters
+    /// * `name` - Project name (1-64 characters)
+    /// * `description` - Project description (max 256 characters)
+    /// * `image` - Project image URL (max 256 characters)
+    /// * `website` - Project website URL (max 128 characters)
+    /// * `tags` - Project tags (max 4 tags, each max 32 characters)
+    /// * `burn_amount` - Amount of MEMO tokens to burn (in token units, not lamports)
+    /// 
+    /// # Returns
+    /// Result containing transaction signature and project ID
+    pub async fn create_project(
+        &mut self,
+        name: &str,
+        description: &str,
+        image: &str,
+        website: &str,
+        tags: Vec<String>,
+        burn_amount: u64,
+    ) -> Result<(String, u64), SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        log::info!("Session: Creating project '{}' with {} tokens", name, burn_amount);
+
+        // Get keypair
+        let seed = self.get_seed()?;
+        let seed_bytes = hex::decode(&seed)
+            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
+        let seed_array: [u8; 64] = seed_bytes.try_into()
+            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
+        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
+            &seed_array, crate::core::wallet::get_default_derivation_path()
+        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
+        let keypair_bytes = keypair.to_bytes().to_vec();
+
+        // Convert amount from tokens to lamports
+        let burn_amount_lamports = burn_amount * 1_000_000;
+
+        // Call RPC method
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        let result = rpc.create_project(
+            name, description, image, website, tags, burn_amount_lamports, &keypair_bytes
+        ).await
+            .map_err(|e| {
+                log::error!("Session: RPC create_project failed: {}", e);
+                SessionError::InvalidData(format!("Create project failed: {}", e))
+            })?;
+
+        log::info!("Session: Project '{}' created successfully with ID {}", name, result.1);
+
+        // Mark that balances need to be updated after successful project creation
+        self.mark_balance_update_needed();
+        
+        Ok(result)
+    }
+
+    /// Update an existing project
+    /// 
+    /// # Parameters
+    /// * `project_id` - The ID of the project to update
+    /// * `name` - New project name (optional, 1-64 characters)
+    /// * `description` - New project description (optional, max 256 characters)
+    /// * `image` - New project image URL (optional, max 256 characters)
+    /// * `website` - New project website URL (optional, max 128 characters)
+    /// * `tags` - New project tags (optional, max 4 tags, each max 32 characters)
+    /// * `burn_amount` - Amount of MEMO tokens to burn (in token units, not lamports)
+    /// 
+    /// # Returns
+    /// Result containing transaction signature
+    pub async fn update_project(
+        &mut self,
+        project_id: u64,
+        name: Option<String>,
+        description: Option<String>,
+        image: Option<String>,
+        website: Option<String>,
+        tags: Option<Vec<String>>,
+        burn_amount: u64,
+    ) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        log::info!("Session: Updating project {} with {} tokens", project_id, burn_amount);
+
+        // Get keypair
+        let seed = self.get_seed()?;
+        let seed_bytes = hex::decode(&seed)
+            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
+        let seed_array: [u8; 64] = seed_bytes.try_into()
+            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
+        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
+            &seed_array, crate::core::wallet::get_default_derivation_path()
+        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
+        let keypair_bytes = keypair.to_bytes().to_vec();
+
+        // Convert amount from tokens to lamports
+        let burn_amount_lamports = burn_amount * 1_000_000;
+
+        // Call RPC method
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        let signature = rpc.update_project(
+            project_id, name, description, image, website, tags, burn_amount_lamports, &keypair_bytes
+        ).await
+            .map_err(|e| {
+                log::error!("Session: RPC update_project failed: {}", e);
+                SessionError::InvalidData(format!("Update project failed: {}", e))
+            })?;
+
+        log::info!("Session: Project {} updated successfully", project_id);
+
+        // Mark that balances need to be updated after successful project update
+        self.mark_balance_update_needed();
+        
+        Ok(signature)
+    }
+
+    /// Burn tokens for a project
+    /// 
+    /// # Parameters
+    /// * `project_id` - The ID of the project to burn tokens for
+    /// * `amount` - Amount of MEMO tokens to burn (in token units, not lamports)
+    /// * `message` - Optional burn message (max 696 characters)
+    /// 
+    /// # Returns
+    /// Result containing transaction signature
+    pub async fn burn_tokens_for_project(
+        &mut self,
+        project_id: u64,
+        amount: u64,
+        message: &str,
+    ) -> Result<String, SessionError> {
+        // Check if session is valid
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        // Get the seed and convert to keypair
+        let seed = self.get_seed()?;
+        let seed_bytes = hex::decode(&seed)
+            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
+        
+        let seed_array: [u8; 64] = seed_bytes.try_into()
+            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
+
+        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
+            &seed_array,
+            crate::core::wallet::get_default_derivation_path()
+        ).map_err(|e| SessionError::InvalidData(format!("Failed to derive keypair: {:?}", e)))?;
+
+        // Convert amount from tokens to lamports
+        let amount_lamports = amount * 1_000_000;
+
+        // Call RPC
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        let signature = rpc.burn_tokens_for_project(
+            project_id,
+            amount_lamports,
+            message,
+            &keypair.to_bytes(),
+        ).await.map_err(|e| SessionError::InvalidData(format!("Burn tokens for project failed: {}", e)))?;
+
+        // Update balances after successful burn
+        match self.fetch_and_update_balances().await {
+            Ok(()) => {
+                log::info!("Successfully updated balances after burning tokens for project");
+            },
+            Err(e) => {
+                log::error!("Failed to update balances after burning tokens for project: {}", e);
+                // Mark that we need to update balances later
+                self.mark_balance_update_needed();
+            }
+        }
+
+        Ok(signature)
+    }
+
+    /// Get information for a specific project (doesn't require authentication)
+    /// 
+    /// # Parameters
+    /// * `project_id` - The ID of the project to fetch
+    /// 
+    /// # Returns
+    /// Project information if it exists
+    pub async fn get_project_info(&self, project_id: u64) -> Result<ProjectInfo, SessionError> {
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        rpc.get_project_info(project_id).await
+            .map_err(|e| SessionError::InvalidData(format!("Get project info failed: {}", e)))
+    }
+
+    /// Get comprehensive statistics for all projects (doesn't require authentication)
+    /// 
+    /// # Returns
+    /// Complete statistics including all project information
+    pub async fn get_all_project_statistics(&self) -> Result<ProjectStatistics, SessionError> {
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        rpc.get_all_project_statistics().await
+            .map_err(|e| SessionError::InvalidData(format!("Get project statistics failed: {}", e)))
+    }
+
+    /// Get project burn leaderboard (doesn't require authentication)
+    /// 
+    /// # Returns
+    /// Project burn leaderboard data, including the top 100 projects
+    pub async fn get_project_burn_leaderboard(&self) -> Result<ProjectBurnLeaderboardResponse, SessionError> {
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        rpc.get_project_burn_leaderboard().await
+            .map_err(|e| SessionError::InvalidData(format!("Get project burn leaderboard failed: {}", e)))
+    }
+
+    /// Get the rank of a specific project in the burn leaderboard (doesn't require authentication)
+    /// 
+    /// # Parameters
+    /// * `project_id` - Project ID
+    /// 
+    /// # Returns
+    /// Rank (1-100), return None if the project is not in the leaderboard
+    pub async fn get_project_burn_rank(&self, project_id: u64) -> Result<Option<u8>, SessionError> {
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        rpc.get_project_burn_rank(project_id).await
+            .map_err(|e| SessionError::InvalidData(format!("Get project burn rank failed: {}", e)))
+    }
+
+    /// Check if a specific project exists (doesn't require authentication)
+    /// 
+    /// # Parameters
+    /// * `project_id` - The ID of the project to check
+    /// 
+    /// # Returns
+    /// True if the project exists, false otherwise
+    pub async fn project_exists(&self, project_id: u64) -> Result<bool, SessionError> {
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        rpc.project_exists(project_id).await
+            .map_err(|e| SessionError::InvalidData(format!("Check project exists failed: {}", e)))
+    }
+
+    /// Get the total number of projects that have been created (doesn't require authentication)
+    /// 
+    /// # Returns
+    /// The total number of projects from the global counter
+    pub async fn get_total_projects(&self) -> Result<u64, SessionError> {
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        rpc.get_total_projects().await
+            .map_err(|e| SessionError::InvalidData(format!("Get total projects failed: {}", e)))
+    }
+
+    // fetch and cache user burn stats
+    pub async fn fetch_and_cache_user_burn_stats(&mut self) -> Result<Option<UserGlobalBurnStats>, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey = self.get_public_key()?;
+        let rpc = RpcConnection::new();
+
+        match rpc.get_user_global_burn_stats(&pubkey).await {
+            Ok(Some(stats)) => {
+                log::info!("Successfully fetched and cached user burn stats");
+                self.user_burn_stats = Some(stats.clone());
+                Ok(Some(stats))
+            },
+            Ok(None) => {
+                log::info!("User burn stats not found for pubkey: {}", pubkey);
+                self.user_burn_stats = None;
+                Ok(None)
+            },
+            Err(e) => {
+                log::error!("Failed to fetch user burn stats: {}", e);
+                Err(SessionError::InvalidData(format!("RPC error: {}", e)))
+            }
+        }
+    }
+
+    // initialize user global burn stats
+    pub async fn initialize_user_burn_stats(&mut self) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let keypair_bytes = self.get_keypair_bytes()?;
+        let rpc = RpcConnection::new();
+        
+        match rpc.initialize_user_global_burn_stats(&keypair_bytes).await {
+            Ok(tx_hash) => {
+                log::info!("User burn stats initialized successfully: {}", tx_hash);
+                // Refresh burn stats cache after successful initialization
+                let _ = self.fetch_and_cache_user_burn_stats().await;
+                Ok(tx_hash)
+            },
+            Err(e) => {
+                log::error!("Failed to initialize user burn stats: {}", e);
+                Err(SessionError::InvalidData(format!("Failed to initialize burn stats: {}", e)))
+            }
+        }
+    }
+
+    // burn tokens using memo-burn contract
+    pub async fn burn_tokens(&mut self, amount: u64, message: &str) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        // Check if burn stats are initialized, if not, initialize them first
+        if self.user_burn_stats.is_none() {
+            log::info!("Burn stats not initialized, initializing first...");
+            self.initialize_user_burn_stats().await?;
+        }
+
+        let keypair_bytes = self.get_keypair_bytes()?;
+        let rpc = RpcConnection::new();
+        
+        match rpc.burn_tokens(amount, message, &keypair_bytes).await {
+            Ok(tx_hash) => {
+                log::info!("Burn transaction sent: {}", tx_hash);
+                self.balance_update_needed = true;
+                // Refresh burn stats cache after successful burn
+                let _ = self.fetch_and_cache_user_burn_stats().await;
+                Ok(tx_hash)
+            },
+            Err(e) => {
+                log::error!("Burn transaction failed: {}", e);
+                Err(SessionError::InvalidData(format!("Burn error: {}", e)))
+            }
+        }
+    }
+
+    // check if user has burn stats initialized
+    pub fn has_burn_stats_initialized(&self) -> bool {
+        self.user_burn_stats.is_some()
+    }
+
+    // get user burn stats
+    pub fn get_user_burn_stats(&self) -> Option<UserGlobalBurnStats> {
+        self.user_burn_stats.clone()
     }
 }
 

@@ -177,6 +177,15 @@ impl ChatConfig {
         discriminator.copy_from_slice(&result[..8]);
         discriminator
     }
+    
+    /// Calculate user global burn stats PDA (from memo-burn program)
+    pub fn get_user_global_burn_stats_pda(user_pubkey: &Pubkey) -> Result<(Pubkey, u8), RpcError> {
+        let memo_burn_program_id = Self::get_memo_burn_program_id()?;
+        Ok(Pubkey::find_program_address(
+            &[b"user_global_burn_stats", user_pubkey.as_ref()],
+            &memo_burn_program_id
+        ))
+    }
 }
 
 /// BurnMemo structure (compatible with contract)
@@ -869,51 +878,6 @@ impl RpcConnection {
         })
     }
     
-    /// Helper function to read a String from account data
-    fn read_string_from_data(&self, data: &[u8], offset: usize) -> Result<(String, usize), RpcError> {
-        if data.len() < offset + 4 {
-            return Err(RpcError::Other("Data too short for string length".to_string()));
-        }
-        
-        let len = u32::from_le_bytes(
-            data[offset..offset + 4].try_into()
-                .map_err(|e| RpcError::Other(format!("Failed to parse string length: {:?}", e)))?
-        ) as usize;
-        let new_offset = offset + 4;
-        
-        if data.len() < new_offset + len {
-            return Err(RpcError::Other("Data too short for string content".to_string()));
-        }
-        
-        let string_data = &data[new_offset..new_offset + len];
-        let string = String::from_utf8(string_data.to_vec())
-            .map_err(|e| RpcError::Other(format!("Failed to parse string as UTF-8: {}", e)))?;
-        
-        Ok((string, new_offset + len))
-    }
-    
-    /// Helper function to read a Vec<String> from account data
-    fn read_string_vec_from_data(&self, data: &[u8], offset: usize) -> Result<(Vec<String>, usize), RpcError> {
-        if data.len() < offset + 4 {
-            return Err(RpcError::Other("Data too short for vec length".to_string()));
-        }
-        
-        let vec_len = u32::from_le_bytes(
-            data[offset..offset + 4].try_into()
-                .map_err(|e| RpcError::Other(format!("Failed to parse vec length: {:?}", e)))?
-        ) as usize;
-        let mut new_offset = offset + 4;
-        let mut strings = Vec::new();
-        
-        for _ in 0..vec_len {
-            let (string, next_offset) = self.read_string_from_data(data, new_offset)?;
-            strings.push(string);
-            new_offset = next_offset;
-        }
-        
-        Ok((strings, new_offset))
-    }
-    
     /// Check if a specific chat group exists
     /// 
     /// # Parameters
@@ -1494,6 +1458,7 @@ impl RpcConnection {
         let (global_counter_pda, _) = ChatConfig::get_global_counter_pda()?;
         let (chat_group_pda, _) = ChatConfig::get_chat_group_pda(expected_group_id)?;
         let (burn_leaderboard_pda, _) = ChatConfig::get_burn_leaderboard_pda()?;
+        let (user_global_burn_stats_pda, _) = ChatConfig::get_user_global_burn_stats_pda(&user_pubkey)?;
         let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
             &user_pubkey, &memo_token_mint, &token_2022_program_id,
         );
@@ -1552,6 +1517,7 @@ impl RpcConnection {
             AccountMeta::new(burn_leaderboard_pda, false),           // burn_leaderboard
             AccountMeta::new(memo_token_mint, false),                // mint
             AccountMeta::new(user_token_account, false),             // creator_token_account
+            AccountMeta::new(user_global_burn_stats_pda, false),     // user_global_burn_stats
             AccountMeta::new_readonly(token_2022_program_id, false), // token_program
             AccountMeta::new_readonly(memo_burn_program_id, false),  // memo_burn_program
             AccountMeta::new_readonly(solana_sdk::system_program::id(), false), // system_program
@@ -1683,6 +1649,7 @@ impl RpcConnection {
         // Calculate PDAs
         let (chat_group_pda, _) = ChatConfig::get_chat_group_pda(group_id)?;
         let (burn_leaderboard_pda, _) = ChatConfig::get_burn_leaderboard_pda()?;
+        let (user_global_burn_stats_pda, _) = ChatConfig::get_user_global_burn_stats_pda(&user_pubkey)?;
         
         // Calculate user's token account (ATA)
         let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
@@ -1753,6 +1720,7 @@ impl RpcConnection {
             AccountMeta::new(burn_leaderboard_pda, false),         // burn_leaderboard
             AccountMeta::new(memo_token_mint, false),              // mint
             AccountMeta::new(user_token_account, false),           // burner_token_account
+            AccountMeta::new(user_global_burn_stats_pda, false),   // user_global_burn_stats
             AccountMeta::new_readonly(token_2022_program_id, false), // token_program
             AccountMeta::new_readonly(memo_burn_program_id, false), // memo_burn_program
             AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false), // instructions sysvar

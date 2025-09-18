@@ -279,6 +279,15 @@ impl ProfileConfig {
         discriminator.copy_from_slice(&result[..8]);
         discriminator
     }
+    
+    /// Calculate user global burn stats PDA (from memo-burn program)
+    pub fn get_user_global_burn_stats_pda(user_pubkey: &Pubkey) -> Result<(Pubkey, u8), RpcError> {
+        let memo_burn_program_id = Self::get_memo_burn_program_id()?;
+        Ok(Pubkey::find_program_address(
+            &[b"user_global_burn_stats", user_pubkey.as_ref()],
+            &memo_burn_program_id
+        ))
+    }
 }
 
 // Profile RPC implementation
@@ -325,6 +334,7 @@ impl RpcConnection {
         
         // calculate PDA
         let (profile_pda, _) = ProfileConfig::get_profile_pda(&user_pubkey)?;
+        let (user_global_burn_stats_pda, _) = ProfileConfig::get_user_global_burn_stats_pda(&user_pubkey)?;
         
         // calculate user token account
         let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
@@ -387,6 +397,7 @@ impl RpcConnection {
                 AccountMeta::new(profile_pda, false),                     // profile
                 AccountMeta::new(memo_token_mint, false),                 // mint
                 AccountMeta::new(user_token_account, false),              // user_token_account
+                AccountMeta::new(user_global_burn_stats_pda, false),      // user_global_burn_stats
                 AccountMeta::new_readonly(token_2022_program_id, false),  // token_program
                 AccountMeta::new_readonly(memo_burn_program_id, false),   // memo_burn_program
                 AccountMeta::new_readonly(solana_sdk::system_program::id(), false), // system_program
@@ -490,6 +501,7 @@ impl RpcConnection {
         
         // calculate PDA
         let (profile_pda, _) = ProfileConfig::get_profile_pda(&user_pubkey)?;
+        let (user_global_burn_stats_pda, _) = ProfileConfig::get_user_global_burn_stats_pda(&user_pubkey)?;
         
         // calculate user token account
         let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
@@ -551,6 +563,7 @@ impl RpcConnection {
                 AccountMeta::new(memo_token_mint, false),                 // mint
                 AccountMeta::new(user_token_account, false),              // user_token_account
                 AccountMeta::new(profile_pda, false),                     // profile
+                AccountMeta::new(user_global_burn_stats_pda, false),      // user_global_burn_stats
                 AccountMeta::new_readonly(token_2022_program_id, false),  // token_program
                 AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false), // instructions
                 AccountMeta::new_readonly(memo_burn_program_id, false),   // memo_burn_program
