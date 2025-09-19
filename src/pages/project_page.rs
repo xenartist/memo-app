@@ -71,8 +71,14 @@ pub fn ProjectPage(
                         }
                     }
                     
-                    // Sort by rank (already should be sorted, but just to be sure)
-                    project_rows.sort_by(|a, b| a.rank.cmp(&b.rank));
+                    // Sort by burned_amount in descending order (highest burn first)
+                    // and reassign ranks based on actual burn amounts
+                    project_rows.sort_by(|a, b| b.burned_amount.cmp(&a.burned_amount));
+                    
+                    // Reassign ranks based on sorted order
+                    for (index, project) in project_rows.iter_mut().enumerate() {
+                        project.rank = (index + 1) as u8;
+                    }
                     
                     set_projects.set(project_rows);
                 },
