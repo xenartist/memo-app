@@ -281,6 +281,11 @@ pub fn MainPage(
                     log::info!("Burn stats initialized successfully: {}", tx_hash);
                     add_log_entry("INFO", &format!("Burn stats initialized: {}", tx_hash));
                     
+                    // Wait for on-chain synchronization (20 seconds)
+                    log::info!("Waiting 20 seconds for on-chain synchronization...");
+                    add_log_entry("INFO", "Waiting for on-chain synchronization...");
+                    TimeoutFuture::new(20000).await;
+                    
                     // Fetch and cache the newly initialized burn stats
                     match session_update.fetch_and_cache_user_burn_stats().await {
                         Ok(Some(_)) => {
