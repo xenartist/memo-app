@@ -527,7 +527,7 @@ pub fn MainPage(
                                 </div>
                                 <div class="info-text">
                                     <h4>"Initialize Burn Statistics"</h4>
-                                    <p>"To use burn features in this app, you need to initialize your Burn Statistics account first."</p>
+                                    <p>"To use burn features in this app, you need to initialize your Burn Statistics first."</p>
                                     <p>
                                         "You can find the red "
                                         <strong>"Initialize Burn Stats"</strong>

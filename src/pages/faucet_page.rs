@@ -4,6 +4,7 @@ use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
 use crate::core::session::Session;
 use crate::pages::log_view::add_log_entry;
+use gloo_timers::future::TimeoutFuture;
 
 // API request/response structures (matching backend)
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -223,9 +224,33 @@ pub fn FaucetPage(session: RwSignal<Session>) -> impl IntoView {
                     set_message.set(Some((success_message, "success".to_string())));
                     add_log_entry("SUCCESS", &format!("Airdrop successful: {}", response.signature));
                     
-                    // Update session balance
-                    session.update(|s| {
-                        s.mark_balance_update_needed();
+                    // Update session balance - wait for blockchain confirmation before fetching
+                    let session_clone = session;
+                    spawn_local(async move {
+                        add_log_entry("INFO", "Waiting for blockchain confirmation (20 seconds)...");
+                        
+                        // Wait 20 seconds for blockchain confirmation
+                        TimeoutFuture::new(20_000).await;
+                        
+                        add_log_entry("INFO", "Fetching updated balance...");
+                        let mut session_update = session_clone.get_untracked();
+                        match session_update.fetch_and_update_balances().await {
+                            Ok(()) => {
+                                log::info!("Successfully updated balances after airdrop");
+                                add_log_entry("SUCCESS", &format!("Balance updated: {:.4} XNT", session_update.get_sol_balance()));
+                                session_clone.update(|s| {
+                                    s.set_balances(session_update.get_sol_balance(), session_update.get_token_balance());
+                                });
+                            },
+                            Err(e) => {
+                                log::error!("Failed to update balances after airdrop: {}", e);
+                                add_log_entry("WARNING", "Failed to update balance automatically, will retry later");
+                                // Fallback: mark that we need to update balances later
+                                session_clone.update(|s| {
+                                    s.mark_balance_update_needed();
+                                });
+                            }
+                        }
                     });
 
                     // Clear form and refresh challenge
