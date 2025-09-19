@@ -1,0 +1,874 @@
+/* Project Page Styles - Simple Table Design */
+.project-page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.project-header {
+    margin-bottom: 30px;
+    padding: 20px;
+}
+
+.project-header h1 {
+    font-size: 2rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 8px;
+}
+
+.project-subtitle {
+    font-size: 1rem;
+    color: #64748b;
+    margin: 0;
+}
+
+.project-content {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+/* Loading and Error States */
+.loading-state,
+.error-state,
+.empty-state {
+    padding: 60px 20px;
+    text-align: center;
+    color: #64748b;
+}
+
+.error-state {
+    color: #dc2626;
+}
+
+/* Table Styles - Markdown-like */
+.project-table-container {
+    overflow-x: auto;
+}
+
+.project-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.project-table th {
+    background: #f8fafc;
+    color: #374151;
+    font-weight: 600;
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 2px solid #e5e7eb;
+    white-space: nowrap;
+}
+
+.project-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+
+.project-row {
+    transition: background-color 0.2s ease;
+}
+
+.project-row:hover {
+    background-color: #f8fafc;
+}
+
+/* Cell-specific styles */
+.rank-cell {
+    width: 80px;
+}
+
+.rank-badge {
+    background: #3b82f6;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.id-cell {
+    width: 60px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    color: #6b7280;
+}
+
+.name-cell {
+    min-width: 200px;
+}
+
+.project-name {
+    font-weight: 500;
+    color: #1e293b;
+}
+
+.website-cell {
+    min-width: 200px;
+    max-width: 300px;
+}
+
+.website-link {
+    color: #3b82f6;
+    text-decoration: none;
+    word-break: break-all;
+    font-size: 0.85rem;
+}
+
+.website-link:hover {
+    text-decoration: underline;
+}
+
+.no-website {
+    color: #9ca3af;
+    font-style: italic;
+}
+
+.burned-cell {
+    width: 120px;
+    text-align: right;
+}
+
+.burned-amount {
+    font-weight: 600;
+    color: #059669;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.time-cell {
+    width: 140px;
+    font-size: 0.8rem;
+    color: #6b7280;
+}
+
+/* Header Layout */
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+}
+
+.header-text {
+    text-align: left;
+}
+
+.header-actions {
+    flex-shrink: 0;
+}
+
+/* New Project Button */
+.new-project-button {
+    background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+}
+
+.new-project-button:hover:not(:disabled) {
+    background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
+    box-shadow: 0 4px 8px rgba(59, 130, 246, 0.4);
+    transform: translateY(-1px);
+}
+
+.new-project-button:disabled {
+    background: #94a3b8;
+    cursor: not-allowed;
+    box-shadow: none;
+    opacity: 0.6;
+}
+
+/* Project refresh countdown banner */
+.countdown-banner {
+    margin: 0 20px 20px 20px;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    padding: 16px 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    animation: slideInDown 0.3s ease-out;
+}
+
+.countdown-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    justify-content: center;
+}
+
+.countdown-content i {
+    font-size: 18px;
+    color: #d1fae5;
+}
+
+.countdown-content strong {
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 16px;
+}
+
+@keyframes slideInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Modal overlay for create project dialog */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(4px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    padding: 20px;
+}
+
+/* Create Project Form */
+.create-project-form {
+    background: white;
+    border-radius: 16px;
+    max-width: 900px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.create-project-form .form-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 20px 24px;
+    border-radius: 16px 16px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.create-project-form .form-title {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.create-project-form .form-title i {
+    color: #a78bfa;
+}
+
+.create-project-form .form-close-btn {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 8px;
+    transition: background 0.3s ease;
+}
+
+.create-project-form .form-close-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.create-project-form .project-form {
+    padding: 24px;
+}
+
+.create-project-form .form-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    margin-bottom: 24px;
+}
+
+.create-project-form .form-left,
+.create-project-form .form-right {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.create-project-form .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.create-project-form .form-group label {
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.create-project-form .form-group label i {
+    color: #6b7280;
+    width: 16px;
+    text-align: center;
+}
+
+.create-project-form .form-group input,
+.create-project-form .form-group textarea {
+    padding: 12px 16px;
+    border: 2px solid #e1e5e9;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    background: white;
+    font-family: inherit;
+}
+
+.create-project-form .form-group input:focus,
+.create-project-form .form-group textarea:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.create-project-form .form-group input:disabled,
+.create-project-form .form-group textarea:disabled {
+    background: #f5f5f5;
+    color: #666;
+    cursor: not-allowed;
+}
+
+.create-project-form .form-group textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+.create-project-form .form-hint {
+    font-size: 12px;
+    color: #666;
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.create-project-form .form-hint i {
+    color: #9ca3af;
+}
+
+/* Pixel Art Editor */
+.create-project-form .pixel-art-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.create-project-form .pixel-art-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.create-project-form .pixel-art-header label {
+    font-weight: 600;
+    color: #4a5568;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.create-project-form .pixel-art-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.create-project-form .size-selector {
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: white;
+    font-size: 13px;
+    color: #333;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 120px;
+}
+
+.create-project-form .size-selector:hover {
+    border-color: #667eea;
+}
+
+.create-project-form .size-selector:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+.create-project-form .size-selector:disabled {
+    background: #f5f5f5;
+    color: #999;
+    cursor: not-allowed;
+}
+
+.create-project-form .import-btn {
+    padding: 6px 12px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.create-project-form .import-btn:hover {
+    background: #5a67d8;
+    transform: translateY(-1px);
+}
+
+.create-project-form .import-btn:disabled {
+    background: #a0aec0;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.create-project-form .pixel-string-info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.create-project-form .string-display {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+}
+
+.create-project-form .string-display .label {
+    font-weight: 600;
+    color: #333;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.create-project-form .string-display .value {
+    font-size: 12px;
+    color: #666;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.create-project-form .copy-container {
+    position: relative;
+    margin-left: auto;
+}
+
+.create-project-form .copy-button {
+    background: #f0f0f0;
+    border: 1px solid #ddd;
+    color: #666;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s ease;
+}
+
+.create-project-form .copy-button:hover {
+    background: #e0e0e0;
+    border-color: #bbb;
+}
+
+.create-project-form .copy-tooltip {
+    position: absolute;
+    top: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease;
+}
+
+.create-project-form .copy-tooltip.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.create-project-form .string-length {
+    display: flex;
+    gap: 8px;
+}
+
+.create-project-form .string-length .label {
+    font-weight: 600;
+    color: #333;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.create-project-form .string-length .value {
+    font-size: 12px;
+    color: #666;
+}
+
+/* Memo Size Indicator Styles */
+.create-project-form .memo-size-indicator {
+    margin-top: 20px;
+    padding: 16px;
+    background: #f8f9ff;
+    border: 1px solid #e1e5f2;
+    border-radius: 8px;
+}
+
+.create-project-form .size-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.create-project-form .size-label {
+    font-weight: 600;
+    color: #4a5568;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.create-project-form .size-value {
+    font-weight: 700;
+    font-size: 14px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: #e2e8f0;
+    color: #2d3748;
+}
+
+.create-project-form .size-value.valid {
+    background: #c6f6d5;
+    color: #22543d;
+}
+
+.create-project-form .size-value.invalid {
+    background: #fed7d7;
+    color: #c53030;
+}
+
+.create-project-form .size-range {
+    font-size: 12px;
+    color: #718096;
+    margin-left: 8px;
+}
+
+.create-project-form .size-status {
+    font-weight: 600;
+    font-size: 13px;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.create-project-form .size-status.valid {
+    background: #c6f6d5;
+    color: #22543d;
+}
+
+.create-project-form .size-status.invalid {
+    background: #fed7d7;
+    color: #c53030;
+}
+
+.create-project-form .size-progress {
+    margin-top: 8px;
+}
+
+.create-project-form .progress-bar {
+    width: 100%;
+}
+
+.create-project-form .progress-track {
+    position: relative;
+    width: 100%;
+    height: 6px;
+    background: #e2e8f0;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.create-project-form .progress-fill {
+    height: 100%;
+    background: #4299e1;
+    transition: width 0.3s ease;
+    border-radius: 3px;
+}
+
+.create-project-form .progress-fill.valid {
+    background: #68d391;
+}
+
+.create-project-form .progress-fill.invalid {
+    background: #fc8181;
+}
+
+.create-project-form .progress-markers {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.create-project-form .marker {
+    position: absolute;
+    top: -2px;
+    width: 2px;
+    height: 10px;
+    background: #4a5568;
+    border-radius: 1px;
+}
+
+.create-project-form .marker.min-marker {
+    background: #38a169;
+}
+
+.create-project-form .marker.max-marker {
+    background: #e53e3e;
+}
+
+/* Error message */
+.create-project-form .error-message {
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.create-project-form .error-message.success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.create-project-form .error-message.error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+/* Creating progress */
+.create-project-form .creating-progress {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: #e3f2fd;
+    border: 1px solid #bbdefb;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    color: #1565c0;
+    font-weight: 500;
+}
+
+.create-project-form .creating-progress i {
+    color: #1976d2;
+}
+
+/* Button group */
+.create-project-form .button-group {
+    display: flex;
+    justify-content: center;
+    padding-top: 16px;
+}
+
+.create-project-form .create-project-btn {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    padding: 14px 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    min-width: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.create-project-form .create-project-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+}
+
+.create-project-form .create-project-btn:disabled {
+    background: #cccccc;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Balance status colors */
+.create-project-form .balance-sufficient {
+    color: #38a169;
+    font-weight: 600;
+}
+
+.create-project-form .balance-insufficient {
+    color: #e53e3e;
+    font-weight: 600;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .project-page {
+        padding: 16px;
+    }
+    
+    .project-header h1 {
+        font-size: 1.5rem;
+    }
+    
+    .project-table {
+        font-size: 0.8rem;
+    }
+    
+    .project-table th,
+    .project-table td {
+        padding: 8px 12px;
+    }
+    
+    /* Hide less important columns on mobile */
+    .website-cell,
+    .time-cell {
+        display: none;
+    }
+    
+    .modal-overlay {
+        padding: 10px;
+    }
+    
+    .create-project-form {
+        max-height: 95vh;
+    }
+    
+    .create-project-form .form-layout {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .create-project-form .form-header {
+        padding: 16px 20px;
+    }
+    
+    .create-project-form .form-title {
+        font-size: 20px;
+    }
+    
+    .countdown-banner {
+        margin: 0 16px 16px 16px;
+    }
+    
+    .countdown-content {
+        font-size: 13px;
+    }
+    
+    .countdown-content strong {
+        font-size: 15px;
+    }
+    
+    .pixel-art-controls {
+        justify-content: center;
+    }
+    
+    .size-info {
+        justify-content: center;
+        text-align: center;
+    }
+    
+    .pixel-art-header {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .memo-size-indicator {
+        padding: 12px;
+    }
+    
+    .size-selector {
+        min-width: 100px;
+    }
+}
+
+@media (max-width: 480px) {
+    .project-table th,
+    .project-table td {
+        padding: 6px 8px;
+    }
+    
+    .id-cell {
+        display: none;
+    }
+}
