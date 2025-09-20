@@ -16,6 +16,7 @@ use crate::core::pixel::Pixel;
 struct ProjectRow {
     project_id: u64,
     name: String,
+    description: String,
     website: String,
     burned_amount: u64,
     last_memo_time: i64,
@@ -59,6 +60,7 @@ pub fn ProjectPage(
                                 project_rows.push(ProjectRow {
                                     project_id: entry.project_id,
                                     name: project_info.name,
+                                    description: project_info.description,
                                     website: project_info.website,
                                     burned_amount: entry.burned_amount,
                                     last_memo_time: project_info.last_memo_time,
@@ -205,6 +207,7 @@ pub fn ProjectPage(
                                                 <th>"Rank"</th>
                                                 <th>"ID"</th>
                                                 <th>"Name"</th>
+                                                <th>"Description"</th>
                                                 <th>"Website"</th>
                                                 <th>"Burned (MEMO)"</th>
                                                 <th>"Last Activity"</th>
@@ -219,6 +222,7 @@ pub fn ProjectPage(
                                                 } else {
                                                     project.website.clone()
                                                 };
+                                                let description_display = truncate_description(&project.description);
                                                 
                                                 view! {
                                                     <tr class="project-row">
@@ -228,6 +232,9 @@ pub fn ProjectPage(
                                                         <td class="id-cell">{project.project_id.to_string()}</td>
                                                         <td class="name-cell">
                                                             <span class="project-name">{project.name}</span>
+                                                        </td>
+                                                        <td class="description-cell">
+                                                            <span class="project-description">{description_display}</span>
                                                         </td>
                                                         <td class="website-cell">
                                                             {if !project.website.is_empty() {
@@ -936,4 +943,28 @@ fn format_number_with_commas(num: u64) -> String {
     }
     
     result
+}
+
+/// Truncate description to first 128 bytes and add ellipsis if longer
+fn truncate_description(description: &str) -> String {
+    if description.is_empty() {
+        return "-".to_string();
+    }
+    
+    let bytes = description.as_bytes();
+    if bytes.len() <= 128 {
+        description.to_string()
+    } else {
+        // Find the last complete UTF-8 character boundary within 128 bytes
+        let mut end = 128;
+        while end > 0 && !description.is_char_boundary(end) {
+            end -= 1;
+        }
+        
+        if end == 0 {
+            "...".to_string()
+        } else {
+            format!("{}...", &description[..end])
+        }
+    }
 }
