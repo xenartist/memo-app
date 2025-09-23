@@ -12,7 +12,7 @@ use crate::pages::pixel_view::PixelView;
 use crate::core::pixel::Pixel;
 
 /// Project row data for table display
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct ProjectRow {
     project_id: u64,
     name: String,
@@ -21,6 +21,14 @@ struct ProjectRow {
     burned_amount: u64,
     last_memo_time: i64,
     rank: u8,
+    creator: String, // Base58 encoded pubkey
+}
+
+/// Page view state
+#[derive(Clone, Debug, PartialEq)]
+enum PageView {
+    Leaderboard,
+    ProjectDetails(ProjectRow),
 }
 
 /// Project page component - displays projects in a simple table format
@@ -32,10 +40,13 @@ pub fn ProjectPage(
     let (loading, set_loading) = create_signal(true);
     let (error_message, set_error_message) = create_signal::<Option<String>>(None);
     
+    // Page navigation state
+    let (current_view, set_current_view) = create_signal(PageView::Leaderboard);
+    
     // Create Project Dialog states
     let (show_create_dialog, set_show_create_dialog) = create_signal(false);
     
-    // 倒计时状态
+    // Countdown state
     let (countdown_seconds, set_countdown_seconds) = create_signal::<Option<i32>>(None);
 
     // Function to load/refresh projects data  
@@ -65,6 +76,7 @@ pub fn ProjectPage(
                                     burned_amount: entry.burned_amount,
                                     last_memo_time: project_info.last_memo_time,
                                     rank: entry.rank,
+                                    creator: project_info.creator,
                                 });
                             },
                             Err(e) => {
@@ -109,6 +121,16 @@ pub fn ProjectPage(
         set_show_create_dialog.set(false);
     };
 
+    // Function to view project details
+    let view_project_details = move |project: ProjectRow| {
+        set_current_view.set(PageView::ProjectDetails(project));
+    };
+
+    // Function to go back to leaderboard
+    let back_to_leaderboard = move || {
+        set_current_view.set(PageView::Leaderboard);
+    };
+
     // Function to handle successful project creation
     let on_project_created = move |signature: String, project_id: u64| {
         log::info!("Project created successfully! ID: {}, Signature: {}", project_id, signature);
@@ -142,135 +164,166 @@ pub fn ProjectPage(
 
     view! {
         <div class="project-page">
-            <div class="project-header">
-                <div class="header-content">
-                    <div class="header-text">
-                        <h1>"X1.Wiki"</h1>
-                        <p class="project-subtitle">"Top 100 Projects on X1 Blockchain"</p>
-                    </div>
-                    <div class="header-actions">
-                        <button 
-                            class="new-project-button"
-                            on:click=open_create_dialog
-                            disabled=move || loading.get()
-                            title="Create new project"
-                        >
-                            <i class="fas fa-plus"></i>
-                            "New Project"
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
-            // countdown banner display
-            <Show when=move || countdown_seconds.get().is_some()>
-                <div class="countdown-banner">
-                    <div class="countdown-content">
-                        <i class="fas fa-clock"></i>
-                        <span>
-                            "Project created successfully! Leaderboard will refresh in "
-                            <strong>{move || countdown_seconds.get().unwrap_or(0).to_string()}</strong>
-                            " seconds..."
-                        </span>
-                    </div>
-                </div>
-            </Show>
-            
-            <div class="project-content">
-                {move || {
-                    if loading.get() {
+            {move || {
+                match current_view.get() {
+                    PageView::Leaderboard => {
                         view! {
-                            <div class="loading-state">
-                                <p>"Loading projects..."</p>
-                            </div>
-                        }.into_view()
-                    } else if let Some(error) = error_message.get() {
-                        view! {
-                            <div class="error-state">
-                                <p>"Error: "{error}</p>
-                            </div>
-                        }.into_view()
-                    } else {
-                        let project_list = projects.get();
-                        if project_list.is_empty() {
-                            view! {
-                                <div class="empty-state">
-                                    <p>"No projects found in burn leaderboard."</p>
+                            <div class="leaderboard-view">
+                                <div class="project-header">
+                                    <div class="header-content">
+                                        <div class="header-text">
+                                            <h1>"X1.Wiki"</h1>
+                                            <p class="project-subtitle">"Top 100 Projects on X1 Blockchain"</p>
+                                        </div>
+                                        <div class="header-actions">
+                                            <button 
+                                                class="new-project-button"
+                                                on:click=open_create_dialog
+                                                disabled=move || loading.get()
+                                                title="Create new project"
+                                            >
+                                                <i class="fas fa-plus"></i>
+                                                "New Project"
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
-                            }.into_view()
-                        } else {
-                            view! {
-                                <div class="project-table-container">
-                                    <table class="project-table">
-                                        <thead>
-                                            <tr>
-                                                <th>"Rank"</th>
-                                                <th>"ID"</th>
-                                                <th>"Name"</th>
-                                                <th>"Description"</th>
-                                                <th>"Website"</th>
-                                                <th>"Burned (MEMO)"</th>
-                                                <th>"Last Activity"</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {project_list.into_iter().map(|project| {
-                                                let burned_tokens = project.burned_amount / 1_000_000;
-                                                let last_activity = format_timestamp(project.last_memo_time);
-                                                let website_display = if project.website.is_empty() {
-                                                    "-".to_string()
-                                                } else {
-                                                    project.website.clone()
-                                                };
-                                                let description_display = truncate_description(&project.description);
-                                                
+                                
+                                // countdown banner display
+                                <Show when=move || countdown_seconds.get().is_some()>
+                                    <div class="countdown-banner">
+                                        <div class="countdown-content">
+                                            <i class="fas fa-clock"></i>
+                                            <span>
+                                                "Project created successfully! Leaderboard will refresh in "
+                                                <strong>{move || countdown_seconds.get().unwrap_or(0).to_string()}</strong>
+                                                " seconds..."
+                                            </span>
+                                        </div>
+                                    </div>
+                                </Show>
+                                
+                                <div class="project-content">
+                                    {move || {
+                                        if loading.get() {
+                                            view! {
+                                                <div class="loading-state">
+                                                    <p>"Loading projects..."</p>
+                                                </div>
+                                            }.into_view()
+                                        } else if let Some(error) = error_message.get() {
+                                            view! {
+                                                <div class="error-state">
+                                                    <p>"Error: "{error}</p>
+                                                </div>
+                                            }.into_view()
+                                        } else {
+                                            let project_list = projects.get();
+                                            if project_list.is_empty() {
                                                 view! {
-                                                    <tr class="project-row">
-                                                        <td class="rank-cell">
-                                                            <span class="rank-badge">#{project.rank.to_string()}</span>
-                                                        </td>
-                                                        <td class="id-cell">{project.project_id.to_string()}</td>
-                                                        <td class="name-cell">
-                                                            <span class="project-name">{project.name}</span>
-                                                        </td>
-                                                        <td class="description-cell">
-                                                            <span class="project-description">{description_display}</span>
-                                                        </td>
-                                                        <td class="website-cell">
-                                                            {if !project.website.is_empty() {
-                                                                view! {
-                                                                    <a 
-                                                                        href={project.website} 
-                                                                        target="_blank" 
-                                                                        rel="noopener noreferrer"
-                                                                        class="website-link"
-                                                                    >
-                                                                        {website_display}
-                                                                    </a>
-                                                                }.into_view()
-                                                            } else {
-                                                                view! {
-                                                                    <span class="no-website">"-"</span>
-                                                                }.into_view()
-                                                            }}
-                                                        </td>
-                                                        <td class="burned-cell">
-                                                            <span class="burned-amount">{format_number_with_commas(burned_tokens)}</span>
-                                                        </td>
-                                                        <td class="time-cell">
-                                                            <span class="last-activity">{last_activity}</span>
-                                                        </td>
-                                                    </tr>
-                                                }
-                                            }).collect::<Vec<_>>()}
-                                        </tbody>
-                                    </table>
+                                                    <div class="empty-state">
+                                                        <p>"No projects found in burn leaderboard."</p>
+                                                    </div>
+                                                }.into_view()
+                                            } else {
+                                                view! {
+                                                    <div class="project-table-container">
+                                                        <table class="project-table">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>"Rank"</th>
+                                                                    <th>"ID"</th>
+                                                                    <th>"Name"</th>
+                                                                    <th>"Description"</th>
+                                                                    <th>"Website"</th>
+                                                                    <th>"Burned (MEMO)"</th>
+                                                                    <th>"Last Post"</th>
+                                                                    <th>"Details"</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {project_list.into_iter().map(|project| {
+                                                                    let burned_tokens = project.burned_amount / 1_000_000;
+                                                                    let last_activity = format_timestamp(project.last_memo_time);
+                                                                    let website_display = if project.website.is_empty() {
+                                                                        "-".to_string()
+                                                                    } else {
+                                                                        project.website.clone()
+                                                                    };
+                                                                    let description_display = truncate_description(&project.description);
+                                                                    let project_clone = project.clone();
+                                                                    
+                                                                    view! {
+                                                                        <tr class="project-row">
+                                                                            <td class="rank-cell">
+                                                                                <span class="rank-badge">#{project.rank.to_string()}</span>
+                                                                            </td>
+                                                                            <td class="id-cell">{project.project_id.to_string()}</td>
+                                                                            <td class="name-cell">
+                                                                                <span class="project-name">{project.name}</span>
+                                                                            </td>
+                                                                            <td class="description-cell">
+                                                                                <span class="project-description">{description_display}</span>
+                                                                            </td>
+                                                                            <td class="website-cell">
+                                                                                {if !project.website.is_empty() {
+                                                                                    view! {
+                                                                                        <a 
+                                                                                            href={project.website} 
+                                                                                            target="_blank" 
+                                                                                            rel="noopener noreferrer"
+                                                                                            class="website-link"
+                                                                                        >
+                                                                                            {website_display}
+                                                                                        </a>
+                                                                                    }.into_view()
+                                                                                } else {
+                                                                                    view! {
+                                                                                        <span class="no-website">"-"</span>
+                                                                                    }.into_view()
+                                                                                }}
+                                                                            </td>
+                                                                            <td class="burned-cell">
+                                                                                <span class="burned-amount">{format_number_with_commas(burned_tokens)}</span>
+                                                                            </td>
+                                                                            <td class="time-cell">
+                                                                                <span class="last-activity">{last_activity}</span>
+                                                                            </td>
+                                                                            <td class="actions-cell">
+                                                                                <button 
+                                                                                    class="details-button"
+                                                                                    on:click=move |_| view_project_details(project_clone.clone())
+                                                                                    title="View project details"
+                                                                                >
+                                                                                    <i class="fas fa-info-circle"></i>
+                                                                                    "Details"
+                                                                                </button>
+                                                                            </td>
+                                                                        </tr>
+                                                                    }
+                                                                }).collect::<Vec<_>>()}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                }.into_view()
+                                            }
+                                        }
+                                    }}
                                 </div>
-                            }.into_view()
-                        }
+                            </div>
+                        }.into_view()
+                    },
+                    PageView::ProjectDetails(project) => {
+                        view! {
+                            <ProjectDetailsView
+                                project=project
+                                on_back=Rc::new(back_to_leaderboard)
+                                session=session
+                            />
+                        }.into_view()
                     }
-                }}
-            </div>
+                }
+            }}
 
             // Create Project Dialog
             <Show when=move || show_create_dialog.get()>
@@ -283,6 +336,51 @@ pub fn ProjectPage(
                     />
                 </div>
             </Show>
+        </div>
+    }
+}
+
+/// Project Details View component - placeholder for now
+#[component]
+fn ProjectDetailsView(
+    project: ProjectRow,
+    on_back: Rc<dyn Fn()>,
+    session: RwSignal<Session>,
+) -> impl IntoView {
+    let on_back_signal = create_rw_signal(Some(on_back));
+
+    let handle_back = move |_| {
+        on_back_signal.with_untracked(|cb_opt| {
+            if let Some(callback) = cb_opt.as_ref() {
+                callback();
+            }
+        });
+    };
+
+    view! {
+        <div class="project-details-view">
+            <div class="details-header">
+                <button 
+                    class="back-button"
+                    on:click=handle_back
+                    title="Back to leaderboard"
+                >
+                    <i class="fas fa-arrow-left"></i>
+                    "Back to Projects"
+                </button>
+                <h1 class="project-title">{project.name.clone()}</h1>
+            </div>
+            
+            <div class="details-content">
+                <div class="placeholder-content">
+                    <div class="placeholder-text">
+                        <h2>"Project Details"</h2>
+                        <p>"This is a placeholder for the project details page."</p>
+                        <p>"Project ID: " {project.project_id.to_string()}</p>
+                        <p>"More details will be implemented here later."</p>
+                    </div>
+                </div>
+            </div>
         </div>
     }
 }

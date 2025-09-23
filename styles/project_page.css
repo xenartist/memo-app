@@ -872,3 +872,211 @@
         display: none;
     }
 }
+
+/* Details button in project table */
+.details-button {
+    background: linear-gradient(135deg, #2196F3, #1976D2);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(33, 150, 243, 0.3);
+    min-width: 100px;
+    justify-content: center;
+}
+
+.details-button:hover {
+    background: linear-gradient(135deg, #1976D2, #2196F3);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(33, 150, 243, 0.4);
+}
+
+.details-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(33, 150, 243, 0.3);
+}
+
+/* Actions/Details cell styling */
+.actions-cell {
+    text-align: center;
+    padding: 12px;
+    width: 120px;
+}
+
+/* Project Details View */
+.project-details-view {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+.details-header {
+    background: white;
+    padding: 24px;
+    border-bottom: 1px solid #e1e5e9;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.back-button {
+    background: linear-gradient(135deg, #6c757d, #5a6268);
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(108, 117, 125, 0.3);
+    flex-shrink: 0;
+}
+
+.back-button:hover {
+    background: linear-gradient(135deg, #5a6268, #6c757d);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(108, 117, 125, 0.4);
+}
+
+.back-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(108, 117, 125, 0.3);
+}
+
+.project-title {
+    margin: 0;
+    font-size: 32px;
+    font-weight: 700;
+    color: #2c3e50;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.details-content {
+    padding: 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.placeholder-content {
+    background: white;
+    border-radius: 12px;
+    padding: 48px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    text-align: center;
+    animation: fadeInUp 0.6s ease-out;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.placeholder-text h2 {
+    color: #2c3e50;
+    font-size: 28px;
+    margin-bottom: 20px;
+    font-weight: 600;
+}
+
+.placeholder-text p {
+    color: #7f8c8d;
+    font-size: 18px;
+    line-height: 1.6;
+    margin-bottom: 16px;
+}
+
+.placeholder-text p:last-child {
+    margin-bottom: 0;
+}
+
+/* Responsive design for project details */
+@media (max-width: 768px) {
+    .details-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+        padding: 20px;
+    }
+    
+    .project-title {
+        font-size: 24px;
+        white-space: normal;
+    }
+    
+    .details-content {
+        padding: 20px;
+    }
+    
+    .placeholder-content {
+        padding: 32px 20px;
+    }
+    
+    .placeholder-text h2 {
+        font-size: 24px;
+    }
+    
+    .placeholder-text p {
+        font-size: 16px;
+    }
+    
+    .back-button {
+        padding: 10px 16px;
+        font-size: 14px;
+    }
+    
+    /* Hide details button text on very small screens, show only icon */
+    .details-button {
+        padding: 8px 10px;
+        min-width: auto;
+    }
+}
+
+@media (max-width: 480px) {
+    .details-header {
+        flex-direction: row;
+        align-items: center;
+        gap: 12px;
+    }
+    
+    .back-button {
+        padding: 8px 12px;
+        font-size: 13px;
+    }
+    
+    .project-title {
+        font-size: 20px;
+    }
+    
+    /* Show only icon for details button on very small screens */
+    .details-button span {
+        display: none;
+    }
+    
+    .details-button {
+        min-width: 36px;
+        padding: 8px;
+    }
+}
