@@ -172,7 +172,9 @@ pub fn ProjectPage(
                                 <div class="project-header">
                                     <div class="header-content">
                                         <div class="header-text">
-                                            <h1>"X1.Wiki"</h1>
+                                            <h1>
+                                                "X1.Wiki"
+                                            </h1>
                                             <p class="project-subtitle">"Top 100 Projects on X1 Blockchain"</p>
                                         </div>
                                         <div class="header-actions">
@@ -237,14 +239,12 @@ pub fn ProjectPage(
                                                                     <th>"Description"</th>
                                                                     <th>"Website"</th>
                                                                     <th>"Burned (MEMO)"</th>
-                                                                    <th>"Last Post"</th>
                                                                     <th>"Details"</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
                                                                 {project_list.into_iter().map(|project| {
                                                                     let burned_tokens = project.burned_amount / 1_000_000;
-                                                                    let last_activity = format_timestamp(project.last_memo_time);
                                                                     let website_display = if project.website.is_empty() {
                                                                         "-".to_string()
                                                                     } else {
@@ -256,7 +256,45 @@ pub fn ProjectPage(
                                                                     view! {
                                                                         <tr class="project-row">
                                                                             <td class="rank-cell">
-                                                                                <span class="rank-badge">#{project.rank.to_string()}</span>
+                                                                                {
+                                                                                    let rank_num = project.rank;
+                                                                                    if rank_num == 1 {
+                                                                                        view! {
+                                                                                            <span class="rank-icon rank-1st">
+                                                                                                <i class="fas fa-trophy"></i>
+                                                                                                <span class="rank-number">"1"</span>
+                                                                                            </span>
+                                                                                        }.into_view()
+                                                                                    } else if rank_num == 2 {
+                                                                                        view! {
+                                                                                            <span class="rank-icon rank-2nd">
+                                                                                                <i class="fas fa-medal"></i>
+                                                                                                <span class="rank-number">"2"</span>
+                                                                                            </span>
+                                                                                        }.into_view()
+                                                                                    } else if rank_num == 3 {
+                                                                                        view! {
+                                                                                            <span class="rank-icon rank-3rd">
+                                                                                                <i class="fas fa-medal"></i>
+                                                                                                <span class="rank-number">"3"</span>
+                                                                                            </span>
+                                                                                        }.into_view()
+                                                                                    } else if rank_num >= 4 && rank_num <= 10 {
+                                                                                        view! {
+                                                                                            <span class="rank-icon rank-top10">
+                                                                                                <i class="fas fa-fire"></i>
+                                                                                                <span class="rank-number">{rank_num.to_string()}</span>
+                                                                                            </span>
+                                                                                        }.into_view()
+                                                                                    } else {
+                                                                                        view! {
+                                                                                            <span class="rank-icon rank-others">
+                                                                                                <i class="fas fa-fire"></i>
+                                                                                                <span class="rank-number">{rank_num.to_string()}</span>
+                                                                                            </span>
+                                                                                        }.into_view()
+                                                                                    }
+                                                                                }
                                                                             </td>
                                                                             <td class="id-cell">{project.project_id.to_string()}</td>
                                                                             <td class="name-cell">
@@ -284,10 +322,8 @@ pub fn ProjectPage(
                                                                                 }}
                                                                             </td>
                                                                             <td class="burned-cell">
-                                                                                <span class="burned-amount">{format_number_with_commas(burned_tokens)}</span>
-                                                                            </td>
-                                                                            <td class="time-cell">
-                                                                                <span class="last-activity">{last_activity}</span>
+                                                                                <i class="fas fa-fire burned-fire-icon"></i>
+                                                                                <span class="burned-number">{format_number_with_commas(burned_tokens)}</span>
                                                                             </td>
                                                                             <td class="actions-cell">
                                                                                 <button 
@@ -374,7 +410,10 @@ fn ProjectDetailsView(
             <div class="details-content">
                 <div class="placeholder-content">
                     <div class="placeholder-text">
-                        <h2>"Project Details"</h2>
+                        <h2>
+                            <i class="fas fa-tools"></i>
+                            "Project Details"
+                        </h2>
                         <p>"This is a placeholder for the project details page."</p>
                         <p>"Project ID: " {project.project_id.to_string()}</p>
                         <p>"More details will be implemented here later."</p>
