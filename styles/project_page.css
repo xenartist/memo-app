@@ -398,45 +398,28 @@
 .burned-cell {
     width: 110px;
     text-align: right;
+    vertical-align: middle;
 }
 
 .burned-amount {
-    font-weight: 500 !important;
-    color: #6b7280 !important;
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
-    font-size: 13px !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 6px !important;
+    font-weight: 500;
+    color: #6b7280;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .burned-amount i {
-    color: #6b7280 !important;
-    font-size: 13px !important;
-    opacity: 1 !important;
+    color: #6b7280;
+    font-size: 13px;
+    opacity: 1;
+    margin-right: 6px;
 }
 
-.burned-cell .burned-fire-icon {
-    color: #6b7280 !important;
-    font-size: 13px !important;
-    opacity: 1 !important;
-    margin-right: 6px !important;
-}
-
-.burned-cell .burned-number {
-    font-weight: 500 !important;
-    color: #6b7280 !important;
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
-    font-size: 13px !important;
-}
-
-.burned-cell {
-    width: 110px;
-    text-align: right;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-end !important;
-    gap: 0 !important;
+.burned-fire-icon {
+    margin-right: 8px;
 }
 
 .time-cell {
