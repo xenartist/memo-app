@@ -307,39 +307,6 @@ pub fn FaucetPage(session: RwSignal<Session>) -> impl IntoView {
                 
             </div>
 
-            // Current wallet info
-            <div class="wallet-info-card">
-                <h3>
-                    <i class="fas fa-wallet"></i>
-                    "Current Wallet"
-                </h3>
-                <div class="wallet-details">
-                    <div class="wallet-item">
-                        <label>"Public Key:"</label>
-                        <span class="wallet-value" title={move || session.with(|s| s.get_public_key().unwrap_or_else(|_| "Not connected".to_string()))}>
-                            {move || {
-                                match session.with(|s| s.get_public_key()) {
-                                    Ok(pubkey) => {
-                                        if pubkey.len() >= 16 {
-                                            format!("{}...{}", &pubkey[..8], &pubkey[pubkey.len()-8..])
-                                        } else {
-                                            pubkey
-                                        }
-                                    },
-                                    Err(_) => "❌ Not connected".to_string()
-                                }
-                            }}
-                        </span>
-                    </div>
-                    <div class="wallet-item">
-                        <label>"XNT Balance:"</label>
-                        <span class="wallet-value balance-value">
-                            {move || format!("{:.4} XNT", session.with(|s| s.get_sol_balance()))}
-                        </span>
-                    </div>
-                </div>
-            </div>
-
             // Airdrop request form
             <div class="airdrop-form-card">
                 <h3>
