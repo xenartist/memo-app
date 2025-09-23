@@ -304,26 +304,7 @@ pub fn FaucetPage(session: RwSignal<Session>) -> impl IntoView {
                     <i class="fas fa-faucet"></i>
                     "X1 Testnet Faucet"
                 </h1>
-                <p class="faucet-description">
-                    "Get free XNT tokens for testing on the X1 Testnet. Each address can request airdrop once every 24 hours."
-                </p>
                 
-                // Faucet status indicator
-                <div class="faucet-status">
-                    <span class="status-label">"Faucet Status: "</span>
-                    <span 
-                        class="status-indicator"
-                        class:status-online=move || faucet_status.get() == "online"
-                        class:status-offline=move || faucet_status.get() == "offline"
-                        class:status-checking=move || faucet_status.get() == "checking"
-                    >
-                        {move || match faucet_status.get().as_str() {
-                            "online" => "🟢 Online",
-                            "offline" => "🔴 Offline", 
-                            _ => "🟡 Checking..."
-                        }}
-                    </span>
-                </div>
             </div>
 
             // Current wallet info
@@ -516,31 +497,6 @@ pub fn FaucetPage(session: RwSignal<Session>) -> impl IntoView {
                 </p>
             </div>
 
-            // Tips section
-            <div class="tips-card">
-                <h3>
-                    <i class="fas fa-lightbulb"></i>
-                    "Tips"
-                </h3>
-                <ul class="tips-list">
-                    <li>
-                        <i class="fas fa-check"></i>
-                        "Make sure your wallet is connected before requesting tokens"
-                    </li>
-                    <li>
-                        <i class="fas fa-check"></i>
-                        "You can only request tokens once every 24 hours per address"
-                    </li>
-                    <li>
-                        <i class="fas fa-check"></i>
-                        "Testnet tokens have no real value and are only for testing"
-                    </li>
-                    <li>
-                        <i class="fas fa-check"></i>
-                        "Each request includes a simple math challenge to prevent abuse"
-                    </li>
-                </ul>
-            </div>
         </div>
     }
 }
