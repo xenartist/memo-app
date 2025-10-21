@@ -1097,6 +1097,10 @@ impl Session {
     pub fn get_user_burn_stats(&self) -> Option<UserGlobalBurnStats> {
         self.user_burn_stats.clone()
     }
+
+    pub fn set_user_burn_stats(&mut self, stats: Option<UserGlobalBurnStats>) {
+        self.user_burn_stats = stats;
+    }
 }
 
 // implement zeroize for Session to ensure sensitive data is cleared

@@ -165,7 +165,7 @@ pub fn MainPage(
                         // use update instead of set, avoid overwriting other updates
                         session_clone.update(|s| {
                             if let Some(stats) = temp_session.get_user_burn_stats() {
-                                *s = temp_session; // or more precise update
+                                s.set_user_burn_stats(Some(stats));
                             }
                         });
                     },
