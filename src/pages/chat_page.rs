@@ -1776,13 +1776,41 @@ fn GroupCard(group: ChatGroupInfo, enter_chat_room: impl Fn(u64) + 'static + Cop
                         // check if it is a valid pixel art string (starts with "c:" or "n:")
                         if !image_data.is_empty() && 
                            (image_data.starts_with("c:") || image_data.starts_with("n:")) {
-                            // valid pixel art string
-                            view! {
-                                <LazyPixelView
-                                    art={image_data}
-                                    size=64
-                                />
-                            }.into_view()
+                            // Check if it's a blank pixel art (all pixels are false)
+                            // If blank, generate random pixel art instead
+                            if let Some(pixel) = Pixel::from_optimal_string(&image_data) {
+                                if pixel.is_blank() {
+                                    // Generate random pixel art for blank images
+                                    let group_id_val = group_id.get();
+                                    let fake_pixel_art = generate_random_pixel_art(group_id_val);
+                                    
+                                    view! {
+                                        <LazyPixelView
+                                            art={fake_pixel_art}
+                                            size=64
+                                        />
+                                    }.into_view()
+                                } else {
+                                    // Valid non-blank pixel art
+                                    view! {
+                                        <LazyPixelView
+                                            art={image_data}
+                                            size=64
+                                        />
+                                    }.into_view()
+                                }
+                            } else {
+                                // Failed to parse, generate random
+                                let group_id_val = group_id.get();
+                                let fake_pixel_art = generate_random_pixel_art(group_id_val);
+                                
+                                view! {
+                                    <LazyPixelView
+                                        art={fake_pixel_art}
+                                        size=64
+                                    />
+                                }.into_view()
+                            }
                         } else if !image_data.is_empty() && 
                                   (image_data.starts_with("http") || image_data.starts_with("data:")) {
                             // regular image URL
@@ -3198,13 +3226,39 @@ fn LeaderboardCard(
                                     // check if it is a valid pixel art string (starts with "c:" or "n:")
                                     if !image_data.is_empty() && 
                                        (image_data.starts_with("c:") || image_data.starts_with("n:")) {
-                                        // valid pixel art string
-                                        view! {
-                                            <LazyPixelView
-                                                art={image_data}
-                                                size=64
-                                            />
-                                        }.into_view()
+                                        // Check if it's a blank pixel art (all pixels are false)
+                                        // If blank, generate random pixel art instead
+                                        if let Some(pixel) = Pixel::from_optimal_string(&image_data) {
+                                            if pixel.is_blank() {
+                                                // Generate random pixel art for blank images
+                                                let fake_pixel_art = generate_random_pixel_art(group_id);
+                                                
+                                                view! {
+                                                    <LazyPixelView
+                                                        art={fake_pixel_art}
+                                                        size=64
+                                                    />
+                                                }.into_view()
+                                            } else {
+                                                // Valid non-blank pixel art
+                                                view! {
+                                                    <LazyPixelView
+                                                        art={image_data}
+                                                        size=64
+                                                    />
+                                                }.into_view()
+                                            }
+                                        } else {
+                                            // Failed to parse, generate random
+                                            let fake_pixel_art = generate_random_pixel_art(group_id);
+                                            
+                                            view! {
+                                                <LazyPixelView
+                                                    art={fake_pixel_art}
+                                                    size=64
+                                                />
+                                            }.into_view()
+                                        }
                                     } else if !image_data.is_empty() && 
                                               (image_data.starts_with("http") || image_data.starts_with("data:")) {
                                         // regular image URL
