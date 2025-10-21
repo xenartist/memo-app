@@ -228,8 +228,9 @@ pub fn MainPage(
         // test getLatestBlockhash
         match rpc.get_latest_blockhash().await {
             Ok(blockhash) => {
-                set_blockhash_status.set(format!("✅ Latest Blockhash: {}", blockhash));
-                add_log_entry("INFO", &format!("Latest blockhash retrieved: {}", blockhash));
+                let blockhash_str = blockhash.to_string();
+                set_blockhash_status.set(format!("✅ Latest Blockhash: {}", blockhash_str));
+                add_log_entry("INFO", &format!("Latest blockhash retrieved: {}", blockhash_str));
             }
             Err(e) => {
                 set_blockhash_status.set(format!("❌ Blockhash Error: {}", e));

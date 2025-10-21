@@ -207,13 +207,178 @@ impl RpcConnection {
         }
     }
     
-    /// Initialize user global burn statistics
+    /// Build an unsigned transaction to burn tokens
+    pub async fn build_burn_transaction(
+        &self,
+        user_pubkey: &Pubkey,
+        amount: u64,
+        message: &str,
+    ) -> Result<Transaction, RpcError> {
+        let amount_units = amount * 1_000_000;
+        if amount_units < BurnConfig::MIN_BURN_AMOUNT {
+            return Err(RpcError::Other(format!(
+                "Burn amount too small. Must be at least {} tokens",
+                BurnConfig::MIN_BURN_AMOUNT / 1_000_000
+            )));
+        }
+        
+        if amount_units > BurnConfig::MAX_BURN_PER_TX {
+            return Err(RpcError::Other(format!(
+                "Burn amount too large. Maximum allowed: {} tokens",
+                BurnConfig::MAX_BURN_PER_TX / 1_000_000
+            )));
+        }
+        
+        log::info!("Building burn transaction: {} tokens for user: {}", amount, user_pubkey);
+        
+        let program_id = BurnConfig::get_program_id()?;
+        let mint = BurnConfig::get_token_mint()?;
+        let token_2022_program_id = BurnConfig::get_token_2022_program_id()?;
+        let (stats_pda, _) = BurnConfig::get_user_global_burn_stats_pda(user_pubkey)?;
+        let token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
+            user_pubkey, &mint, &token_2022_program_id,
+        );
+        
+        let burn_memo = BurnMemo {
+            version: BURN_MEMO_VERSION,
+            burn_amount: amount_units,
+            payload: message.as_bytes().to_vec(),
+        };
+        
+        let memo_data_bytes = burn_memo.try_to_vec()
+            .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo: {}", e)))?;
+        let memo_data_base64 = base64::encode(&memo_data_bytes);
+        BurnConfig::validate_memo_length(&memo_data_base64)?;
+        
+        let memo_instruction = spl_memo::build_memo(memo_data_base64.as_bytes(), &[user_pubkey]);
+        
+        let discriminator = BurnConfig::get_instruction_discriminator("process_burn");
+        let mut instruction_data = discriminator.to_vec();
+        instruction_data.extend_from_slice(&amount_units.to_le_bytes());
+        
+        let burn_instruction = Instruction {
+            program_id,
+            accounts: vec![
+                AccountMeta::new(*user_pubkey, true),
+                AccountMeta::new(mint, false),
+                AccountMeta::new(token_account, false),
+                AccountMeta::new(stats_pda, false),
+                AccountMeta::new_readonly(token_2022_program_id, false),
+                AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false),
+            ],
+            data: instruction_data,
+        };
+        
+        let blockhash = self.get_latest_blockhash().await?;
+        let base_instructions = vec![memo_instruction.clone(), burn_instruction.clone()];
+        let message = Message::new(&base_instructions, Some(user_pubkey));
+        let mut sim_transaction = Transaction::new_unsigned(message);
+        sim_transaction.message.recent_blockhash = blockhash;
+        
+        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
+        
+        let sim_options = serde_json::json!({
+            "encoding": "base64",
+            "commitment": "confirmed",
+            "replaceRecentBlockhash": true,
+            "sigVerify": false
+        });
+        
+        let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
+        let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
+            .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
+        
+        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            let with_buffer = (units_consumed as f64 * BurnConfig::COMPUTE_UNIT_BUFFER) as u64;
+            std::cmp::max(with_buffer, BurnConfig::MIN_COMPUTE_UNITS)
+        } else {
+            400_000u64
+        };
+        
+        let mut final_instructions = vec![];
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+        final_instructions.push(memo_instruction);
+        final_instructions.push(burn_instruction);
+        
+        let final_message = Message::new(&final_instructions, Some(user_pubkey));
+        let mut final_transaction = Transaction::new_unsigned(final_message);
+        final_transaction.message.recent_blockhash = blockhash;
+        
+        Ok(final_transaction)
+    }
+
+    /// Build an unsigned transaction to initialize burn stats
+    pub async fn build_initialize_burn_stats_transaction(
+        &self,
+        user_pubkey: &Pubkey,
+    ) -> Result<Transaction, RpcError> {
+        log::info!("Building initialize burn stats transaction for: {}", user_pubkey);
+        
+        let program_id = BurnConfig::get_program_id()?;
+        let (stats_pda, _) = BurnConfig::get_user_global_burn_stats_pda(user_pubkey)?;
+        let system_program = solana_sdk::system_program::id();
+        
+        let discriminator = BurnConfig::get_instruction_discriminator("initialize_user_global_burn_stats");
+        let instruction_data = discriminator.to_vec();
+        
+        let instruction = Instruction {
+            program_id,
+            accounts: vec![
+                AccountMeta::new(*user_pubkey, true),
+                AccountMeta::new(stats_pda, false),
+                AccountMeta::new_readonly(system_program, false),
+            ],
+            data: instruction_data,
+        };
+        
+        let blockhash = self.get_latest_blockhash().await?;
+        let message = Message::new(&[instruction.clone()], Some(user_pubkey));
+        let mut sim_transaction = Transaction::new_unsigned(message);
+        sim_transaction.message.recent_blockhash = blockhash;
+        
+        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
+        
+        let sim_options = serde_json::json!({
+            "encoding": "base64",
+            "commitment": "confirmed",
+            "replaceRecentBlockhash": true,
+            "sigVerify": false
+        });
+        
+        let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
+        let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
+            .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
+        
+        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            let with_buffer = (units_consumed as f64 * BurnConfig::COMPUTE_UNIT_BUFFER) as u64;
+            std::cmp::max(with_buffer, BurnConfig::MIN_COMPUTE_UNITS)
+        } else {
+            300_000u64
+        };
+        
+        let mut final_instructions = vec![];
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+        final_instructions.push(instruction);
+        
+        let final_message = Message::new(&final_instructions, Some(user_pubkey));
+        let mut final_transaction = Transaction::new_unsigned(final_message);
+        final_transaction.message.recent_blockhash = blockhash;
+        
+        Ok(final_transaction)
+    }
+
+    /// Initialize user global burn statistics (legacy method)
     /// 
     /// # Parameters
     /// * `keypair_bytes` - User's keypair bytes for signing
     /// 
     /// # Returns
     /// Transaction signature on success
+    /// 
+    /// # Note
+    /// Deprecated. Use build_initialize_burn_stats_transaction + sign in Session + send_signed_transaction
     pub async fn initialize_user_global_burn_stats(
         &self,
         keypair_bytes: &[u8],
@@ -246,25 +411,12 @@ impl RpcConnection {
             data: instruction_data,
         };
         
-        // Build transaction for simulation
-        let recent_blockhash_response = self.get_latest_blockhash().await?;
-        
-        // Parse the JSON response to extract the actual blockhash
-        let blockhash_json: serde_json::Value = serde_json::from_str(&recent_blockhash_response)
-            .map_err(|e| RpcError::Other(format!("Failed to parse blockhash response: {}", e)))?;
-        
-        let recent_blockhash = blockhash_json
-            .get("value")
-            .and_then(|v| v.get("blockhash"))
-            .and_then(|b| b.as_str())
-            .ok_or_else(|| RpcError::Other(format!("Failed to extract blockhash from response: {}", recent_blockhash_response)))?;
-        
-        let blockhash = Hash::from_str(recent_blockhash)
-            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
+        // Build transaction for simulation - get latest blockhash
+        let blockhash = self.get_latest_blockhash().await?;
         let message = Message::new(&[instruction.clone()], Some(&user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
         transaction.message.recent_blockhash = blockhash;
-        transaction.sign(&[&keypair], blockhash);
+        transaction.sign(&[&keypair], transaction.message.recent_blockhash);
         
         // Serialize simulation transaction
         let sim_serialized_tx = base64::encode(bincode::serialize(&transaction)
@@ -419,26 +571,13 @@ impl RpcConnection {
             data: instruction_data,
         };
         
-        // Build transaction for simulation
-        let recent_blockhash_response = self.get_latest_blockhash().await?;
-        
-        // Parse the JSON response to extract the actual blockhash
-        let blockhash_json: serde_json::Value = serde_json::from_str(&recent_blockhash_response)
-            .map_err(|e| RpcError::Other(format!("Failed to parse blockhash response: {}", e)))?;
-        
-        let recent_blockhash = blockhash_json
-            .get("value")
-            .and_then(|v| v.get("blockhash"))
-            .and_then(|b| b.as_str())
-            .ok_or_else(|| RpcError::Other(format!("Failed to extract blockhash from response: {}", recent_blockhash_response)))?;
-        
-        let blockhash = Hash::from_str(recent_blockhash)
-            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
+        // Build transaction for simulation - get latest blockhash
+        let blockhash = self.get_latest_blockhash().await?;
         let base_instructions = vec![memo_instruction.clone(), burn_instruction.clone()];
         let message = Message::new(&base_instructions, Some(&user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
         transaction.message.recent_blockhash = blockhash;
-        transaction.sign(&[&keypair], blockhash);
+        transaction.sign(&[&keypair], transaction.message.recent_blockhash);
         
         // Serialize simulation transaction
         let sim_serialized_tx = base64::encode(bincode::serialize(&transaction)

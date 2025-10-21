@@ -3,8 +3,12 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Request, RequestInit, RequestMode, Response};
 use std::fmt;
+use std::str::FromStr;
 use gloo_utils::format::JsValueSerdeExt;
 use js_sys::{Date, Math};
+use solana_sdk::transaction::Transaction;
+use base64;
+use bincode;
 
 // error type
 #[derive(Debug, Deserialize)]
@@ -315,11 +319,6 @@ impl RpcConnection {
         Ok(result.to_string())
     }
 
-    pub async fn get_latest_blockhash(&self) -> Result<String, RpcError> {
-        let result: serde_json::Value = self.send_request("getLatestBlockhash", Vec::<String>::new()).await?;
-        Ok(result.to_string())
-    }
-
     pub async fn send_transaction(&self, serialized_tx: &str) -> Result<String, RpcError> {
         self.send_request("sendTransaction", vec![serialized_tx]).await
     }
@@ -370,6 +369,67 @@ impl RpcConnection {
         let result: serde_json::Value = self.send_request("simulateTransaction", params).await?;
         Ok(result.to_string())
     }
+
+    // ============ Common Transaction Utilities ============
+
+    /// Get the latest blockhash from the network
+    /// 
+    /// This is a common utility method used by all transaction builders.
+    /// 
+    /// # Returns
+    /// The recent blockhash as a Hash
+    pub async fn get_latest_blockhash(&self) -> Result<solana_sdk::hash::Hash, RpcError> {
+        let blockhash: serde_json::Value = self.send_request(
+            "getLatestBlockhash",
+            serde_json::json!([{
+                "commitment": "confirmed",
+                "minContextSlot": 0
+            }])
+        ).await?;
+        
+        let recent_blockhash = blockhash["value"]["blockhash"]
+            .as_str()
+            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
+        
+        solana_sdk::hash::Hash::from_str(recent_blockhash)
+            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))
+    }
+
+    /// Send a signed transaction to the network
+    /// 
+    /// This is a common utility method used by all modules after signing transactions.
+    /// 
+    /// # Parameters
+    /// * `transaction` - The signed transaction to send
+    /// 
+    /// # Returns
+    /// Transaction signature on success
+    pub async fn send_signed_transaction(
+        &self,
+        transaction: &Transaction,
+    ) -> Result<String, RpcError> {
+        // Serialize transaction
+        let serialized_tx = base64::encode(bincode::serialize(transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?);
+        
+        let params = serde_json::json!([
+            serialized_tx,
+            {
+                "encoding": "base64",
+                "preflightCommitment": "confirmed",
+                "skipPreflight": false,
+                "maxRetries": 3
+            }
+        ]);
+        
+        log::info!("Sending signed transaction...");
+        let result = self.send_request("sendTransaction", params).await?;
+        log::info!("Transaction sent successfully: {}", result);
+        
+        Ok(result)
+    }
+
+    // ============ End Transaction Utilities ============
 
     /// interface: get transaction details by signature
     /// return full transaction information, including meta, transaction, etc.

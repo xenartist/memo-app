@@ -1,19 +1,19 @@
 use serde::{Serialize, Deserialize};
-use std::time::{Duration, SystemTime};
 use crate::core::encrypt;
-use crate::core::rpc_base::{RpcConnection, RpcError};
+use crate::core::rpc_base::RpcConnection;
 use crate::core::rpc_mint::MintConfig;
 use crate::core::rpc_profile::{UserProfile, parse_user_profile_new};
-use crate::core::rpc_project::{ProjectConfig, ProjectInfo, ProjectStatistics, ProjectBurnLeaderboardResponse};
+use crate::core::rpc_project::{ProjectInfo, ProjectStatistics, ProjectBurnLeaderboardResponse};
 use crate::core::rpc_burn::{UserGlobalBurnStats};
 use web_sys::js_sys::Date;
 use secrecy::{Secret, ExposeSecret};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 use hex;
 use solana_sdk::pubkey::Pubkey;
+use solana_sdk::transaction::Transaction;
 use serde_json;
-use base64;
 use std::fmt;
+use std::str::FromStr;
 use log;
 
 #[derive(Debug, Clone)]
@@ -304,33 +304,30 @@ impl Session {
         image: String,
         about_me: Option<String>,
     ) -> Result<String, SessionError> {
-        // get keypair using the correct method
-        let seed = self.get_seed()?;
-        let seed_bytes = hex::decode(&seed)
-            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
-        let seed_array: [u8; 64] = seed_bytes.try_into()
-            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
-        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
-            &seed_array, crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
 
         let rpc = RpcConnection::new();
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
         
-        // Convert parameters to the expected types
-        let about_me_str = about_me.unwrap_or_default();
+        log::info!("Building create profile transaction...");
+        let mut transaction = rpc.build_create_profile_transaction(&pubkey, burn_amount, &username, &image, about_me).await
+            .map_err(|e| SessionError::ProfileError(format!("Failed to build transaction: {}", e)))?;
         
-        match rpc.create_profile(&keypair, burn_amount, &username, &image, &about_me_str).await {
-            Ok(tx_hash) => {
-                log::info!("Profile created successfully: {}", tx_hash);
-                // Refresh profile cache after successful creation
-                let _ = self.fetch_and_cache_user_profile().await;
-                Ok(tx_hash)
-            },
-            Err(e) => {
-                log::error!("Failed to create profile: {}", e);
-                Err(SessionError::ProfileError(format!("Failed to create profile: {}", e)))
-            }
-        }
+        log::info!("Signing transaction in Session...");
+        self.sign_transaction(&mut transaction)?;
+        
+        log::info!("Sending signed transaction...");
+        let tx_hash = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::ProfileError(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Profile created successfully: {}", tx_hash);
+        let _ = self.fetch_and_cache_user_profile().await;
+        
+        Ok(tx_hash)
     }
 
     /// Update user profile
@@ -341,30 +338,37 @@ impl Session {
         image: Option<String>,
         about_me: Option<String>, 
     ) -> Result<String, SessionError> {
-        // get keypair using the correct method
-        let seed = self.get_seed()?;
-        let seed_bytes = hex::decode(&seed)
-            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
-        let seed_array: [u8; 64] = seed_bytes.try_into()
-            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
-        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
-            &seed_array, crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
 
         let rpc = RpcConnection::new();
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
         
-        match rpc.update_profile(&keypair, burn_amount, username, image, about_me).await {
-            Ok(tx_hash) => {
-                log::info!("Profile updated successfully: {}", tx_hash);
-                // Refresh profile cache after successful update
-                let _ = self.fetch_and_cache_user_profile().await;
-                Ok(tx_hash)
-            },
-            Err(e) => {
-                log::error!("Failed to update profile: {}", e);
-                Err(SessionError::ProfileError(format!("Failed to update profile: {}", e)))
-            }
-        }
+        // Convert about_me to nested Option
+        let about_me_nested = match about_me {
+            None => None,
+            Some(text) if text.is_empty() => Some(None),
+            Some(text) => Some(Some(text)),
+        };
+        
+        log::info!("Building update profile transaction...");
+        let mut transaction = rpc.build_update_profile_transaction(&pubkey, burn_amount, username, image, about_me_nested).await
+            .map_err(|e| SessionError::ProfileError(format!("Failed to build transaction: {}", e)))?;
+        
+        log::info!("Signing transaction in Session...");
+        self.sign_transaction(&mut transaction)?;
+        
+        log::info!("Sending signed transaction...");
+        let tx_hash = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::ProfileError(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Profile updated successfully: {}", tx_hash);
+        let _ = self.fetch_and_cache_user_profile().await;
+        
+        Ok(tx_hash)
     }
 
     // delete user profile
@@ -373,35 +377,29 @@ impl Session {
             return Err(SessionError::Expired);
         }
 
-        let seed = self.get_seed()?;
-        let seed_bytes = hex::decode(&seed)
-            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
-        
-        let seed_array: [u8; 64] = seed_bytes.try_into()
-            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
-
-        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
-            &seed_array,
-            crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::Encryption("Failed to derive keypair".to_string()))?;
-
         let rpc = RpcConnection::new();
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
         
-        match rpc.delete_profile(&keypair).await {
-            Ok(tx_hash) => {
-                log::info!("Profile deleted successfully: {}", tx_hash);
-                // Clear profile cache after successful deletion
-                self.user_profile = None;
-                Ok(tx_hash)
-            },
-            Err(e) => {
-                log::error!("Failed to delete profile: {}", e);
-                Err(SessionError::ProfileError(format!("Delete profile error: {}", e)))
-            }
-        }
+        log::info!("Building delete profile transaction...");
+        let mut transaction = rpc.build_delete_profile_transaction(&pubkey).await
+            .map_err(|e| SessionError::ProfileError(format!("Failed to build transaction: {}", e)))?;
+        
+        log::info!("Signing transaction in Session...");
+        self.sign_transaction(&mut transaction)?;
+        
+        log::info!("Sending signed transaction...");
+        let tx_hash = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::ProfileError(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Profile deleted successfully: {}", tx_hash);
+        self.user_profile = None;
+        
+        Ok(tx_hash)
     }
 
-    // helper function to get keypair bytes
+    // helper function to get keypair bytes (deprecated, kept for compatibility with other methods)
     fn get_keypair_bytes(&self) -> Result<Vec<u8>, SessionError> {
         let seed = self.get_seed()?;
         let seed_bytes = hex::decode(&seed)
@@ -418,26 +416,92 @@ impl Session {
         Ok(keypair.to_bytes().to_vec())
     }
 
-    // mint tokens using memo - internal handle all key operations
+    /// Sign a transaction using the session's keypair (with secure memory handling)
+    /// 
+    /// This is a private method that handles signing in a secure way:
+    /// - Uses Zeroizing to ensure sensitive data is cleared from memory
+    /// - Minimizes the lifetime of keypair in memory
+    /// - Private key never leaves this method
+    /// 
+    /// # Parameters
+    /// * `transaction` - Mutable reference to the transaction to sign
+    /// 
+    /// # Returns
+    /// Ok(()) on success, SessionError on failure
+    fn sign_transaction(&self, transaction: &mut Transaction) -> Result<(), SessionError> {
+        // Get seed (wrapped in Zeroizing for automatic cleanup)
+        let seed = Zeroizing::new(self.get_seed()?);
+        
+        // Decode seed bytes (also wrapped in Zeroizing)
+        let seed_bytes = Zeroizing::new(
+            hex::decode(seed.as_str())
+                .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?
+        );
+        
+        // Create seed array for keypair derivation
+        let mut seed_array = [0u8; 64];
+        seed_array.copy_from_slice(&seed_bytes);
+        
+        // Derive keypair from seed
+        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
+            &seed_array,
+            crate::core::wallet::get_default_derivation_path()
+        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
+        
+        // Sign the transaction
+        transaction.sign(&[&keypair], transaction.message.recent_blockhash);
+        
+        // Explicitly clear the seed array
+        seed_array.zeroize();
+        
+        // Note: keypair will be dropped here, seed and seed_bytes are automatically zeroized
+        log::debug!("Transaction signed successfully");
+        
+        Ok(())
+    }
+
+    /// Mint tokens using memo
+    /// 
+    /// This method follows a secure pattern:
+    /// 1. RPC builds unsigned transaction
+    /// 2. Session signs transaction (private key stays in Session)
+    /// 3. RPC sends signed transaction
+    /// 
+    /// # Parameters
+    /// * `memo` - The memo text (must be 69-800 bytes)
+    /// 
+    /// # Returns
+    /// Transaction signature on success
     pub async fn mint(&mut self, memo: &str) -> Result<String, SessionError> {
         if self.is_expired() {
             return Err(SessionError::Expired);
         }
 
-        let keypair_bytes = self.get_keypair_bytes()?;
         let rpc = RpcConnection::new();
         
-        match rpc.mint(memo, &keypair_bytes).await {
-            Ok(tx_hash) => {
-                log::info!("Mint transaction sent: {}", tx_hash);
-                self.balance_update_needed = true;
-                Ok(tx_hash)
-            },
-            Err(e) => {
-                log::error!("Mint transaction failed: {}", e);
-                Err(SessionError::InvalidData(format!("Mint error: {}", e)))
-            }
-        }
+        // Get user's public key
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+        
+        // Step 1: RPC builds unsigned transaction
+        log::info!("Building mint transaction...");
+        let mut transaction = rpc.build_mint_transaction(&pubkey, memo).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
+        
+        // Step 2: Session signs transaction (private key never leaves Session)
+        log::info!("Signing transaction in Session...");
+        self.sign_transaction(&mut transaction)?;
+        
+        // Step 3: RPC sends signed transaction
+        log::info!("Sending signed transaction...");
+        let tx_hash = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Mint transaction sent successfully: {}", tx_hash);
+        self.balance_update_needed = true;
+        
+        Ok(tx_hash)
     }
 
     // check if user has profile
@@ -609,23 +673,30 @@ impl Session {
             return Err(SessionError::Expired);
         }
 
-        let keypair_bytes = self.get_keypair_bytes()?;
         let rpc = RpcConnection::new();
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
         
-        match rpc.send_chat_message(group_id, message, &keypair_bytes, receiver, reply_to_sig).await {
-            Ok(tx_hash) => {
-                log::info!("Send chat message transaction sent: {}", tx_hash);
-                self.balance_update_needed = true;
-                Ok(tx_hash)
-            },
-            Err(e) => {
-                log::error!("Send chat message transaction failed: {}", e);
-                Err(SessionError::InvalidData(format!("Send chat message error: {}", e)))
-            }
-        }
+        log::info!("Building send chat message transaction...");
+        let mut transaction = rpc.build_send_chat_message_transaction(&pubkey, group_id, message, receiver, reply_to_sig).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
+        
+        log::info!("Signing transaction in Session...");
+        self.sign_transaction(&mut transaction)?;
+        
+        log::info!("Sending signed transaction...");
+        let tx_hash = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Chat message sent successfully: {}", tx_hash);
+        self.balance_update_needed = true;
+        
+        Ok(tx_hash)
     }
 
     /// Send a chat message to a group with timeout
+    /// Note: Timeout handling is currently simplified in the new architecture
     pub async fn send_chat_message_with_timeout(
         &mut self, 
         group_id: u64, 
@@ -634,24 +705,11 @@ impl Session {
         reply_to_sig: Option<String>,
         timeout_ms: Option<u32>
     ) -> Result<String, SessionError> {
-        if self.is_expired() {
-            return Err(SessionError::Expired);
+        if timeout_ms.is_some() {
+            log::warn!("Timeout parameter is currently not supported in the new architecture");
         }
-
-        let keypair_bytes = self.get_keypair_bytes()?;
-        let rpc = RpcConnection::new();
-        
-        match rpc.send_chat_message_with_timeout(group_id, message, &keypair_bytes, receiver, reply_to_sig, timeout_ms).await {
-            Ok(tx_hash) => {
-                log::info!("Send chat message with timeout transaction sent: {}", tx_hash);
-                self.balance_update_needed = true;
-                Ok(tx_hash)
-            },
-            Err(e) => {
-                log::error!("Send chat message with timeout transaction failed: {}", e);
-                Err(SessionError::InvalidData(format!("Send chat message with timeout error: {}", e)))
-            }
-        }
+        // Use the standard send_chat_message method
+        self.send_chat_message(group_id, message, receiver, reply_to_sig).await
     }
 
     /// Create a new chat group - internal handle all key operations
@@ -670,33 +728,28 @@ impl Session {
 
         log::info!("Session: Creating chat group '{}' with {} tokens", name, burn_amount / 1_000_000);
 
-        // get keypair
-        let seed = self.get_seed()?;
-        let seed_bytes = hex::decode(&seed)
-            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
-        let seed_array: [u8; 64] = seed_bytes.try_into()
-            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
-        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
-            &seed_array, crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
-        let keypair_bytes = keypair.to_bytes().to_vec();
-
-        // call RPC method
         let rpc = RpcConnection::new();
-        let result = rpc.create_chat_group(
-            name, description, image, tags, min_memo_interval, burn_amount, &keypair_bytes
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+        
+        log::info!("Building create chat group transaction...");
+        let (mut transaction, group_id) = rpc.build_create_chat_group_transaction(
+            &pubkey, name, description, image, tags, min_memo_interval, burn_amount
         ).await
-            .map_err(|e| {
-                log::error!("Session: RPC create_chat_group failed: {}", e);
-                SessionError::InvalidData(format!("Create chat group failed: {}", e))
-            })?;
-
-        log::info!("Session: Chat group '{}' created successfully with ID {}", name, result.1);
-
-        // mark that balances need to be updated after successful group creation (user gets mint reward)
+            .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
+        
+        log::info!("Signing transaction in Session...");
+        self.sign_transaction(&mut transaction)?;
+        
+        log::info!("Sending signed transaction...");
+        let tx_hash = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Session: Chat group '{}' created successfully with ID {}", name, group_id);
         self.mark_balance_update_needed();
         
-        Ok(result)
+        Ok((tx_hash, group_id))
     }
 
     /// Burn tokens for a chat group
@@ -714,36 +767,31 @@ impl Session {
         amount: u64,
         message: &str,
     ) -> Result<String, SessionError> {
-        // Check if session is valid
         if self.is_expired() {
             return Err(SessionError::Expired);
         }
 
-        // Get the seed and convert to keypair
-        let seed = self.get_seed()?;
-        let seed_bytes = hex::decode(&seed)
-            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
         
-        let seed_array: [u8; 64] = seed_bytes.try_into()
-            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
-
-        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
-            &seed_array,
-            crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::InvalidData(format!("Failed to derive keypair: {:?}", e)))?;
-
         // Convert amount from tokens to lamports
         let amount_lamports = amount * 1_000_000;
-
-        // Call RPC
-        let rpc = crate::core::rpc_base::RpcConnection::new();
-        let signature = rpc.burn_tokens_for_group(
-            group_id,
-            amount_lamports,
-            message,
-            &keypair.to_bytes(),
-        ).await.map_err(|e| SessionError::InvalidData(format!("Burn tokens for group failed: {}", e)))?;
-
+        
+        log::info!("Building burn tokens for group transaction...");
+        let mut transaction = rpc.build_burn_tokens_for_group_transaction(&pubkey, group_id, amount_lamports, message).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
+        
+        log::info!("Signing transaction in Session...");
+        self.sign_transaction(&mut transaction)?;
+        
+        log::info!("Sending signed transaction...");
+        let signature = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Tokens burned successfully for group {}", group_id);
+        
         // Update balances after successful burn
         match self.fetch_and_update_balances().await {
             Ok(()) => {
@@ -751,7 +799,6 @@ impl Session {
             },
             Err(e) => {
                 log::error!("Failed to update balances after burning tokens for group: {}", e);
-                // Mark that we need to update balances later
                 self.mark_balance_update_needed();
             }
         }
@@ -786,36 +833,31 @@ impl Session {
 
         log::info!("Session: Creating project '{}' with {} tokens", name, burn_amount);
 
-        // Get keypair
-        let seed = self.get_seed()?;
-        let seed_bytes = hex::decode(&seed)
-            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
-        let seed_array: [u8; 64] = seed_bytes.try_into()
-            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
-        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
-            &seed_array, crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
-        let keypair_bytes = keypair.to_bytes().to_vec();
-
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+        
         // Convert amount from tokens to lamports
         let burn_amount_lamports = burn_amount * 1_000_000;
-
-        // Call RPC method
-        let rpc = crate::core::rpc_base::RpcConnection::new();
-        let result = rpc.create_project(
-            name, description, image, website, tags, burn_amount_lamports, &keypair_bytes
+        
+        log::info!("Building create project transaction...");
+        let (mut transaction, project_id) = rpc.build_create_project_transaction(
+            &pubkey, name, description, image, website, tags, burn_amount_lamports
         ).await
-            .map_err(|e| {
-                log::error!("Session: RPC create_project failed: {}", e);
-                SessionError::InvalidData(format!("Create project failed: {}", e))
-            })?;
-
-        log::info!("Session: Project '{}' created successfully with ID {}", name, result.1);
-
-        // Mark that balances need to be updated after successful project creation
+            .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
+        
+        log::info!("Signing transaction in Session...");
+        self.sign_transaction(&mut transaction)?;
+        
+        log::info!("Sending signed transaction...");
+        let tx_hash = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Session: Project '{}' created successfully with ID {}", name, project_id);
         self.mark_balance_update_needed();
         
-        Ok(result)
+        Ok((tx_hash, project_id))
     }
 
     /// Update an existing project
@@ -847,33 +889,28 @@ impl Session {
 
         log::info!("Session: Updating project {} with {} tokens", project_id, burn_amount);
 
-        // Get keypair
-        let seed = self.get_seed()?;
-        let seed_bytes = hex::decode(&seed)
-            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
-        let seed_array: [u8; 64] = seed_bytes.try_into()
-            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
-        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
-            &seed_array, crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::Encryption(format!("Failed to derive keypair: {:?}", e)))?;
-        let keypair_bytes = keypair.to_bytes().to_vec();
-
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+        
         // Convert amount from tokens to lamports
         let burn_amount_lamports = burn_amount * 1_000_000;
-
-        // Call RPC method
-        let rpc = crate::core::rpc_base::RpcConnection::new();
-        let signature = rpc.update_project(
-            project_id, name, description, image, website, tags, burn_amount_lamports, &keypair_bytes
+        
+        log::info!("Building update project transaction...");
+        let mut transaction = rpc.build_update_project_transaction(
+            &pubkey, project_id, name, description, image, website, tags, burn_amount_lamports
         ).await
-            .map_err(|e| {
-                log::error!("Session: RPC update_project failed: {}", e);
-                SessionError::InvalidData(format!("Update project failed: {}", e))
-            })?;
-
+            .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
+        
+        log::info!("Signing transaction in Session...");
+        self.sign_transaction(&mut transaction)?;
+        
+        log::info!("Sending signed transaction...");
+        let signature = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
         log::info!("Session: Project {} updated successfully", project_id);
-
-        // Mark that balances need to be updated after successful project update
         self.mark_balance_update_needed();
         
         Ok(signature)
@@ -894,36 +931,31 @@ impl Session {
         amount: u64,
         message: &str,
     ) -> Result<String, SessionError> {
-        // Check if session is valid
         if self.is_expired() {
             return Err(SessionError::Expired);
         }
 
-        // Get the seed and convert to keypair
-        let seed = self.get_seed()?;
-        let seed_bytes = hex::decode(&seed)
-            .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
         
-        let seed_array: [u8; 64] = seed_bytes.try_into()
-            .map_err(|_| SessionError::Encryption("Invalid seed length".to_string()))?;
-
-        let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
-            &seed_array,
-            crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::InvalidData(format!("Failed to derive keypair: {:?}", e)))?;
-
         // Convert amount from tokens to lamports
         let amount_lamports = amount * 1_000_000;
-
-        // Call RPC
-        let rpc = crate::core::rpc_base::RpcConnection::new();
-        let signature = rpc.burn_tokens_for_project(
-            project_id,
-            amount_lamports,
-            message,
-            &keypair.to_bytes(),
-        ).await.map_err(|e| SessionError::InvalidData(format!("Burn tokens for project failed: {}", e)))?;
-
+        
+        log::info!("Building burn tokens for project transaction...");
+        let mut transaction = rpc.build_burn_tokens_for_project_transaction(&pubkey, project_id, amount_lamports, message).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
+        
+        log::info!("Signing transaction in Session...");
+        self.sign_transaction(&mut transaction)?;
+        
+        log::info!("Sending signed transaction...");
+        let signature = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Tokens burned successfully for project {}", project_id);
+        
         // Update balances after successful burn
         match self.fetch_and_update_balances().await {
             Ok(()) => {
@@ -931,7 +963,6 @@ impl Session {
             },
             Err(e) => {
                 log::error!("Failed to update balances after burning tokens for project: {}", e);
-                // Mark that we need to update balances later
                 self.mark_balance_update_needed();
             }
         }
@@ -1041,21 +1072,25 @@ impl Session {
             return Err(SessionError::Expired);
         }
 
-        let keypair_bytes = self.get_keypair_bytes()?;
         let rpc = RpcConnection::new();
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
         
-        match rpc.initialize_user_global_burn_stats(&keypair_bytes).await {
-            Ok(tx_hash) => {
-                log::info!("User burn stats initialized successfully: {}", tx_hash);
-                // Refresh burn stats cache after successful initialization
-                let _ = self.fetch_and_cache_user_burn_stats().await;
-                Ok(tx_hash)
-            },
-            Err(e) => {
-                log::error!("Failed to initialize user burn stats: {}", e);
-                Err(SessionError::InvalidData(format!("Failed to initialize burn stats: {}", e)))
-            }
-        }
+        // Step 1: Build unsigned transaction
+        let mut transaction = rpc.build_initialize_burn_stats_transaction(&pubkey).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to build initialize transaction: {}", e)))?;
+        
+        // Step 2: Sign in Session
+        self.sign_transaction(&mut transaction)?;
+        
+        // Step 3: Send signed transaction
+        let tx_hash = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send initialize transaction: {}", e)))?;
+        
+        log::info!("User burn stats initialized successfully: {}", tx_hash);
+        let _ = self.fetch_and_cache_user_burn_stats().await;
+        Ok(tx_hash)
     }
 
     // burn tokens using memo-burn contract
@@ -1070,22 +1105,26 @@ impl Session {
             self.initialize_user_burn_stats().await?;
         }
 
-        let keypair_bytes = self.get_keypair_bytes()?;
         let rpc = RpcConnection::new();
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
         
-        match rpc.burn_tokens(amount, message, &keypair_bytes).await {
-            Ok(tx_hash) => {
-                log::info!("Burn transaction sent: {}", tx_hash);
-                self.balance_update_needed = true;
-                // Refresh burn stats cache after successful burn
-                let _ = self.fetch_and_cache_user_burn_stats().await;
-                Ok(tx_hash)
-            },
-            Err(e) => {
-                log::error!("Burn transaction failed: {}", e);
-                Err(SessionError::InvalidData(format!("Burn error: {}", e)))
-            }
-        }
+        // Step 1: Build unsigned transaction
+        let mut transaction = rpc.build_burn_transaction(&pubkey, amount, message).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to build burn transaction: {}", e)))?;
+        
+        // Step 2: Sign in Session
+        self.sign_transaction(&mut transaction)?;
+        
+        // Step 3: Send signed transaction
+        let tx_hash = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send burn transaction: {}", e)))?;
+        
+        log::info!("Burn transaction sent: {}", tx_hash);
+        self.balance_update_needed = true;
+        let _ = self.fetch_and_cache_user_burn_stats().await;
+        Ok(tx_hash)
     }
 
     // check if user has burn stats initialized
