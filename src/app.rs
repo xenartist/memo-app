@@ -81,18 +81,21 @@ pub fn App() -> impl IntoView {
                             <ImportMnemonicStep
                                 set_current_step=set_current_step
                                 set_mnemonic=set_mnemonic
+                                selected_network=selected_network
                             />
                         },
                         CreateWalletStep::ShowMnemonic(_) => view! {
                             <ShowMnemonicStep
                                 set_mnemonic=set_mnemonic
                                 set_current_step=set_current_step
+                                selected_network=selected_network
                             />
                         },
                         CreateWalletStep::VerifyMnemonic(_) => view! {
                             <VerifyMnemonicStep
                                 mnemonic=mnemonic
                                 set_current_step=set_current_step
+                                _selected_network=selected_network
                             />
                         },
                         CreateWalletStep::SetPassword => view! {
@@ -103,6 +106,7 @@ pub fn App() -> impl IntoView {
                                 set_current_step=set_current_step
                                 set_wallet_address=set_wallet_address
                                 set_encrypted_seed=set_encrypted_seed
+                                selected_network=selected_network
                             />
                         },
                         CreateWalletStep::Complete => view! {
@@ -112,6 +116,7 @@ pub fn App() -> impl IntoView {
                                 session=session
                                 encrypted_seed=encrypted_seed.get()
                                 password=password.get()
+                                selected_network=selected_network
                             />
                         }
                     }

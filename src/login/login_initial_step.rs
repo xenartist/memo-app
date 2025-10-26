@@ -68,11 +68,12 @@ pub fn InitialStep(
                 </div>
             </div>
             
-            <div class="button-group">
+            <div class="wallet-options-grid">
                 <button 
                     class="wallet-btn new-wallet" 
                     on:click=move |_| set_current_step.set(CreateWalletStep::ShowMnemonic(String::new()))
                 >
+                    <i class="fas fa-plus-circle"></i>
                     "New Wallet"
                 </button>
                 <button
@@ -81,6 +82,7 @@ pub fn InitialStep(
                         set_current_step.set(CreateWalletStep::ImportMnemonic);
                     }
                 >
+                    <i class="fas fa-file-import"></i>
                     "Import Wallet"
                 </button>
             </div>

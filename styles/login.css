@@ -35,26 +35,50 @@
 
 /* Wallet buttons */
 .wallet-btn {
-  padding: 0.8rem 1.5rem;
+  padding: 1rem 1.5rem;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 1rem;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  background-color: #4CAF50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  /* Default background - primary color */
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
   color: white;
 }
 
-.wallet-btn:hover {
-  background-color: #45a049;
+.wallet-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+  box-shadow: 0 6px 12px rgba(99, 102, 241, 0.4);
+  transform: translateY(-2px);
+}
+
+.wallet-btn.new-wallet {
+  background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+  color: white;
+}
+
+.wallet-btn.new-wallet:hover {
+  background: linear-gradient(135deg, #45a049 0%, #388E3C 100%);
+  box-shadow: 0 6px 12px rgba(76, 175, 80, 0.4);
+  transform: translateY(-2px);
 }
 
 .wallet-btn.import-wallet {
-  background-color: #2196F3;
+  background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+  color: white;
 }
 
 .wallet-btn.import-wallet:hover {
-  background-color: #1976D2;
+  background: linear-gradient(135deg, #1976D2 0%, #1565C0 100%);
+  box-shadow: 0 6px 12px rgba(33, 150, 243, 0.4);
+  transform: translateY(-2px);
 }
 
 .wallet-btn.edit-mode {
@@ -74,43 +98,50 @@
 
 /* Mnemonic display */
 .mnemonic-display {
-  background-color: #f8f9fa;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
   padding: 1.5rem;
-  border-radius: 4px;
+  border-radius: 8px;
   margin: 1.5rem auto;
   word-wrap: break-word;
-  font-family: monospace;
+  font-family: 'Courier New', monospace;
   font-size: 1.1rem;
-  line-height: 1.6;
-  max-width: 400px;
+  line-height: 1.8;
+  max-width: 500px;
   word-break: break-word;
+  border: 2px solid #dee2e6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 /* Form inputs */
 textarea,
-input[type="password"] {
+input[type="password"],
+input[type="text"] {
   width: 100%;
-  max-width: 400px;
+  max-width: 500px;
   margin: 1rem auto;
-  padding: 1rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-family: monospace;
+  padding: 1rem 1.2rem;
+  border: 2px solid #dee2e6;
+  border-radius: 8px;
+  font-family: 'Courier New', monospace;
   font-size: 1rem;
   resize: vertical;
   display: block;
+  transition: all 0.3s ease;
+  background-color: #fff;
+}
+
+textarea:focus,
+input[type="password"]:focus,
+input[type="text"]:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
 .mnemonic-textarea {
   width: 100%;
-  min-height: 100px;
-  padding: 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 1rem;
-  resize: vertical;
-  margin: 1rem 0;
+  min-height: 120px;
+  font-family: 'Courier New', monospace;
 }
 
 /* Headers */
@@ -132,21 +163,25 @@ h2 {
   margin: 0;
 }
 
-/* Back button */
-.back-btn {
+/* Back button in header */
+.header-with-back .back-btn {
   position: absolute;
   left: 0;
-  background: none;
-  border: none;
-  color: #666;
+  background: transparent;
+  border: 2px solid #6c757d;
+  color: #6c757d;
   cursor: pointer;
-  padding: 8px 12px;
-  font-size: 14px;
-  transition: color 0.2s;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  transition: all 0.3s ease;
+  border-radius: 4px;
+  white-space: nowrap;
+  width: auto;
 }
 
-.back-btn:hover {
-  color: #333;
+.header-with-back .back-btn:hover {
+  background: #6c757d;
+  color: white;
 }
 
 /* Word count selector */
@@ -582,6 +617,14 @@ input:disabled {
   font-weight: 500;
 }
 
+/* Wallet options grid */
+.wallet-options-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 20px;
+}
+
 /* Backpack wallet button */
 .wallet-btn.backpack-wallet {
   background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
@@ -605,6 +648,11 @@ input:disabled {
 
 .backpack-icon {
   font-size: 1.3rem;
+}
+
+/* Font Awesome icons in wallet buttons */
+.wallet-btn i.fas {
+  font-size: 1.1rem;
 }
 
 /* Backpack connect container */
@@ -740,7 +788,7 @@ input:disabled {
   cursor: not-allowed;
 }
 
-/* Back button (legacy - kept for other pages) */
+/* Back button (standalone) */
 .back-btn {
   background: transparent;
   border: 2px solid #6c757d;
@@ -750,9 +798,8 @@ input:disabled {
   font-size: 1rem;
   cursor: pointer;
   transition: all 0.3s ease;
-  width: 100%;
-  max-width: 200px;
-  margin: 0 auto;
+  width: auto;
+  margin: 0;
 }
 
 .back-btn:hover:not(:disabled) {
@@ -806,4 +853,27 @@ input:disabled {
   color: #666;
   font-size: 0.9rem;
   margin-top: 0.5rem;
+}
+
+/* Responsive design */
+@media (max-width: 600px) {
+  .login-container {
+    padding: 1.5rem;
+  }
+
+  .app-title {
+    font-size: 1.5rem;
+  }
+
+  .wallet-options-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .button-group {
+    flex-direction: column;
+  }
+
+  .button-group button {
+    width: 100%;
+  }
 } 

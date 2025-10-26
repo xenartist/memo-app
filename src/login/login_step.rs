@@ -103,11 +103,22 @@ pub fn LoginStep(
 
     view! {
         <div class="login-container">
-            <h2>"MEMO Engraves Memories Onchain"</h2>
+            <h1 class="app-title">"MEMO Engraves Memories Onchain"</h1>
+            
+            // Wallet type indicator
+            <div class="wallet-type-indicator">
+                <div class="wallet-type-badge">
+                    <i class="fas fa-wallet wallet-icon"></i>
+                    <span class="wallet-type-text">"Internal Wallet"</span>
+                </div>
+            </div>
             
             // Network selector
             <div class="network-selector-container">
-                <label class="network-label">"Select Network:"</label>
+                <label class="network-label">
+                    <i class="fas fa-network-wired"></i>
+                    " Select Network:"
+                </label>
                 <div class="network-options">
                     <button
                         class=move || if selected_network.get() == NetworkType::Testnet {
@@ -168,9 +179,13 @@ pub fn LoginStep(
                         ResetState::Confirming => view! {
                             <div class="reset-confirm-dialog">
                                 <div class="reset-confirm-content">
-                                    <h3>"Reset Wallet Confirmation"</h3>
+                                    <h3>
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                        " Reset Wallet Confirmation"
+                                    </h3>
                                     <p class="warning-text">
-                                        "Warning: This action will delete current wallet and cannot be undone. "
+                                        <i class="fas fa-exclamation-circle"></i>
+                                        " Warning: This action will delete current wallet and cannot be undone. "
                                         "Make sure you have backed up your mnemonic phrase before proceeding."
                                     </p>
                                     <div class="button-group">
@@ -178,13 +193,15 @@ pub fn LoginStep(
                                             class="cancel-btn"
                                             on:click=move |_| set_reset_state.set(ResetState::None)
                                         >
-                                            "Cancel"
+                                            <i class="fas fa-times"></i>
+                                            " Cancel"
                                         </button>
                                         <button 
                                             class="reset-btn"
                                             on:click=handle_reset
                                         >
-                                            "Reset Wallet"
+                                            <i class="fas fa-trash"></i>
+                                            " Reset Wallet"
                                         </button>
                                     </div>
                                 </div>
@@ -193,16 +210,21 @@ pub fn LoginStep(
                         ResetState::Success => view! {
                             <div class="reset-confirm-dialog">
                                 <div class="reset-confirm-content">
-                                    <h3>"Wallet Reset Successfully"</h3>
+                                    <h3>
+                                        <i class="fas fa-check-circle" style="color: #059669;"></i>
+                                        " Wallet Reset Successfully"
+                                    </h3>
                                     <p>
-                                        "Your wallet has been reset successfully. You can now create a new wallet or import an existing one."
+                                        <i class="fas fa-info-circle"></i>
+                                        " Your wallet has been reset successfully. You can now create a new wallet or import an existing one."
                                     </p>
                                     <div class="button-group">
                                         <button 
                                             class="wallet-btn"
                                             on:click=move |_| set_current_step.set(CreateWalletStep::Initial)
                                         >
-                                            "Continue"
+                                            <i class="fas fa-arrow-right"></i>
+                                            " Continue"
                                         </button>
                                     </div>
                                 </div>
@@ -212,6 +234,10 @@ pub fn LoginStep(
                             <div>
                                 <form on:submit=on_submit>
                                     <div class="password-section">
+                                        <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; color: #555;">
+                                            <i class="fas fa-lock"></i>
+                                            <span>"Wallet Password"</span>
+                                        </label>
                                         <input
                                             type="password"
                                             placeholder="Enter your wallet password"
@@ -223,7 +249,14 @@ pub fn LoginStep(
                                     </div>
 
                                     <div class="error-message">
-                                        {move || error_message.get()}
+                                        {move || if !error_message.get().is_empty() {
+                                            view! {
+                                                <i class="fas fa-exclamation-circle"></i>
+                                                <span>{error_message.get()}</span>
+                                            }.into_view()
+                                        } else {
+                                            view! { <></> }.into_view()
+                                        }}
                                     </div>
 
                                     <button 
@@ -231,7 +264,8 @@ pub fn LoginStep(
                                         class="wallet-btn"
                                         id="login-button"
                                     >
-                                        "Login"
+                                        <i class="fas fa-sign-in-alt"></i>
+                                        " Login"
                                     </button>
 
                                     <div class="reset-link">
@@ -242,7 +276,8 @@ pub fn LoginStep(
                                                 set_reset_state.set(ResetState::Confirming);
                                             }
                                         >
-                                            "Forget password and reset wallet"
+                                            <i class="fas fa-redo"></i>
+                                            " Forget password and reset wallet"
                                         </a>
                                     </div>
                                 </form>
