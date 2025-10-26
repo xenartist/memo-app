@@ -25,7 +25,7 @@ pub fn InitialStep(
                     >
                         <div class="network-option-header">
                             <span class="network-name">"Testnet"</span>
-                            <span class="network-badge network-badge-testnet">"DEV"</span>
+                            <span class="network-badge network-badge-testnet">"DEV/TEST"</span>
                         </div>
                         <div class="network-description">
                             {NetworkType::Testnet.description()}

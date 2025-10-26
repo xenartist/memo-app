@@ -1,6 +1,7 @@
 use leptos::*;
 use crate::core::rpc_base::RpcConnection;
 use crate::core::session::Session;
+use crate::core::NetworkType;
 use crate::pages::home_page::HomePage;
 use crate::pages::profile_page::ProfilePage;
 use crate::pages::settings_page::SettingsPage;
@@ -30,6 +31,24 @@ enum MenuItem {
     Burn,
     Profile,
     Settings,
+}
+
+// Helper function to check if a menu item is available for the current network
+fn is_menu_available(menu_item: &MenuItem, network: Option<NetworkType>) -> bool {
+    match network {
+        Some(NetworkType::Testnet) => {
+            // Testnet: All features available
+            true
+        }
+        Some(NetworkType::ProdStaging) | Some(NetworkType::Mainnet) => {
+            // Production and Staging: Only Mint page available
+            matches!(menu_item, MenuItem::Mint)
+        }
+        None => {
+            // If network not set (shouldn't happen), default to restricted mode
+            matches!(menu_item, MenuItem::Mint)
+        }
+    }
 }
 
 #[component]
@@ -89,6 +108,11 @@ pub fn MainPage(
     // simplify button display logic, like balance directly from session
     let needs_burn_stats_init = move || {
         session.with(|s| !s.has_burn_stats_initialized())
+    };
+    
+    // Get current network from session
+    let current_network = move || {
+        session.with(|s| s.get_network())
     };
     
     // listen to balance update needed in session
@@ -401,17 +425,7 @@ pub fn MainPage(
 
             <div class="main-content">
                 <div class="sidebar">
-                    // Temporarily commented out Home menu item for release
-                    /*
-                    <div 
-                        class="menu-item" 
-                        class:active=move || current_menu.get() == MenuItem::Home
-                        on:click=move |_| set_current_menu.set(MenuItem::Home)
-                    >
-                        <i class="fas fa-home"></i>
-                        <span>"Home"</span>
-                    </div>
-                    */
+                    // Mint - always visible
                     <div 
                         class="menu-item"
                         class:active=move || current_menu.get() == MenuItem::Mint
@@ -420,98 +434,128 @@ pub fn MainPage(
                         <i class="fas fa-hammer"></i>
                         <span>"Mint"</span>
                     </div>
-                    <div 
-                        class="menu-item"
-                        class:active=move || current_menu.get() == MenuItem::Project
-                        on:click=move |_| set_current_menu.set(MenuItem::Project)
-                    >
-                        <i class="fas fa-project-diagram"></i>
-                        <span>"Project"</span>
+                    
+                    // Project - only in testnet
+                    <Show when=move || is_menu_available(&MenuItem::Project, current_network())>
+                        <div 
+                            class="menu-item"
+                            class:active=move || current_menu.get() == MenuItem::Project
+                            on:click=move |_| set_current_menu.set(MenuItem::Project)
+                        >
+                            <i class="fas fa-project-diagram"></i>
+                            <span>"Project"</span>
+                        </div>
+                    </Show>
+                    
+                    // Chat - only in testnet
+                    <Show when=move || is_menu_available(&MenuItem::Chat, current_network())>
+                        <div 
+                            class="menu-item"
+                            class:active=move || current_menu.get() == MenuItem::Chat
+                            on:click=move |_| set_current_menu.set(MenuItem::Chat)
+                        >
+                            <i class="fas fa-comments"></i>
+                            <span>"Chat"</span>
+                        </div>
+                    </Show>
+                    
+                    // Faucet - only in testnet
+                    <Show when=move || is_menu_available(&MenuItem::Faucet, current_network())>
+                        <div 
+                            class="menu-item"
+                            class:active=move || current_menu.get() == MenuItem::Faucet
+                            on:click=move |_| set_current_menu.set(MenuItem::Faucet)
+                        >
+                            <i class="fas fa-faucet"></i>
+                            <span>"Faucet (testnet)"</span>
+                        </div>
+                    </Show>
+                    
+                    // Profile - only in testnet
+                    <Show when=move || is_menu_available(&MenuItem::Profile, current_network())>
+                        <div 
+                            class="menu-item"
+                            class:active=move || current_menu.get() == MenuItem::Profile
+                            on:click=move |_| set_current_menu.set(MenuItem::Profile)
+                        >
+                            <i class="fas fa-user"></i>
+                            <span>"Profile"</span>
+                        </div>
+                    </Show>
+                    
+                    // Network status indicator at bottom of sidebar
+                    <div class="sidebar-network-status">
+                        {move || {
+                            match current_network() {
+                                Some(NetworkType::Testnet) => view! {
+                                    <div class="network-indicator network-testnet">
+                                        <i class="fas fa-circle"></i>
+                                        <span>"Testnet"</span>
+                                    </div>
+                                }.into_view(),
+                                Some(NetworkType::ProdStaging) => view! {
+                                    <div class="network-indicator network-staging">
+                                        <i class="fas fa-circle"></i>
+                                        <span>"Prod Staging"</span>
+                                    </div>
+                                }.into_view(),
+                                Some(NetworkType::Mainnet) => view! {
+                                    <div class="network-indicator network-mainnet">
+                                        <i class="fas fa-circle"></i>
+                                        <span>"Mainnet"</span>
+                                    </div>
+                                }.into_view(),
+                                None => view! {
+                                    <div class="network-indicator network-unknown">
+                                        <i class="fas fa-circle"></i>
+                                        <span>"Unknown"</span>
+                                    </div>
+                                }.into_view(),
+                            }
+                        }}
                     </div>
-                    <div 
-                        class="menu-item"
-                        class:active=move || current_menu.get() == MenuItem::Chat
-                        on:click=move |_| set_current_menu.set(MenuItem::Chat)
-                    >
-                        <i class="fas fa-comments"></i>
-                        <span>"Chat"</span>
-                    </div>
-                    <div 
-                        class="menu-item"
-                        class:active=move || current_menu.get() == MenuItem::Faucet
-                        on:click=move |_| set_current_menu.set(MenuItem::Faucet)
-                    >
-                        <i class="fas fa-faucet"></i>
-                        <span>"Faucet (testnet)"</span>
-                    </div>
-                    <div 
-                        class="menu-item"
-                        class:active=move || current_menu.get() == MenuItem::Profile
-                        on:click=move |_| set_current_menu.set(MenuItem::Profile)
-                    >
-                        <i class="fas fa-user"></i>
-                        <span>"Profile"</span>
-                    </div>
-                    // Temporarily commented out for release - only showing Mint, Chat and Profile
-                    /*
-                    <div 
-                        class="menu-item"
-                        class:active=move || current_menu.get() == MenuItem::MintLegacy
-                        on:click=move |_| set_current_menu.set(MenuItem::MintLegacy)
-                    >
-                        <i class="fas fa-history"></i>
-                        <span>"Mint (legacy)"</span>
-                    </div>
-                    <div 
-                        class="menu-item"
-                        class:active=move || current_menu.get() == MenuItem::Burn
-                        on:click=move |_| set_current_menu.set(MenuItem::Burn)
-                    >
-                        <i class="fas fa-fire"></i>
-                        <span>"Burn"</span>
-                    </div>
-                    <div 
-                        class="menu-item"
-                        class:active=move || current_menu.get() == MenuItem::Settings
-                        on:click=move |_| set_current_menu.set(MenuItem::Settings)
-                    >
-                        <i class="fas fa-cog"></i>
-                        <span>"Settings"</span>
-                    </div>
-                    */
                 </div>
 
                 <div class="content">
-                    <div style=move || if current_menu.get() == MenuItem::Home { "display: block;" } else { "display: none;" }>
-                        <HomePage session=session/>
-                    </div>
+                    // Mint - always visible
                     <div style=move || if current_menu.get() == MenuItem::Mint { "display: block;" } else { "display: none;" }>
                         <MintPage session=session/>
                     </div>
-                    <div style=move || if current_menu.get() == MenuItem::Project { "display: block;" } else { "display: none;" }>
-                        <ProjectPage session=session/>
-                    </div>
-                    <div style=move || if current_menu.get() == MenuItem::Chat { "display: block;" } else { "display: none;" }>
-                        <ChatPage session=session/>
-                    </div>
-                    <div style=move || if current_menu.get() == MenuItem::Faucet { "display: block;" } else { "display: none;" }>
-                        <FaucetPage session=session/>
-                    </div>
-                    <div style=move || if current_menu.get() == MenuItem::Profile { "display: block;" } else { "display: none;" }>
-                        <ProfilePage session=session/>
-                    </div>
-                    // Temporarily commented out for release - only showing Home, Mint, Chat and Profile content
-                    /*
-                    <div style=move || if current_menu.get() == MenuItem::MintLegacy { "display: block;" } else { "display: none;" }>
-                        <MintPageLegacy session=session/>
-                    </div>
-                    <div style=move || if current_menu.get() == MenuItem::Burn { "display: block;" } else { "display: none;" }>
-                        <BurnPage session=session/>
-                    </div>
-                    <div style=move || if current_menu.get() == MenuItem::Settings { "display: block;" } else { "display: none;" }>
-                        <SettingsPage/>
-                    </div>
-                    */
+                    
+                    // Project - only in testnet
+                    <Show when=move || is_menu_available(&MenuItem::Project, current_network())>
+                        <div style=move || if current_menu.get() == MenuItem::Project { "display: block;" } else { "display: none;" }>
+                            <ProjectPage session=session/>
+                        </div>
+                    </Show>
+                    
+                    // Chat - only in testnet
+                    <Show when=move || is_menu_available(&MenuItem::Chat, current_network())>
+                        <div style=move || if current_menu.get() == MenuItem::Chat { "display: block;" } else { "display: none;" }>
+                            <ChatPage session=session/>
+                        </div>
+                    </Show>
+                    
+                    // Faucet - only in testnet
+                    <Show when=move || is_menu_available(&MenuItem::Faucet, current_network())>
+                        <div style=move || if current_menu.get() == MenuItem::Faucet { "display: block;" } else { "display: none;" }>
+                            <FaucetPage session=session/>
+                        </div>
+                    </Show>
+                    
+                    // Profile - only in testnet
+                    <Show when=move || is_menu_available(&MenuItem::Profile, current_network())>
+                        <div style=move || if current_menu.get() == MenuItem::Profile { "display: block;" } else { "display: none;" }>
+                            <ProfilePage session=session/>
+                        </div>
+                    </Show>
+                    
+                    // Home page (currently not in menu, but keep for completeness)
+                    <Show when=move || is_menu_available(&MenuItem::Home, current_network())>
+                        <div style=move || if current_menu.get() == MenuItem::Home { "display: block;" } else { "display: none;" }>
+                            <HomePage session=session/>
+                        </div>
+                    </Show>
                 </div>
             </div>
 
