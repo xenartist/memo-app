@@ -6,6 +6,7 @@ use crate::core::rpc_profile::{UserProfile, parse_user_profile_new};
 use crate::core::rpc_project::{ProjectInfo, ProjectStatistics, ProjectBurnLeaderboardResponse};
 use crate::core::rpc_burn::{UserGlobalBurnStats};
 use crate::core::network_config::{NetworkType, clear_network};
+use crate::core::backpack::{BackpackWallet, BackpackError};
 use web_sys::js_sys::Date;
 use secrecy::{Secret, ExposeSecret};
 use zeroize::{Zeroize, Zeroizing};
@@ -16,6 +17,16 @@ use serde_json;
 use std::fmt;
 use std::str::FromStr;
 use log;
+use base64;
+
+/// Wallet type for the session
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum WalletType {
+    /// Internal wallet (mnemonic + password encrypted)
+    Internal,
+    /// Backpack web wallet
+    Backpack,
+}
 
 #[derive(Debug, Clone)]
 pub enum SessionError {
@@ -25,6 +36,7 @@ pub enum SessionError {
     NotInitialized,
     InvalidData(String),
     ProfileError(String),
+    BackpackError(String),
 }
 
 impl fmt::Display for SessionError {
@@ -36,7 +48,14 @@ impl fmt::Display for SessionError {
             SessionError::NotInitialized => write!(f, "Session not initialized"),
             SessionError::InvalidData(msg) => write!(f, "Invalid data: {}", msg),
             SessionError::ProfileError(msg) => write!(f, "Profile error: {}", msg),
+            SessionError::BackpackError(msg) => write!(f, "Backpack wallet error: {}", msg),
         }
+    }
+}
+
+impl From<BackpackError> for SessionError {
+    fn from(error: BackpackError) -> Self {
+        SessionError::BackpackError(error.to_string())
     }
 }
 
@@ -63,10 +82,14 @@ pub struct Session {
     config: SessionConfig,
     // session start time
     start_time: f64,
-    // encrypted seed
+    // wallet type (Internal or Backpack)
+    wallet_type: WalletType,
+    // encrypted seed (only for Internal wallet)
     encrypted_seed: Option<String>,
-    // session key
+    // session key (only for Internal wallet)
     session_key: Option<Secret<String>>,
+    // backpack public key (only for Backpack wallet)
+    backpack_pubkey: Option<String>,
     // UI locked
     ui_locked: bool,
     // user profile
@@ -89,8 +112,10 @@ impl Session {
         Self {
             config: config.unwrap_or_default(),
             start_time: Date::now(),
+            wallet_type: WalletType::Internal, // Default to Internal
             encrypted_seed: None,
             session_key: None,
+            backpack_pubkey: None,
             ui_locked: false,
             user_profile: None,
             cached_pubkey: None,
@@ -100,6 +125,21 @@ impl Session {
             user_burn_stats: None,
             network: None,
         }
+    }
+    
+    /// Get the wallet type for this session
+    pub fn get_wallet_type(&self) -> &WalletType {
+        &self.wallet_type
+    }
+    
+    /// Check if session is using Backpack wallet
+    pub fn is_backpack(&self) -> bool {
+        self.wallet_type == WalletType::Backpack
+    }
+    
+    /// Check if session is using internal wallet
+    pub fn is_internal_wallet(&self) -> bool {
+        self.wallet_type == WalletType::Internal
     }
     
     /// Set network for this session (called during login)
@@ -121,8 +161,10 @@ impl Session {
     /// Logout and clear session
     pub fn logout(&mut self) {
         // Clear all session data
+        self.wallet_type = WalletType::Internal; // Reset to default
         self.encrypted_seed = None;
         self.session_key = None;
+        self.backpack_pubkey = None;
         self.user_profile = None;
         self.cached_pubkey = None;
         self.sol_balance = 0.0;
@@ -131,13 +173,24 @@ impl Session {
         self.user_burn_stats = None;
         self.network = None;
         
+        // If Backpack wallet, disconnect
+        if self.is_backpack() {
+            wasm_bindgen_futures::spawn_local(async {
+                if let Err(e) = BackpackWallet::disconnect().await {
+                    log::warn!("Failed to disconnect Backpack wallet: {}", e);
+                }
+            });
+        }
+        
         // Clear global network configuration
         clear_network();
         
         log::info!("Session logged out. Network cleared.");
     }
 
-    // initialize session, decrypt seed using user password and re-encrypt using session key
+    /// Initialize session with internal wallet (mnemonic + password)
+    /// 
+    /// This method decrypts the seed using user password and re-encrypts it using a session key.
     pub async fn initialize(&mut self, encrypted_seed: &str, password: &str) -> Result<(), SessionError> {
         // decrypt original seed
         let seed = encrypt::decrypt(encrypted_seed, password)
@@ -162,13 +215,51 @@ impl Session {
             crate::core::wallet::get_default_derivation_path()
         ).map_err(|e| SessionError::Encryption("Failed to derive keypair".to_string()))?;
 
-        // save session info
+        // save session info (Internal wallet)
+        self.wallet_type = WalletType::Internal;
         self.session_key = Some(session_key);
         self.encrypted_seed = Some(session_encrypted_seed);
+        self.backpack_pubkey = None;
         self.start_time = Date::now();
-        self.cached_pubkey = Some(pubkey);
+        self.cached_pubkey = Some(pubkey.clone());
 
+        log::info!("Session initialized with internal wallet: {}", pubkey);
         Ok(())
+    }
+
+    /// Initialize session with Backpack wallet
+    /// 
+    /// This method connects to Backpack wallet and initializes the session with the connected public key.
+    /// No private key or seed is stored - all signing is done through Backpack.
+    pub async fn initialize_with_backpack(&mut self) -> Result<String, SessionError> {
+        log::info!("Initializing session with Backpack wallet...");
+        
+        // Check if Backpack is installed
+        if !BackpackWallet::is_installed() {
+            return Err(SessionError::BackpackError(
+                "Backpack wallet is not installed. Please install it from https://backpack.app".to_string()
+            ));
+        }
+
+        // Connect to Backpack and get public key
+        let pubkey = BackpackWallet::connect().await?;
+        
+        log::info!("Connected to Backpack wallet: {}", &pubkey);
+
+        // Validate the public key
+        Pubkey::from_str(&pubkey)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid public key from Backpack: {}", e)))?;
+
+        // Save session info (Backpack wallet)
+        self.wallet_type = WalletType::Backpack;
+        self.backpack_pubkey = Some(pubkey.clone());
+        self.cached_pubkey = Some(pubkey.clone());
+        self.encrypted_seed = None;
+        self.session_key = None;
+        self.start_time = Date::now();
+
+        log::info!("Session initialized with Backpack wallet");
+        Ok(pubkey)
     }
 
     // check if session is expired
@@ -357,7 +448,7 @@ impl Session {
             .map_err(|e| SessionError::ProfileError(format!("Failed to build transaction: {}", e)))?;
         
         log::info!("Signing transaction in Session...");
-        self.sign_transaction(&mut transaction)?;
+        self.sign_transaction(&mut transaction).await?;
         
         log::info!("Sending signed transaction...");
         let tx_hash = rpc.send_signed_transaction(&transaction).await
@@ -398,7 +489,7 @@ impl Session {
             .map_err(|e| SessionError::ProfileError(format!("Failed to build transaction: {}", e)))?;
         
         log::info!("Signing transaction in Session...");
-        self.sign_transaction(&mut transaction)?;
+        self.sign_transaction(&mut transaction).await?;
         
         log::info!("Sending signed transaction...");
         let tx_hash = rpc.send_signed_transaction(&transaction).await
@@ -426,7 +517,7 @@ impl Session {
             .map_err(|e| SessionError::ProfileError(format!("Failed to build transaction: {}", e)))?;
         
         log::info!("Signing transaction in Session...");
-        self.sign_transaction(&mut transaction)?;
+        self.sign_transaction(&mut transaction).await?;
         
         log::info!("Sending signed transaction...");
         let tx_hash = rpc.send_signed_transaction(&transaction).await
@@ -479,19 +570,32 @@ impl Session {
         Ok(keypair.to_bytes().to_vec())
     }
 
-    /// Sign a transaction using the session's keypair (with secure memory handling)
+    /// Sign a transaction using the appropriate wallet (Internal or Backpack)
     /// 
-    /// This is a private method that handles signing in a secure way:
-    /// - Uses Zeroizing to ensure sensitive data is cleared from memory
-    /// - Minimizes the lifetime of keypair in memory
-    /// - Private key never leaves this method
+    /// This method handles signing based on the wallet type:
+    /// - **Internal wallet**: Uses secure in-memory signing with Zeroizing
+    /// - **Backpack wallet**: Delegates to Backpack's signTransaction API
     /// 
     /// # Parameters
     /// * `transaction` - Mutable reference to the transaction to sign
     /// 
     /// # Returns
     /// Ok(()) on success, SessionError on failure
-    fn sign_transaction(&self, transaction: &mut Transaction) -> Result<(), SessionError> {
+    async fn sign_transaction(&self, transaction: &mut Transaction) -> Result<(), SessionError> {
+        match self.wallet_type {
+            WalletType::Internal => {
+                // Internal wallet: sign with keypair from seed
+                self.sign_transaction_internal(transaction)
+            },
+            WalletType::Backpack => {
+                // Backpack wallet: sign via JavaScript bridge
+                self.sign_transaction_backpack(transaction).await
+            }
+        }
+    }
+
+    /// Sign a transaction using the internal wallet (secure in-memory signing)
+    fn sign_transaction_internal(&self, transaction: &mut Transaction) -> Result<(), SessionError> {
         // Get seed (wrapped in Zeroizing for automatic cleanup)
         let seed = Zeroizing::new(self.get_seed()?);
         
@@ -518,7 +622,34 @@ impl Session {
         seed_array.zeroize();
         
         // Note: keypair will be dropped here, seed and seed_bytes are automatically zeroized
-        log::debug!("Transaction signed successfully");
+        log::debug!("Transaction signed successfully with internal wallet");
+        
+        Ok(())
+    }
+
+    /// Sign a transaction using Backpack wallet
+    async fn sign_transaction_backpack(&self, transaction: &mut Transaction) -> Result<(), SessionError> {
+        // Serialize transaction to base64
+        let tx_bytes = bincode::serialize(&transaction)
+            .map_err(|e| SessionError::InvalidData(format!("Failed to serialize transaction: {}", e)))?;
+        let tx_base64 = base64::encode(&tx_bytes);
+        
+        log::debug!("Requesting signature from Backpack wallet...");
+        
+        // Call Backpack to sign the transaction
+        let signed_tx_base64 = BackpackWallet::sign_transaction(&tx_base64).await?;
+        
+        // Decode the signed transaction
+        let signed_tx_bytes = base64::decode(&signed_tx_base64)
+            .map_err(|e| SessionError::InvalidData(format!("Failed to decode signed transaction: {}", e)))?;
+        
+        let signed_transaction: Transaction = bincode::deserialize(&signed_tx_bytes)
+            .map_err(|e| SessionError::InvalidData(format!("Failed to deserialize signed transaction: {}", e)))?;
+        
+        // Update the original transaction with the signed version
+        *transaction = signed_transaction;
+        
+        log::debug!("Transaction signed successfully with Backpack wallet");
         
         Ok(())
     }
@@ -554,7 +685,7 @@ impl Session {
         
         // Step 2: Session signs transaction (private key never leaves Session)
         log::info!("Signing transaction in Session...");
-        self.sign_transaction(&mut transaction)?;
+        self.sign_transaction(&mut transaction).await?;
         
         // Step 3: RPC sends signed transaction
         log::info!("Sending signed transaction...");
@@ -709,7 +840,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
         
         log::info!("Signing transaction in Session...");
-        self.sign_transaction(&mut transaction)?;
+        self.sign_transaction(&mut transaction).await?;
         
         log::info!("Sending signed transaction...");
         let tx_hash = rpc.send_signed_transaction(&transaction).await
@@ -750,7 +881,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
         
         log::info!("Signing transaction in Session...");
-        self.sign_transaction(&mut transaction)?;
+        self.sign_transaction(&mut transaction).await?;
         
         log::info!("Sending signed transaction...");
         let tx_hash = rpc.send_signed_transaction(&transaction).await
@@ -784,7 +915,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
         
         log::info!("Signing transaction in Session...");
-        self.sign_transaction(&mut transaction)?;
+        self.sign_transaction(&mut transaction).await?;
         
         log::info!("Sending signed transaction...");
         let tx_hash = rpc.send_signed_transaction(&transaction).await
@@ -841,7 +972,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
         
         log::info!("Signing transaction in Session...");
-        self.sign_transaction(&mut transaction)?;
+        self.sign_transaction(&mut transaction).await?;
         
         log::info!("Sending signed transaction...");
         let tx_hash = rpc.send_signed_transaction(&transaction).await
@@ -885,7 +1016,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
         
         log::info!("Signing transaction in Session...");
-        self.sign_transaction(&mut transaction)?;
+        self.sign_transaction(&mut transaction).await?;
         
         log::info!("Sending signed transaction...");
         let signature = rpc.send_signed_transaction(&transaction).await
@@ -949,7 +1080,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
         
         log::info!("Signing transaction in Session...");
-        self.sign_transaction(&mut transaction)?;
+        self.sign_transaction(&mut transaction).await?;
         
         log::info!("Sending signed transaction...");
         let tx_hash = rpc.send_signed_transaction(&transaction).await
@@ -1005,7 +1136,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
         
         log::info!("Signing transaction in Session...");
-        self.sign_transaction(&mut transaction)?;
+        self.sign_transaction(&mut transaction).await?;
         
         log::info!("Sending signed transaction...");
         let signature = rpc.send_signed_transaction(&transaction).await
@@ -1049,7 +1180,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
         
         log::info!("Signing transaction in Session...");
-        self.sign_transaction(&mut transaction)?;
+        self.sign_transaction(&mut transaction).await?;
         
         log::info!("Sending signed transaction...");
         let signature = rpc.send_signed_transaction(&transaction).await
@@ -1183,7 +1314,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to build initialize transaction: {}", e)))?;
         
         // Step 2: Sign in Session
-        self.sign_transaction(&mut transaction)?;
+        self.sign_transaction(&mut transaction).await?;
         
         // Step 3: Send signed transaction
         let tx_hash = rpc.send_signed_transaction(&transaction).await
@@ -1216,7 +1347,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to build burn transaction: {}", e)))?;
         
         // Step 2: Sign in Session
-        self.sign_transaction(&mut transaction)?;
+        self.sign_transaction(&mut transaction).await?;
         
         // Step 3: Send signed transaction
         let tx_hash = rpc.send_signed_transaction(&transaction).await

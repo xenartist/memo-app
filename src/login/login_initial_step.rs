@@ -84,6 +84,22 @@ pub fn InitialStep(
                     "Import Wallet"
                 </button>
             </div>
+            
+            <div class="divider">
+                <span class="divider-text">"OR"</span>
+            </div>
+            
+            <div class="button-group">
+                <button
+                    class="wallet-btn backpack-wallet"
+                    on:click=move |_| {
+                        set_current_step.set(CreateWalletStep::BackpackConnect);
+                    }
+                >
+                    <span class="backpack-icon">"🎒"</span>
+                    " Connect Backpack Wallet"
+                </button>
+            </div>
         </div>
     }
 }

@@ -11,6 +11,7 @@ use crate::core::NetworkType;
 pub enum CreateWalletStep {
     Initial,
     Login,
+    BackpackConnect, // New: Connect Backpack wallet
     ImportMnemonic,
     ShowMnemonic(String),
     VerifyMnemonic(String),
@@ -62,6 +63,14 @@ pub fn App() -> impl IntoView {
                         },
                         CreateWalletStep::Login => view! {
                             <LoginStep
+                                set_current_step=set_current_step
+                                session=session
+                                set_show_main_page=set_show_main_page
+                                selected_network=selected_network
+                            />
+                        },
+                        CreateWalletStep::BackpackConnect => view! {
+                            <BackpackConnectStep
                                 set_current_step=set_current_step
                                 session=session
                                 set_show_main_page=set_show_main_page

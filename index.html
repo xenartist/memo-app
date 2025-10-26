@@ -26,6 +26,75 @@
     <link data-trunk rel="copy-dir" href="public" />
     <link data-trunk rel="rust" data-wasm-opt="z" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- Solana Web3.js -->
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+    
+    <!-- Solana Wallet Adapter for Backpack -->
+    <script>
+      // Simple Backpack wallet integration
+      window.BackpackWallet = {
+        isInstalled: function() {
+          return typeof window.backpack !== 'undefined';
+        },
+        connect: async function() {
+          if (!window.backpack) {
+            throw new Error('Backpack wallet is not installed');
+          }
+          try {
+            const response = await window.backpack.connect();
+            return response.publicKey.toString();
+          } catch (error) {
+            throw new Error('Failed to connect: ' + error.message);
+          }
+        },
+        disconnect: async function() {
+          if (window.backpack) {
+            await window.backpack.disconnect();
+          }
+        },
+        getPublicKey: function() {
+          if (window.backpack && window.backpack.publicKey) {
+            return window.backpack.publicKey.toString();
+          }
+          return null;
+        },
+        signTransaction: async function(transactionBase64) {
+          if (!window.backpack) {
+            throw new Error('Backpack wallet is not connected');
+          }
+          try {
+            // Decode base64 to Uint8Array
+            const binaryString = atob(transactionBase64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            
+            // Deserialize transaction using Solana web3.js
+            const transaction = window.solanaWeb3.Transaction.from(bytes);
+            
+            // Sign with Backpack
+            const signedTx = await window.backpack.signTransaction(transaction);
+            
+            // Serialize the signed transaction
+            const signedBytes = signedTx.serialize();
+            
+            // Convert signed transaction back to base64
+            let binary = '';
+            for (let i = 0; i < signedBytes.byteLength; i++) {
+              binary += String.fromCharCode(signedBytes[i]);
+            }
+            return btoa(binary);
+          } catch (error) {
+            throw new Error('Failed to sign transaction: ' + error.message);
+          }
+        },
+        isConnected: function() {
+          return window.backpack && window.backpack.isConnected;
+        }
+      };
+    </script>
   </head>
   <body></body>
 </html>
