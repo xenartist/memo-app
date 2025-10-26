@@ -588,6 +588,126 @@ impl RpcConnection {
     }
 
     // main burn function
+    /// Build an unsigned Token 2022 burn transaction (NEW SECURE METHOD)
+    /// 
+    /// This method builds an unsigned transaction for Token 2022 burn that can be signed by Session.
+    /// The private key never leaves the Session context.
+    /// 
+    /// # Parameters
+    /// * `user_pubkey` - The user's public key
+    /// * `amount` - Amount to burn (in lamports)
+    /// * `message` - Burn message
+    /// * `signature` - Signature reference (use empty string "" if not needed)
+    /// 
+    /// # Returns
+    /// Unsigned transaction ready to be signed
+    pub async fn build_token2022_burn_transaction(
+        &self,
+        user_pubkey: &Pubkey,
+        amount: u64,
+        message: &str,
+        signature: &str,
+    ) -> Result<Transaction, RpcError> {
+        // validate burn amount
+        if amount < ProgramConfig::MIN_BURN_AMOUNT {
+            return Err(RpcError::Other(format!(
+                "Burn amount too small. Must be at least {} tokens",
+                ProgramConfig::MIN_BURN_AMOUNT / 1_000_000_000
+            )));
+        }
+        
+        // create memo
+        let memo = ProgramConfig::create_burn_memo(message, signature)?;
+        
+        // get address configuration
+        let program_id = ProgramConfig::get_program_id()?;
+        let mint = ProgramConfig::get_token_mint()?;
+        let token_2022_program_id = ProgramConfig::get_token_2022_program_id()?;
+
+        // calculate PDAs
+        let (user_profile_pda, _) = ProgramConfig::get_user_profile_pda(user_pubkey)?;
+        let (latest_burn_shard_pda, _) = ProgramConfig::get_latest_burn_shard_pda()?;
+        let (global_top_burn_index_pda, _) = ProgramConfig::get_global_top_burn_index_pda()?;
+
+        // calculate token account (ATA) using Token 2022
+        let token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
+            user_pubkey,
+            &mint,
+            &token_2022_program_id,
+        );
+
+        // check if user profile exists
+        let profile_info = self.get_account_info(&user_profile_pda.to_string(), Some("base64")).await?;
+        let profile_info: serde_json::Value = serde_json::from_str(&profile_info)
+            .map_err(|e| RpcError::Other(format!("Failed to parse profile info: {}", e)))?;
+        let user_profile_exists = !profile_info["value"].is_null();
+
+        // get current top burn shard index
+        let current_top_burn_shard_index = self.get_current_top_burn_shard_index().await?;
+
+        // build instructions
+        let mut instructions = vec![];
+
+        // add memo instruction
+        instructions.push(spl_memo::build_memo(
+            memo.as_bytes(),
+            &[user_pubkey],
+        ));
+
+        // use discriminator array directly, no SHA256
+        let mut instruction_data = ProgramConfig::PROCESS_BURN_DISCRIMINATOR.to_vec();
+        
+        // add burn amount parameter
+        instruction_data.extend_from_slice(&amount.to_le_bytes());
+
+        // create burn instruction accounts
+        let mut accounts = vec![
+            AccountMeta::new(*user_pubkey, true),                        // user
+            AccountMeta::new(mint, false),                               // mint
+            AccountMeta::new(token_account, false),                      // token_account
+            AccountMeta::new_readonly(token_2022_program_id, false),     // token_program
+            AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false), // instructions sysvar
+            AccountMeta::new(latest_burn_shard_pda, false),              // latest_burn_shard
+            AccountMeta::new(global_top_burn_index_pda, false),          // global_top_burn_index
+        ];
+
+        // if there is current top burn shard, add to accounts list
+        if let Some(index) = current_top_burn_shard_index {
+            let (top_burn_shard_pda, _) = ProgramConfig::get_top_burn_shard_pda(index)?;
+            accounts.push(AccountMeta::new(top_burn_shard_pda, false)); // top_burn_shard
+        }
+
+        // if user profile exists, add to accounts list
+        if user_profile_exists {
+            accounts.push(AccountMeta::new(user_profile_pda, false)); // user_profile
+        }
+
+        // add burn instruction
+        instructions.push(Instruction::new_with_bytes(
+            program_id,
+            &instruction_data,
+            accounts,
+        ));
+
+        // get latest blockhash
+        let blockhash = self.get_latest_blockhash().await?;
+
+        // Add compute budget instruction (using reasonable default for Token 2022 burns)
+        let compute_units = 440_000u32; // Based on typical Token 2022 burn operations
+        let mut final_instructions = vec![];
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(compute_units));
+        final_instructions.extend(instructions);
+
+        // create unsigned transaction
+        let message = Message::new(&final_instructions, Some(user_pubkey));
+        let mut transaction = Transaction::new_unsigned(message);
+        transaction.message.recent_blockhash = blockhash;
+
+        Ok(transaction)
+    }
+
+    /// Legacy method - DEPRECATED
+    /// Use build_burn_transaction + sign in Session + send_signed_transaction instead
     pub async fn burn(
         &self,
         amount: u64,
@@ -785,7 +905,156 @@ impl RpcConnection {
         self.get_account_info(&top_burn_shard_pda.to_string(), Some("base64")).await
     }
 
-    // burn with history
+    /// Build an unsigned Token 2022 burn with history transaction (NEW SECURE METHOD)
+    /// 
+    /// This method builds an unsigned transaction for Token 2022 burn with history that can be signed by Session.
+    /// The private key never leaves the Session context.
+    /// 
+    /// # Parameters
+    /// * `user_pubkey` - The user's public key
+    /// * `amount` - Amount to burn (in lamports)
+    /// * `message` - Burn message
+    /// * `signature` - Signature reference for history tracking
+    /// 
+    /// # Returns
+    /// Unsigned transaction ready to be signed
+    pub async fn build_token2022_burn_with_history_transaction(
+        &self,
+        user_pubkey: &Pubkey,
+        amount: u64,
+        message: &str,
+        signature: &str,
+    ) -> Result<Transaction, RpcError> {
+        // validate burn amount
+        if amount < ProgramConfig::MIN_BURN_AMOUNT {
+            return Err(RpcError::Other(format!(
+                "Burn amount too small. Must be at least {} tokens",
+                ProgramConfig::MIN_BURN_AMOUNT / 1_000_000_000
+            )));
+        }
+        
+        // create memo
+        let memo = ProgramConfig::create_burn_memo(message, signature)?;
+        
+        // get address configuration
+        let program_id = ProgramConfig::get_program_id()?;
+        let mint = ProgramConfig::get_token_mint()?;
+        let token_2022_program_id = ProgramConfig::get_token_2022_program_id()?;
+
+        // calculate PDAs
+        let (user_profile_pda, _) = ProgramConfig::get_user_profile_pda(user_pubkey)?;
+        let (latest_burn_shard_pda, _) = ProgramConfig::get_latest_burn_shard_pda()?;
+        let (global_top_burn_index_pda, _) = ProgramConfig::get_global_top_burn_index_pda()?;
+
+        // check if user profile exists (required for burn with history)
+        let profile_info = self.get_account_info(&user_profile_pda.to_string(), Some("base64")).await?;
+        let profile_info: serde_json::Value = serde_json::from_str(&profile_info)
+            .map_err(|e| RpcError::Other(format!("Failed to parse profile info: {}", e)))?;
+        
+        if profile_info["value"].is_null() {
+            return Err(RpcError::Other("User profile must exist for burn with history operation".to_string()));
+        }
+
+        // parse user profile to get burn_history_index
+        let data = profile_info["value"]["data"][0].as_str()
+            .ok_or_else(|| RpcError::Other("Failed to get profile data".to_string()))?;
+        let decoded = base64::decode(data)
+            .map_err(|e| RpcError::Other(format!("Failed to decode profile data: {}", e)))?;
+
+        // extract burn_history_index from user profile data
+        let burn_history_index = if decoded.len() >= 89 {
+            let option_tag = decoded[88];
+            if option_tag == 1 && decoded.len() >= 97 {
+                u64::from_le_bytes(decoded[89..97].try_into().unwrap())
+            } else {
+                return Err(RpcError::Other("User profile has no burn history index. Please initialize burn history first.".to_string()));
+            }
+        } else {
+            return Err(RpcError::Other("Invalid user profile data structure".to_string()));
+        };
+
+        // calculate burn history PDA for the next index
+        let (user_burn_history_pda, _) = ProgramConfig::get_user_burn_history_pda(user_pubkey, burn_history_index)?;
+
+        // verify burn history account exists
+        let burn_history_info = self.get_account_info(&user_burn_history_pda.to_string(), Some("base64")).await?;
+        let burn_history_info: serde_json::Value = serde_json::from_str(&burn_history_info)
+            .map_err(|e| RpcError::Other(format!("Failed to parse burn history info: {}", e)))?;
+        
+        if burn_history_info["value"].is_null() {
+            return Err(RpcError::Other("Burn history account does not exist. Please initialize burn history first.".to_string()));
+        }
+
+        // calculate token account (ATA) using Token 2022
+        let token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
+            user_pubkey,
+            &mint,
+            &token_2022_program_id,
+        );
+
+        // get current top burn shard index
+        let current_top_burn_shard_index = self.get_current_top_burn_shard_index().await?;
+
+        // build instructions
+        let mut instructions = vec![];
+
+        // add memo instruction
+        instructions.push(spl_memo::build_memo(
+            memo.as_bytes(),
+            &[user_pubkey],
+        ));
+
+        // create instruction data using discriminator
+        let mut instruction_data = ProgramConfig::PROCESS_BURN_WITH_HISTORY_DISCRIMINATOR.to_vec();
+        
+        // add burn amount parameter
+        instruction_data.extend_from_slice(&amount.to_le_bytes());
+
+        // create burn with history instruction accounts
+        let mut accounts = vec![
+            AccountMeta::new(*user_pubkey, true),                        // user
+            AccountMeta::new(mint, false),                               // mint
+            AccountMeta::new(token_account, false),                      // token_account
+            AccountMeta::new_readonly(token_2022_program_id, false),     // token_program
+            AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false), // instructions sysvar
+            AccountMeta::new(latest_burn_shard_pda, false),              // latest_burn_shard
+            AccountMeta::new(global_top_burn_index_pda, false),          // global_top_burn_index
+            AccountMeta::new(user_profile_pda, false),                   // user_profile
+            AccountMeta::new(user_burn_history_pda, false),              // user_burn_history
+        ];
+
+        // if there is current top burn shard, add to accounts list
+        if let Some(index) = current_top_burn_shard_index {
+            let (top_burn_shard_pda, _) = ProgramConfig::get_top_burn_shard_pda(index)?;
+            accounts.push(AccountMeta::new(top_burn_shard_pda, false)); // top_burn_shard
+        }
+
+        // add burn with history instruction
+        instructions.push(Instruction::new_with_bytes(
+            program_id,
+            &instruction_data,
+            accounts,
+        ));
+
+        // get latest blockhash
+        let blockhash = self.get_latest_blockhash().await?;
+
+        // Add compute budget instruction (using reasonable default for Token 2022 burns with history)
+        let compute_units = 500_000u32; // Burn with history requires more CU than regular burn
+        let mut final_instructions = vec![];
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(compute_units));
+        final_instructions.extend(instructions);
+
+        // create unsigned transaction
+        let message = Message::new(&final_instructions, Some(user_pubkey));
+        let mut transaction = Transaction::new_unsigned(message);
+        transaction.message.recent_blockhash = blockhash;
+
+        Ok(transaction)
+    }
+
+    /// Legacy method - DEPRECATED
+    /// Use build_burn_with_history_transaction + sign in Session + send_signed_transaction instead
     pub async fn burn_with_history(
         &self,
         amount: u64,

@@ -438,8 +438,32 @@ impl Session {
         Ok(tx_hash)
     }
 
-    // helper function to get keypair bytes (deprecated, kept for compatibility with other methods)
+    /// ⚠️ DEPRECATED - DO NOT USE ⚠️
+    /// 
+    /// This method is deprecated and should not be used as it exposes the private key
+    /// outside of the Session context, which is a security risk.
+    /// 
+    /// **Security Issues:**
+    /// - Returns keypair bytes containing the full private key
+    /// - The returned Vec<u8> is not automatically zeroized
+    /// - Caller is responsible for secure memory cleanup (often forgotten)
+    /// - Private key exists in memory longer than necessary
+    /// 
+    /// **Migration:**
+    /// All transaction signing should use the secure `sign_transaction()` pattern:
+    /// 1. RPC builds unsigned transaction
+    /// 2. Session signs transaction internally (using `sign_transaction`)
+    /// 3. RPC sends signed transaction
+    /// 
+    /// This method is kept only for backward compatibility and will be removed in the future.
+    #[deprecated(
+        since = "0.2.0",
+        note = "Use sign_transaction() instead. This method exposes private keys unsafely."
+    )]
+    #[allow(dead_code)]
     fn get_keypair_bytes(&self) -> Result<Vec<u8>, SessionError> {
+        log::warn!("SECURITY WARNING: get_keypair_bytes() is deprecated and unsafe. Migrate to sign_transaction().");
+        
         let seed = self.get_seed()?;
         let seed_bytes = hex::decode(&seed)
             .map_err(|e| SessionError::Encryption(format!("Failed to decode seed: {}", e)))?;
@@ -657,48 +681,85 @@ impl Session {
         }
     }
 
-    // burn tokens using message and signature - internal handle all key operations
+    /// Burn tokens (Token 2022) using message and signature
+    /// 
+    /// This method follows the secure pattern:
+    /// 1. RPC builds unsigned transaction
+    /// 2. Session signs transaction (private key stays in Session)
+    /// 3. RPC sends signed transaction
+    /// 
+    /// # Parameters
+    /// * `amount` - Amount to burn (in lamports)
+    /// * `message` - Burn message
+    /// 
+    /// # Returns
+    /// Transaction signature on success
     pub async fn burn(&mut self, amount: u64, message: &str) -> Result<String, SessionError> {
         if self.is_expired() {
             return Err(SessionError::Expired);
         }
 
-        let keypair_bytes = self.get_keypair_bytes()?;
         let rpc = RpcConnection::new();
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
         
-        match rpc.burn(amount, "", message, &keypair_bytes).await {
-            Ok(tx_hash) => {
-                log::info!("Burn transaction sent: {}", tx_hash);
-                self.balance_update_needed = true;
-                Ok(tx_hash)
-            },
-            Err(e) => {
-                log::error!("Burn transaction failed: {}", e);
-                Err(SessionError::InvalidData(format!("Burn error: {}", e)))
-            }
-        }
+        log::info!("Building Token 2022 burn transaction...");
+        let mut transaction = rpc.build_token2022_burn_transaction(&pubkey, amount, message, "").await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
+        
+        log::info!("Signing transaction in Session...");
+        self.sign_transaction(&mut transaction)?;
+        
+        log::info!("Sending signed transaction...");
+        let tx_hash = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Burn transaction sent successfully: {}", tx_hash);
+        self.balance_update_needed = true;
+        
+        Ok(tx_hash)
     }
 
-    // burn with history - for future use
+    /// Burn tokens with history tracking (Token 2022)
+    /// 
+    /// This method follows the secure pattern:
+    /// 1. RPC builds unsigned transaction
+    /// 2. Session signs transaction (private key stays in Session)
+    /// 3. RPC sends signed transaction
+    /// 
+    /// # Parameters
+    /// * `amount` - Amount to burn (in lamports)
+    /// * `message` - Burn message
+    /// * `signature` - Signature reference for history tracking
+    /// 
+    /// # Returns
+    /// Transaction signature on success
     pub async fn burn_with_history(&mut self, amount: u64, message: &str, signature: &str) -> Result<String, SessionError> {
         if self.is_expired() {
             return Err(SessionError::Expired);
         }
 
-        let keypair_bytes = self.get_keypair_bytes()?;
         let rpc = RpcConnection::new();
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
         
-        match rpc.burn_with_history(amount, signature, message, &keypair_bytes).await {
-            Ok(tx_hash) => {
-                log::info!("Burn with history transaction sent: {}", tx_hash);
-                self.balance_update_needed = true;
-                Ok(tx_hash)
-            },
-            Err(e) => {
-                log::error!("Burn with history transaction failed: {}", e);
-                Err(SessionError::InvalidData(format!("Burn with history error: {}", e)))
-            }
-        }
+        log::info!("Building Token 2022 burn with history transaction...");
+        let mut transaction = rpc.build_token2022_burn_with_history_transaction(&pubkey, amount, message, signature).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
+        
+        log::info!("Signing transaction in Session...");
+        self.sign_transaction(&mut transaction)?;
+        
+        log::info!("Sending signed transaction...");
+        let tx_hash = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Burn with history transaction sent successfully: {}", tx_hash);
+        self.balance_update_needed = true;
+        
+        Ok(tx_hash)
     }
 
     /// Send chat message to group - internal handle all key operations
