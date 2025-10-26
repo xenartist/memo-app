@@ -1,4 +1,5 @@
 use super::rpc_base::{RpcConnection, RpcError};
+use super::network_config::get_program_ids;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use solana_sdk::{
@@ -27,14 +28,8 @@ pub struct SupplyTier {
 pub struct MintConfig;
 
 impl MintConfig {
-    // Mint contract program ID
-    pub const MINT_PROGRAM_ID: &'static str = "A31a17bhgQyRQygeZa1SybytjbCdjMpu6oPr9M3iQWzy";
-    
-    // Authorized mint token address - now using global constant
-    pub const TOKEN_MINT: &'static str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
-    
-    // Token 2022 Program ID
-    pub const TOKEN_2022_PROGRAM_ID: &'static str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+    // Note: Mint program ID, Token mint, and Token 2022 program ID are now 
+    // retrieved dynamically from network configuration
     
     // PDA Seeds
     pub const MINT_AUTHORITY_SEED: &'static [u8] = b"mint_authority";
@@ -50,17 +45,20 @@ impl MintConfig {
 // Helper functions
 impl MintConfig {
     pub fn get_mint_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MINT_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.mint_program_id)
             .map_err(|e| RpcError::Other(format!("Invalid mint program ID: {}", e)))
     }
     
     pub fn get_token_mint() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::TOKEN_MINT)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.token_mint)
             .map_err(|e| RpcError::Other(format!("Invalid token mint address: {}", e)))
     }
     
     pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::TOKEN_2022_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.token_2022_program_id)
             .map_err(|e| RpcError::Other(format!("Invalid Token 2022 program ID: {}", e)))
     }
     

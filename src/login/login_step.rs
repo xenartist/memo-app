@@ -2,6 +2,7 @@ use leptos::*;
 use crate::core::wallet::Wallet;
 use crate::core::encrypt;
 use crate::core::session::Session;
+use crate::core::{NetworkType, initialize_network};
 use crate::CreateWalletStep;
 use wasm_bindgen::JsCast;
 
@@ -17,6 +18,7 @@ pub fn LoginStep(
     set_current_step: WriteSignal<CreateWalletStep>,
     session: RwSignal<Session>,
     set_show_main_page: WriteSignal<bool>,
+    selected_network: RwSignal<NetworkType>,
 ) -> impl IntoView {
     let (password, set_password) = create_signal(String::new());
     let (error_message, set_error_message) = create_signal(String::new());
@@ -44,17 +46,28 @@ pub fn LoginStep(
                     spawn_local(async move {
                         match encrypt::decrypt_async(&wallet.get_encrypted_seed(), &password_value).await {
                             Ok(seed) => {
-                                let mut current_session = session.get_untracked();
-                                match current_session.initialize_with_seed(&seed).await {
-                                    Ok(()) => {
-                                        session.set(current_session);
-                                        set_show_main_page.set(true);
+                                // Initialize network first
+                                let network = selected_network.get_untracked();
+                                if initialize_network(network) {
+                                    let mut current_session = session.get_untracked();
+                                    // Set network in session
+                                    current_session.set_network(network);
+                                    
+                                    match current_session.initialize_with_seed(&seed).await {
+                                        Ok(()) => {
+                                            session.set(current_session);
+                                            set_show_main_page.set(true);
+                                        }
+                                        Err(_) => {
+                                            set_error_message.set("Failed to initialize session".to_string());
+                                            button.set_disabled(false);
+                                            button.set_text_content(Some("Login"));
+                                        }
                                     }
-                                    Err(_) => {
-                                        set_error_message.set("Failed to initialize session".to_string());
-                                        button.set_disabled(false);
-                                        button.set_text_content(Some("Login"));
-                                    }
+                                } else {
+                                    set_error_message.set("Failed to initialize network".to_string());
+                                    button.set_disabled(false);
+                                    button.set_text_content(Some("Login"));
                                 }
                             }
                             Err(_) => {
@@ -91,6 +104,63 @@ pub fn LoginStep(
     view! {
         <div class="login-container">
             <h2>"MEMO Engraves Memories Onchain"</h2>
+            
+            // Network selector
+            <div class="network-selector-container">
+                <label class="network-label">"Select Network:"</label>
+                <div class="network-options">
+                    <button
+                        class=move || if selected_network.get() == NetworkType::Testnet {
+                            "network-option active network-testnet"
+                        } else {
+                            "network-option network-testnet"
+                        }
+                        on:click=move |_| selected_network.set(NetworkType::Testnet)
+                    >
+                        <div class="network-option-header">
+                            <span class="network-name">"Testnet"</span>
+                            <span class="network-badge network-badge-testnet">"DEV"</span>
+                        </div>
+                        <div class="network-description">
+                            {NetworkType::Testnet.description()}
+                        </div>
+                    </button>
+                    
+                    <button
+                        class=move || if selected_network.get() == NetworkType::ProdStaging {
+                            "network-option active network-staging"
+                        } else {
+                            "network-option network-staging"
+                        }
+                        on:click=move |_| selected_network.set(NetworkType::ProdStaging)
+                    >
+                        <div class="network-option-header">
+                            <span class="network-name">"Prod Staging"</span>
+                            <span class="network-badge network-badge-staging">"STAGING"</span>
+                        </div>
+                        <div class="network-description">
+                            {NetworkType::ProdStaging.description()}
+                        </div>
+                    </button>
+                    
+                    <button
+                        class=move || if selected_network.get() == NetworkType::Mainnet {
+                            "network-option active network-mainnet"
+                        } else {
+                            "network-option network-mainnet"
+                        }
+                        on:click=move |_| selected_network.set(NetworkType::Mainnet)
+                    >
+                        <div class="network-option-header">
+                            <span class="network-name">"Mainnet"</span>
+                            <span class="network-badge network-badge-mainnet">"PROD"</span>
+                        </div>
+                        <div class="network-description">
+                            {NetworkType::Mainnet.description()}
+                        </div>
+                    </button>
+                </div>
+            </div>
             
             <div>
                 {move || {

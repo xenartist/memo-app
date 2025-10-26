@@ -5,6 +5,7 @@ use crate::core::rpc_mint::MintConfig;
 use crate::core::rpc_profile::{UserProfile, parse_user_profile_new};
 use crate::core::rpc_project::{ProjectInfo, ProjectStatistics, ProjectBurnLeaderboardResponse};
 use crate::core::rpc_burn::{UserGlobalBurnStats};
+use crate::core::network_config::{NetworkType, clear_network};
 use web_sys::js_sys::Date;
 use secrecy::{Secret, ExposeSecret};
 use zeroize::{Zeroize, Zeroizing};
@@ -79,6 +80,8 @@ pub struct Session {
     balance_update_needed: bool,
     // user global burn stats
     user_burn_stats: Option<UserGlobalBurnStats>,
+    // network type for this session (set during login, immutable after that)
+    network: Option<NetworkType>,
 }
 
 impl Session {
@@ -95,7 +98,43 @@ impl Session {
             token_balance: 0.0,
             balance_update_needed: false,
             user_burn_stats: None,
+            network: None,
         }
+    }
+    
+    /// Set network for this session (called during login)
+    pub fn set_network(&mut self, network: NetworkType) {
+        self.network = Some(network);
+        log::info!("Session network set to: {}", network.display_name());
+    }
+    
+    /// Get network for this session
+    pub fn get_network(&self) -> Option<NetworkType> {
+        self.network
+    }
+    
+    /// Check if session has network set
+    pub fn has_network(&self) -> bool {
+        self.network.is_some()
+    }
+    
+    /// Logout and clear session
+    pub fn logout(&mut self) {
+        // Clear all session data
+        self.encrypted_seed = None;
+        self.session_key = None;
+        self.user_profile = None;
+        self.cached_pubkey = None;
+        self.sol_balance = 0.0;
+        self.token_balance = 0.0;
+        self.balance_update_needed = false;
+        self.user_burn_stats = None;
+        self.network = None;
+        
+        // Clear global network configuration
+        clear_network();
+        
+        log::info!("Session logged out. Network cleared.");
     }
 
     // initialize session, decrypt seed using user password and re-encrypt using session key
@@ -541,9 +580,10 @@ impl Session {
         let pubkey = self.get_public_key()?;
         let rpc = RpcConnection::new();
         
-        // Now using global constant instead of local definition
-        // get token balance
-        match rpc.get_token_balance(&pubkey, MintConfig::TOKEN_MINT).await {
+        // Get token balance using dynamic token mint
+        let token_mint = MintConfig::get_token_mint()
+            .map_err(|e| SessionError::InvalidData(format!("Failed to get token mint: {}", e)))?;
+        match rpc.get_token_balance(&pubkey, &token_mint.to_string()).await {
             Ok(token_result) => {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&token_result) {
                     if let Some(accounts) = json.get("value").and_then(|v| v.as_array()) {

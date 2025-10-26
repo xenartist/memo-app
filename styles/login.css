@@ -451,4 +451,103 @@ input:disabled {
   color: #6c757d;
   cursor: not-allowed;
   opacity: 0.8;
+}
+
+/* Network selector styles */
+.network-selector-container {
+  width: 100%;
+  margin-bottom: 30px;
+  text-align: left;
+}
+
+.network-label {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 15px;
+  color: #333;
+}
+
+.network-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.network-option {
+  width: 100%;
+  padding: 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: left;
+}
+
+.network-option:hover {
+  border-color: #666;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transform: translateY(-1px);
+}
+
+.network-option.active {
+  border-color: #F44336;
+  background: #fff0f0;
+  box-shadow: 0 2px 12px rgba(244, 67, 54, 0.2);
+}
+
+.network-option.active.network-staging {
+  border-color: #FF9800;
+  background: #fff8f0;
+  box-shadow: 0 2px 12px rgba(255, 152, 0, 0.2);
+}
+
+.network-option.active.network-mainnet {
+  border-color: #4CAF50;
+  background: #f0f8f0;
+  box-shadow: 0 2px 12px rgba(76, 175, 80, 0.2);
+}
+
+.network-option-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.network-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+.network-description {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.4;
+}
+
+.network-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.network-badge-testnet {
+  background: #F44336;
+  color: white;
+}
+
+.network-badge-staging {
+  background: #FF9800;
+  color: white;
+}
+
+.network-badge-mainnet {
+  background: #4CAF50;
+  color: white;
 } 

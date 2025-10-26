@@ -1,4 +1,5 @@
 use super::rpc_base::{RpcConnection, RpcError};
+use super::network_config::get_program_ids;
 use serde::{Serialize, Deserialize};
 use borsh::{BorshSerialize, BorshDeserialize};
 use std::str::FromStr;
@@ -31,22 +32,12 @@ const BORSH_FIXED_OVERHEAD: usize = BORSH_U8_SIZE + BORSH_U64_SIZE + BORSH_VEC_L
 pub struct ChatConfig;
 
 impl ChatConfig {
-    /// Memo-chat program ID
-    pub const MEMO_CHAT_PROGRAM_ID: &'static str = "54ky4LNnRsbYioDSBKNrc5hG8HoDyZ6yhf8TuncxTBRF";
+    // Note: Program IDs and token mint are now retrieved dynamically from network configuration
     
     /// PDA Seeds for chat contract
     pub const GLOBAL_COUNTER_SEED: &'static [u8] = b"global_counter";
     pub const CHAT_GROUP_SEED: &'static [u8] = b"chat_group";
     pub const BURN_LEADERBOARD_SEED: &'static [u8] = b"burn_leaderboard";
-    
-    /// Memo-mint program ID (referenced by chat contract)
-    pub const MEMO_MINT_PROGRAM_ID: &'static str = "A31a17bhgQyRQygeZa1SybytjbCdjMpu6oPr9M3iQWzy";
-    
-    /// Token 2022 Program ID
-    pub const TOKEN_2022_PROGRAM_ID: &'static str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-    
-    /// Authorized MEMO token mint address
-    pub const MEMO_TOKEN_MINT: &'static str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
     
     /// Minimum burn amount required to create a chat group (42,069 tokens = 42,069,000,000 lamports)
     pub const MIN_BURN_AMOUNT: u64 = 42_069_000_000;
@@ -63,7 +54,8 @@ impl ChatConfig {
     
     /// Helper functions
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_CHAT_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.chat_program_id)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-chat program ID: {}", e)))
     }
     
@@ -87,19 +79,22 @@ impl ChatConfig {
     
     /// Helper to get memo-mint program ID
     pub fn get_memo_mint_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_MINT_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.mint_program_id)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-mint program ID: {}", e)))
     }
     
     /// Helper to get token mint
     pub fn get_memo_token_mint() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_TOKEN_MINT)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.token_mint)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo token mint: {}", e)))
     }
     
     /// Helper to get Token 2022 program ID
     pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::TOKEN_2022_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.token_2022_program_id)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid Token 2022 program ID: {}", e)))
     }
     
@@ -140,9 +135,6 @@ impl ChatConfig {
         Ok(())
     }
 
-    /// Memo-burn program ID (referenced by chat contract for group creation)  
-    pub const MEMO_BURN_PROGRAM_ID: &'static str = "FEjJ9KKJETocmaStfsFteFrktPchDLAVNTMeTvndoxaP";
-
     /// Get create_chat_group instruction discriminator
     pub fn get_create_chat_group_discriminator() -> [u8; 8] {
         let mut hasher = Sha256::new();
@@ -155,7 +147,8 @@ impl ChatConfig {
 
     /// Helper to get memo-burn program ID
     pub fn get_memo_burn_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_BURN_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.burn_program_id)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-burn program ID: {}", e)))
     }
 
@@ -962,10 +955,11 @@ impl RpcConnection {
             .as_str()
             .ok_or_else(|| RpcError::Other("Failed to get account owner".to_string()))?;
         
-        if owner != ChatConfig::MEMO_CHAT_PROGRAM_ID {
+        let expected_program_id = ChatConfig::get_program_id()?.to_string();
+        if owner != expected_program_id {
             return Err(RpcError::Other(format!(
                 "Account not owned by memo-chat program. Expected: {}, Got: {}", 
-                ChatConfig::MEMO_CHAT_PROGRAM_ID, owner
+                expected_program_id, owner
             )));
         }
         
@@ -1017,10 +1011,11 @@ impl RpcConnection {
             .as_str()
             .ok_or_else(|| RpcError::Other("Failed to get account owner".to_string()))?;
         
-        if owner != ChatConfig::MEMO_CHAT_PROGRAM_ID {
+        let expected_program_id = ChatConfig::get_program_id()?.to_string();
+        if owner != expected_program_id {
             return Err(RpcError::Other(format!(
                 "Account not owned by memo-chat program. Expected: {}, Got: {}", 
-                ChatConfig::MEMO_CHAT_PROGRAM_ID, owner
+                expected_program_id, owner
             )));
         }
         
@@ -2183,10 +2178,11 @@ impl RpcConnection {
             .as_str()
             .ok_or_else(|| RpcError::Other("Failed to get leaderboard account owner".to_string()))?;
         
-        if owner != ChatConfig::MEMO_CHAT_PROGRAM_ID {
+        let expected_program_id = ChatConfig::get_program_id()?.to_string();
+        if owner != expected_program_id {
             return Err(RpcError::Other(format!(
                 "Account not owned by memo-chat program. Expected: {}, Got: {}", 
-                ChatConfig::MEMO_CHAT_PROGRAM_ID, owner
+                expected_program_id, owner
             )));
         }
         

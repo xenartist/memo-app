@@ -1,4 +1,5 @@
 use crate::core::rpc_base::{RpcConnection, RpcError};
+use crate::core::network_config::get_program_ids;
 use solana_sdk::{
     pubkey::Pubkey,
     instruction::{Instruction, AccountMeta},
@@ -32,14 +33,7 @@ const BORSH_FIXED_OVERHEAD: usize = BORSH_U8_SIZE + BORSH_U64_SIZE + BORSH_VEC_L
 pub struct BurnConfig;
 
 impl BurnConfig {
-    /// Memo-Burn contract program ID
-    pub const MEMO_BURN_PROGRAM_ID: &'static str = "FEjJ9KKJETocmaStfsFteFrktPchDLAVNTMeTvndoxaP";
-    
-    /// Authorized MEMO token mint address
-    pub const MEMO_TOKEN_MINT: &'static str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
-    
-    /// Token 2022 Program ID
-    pub const TOKEN_2022_PROGRAM_ID: &'static str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+    // Note: Program IDs and token mint are now retrieved dynamically from network configuration
     
     /// Minimum burn amount (1 token = 1,000,000 units)
     pub const MIN_BURN_AMOUNT: u64 = 1_000_000;
@@ -63,17 +57,20 @@ impl BurnConfig {
     
     /// Helper functions
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_BURN_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.burn_program_id)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-burn program ID: {}", e)))
     }
     
     pub fn get_token_mint() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_TOKEN_MINT)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.token_mint)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid token mint: {}", e)))
     }
     
     pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::TOKEN_2022_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.token_2022_program_id)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid Token 2022 program ID: {}", e)))
     }
     

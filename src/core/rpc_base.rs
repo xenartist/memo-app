@@ -9,6 +9,7 @@ use js_sys::{Date, Math};
 use solana_sdk::transaction::Transaction;
 use base64;
 use bincode;
+use super::network_config::try_get_network_config;
 
 // error type
 #[derive(Debug, Deserialize)]
@@ -64,15 +65,8 @@ struct RpcResponse<T> {
 }
 
 impl RpcConnection {
-    // X1 testnet RPC endpoints list for load balancing and redundancy
-    const DEFAULT_RPC_ENDPOINTS: &'static [&'static str] = &[
-        "https://rpc.testnet.x1.xyz",
-        // "https://rpc-testnet.x1.wiki",
-        // attention: the following endpoints are examples, please configure the actual available X1 testnet RPC endpoints
-        // "https://rpc2.testnet.x1.xyz", 
-        // "https://rpc3.testnet.x1.xyz",
-        // if you need to add more endpoints, please uncomment and use the actual endpoint address
-    ];
+    // Fallback RPC endpoint (used before network is initialized during login)
+    const FALLBACK_RPC_ENDPOINT: &'static str = "https://rpc.testnet.x1.xyz";
     
     pub fn new() -> Self {
         let selected_endpoint = Self::select_random_endpoint();
@@ -82,7 +76,14 @@ impl RpcConnection {
 
     /// select a random endpoint from the RPC endpoint list
     fn select_random_endpoint() -> &'static str {
-        let endpoints = Self::DEFAULT_RPC_ENDPOINTS;
+        // Try to get network configuration endpoints
+        let endpoints = if let Some(config) = try_get_network_config() {
+            config.rpc_endpoints
+        } else {
+            // Network not initialized yet (before login), use fallback
+            log::debug!("Network not initialized, using fallback endpoint");
+            return Self::FALLBACK_RPC_ENDPOINT;
+        };
         
         // if there is only one endpoint, return it directly
         if endpoints.len() == 1 {

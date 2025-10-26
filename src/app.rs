@@ -4,6 +4,7 @@ use crate::login::*;
 use crate::pages::main_page::MainPage;
 use crate::core::session::Session;
 use crate::core::wallet::Wallet;
+use crate::core::NetworkType;
 
 // create wallet step
 #[derive(Clone, Debug, PartialEq)]
@@ -35,6 +36,9 @@ pub fn App() -> impl IntoView {
     
     // create session manager
     let session = create_rw_signal(Session::new(None));
+    
+    // network selection (default to Mainnet for production use)
+    let selected_network = create_rw_signal(NetworkType::Mainnet);
 
     // check if wallet exists when app starts
     spawn_local(async move {
@@ -53,6 +57,7 @@ pub fn App() -> impl IntoView {
                         CreateWalletStep::Initial => view! {
                             <InitialStep
                                 set_current_step=set_current_step
+                                selected_network=selected_network
                             />
                         },
                         CreateWalletStep::Login => view! {
@@ -60,6 +65,7 @@ pub fn App() -> impl IntoView {
                                 set_current_step=set_current_step
                                 session=session
                                 set_show_main_page=set_show_main_page
+                                selected_network=selected_network
                             />
                         },
                         CreateWalletStep::ImportMnemonic => view! {

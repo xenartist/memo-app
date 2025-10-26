@@ -1,4 +1,5 @@
 use super::rpc_base::{RpcConnection, RpcError};
+use super::network_config::get_program_ids;
 use serde::{Serialize, Deserialize};
 use borsh::{BorshSerialize, BorshDeserialize};
 use std::str::FromStr;
@@ -212,42 +213,36 @@ impl ProfileUpdateData {
 pub struct ProfileConfig;
 
 impl ProfileConfig {
-    /// Memo-profile program ID
-    pub const MEMO_PROFILE_PROGRAM_ID: &'static str = "BwQTxuShrwJR15U6Utdfmfr4kZ18VT6FA1fcp58sT8US";
+    // Note: Program IDs and token mint are now retrieved dynamically from network configuration
     
     /// PDA Seeds for profile contract
     pub const PROFILE_SEED: &'static [u8] = b"profile";
     
-    /// Memo-burn program ID (updated to the correct address)
-    pub const MEMO_BURN_PROGRAM_ID: &'static str = "FEjJ9KKJETocmaStfsFteFrktPchDLAVNTMeTvndoxaP";
-    
-    /// Token 2022 program ID
-    pub const TOKEN_2022_PROGRAM_ID: &'static str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-    
-    /// Memo token mint address (updated to the correct address)
-    pub const MEMO_TOKEN_MINT: &'static str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
-    
     /// get program ID
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_PROFILE_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.profile_program_id)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-profile program ID: {}", e)))
     }
     
     /// get memo-burn program ID
     pub fn get_memo_burn_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_BURN_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.burn_program_id)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-burn program ID: {}", e)))
     }
     
     /// get Token 2022 program ID
     pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::TOKEN_2022_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.token_2022_program_id)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid token 2022 program ID: {}", e)))
     }
     
     /// get memo token mint
     pub fn get_memo_token_mint() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_TOKEN_MINT)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.token_mint)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo token mint: {}", e)))
     }
     

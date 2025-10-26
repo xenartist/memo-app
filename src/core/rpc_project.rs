@@ -1,4 +1,5 @@
 use super::rpc_base::{RpcConnection, RpcError};
+use super::network_config::get_program_ids;
 use serde::{Serialize, Deserialize};
 use borsh::{BorshSerialize, BorshDeserialize};
 use std::str::FromStr;
@@ -32,22 +33,12 @@ const BORSH_FIXED_OVERHEAD: usize = BORSH_U8_SIZE + BORSH_U64_SIZE + BORSH_VEC_L
 pub struct ProjectConfig;
 
 impl ProjectConfig {
-    /// Memo-project program ID
-    pub const MEMO_PROJECT_PROGRAM_ID: &'static str = "ENVapgjzzMjbRhLJ279yNsSgaQtDYYVgWq98j54yYnyx";
+    // Note: Program IDs and token mint are now retrieved dynamically from network configuration
     
     /// PDA Seeds for project contract
     pub const GLOBAL_COUNTER_SEED: &'static [u8] = b"global_counter";
     pub const PROJECT_SEED: &'static [u8] = b"project";
     pub const BURN_LEADERBOARD_SEED: &'static [u8] = b"burn_leaderboard";
-    
-    /// Memo-burn program ID (referenced by project contract)
-    pub const MEMO_BURN_PROGRAM_ID: &'static str = "FEjJ9KKJETocmaStfsFteFrktPchDLAVNTMeTvndoxaP";
-    
-    /// Token 2022 Program ID
-    pub const TOKEN_2022_PROGRAM_ID: &'static str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-    
-    /// Authorized MEMO token mint address
-    pub const MEMO_TOKEN_MINT: &'static str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
     
     /// Minimum burn amount required to create a project (42,069 tokens = 42,069,000,000 lamports)
     pub const MIN_PROJECT_CREATION_BURN_AMOUNT: u64 = 42_069_000_000;
@@ -70,8 +61,30 @@ impl ProjectConfig {
     
     /// Helper functions
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_PROJECT_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.project_program_id)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-project program ID: {}", e)))
+    }
+    
+    /// Get memo-burn program ID
+    pub fn get_memo_burn_program_id() -> Result<Pubkey, RpcError> {
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.burn_program_id)
+            .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-burn program ID: {}", e)))
+    }
+    
+    /// Get Token 2022 program ID
+    pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.token_2022_program_id)
+            .map_err(|e| RpcError::InvalidAddress(format!("Invalid Token 2022 program ID: {}", e)))
+    }
+    
+    /// Get memo token mint
+    pub fn get_memo_token_mint() -> Result<Pubkey, RpcError> {
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.token_mint)
+            .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo token mint: {}", e)))
     }
     
     /// Calculate global counter PDA
@@ -99,24 +112,6 @@ impl ProjectConfig {
             &[Self::BURN_LEADERBOARD_SEED],
             &program_id
         ))
-    }
-    
-    /// Helper to get memo-burn program ID
-    pub fn get_memo_burn_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_BURN_PROGRAM_ID)
-            .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-burn program ID: {}", e)))
-    }
-    
-    /// Helper to get token mint
-    pub fn get_memo_token_mint() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_TOKEN_MINT)
-            .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo token mint: {}", e)))
-    }
-    
-    /// Helper to get Token 2022 program ID
-    pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::TOKEN_2022_PROGRAM_ID)
-            .map_err(|e| RpcError::InvalidAddress(format!("Invalid Token 2022 program ID: {}", e)))
     }
     
     /// Get create_project instruction discriminator
@@ -169,8 +164,7 @@ impl ProjectConfig {
     
     /// Calculate user global burn stats PDA (from memo-burn program)
     pub fn get_user_global_burn_stats_pda(user_pubkey: &Pubkey) -> Result<(Pubkey, u8), RpcError> {
-        let memo_burn_program_id = Pubkey::from_str(Self::MEMO_BURN_PROGRAM_ID)
-            .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-burn program ID: {}", e)))?;
+        let memo_burn_program_id = Self::get_memo_burn_program_id()?;
         Ok(Pubkey::find_program_address(
             &[b"user_global_burn_stats", user_pubkey.as_ref()],
             &memo_burn_program_id
@@ -1047,10 +1041,11 @@ impl RpcConnection {
             .as_str()
             .ok_or_else(|| RpcError::Other("Failed to get account owner".to_string()))?;
         
-        if owner != ProjectConfig::MEMO_PROJECT_PROGRAM_ID {
+        let expected_program_id = ProjectConfig::get_program_id()?.to_string();
+        if owner != expected_program_id {
             return Err(RpcError::Other(format!(
                 "Account not owned by memo-project program. Expected: {}, Got: {}", 
-                ProjectConfig::MEMO_PROJECT_PROGRAM_ID, owner
+                expected_program_id, owner
             )));
         }
         
@@ -1102,10 +1097,11 @@ impl RpcConnection {
             .as_str()
             .ok_or_else(|| RpcError::Other("Failed to get account owner".to_string()))?;
         
-        if owner != ProjectConfig::MEMO_PROJECT_PROGRAM_ID {
+        let expected_program_id = ProjectConfig::get_program_id()?.to_string();
+        if owner != expected_program_id {
             return Err(RpcError::Other(format!(
                 "Account not owned by memo-project program. Expected: {}, Got: {}", 
-                ProjectConfig::MEMO_PROJECT_PROGRAM_ID, owner
+                expected_program_id, owner
             )));
         }
         
@@ -2014,10 +2010,11 @@ impl RpcConnection {
             .as_str()
             .ok_or_else(|| RpcError::Other("Failed to get leaderboard account owner".to_string()))?;
         
-        if owner != ProjectConfig::MEMO_PROJECT_PROGRAM_ID {
+        let expected_program_id = ProjectConfig::get_program_id()?.to_string();
+        if owner != expected_program_id {
             return Err(RpcError::Other(format!(
                 "Account not owned by memo-project program. Expected: {}, Got: {}", 
-                ProjectConfig::MEMO_PROJECT_PROGRAM_ID, owner
+                expected_program_id, owner
             )));
         }
         
