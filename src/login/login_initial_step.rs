@@ -9,6 +9,15 @@ pub fn InitialStep(
 ) -> impl IntoView {
     view! {
         <div class="login-container">
+            // MEMO Token Logo
+            <div class="logo-container">
+                <img 
+                    src="https://raw.githubusercontent.com/xenartist/memo-token/refs/heads/main/metadata/memo_token-logo.png" 
+                    alt="MEMO Token Logo" 
+                    class="memo-logo"
+                />
+            </div>
+            
             <h1 class="app-title">"MEMO Engraves Memories Onchain"</h1>
             
             // Network selector

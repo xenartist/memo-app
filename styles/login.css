@@ -16,8 +16,37 @@
 /* App title */
 .app-title {
   margin-bottom: 2rem;
-  color: #333;
-  font-size: 2rem;
+  font-family: 'Fredoka One', cursive;
+  font-weight: 400;
+  font-size: 2.0rem;
+  background: linear-gradient(135deg, #ff6b6b 0%, #feca57 25%, #48dbfb 50%, #ff9ff3 75%, #54a0ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  background-size: 200% 200%;
+  letter-spacing: 0.5px;
+  line-height: 1.4;
+  position: relative;
+  animation: titleRainbow 5s ease-in-out infinite, titleBounce 2s ease-in-out infinite;
+  filter: drop-shadow(0 2px 4px rgba(255, 107, 107, 0.3));
+}
+
+@keyframes titleRainbow {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes titleBounce {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
 }
 
 /* Button groups */
@@ -813,6 +842,25 @@ input:disabled {
 }
 
 
+/* Logo container */
+.logo-container {
+  text-align: center;
+  margin-bottom: 1.5rem;
+  margin-top: 1rem;
+}
+
+.memo-logo {
+  width: 120px;
+  height: auto;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease;
+}
+
+.memo-logo:hover {
+  transform: scale(1.05);
+}
+
 /* Wallet type indicator */
 .wallet-type-indicator {
   margin-bottom: 1.5rem;
@@ -862,7 +910,8 @@ input:disabled {
   }
 
   .app-title {
-    font-size: 1.5rem;
+    font-size: 1.2rem;
+    letter-spacing: 0.3px;
   }
 
   .wallet-options-grid {
