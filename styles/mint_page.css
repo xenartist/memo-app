@@ -510,6 +510,11 @@
     margin-left: 0.5rem;
 }
 
+.mint-mode-description.backpack-not-supported {
+    color: #dc2626;
+    font-weight: 600;
+}
+
 /* Auto Mint Settings */
 .auto-mint-settings {
     padding: 0.75rem;

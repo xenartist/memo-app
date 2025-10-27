@@ -488,9 +488,12 @@ pub fn MintPage(
                                     name="mint_mode"
                                     checked=move || mint_mode.get() == MintMode::Auto
                                     disabled=move || {
+                                        use crate::core::session::WalletType;
+                                        let current_session = session.get();
+                                        let is_backpack = *current_session.get_wallet_type() == WalletType::Backpack;
                                         let is_auto_running = auto_mint_running.get();
                                         let is_manual_pending = start_minting.pending().get() || is_submitting.get();
-                                        is_auto_running || is_manual_pending
+                                        is_backpack || is_auto_running || is_manual_pending
                                     }
                                     on:change=move |_| {
                                         set_mint_mode.set(MintMode::Auto);
@@ -500,7 +503,24 @@ pub fn MintPage(
                                     <i class="fas fa-robot"></i>
                                     "Auto"
                                 </span>
-                                <span class="mint-mode-description">"(Automatically mint multiple times)"</span>
+                                <span 
+                                    class="mint-mode-description"
+                                    class:backpack-not-supported=move || {
+                                        use crate::core::session::WalletType;
+                                        let current_session = session.get();
+                                        *current_session.get_wallet_type() == WalletType::Backpack
+                                    }
+                                >
+                                    {move || {
+                                        use crate::core::session::WalletType;
+                                        let current_session = session.get();
+                                        if *current_session.get_wallet_type() == WalletType::Backpack {
+                                            "(Not supported for Backpack wallet)"
+                                        } else {
+                                            "(Automatically mint multiple times)"
+                                        }
+                                    }}
+                                </span>
                             </div>
                         </label>
                     </div>
