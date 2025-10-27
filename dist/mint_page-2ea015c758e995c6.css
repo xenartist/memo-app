@@ -255,8 +255,15 @@
 }
 
 .supply-progress-header {
-    text-align: center;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 1rem;
+}
+
+.supply-progress-title {
+    text-align: center;
+    flex: 1;
 }
 
 .supply-progress-header h3 {
@@ -274,6 +281,44 @@
     color: #666;
     font-size: 0.9rem;
     margin: 0;
+}
+
+/* Refresh button */
+.supply-refresh-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: linear-gradient(135deg, #28a745, #20c997);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    box-shadow: 0 2px 4px rgba(40, 167, 69, 0.2);
+}
+
+.supply-refresh-btn:hover:not(:disabled) {
+    background: linear-gradient(135deg, #218838, #1e7e34);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
+}
+
+.supply-refresh-btn:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(40, 167, 69, 0.2);
+}
+
+.supply-refresh-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.supply-refresh-btn i {
+    font-size: 14px;
 }
 
 .supply-progress-track {
@@ -391,10 +436,23 @@
         padding: 0.75rem;
     }
     
+    .supply-progress-header {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
     .supply-progress-header h3 {
         font-size: 1rem;
         flex-direction: column;
         gap: 4px;
+    }
+    
+    .supply-refresh-btn span {
+        display: none;
+    }
+    
+    .supply-refresh-btn {
+        padding: 8px 12px;
     }
     
     .supply-progress-track {
@@ -508,6 +566,11 @@
     color: #666;
     line-height: 1.4;
     margin-left: 0.5rem;
+}
+
+.mint-mode-description.backpack-not-supported {
+    color: #dc2626;
+    font-weight: 600;
 }
 
 /* Auto Mint Settings */
