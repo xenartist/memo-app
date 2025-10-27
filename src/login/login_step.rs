@@ -163,20 +163,17 @@ pub fn LoginStep(
                         </div>
                     </button>
                     
+                    // Mainnet temporarily disabled for beta release
                     <button
-                        class=move || if selected_network.get() == NetworkType::Mainnet {
-                            "network-option active network-mainnet"
-                        } else {
-                            "network-option network-mainnet"
-                        }
-                        on:click=move |_| selected_network.set(NetworkType::Mainnet)
+                        class="network-option network-mainnet disabled"
+                        disabled
                     >
                         <div class="network-option-header">
                             <span class="network-name">"Mainnet"</span>
-                            <span class="network-badge network-badge-mainnet">"PROD"</span>
+                            <span class="network-badge network-badge-mainnet">"COMING SOON"</span>
                         </div>
                         <div class="network-description">
-                            {NetworkType::Mainnet.description()}
+                            "Mainnet will be available soon. Stay tuned!"
                         </div>
                     </button>
                 </div>
