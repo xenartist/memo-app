@@ -85,6 +85,39 @@
 .left-controls {
     display: flex;
     align-items: center;
+    gap: 12px;
+}
+
+/* Logout button */
+.logout-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.logout-btn:hover {
+    background: #5a6268;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(108, 117, 125, 0.3);
+}
+
+.logout-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 4px rgba(108, 117, 125, 0.2);
+}
+
+.logout-btn i {
+    font-size: 14px;
 }
 
 /* Initialize Burn Stats button */
@@ -914,6 +947,14 @@
         display: none;
     }
 
+    .logout-btn span {
+        display: none;
+    }
+    
+    .logout-btn {
+        padding: 8px 12px;
+    }
+
     .left-controls {
         order: 2;
     }
@@ -928,6 +969,7 @@
 .copy-button:focus,
 .import-btn:focus,
 .init-burn-stats-btn:focus,
+.logout-btn:focus,
 .btn-primary:focus,
 .btn-secondary:focus,
 .got-it-btn:focus {

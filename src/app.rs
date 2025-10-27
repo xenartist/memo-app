@@ -41,6 +41,16 @@ pub fn App() -> impl IntoView {
     // network selection (default to Mainnet for production use)
     let selected_network = create_rw_signal(NetworkType::Mainnet);
 
+    // Logout handler - clears session and returns to login screen
+    let handle_logout = move || {
+        log::info!("Logging out...");
+        // Clear session data
+        session.update(|s| s.logout());
+        // Return to login screen
+        set_show_main_page.set(false);
+        set_current_step.set(CreateWalletStep::Login);
+    };
+
     // check if wallet exists when app starts
     spawn_local(async move {
         if Wallet::exists().await {
@@ -52,7 +62,12 @@ pub fn App() -> impl IntoView {
         <main class="container">
             {move || {
                 if show_main_page.get() {
-                    view! { <MainPage session=session /> }
+                    view! { 
+                        <MainPage 
+                            session=session 
+                            on_logout=handle_logout
+                        /> 
+                    }
                 } else {
                     match current_step.get() {
                         CreateWalletStep::Initial => view! {
