@@ -174,14 +174,31 @@ pub fn SupplyProgressBar() -> impl IntoView {
         log::info!("Stopped supply data auto-refresh timer");
     });
 
+    // Manual refresh handler
+    let handle_refresh = move |_| {
+        log::info!("Manual refresh triggered");
+        fetch_supply_data(false); // false = don't show loading spinner
+    };
+
     view! {
         <div class="supply-progress-container">
             <div class="supply-progress-header">
-                <h3>
-                    <i class="fas fa-chart-line"></i>
-                    "Token Supply Progress"
-                </h3>
-                <p>"Current mining tier based on total supply"</p>
+                <div class="supply-progress-title">
+                    <h3>
+                        <i class="fas fa-chart-line"></i>
+                        "Token Supply Progress"
+                    </h3>
+                    <p>"Current mining tier based on total supply"</p>
+                </div>
+                <button 
+                    class="supply-refresh-btn"
+                    on:click=handle_refresh
+                    disabled=move || loading.get()
+                    title="Refresh supply data"
+                >
+                    <i class="fas fa-sync-alt" class:fa-spin=move || loading.get()></i>
+                    <span>"Refresh"</span>
+                </button>
             </div>
 
             {move || {
@@ -311,9 +328,16 @@ pub fn MintPage(
                     log::info!("Mint successful: {}", signature);
                     set_last_result.set(Some(signature));
                     
-                    // Update session to trigger balance refresh
-                    session.update(|s| {
-                        s.mark_balance_update_needed();
+                    // Wait for blockchain confirmation before updating balance
+                    let session_clone = session;
+                    spawn_local(async move {
+                        log::info!("Waiting 20 seconds for transaction confirmation...");
+                        TimeoutFuture::new(20000).await; // Wait 20 seconds
+                        
+                        log::info!("Triggering balance refresh after mint");
+                        session_clone.update(|s| {
+                            s.mark_balance_update_needed();
+                        });
                     });
                 },
                 Err(e) => {
@@ -335,6 +359,33 @@ pub fn MintPage(
             let mut current_count = 0u32;
             let mut should_continue = true;
             const MAX_RETRIES: u32 = 3; // Maximum retry attempts
+            
+            // Start balance refresh timer (every 20 seconds)
+            let session_for_timer = session;
+            let auto_mint_running_for_timer = auto_mint_running;
+            spawn_local(async move {
+                log::info!("Starting balance refresh timer for auto mint (every 20 seconds)");
+                loop {
+                    // Wait 20 seconds
+                    TimeoutFuture::new(20000).await;
+                    
+                    // Check if auto mint is still running
+                    if auto_mint_running_for_timer.get() {
+                        log::info!("Auto mint balance refresh timer triggered");
+                        session_for_timer.update(|s| {
+                            s.mark_balance_update_needed();
+                        });
+                    } else {
+                        // Auto mint stopped, do one final refresh and exit
+                        log::info!("Auto mint stopped, performing final balance refresh");
+                        session_for_timer.update(|s| {
+                            s.mark_balance_update_needed();
+                        });
+                        break;
+                    }
+                }
+                log::info!("Balance refresh timer for auto mint stopped");
+            });
             
             while should_continue {
                 // Check if we should stop
@@ -382,11 +433,6 @@ pub fn MintPage(
                         Ok(signature) => {
                             log::info!("Auto mint #{} successful: {}", current_count + 1, signature);
                             set_last_result.set(Some(format!("#{}: {}", current_count + 1, signature)));
-                            
-                            // Update session to trigger balance refresh
-                            session.update(|s| {
-                                s.mark_balance_update_needed();
-                            });
                             
                             current_count += 1;
                             set_auto_mint_current.set(current_count);
@@ -488,9 +534,12 @@ pub fn MintPage(
                                     name="mint_mode"
                                     checked=move || mint_mode.get() == MintMode::Auto
                                     disabled=move || {
+                                        use crate::core::session::WalletType;
+                                        let current_session = session.get();
+                                        let is_backpack = *current_session.get_wallet_type() == WalletType::Backpack;
                                         let is_auto_running = auto_mint_running.get();
                                         let is_manual_pending = start_minting.pending().get() || is_submitting.get();
-                                        is_auto_running || is_manual_pending
+                                        is_backpack || is_auto_running || is_manual_pending
                                     }
                                     on:change=move |_| {
                                         set_mint_mode.set(MintMode::Auto);
@@ -500,7 +549,24 @@ pub fn MintPage(
                                     <i class="fas fa-robot"></i>
                                     "Auto"
                                 </span>
-                                <span class="mint-mode-description">"(Automatically mint multiple times)"</span>
+                                <span 
+                                    class="mint-mode-description"
+                                    class:backpack-not-supported=move || {
+                                        use crate::core::session::WalletType;
+                                        let current_session = session.get();
+                                        *current_session.get_wallet_type() == WalletType::Backpack
+                                    }
+                                >
+                                    {move || {
+                                        use crate::core::session::WalletType;
+                                        let current_session = session.get();
+                                        if *current_session.get_wallet_type() == WalletType::Backpack {
+                                            "(Not supported for Backpack wallet)"
+                                        } else {
+                                            "(Automatically mint multiple times)"
+                                        }
+                                    }}
+                                </span>
                             </div>
                         </label>
                     </div>

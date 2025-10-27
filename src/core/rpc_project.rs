@@ -1,4 +1,5 @@
 use super::rpc_base::{RpcConnection, RpcError};
+use super::network_config::get_program_ids;
 use serde::{Serialize, Deserialize};
 use borsh::{BorshSerialize, BorshDeserialize};
 use std::str::FromStr;
@@ -32,22 +33,12 @@ const BORSH_FIXED_OVERHEAD: usize = BORSH_U8_SIZE + BORSH_U64_SIZE + BORSH_VEC_L
 pub struct ProjectConfig;
 
 impl ProjectConfig {
-    /// Memo-project program ID
-    pub const MEMO_PROJECT_PROGRAM_ID: &'static str = "ENVapgjzzMjbRhLJ279yNsSgaQtDYYVgWq98j54yYnyx";
+    // Note: Program IDs and token mint are now retrieved dynamically from network configuration
     
     /// PDA Seeds for project contract
     pub const GLOBAL_COUNTER_SEED: &'static [u8] = b"global_counter";
     pub const PROJECT_SEED: &'static [u8] = b"project";
     pub const BURN_LEADERBOARD_SEED: &'static [u8] = b"burn_leaderboard";
-    
-    /// Memo-burn program ID (referenced by project contract)
-    pub const MEMO_BURN_PROGRAM_ID: &'static str = "FEjJ9KKJETocmaStfsFteFrktPchDLAVNTMeTvndoxaP";
-    
-    /// Token 2022 Program ID
-    pub const TOKEN_2022_PROGRAM_ID: &'static str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-    
-    /// Authorized MEMO token mint address
-    pub const MEMO_TOKEN_MINT: &'static str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
     
     /// Minimum burn amount required to create a project (42,069 tokens = 42,069,000,000 lamports)
     pub const MIN_PROJECT_CREATION_BURN_AMOUNT: u64 = 42_069_000_000;
@@ -70,8 +61,30 @@ impl ProjectConfig {
     
     /// Helper functions
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_PROJECT_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.project_program_id)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-project program ID: {}", e)))
+    }
+    
+    /// Get memo-burn program ID
+    pub fn get_memo_burn_program_id() -> Result<Pubkey, RpcError> {
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.burn_program_id)
+            .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-burn program ID: {}", e)))
+    }
+    
+    /// Get Token 2022 program ID
+    pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.token_2022_program_id)
+            .map_err(|e| RpcError::InvalidAddress(format!("Invalid Token 2022 program ID: {}", e)))
+    }
+    
+    /// Get memo token mint
+    pub fn get_memo_token_mint() -> Result<Pubkey, RpcError> {
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.token_mint)
+            .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo token mint: {}", e)))
     }
     
     /// Calculate global counter PDA
@@ -99,24 +112,6 @@ impl ProjectConfig {
             &[Self::BURN_LEADERBOARD_SEED],
             &program_id
         ))
-    }
-    
-    /// Helper to get memo-burn program ID
-    pub fn get_memo_burn_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_BURN_PROGRAM_ID)
-            .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-burn program ID: {}", e)))
-    }
-    
-    /// Helper to get token mint
-    pub fn get_memo_token_mint() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_TOKEN_MINT)
-            .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo token mint: {}", e)))
-    }
-    
-    /// Helper to get Token 2022 program ID
-    pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::TOKEN_2022_PROGRAM_ID)
-            .map_err(|e| RpcError::InvalidAddress(format!("Invalid Token 2022 program ID: {}", e)))
     }
     
     /// Get create_project instruction discriminator
@@ -169,8 +164,7 @@ impl ProjectConfig {
     
     /// Calculate user global burn stats PDA (from memo-burn program)
     pub fn get_user_global_burn_stats_pda(user_pubkey: &Pubkey) -> Result<(Pubkey, u8), RpcError> {
-        let memo_burn_program_id = Pubkey::from_str(Self::MEMO_BURN_PROGRAM_ID)
-            .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-burn program ID: {}", e)))?;
+        let memo_burn_program_id = Self::get_memo_burn_program_id()?;
         Ok(Pubkey::find_program_address(
             &[b"user_global_burn_stats", user_pubkey.as_ref()],
             &memo_burn_program_id
@@ -683,6 +677,339 @@ fn parse_project_memo_data(memo_data: &[u8]) -> Option<(String, String, String, 
 }
 
 impl RpcConnection {
+    /// Build an unsigned transaction to create a project
+    pub async fn build_create_project_transaction(
+        &self,
+        user_pubkey: &Pubkey,
+        name: &str,
+        description: &str,
+        image: &str,
+        website: &str,
+        tags: Vec<String>,
+        burn_amount: u64,
+    ) -> Result<(Transaction, u64), RpcError> {
+        // Basic parameter validation
+        if name.is_empty() || name.len() > 64 {
+            return Err(RpcError::InvalidParameter(format!("Project name must be 1-64 characters, got {}", name.len())));
+        }
+        if description.len() > 256 {
+            return Err(RpcError::InvalidParameter(format!("Project description must be at most 256 characters, got {}", description.len())));
+        }
+        if image.len() > 256 {
+            return Err(RpcError::InvalidParameter(format!("Project image must be at most 256 characters, got {}", image.len())));
+        }
+        if website.len() > 128 {
+            return Err(RpcError::InvalidParameter(format!("Project website must be at most 128 characters, got {}", website.len())));
+        }
+        if tags.len() > 4 {
+            return Err(RpcError::InvalidParameter(format!("Too many tags: {} (max: 4)", tags.len())));
+        }
+        for (i, tag) in tags.iter().enumerate() {
+            if tag.is_empty() || tag.len() > 32 {
+                return Err(RpcError::InvalidParameter(format!("Invalid tag {}: '{}' (must be 1-32 characters)", i, tag)));
+            }
+        }
+        if burn_amount < ProjectConfig::MIN_PROJECT_CREATION_BURN_AMOUNT {
+            return Err(RpcError::InvalidParameter(format!("Burn amount must be at least {} MEMO tokens", ProjectConfig::MIN_PROJECT_CREATION_BURN_AMOUNT / 1_000_000)));
+        }
+        if burn_amount % 1_000_000 != 0 {
+            return Err(RpcError::InvalidParameter("Burn amount must be a whole number of tokens".to_string()));
+        }
+        
+        log::info!("Building create project transaction '{}': {} tokens", name, burn_amount / 1_000_000);
+        
+        // Get next project_id
+        let global_stats = self.get_project_global_statistics().await?;
+        let expected_project_id = global_stats.total_projects;
+        
+        let project_program_id = ProjectConfig::get_program_id()?;
+        let memo_token_mint = ProjectConfig::get_memo_token_mint()?;
+        let token_2022_program_id = ProjectConfig::get_token_2022_program_id()?;
+        let memo_burn_program_id = ProjectConfig::get_memo_burn_program_id()?;
+        
+        let (global_counter_pda, _) = ProjectConfig::get_global_counter_pda()?;
+        let (project_pda, _) = ProjectConfig::get_project_pda(expected_project_id)?;
+        let (burn_leaderboard_pda, _) = ProjectConfig::get_burn_leaderboard_pda()?;
+        let (user_global_burn_stats_pda, _) = ProjectConfig::get_user_global_burn_stats_pda(user_pubkey)?;
+        let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
+            user_pubkey, &memo_token_mint, &token_2022_program_id,
+        );
+        
+        let project_creation_data = ProjectCreationData::new(
+            expected_project_id, name.to_string(), description.to_string(), 
+            image.to_string(), website.to_string(), tags,
+        );
+        
+        let burn_memo = BurnMemo {
+            version: 1,
+            burn_amount,
+            payload: project_creation_data.try_to_vec()
+                .map_err(|e| RpcError::Other(format!("Failed to serialize project data: {}", e)))?,
+        };
+        
+        let memo_data_bytes = burn_memo.try_to_vec()
+            .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo: {}", e)))?;
+        let memo_data_base64 = base64::encode(&memo_data_bytes);
+        
+        ProjectConfig::validate_memo_length(memo_data_base64.as_bytes())?;
+        
+        let mut instructions = vec![];
+        
+        // Add compute budget instruction
+        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(400_000));
+        
+        // Add memo instruction
+        instructions.push(spl_memo::build_memo(memo_data_base64.as_bytes(), &[user_pubkey]));
+        
+        // Create project instruction
+        let mut instruction_data = ProjectConfig::get_create_project_discriminator().to_vec();
+        instruction_data.extend_from_slice(&expected_project_id.to_le_bytes());
+        instruction_data.extend_from_slice(&burn_amount.to_le_bytes());
+        
+        instructions.push(Instruction::new_with_bytes(
+            project_program_id,
+            &instruction_data,
+            vec![
+                AccountMeta::new(*user_pubkey, true),
+                AccountMeta::new(global_counter_pda, false),
+                AccountMeta::new(project_pda, false),
+                AccountMeta::new(burn_leaderboard_pda, false),
+                AccountMeta::new(memo_token_mint, false),
+                AccountMeta::new(user_token_account, false),
+                AccountMeta::new(user_global_burn_stats_pda, false),
+                AccountMeta::new_readonly(token_2022_program_id, false),
+                AccountMeta::new_readonly(memo_burn_program_id, false),
+                AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
+                AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false),
+            ],
+        ));
+        
+        let blockhash = self.get_latest_blockhash().await?;
+        
+        let message = Message::new(&instructions, Some(user_pubkey));
+        let mut transaction = Transaction::new_unsigned(message);
+        transaction.message.recent_blockhash = blockhash;
+        
+        Ok((transaction, expected_project_id))
+    }
+
+    /// Build an unsigned transaction to update a project
+    pub async fn build_update_project_transaction(
+        &self,
+        user_pubkey: &Pubkey,
+        project_id: u64,
+        name: Option<String>,
+        description: Option<String>,
+        image: Option<String>,
+        website: Option<String>,
+        tags: Option<Vec<String>>,
+        burn_amount: u64,
+    ) -> Result<Transaction, RpcError> {
+        // Basic parameter validation
+        if let Some(ref n) = name {
+            if n.is_empty() || n.len() > 64 {
+                return Err(RpcError::InvalidParameter(format!("Project name must be 1-64 characters, got {}", n.len())));
+            }
+        }
+        if let Some(ref d) = description {
+            if d.len() > 256 {
+                return Err(RpcError::InvalidParameter(format!("Project description must be at most 256 characters, got {}", d.len())));
+            }
+        }
+        if let Some(ref i) = image {
+            if i.len() > 256 {
+                return Err(RpcError::InvalidParameter(format!("Project image must be at most 256 characters, got {}", i.len())));
+            }
+        }
+        if let Some(ref w) = website {
+            if w.len() > 128 {
+                return Err(RpcError::InvalidParameter(format!("Project website must be at most 128 characters, got {}", w.len())));
+            }
+        }
+        if let Some(ref t) = tags {
+            if t.len() > 4 {
+                return Err(RpcError::InvalidParameter(format!("Too many tags: {} (max: 4)", t.len())));
+            }
+            for (i, tag) in t.iter().enumerate() {
+                if tag.is_empty() || tag.len() > 32 {
+                    return Err(RpcError::InvalidParameter(format!("Invalid tag {}: '{}' (must be 1-32 characters)", i, tag)));
+                }
+            }
+        }
+        if burn_amount < ProjectConfig::MIN_PROJECT_UPDATE_BURN_AMOUNT {
+            return Err(RpcError::InvalidParameter(format!("Burn amount must be at least {} MEMO tokens", ProjectConfig::MIN_PROJECT_UPDATE_BURN_AMOUNT / 1_000_000)));
+        }
+        if burn_amount % 1_000_000 != 0 {
+            return Err(RpcError::InvalidParameter("Burn amount must be a whole number of tokens".to_string()));
+        }
+        
+        log::info!("Building update project transaction for project {}: {} tokens", project_id, burn_amount / 1_000_000);
+        
+        let project_program_id = ProjectConfig::get_program_id()?;
+        let memo_token_mint = ProjectConfig::get_memo_token_mint()?;
+        let token_2022_program_id = ProjectConfig::get_token_2022_program_id()?;
+        let memo_burn_program_id = ProjectConfig::get_memo_burn_program_id()?;
+        
+        let (project_pda, _) = ProjectConfig::get_project_pda(project_id)?;
+        let (burn_leaderboard_pda, _) = ProjectConfig::get_burn_leaderboard_pda()?;
+        let (user_global_burn_stats_pda, _) = ProjectConfig::get_user_global_burn_stats_pda(user_pubkey)?;
+        let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
+            user_pubkey, &memo_token_mint, &token_2022_program_id,
+        );
+        
+        let project_update_data = ProjectUpdateData::new(project_id, name, description, image, website, tags);
+        
+        let burn_memo = BurnMemo {
+            version: 1,
+            burn_amount,
+            payload: project_update_data.try_to_vec()
+                .map_err(|e| RpcError::Other(format!("Failed to serialize project data: {}", e)))?,
+        };
+        
+        let memo_data_bytes = burn_memo.try_to_vec()
+            .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo: {}", e)))?;
+        let memo_data_base64 = base64::encode(&memo_data_bytes);
+        
+        ProjectConfig::validate_memo_length(memo_data_base64.as_bytes())?;
+        
+        let mut instructions = vec![];
+        
+        // Add compute budget instruction
+        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(400_000));
+        
+        // Add memo instruction
+        instructions.push(spl_memo::build_memo(memo_data_base64.as_bytes(), &[user_pubkey]));
+        
+        // Update project instruction
+        let mut instruction_data = ProjectConfig::get_update_project_discriminator().to_vec();
+        instruction_data.extend_from_slice(&project_id.to_le_bytes());
+        instruction_data.extend_from_slice(&burn_amount.to_le_bytes());
+        
+        instructions.push(Instruction::new_with_bytes(
+            project_program_id,
+            &instruction_data,
+            vec![
+                AccountMeta::new(*user_pubkey, true),
+                AccountMeta::new(project_pda, false),
+                AccountMeta::new(burn_leaderboard_pda, false),
+                AccountMeta::new(memo_token_mint, false),
+                AccountMeta::new(user_token_account, false),
+                AccountMeta::new(user_global_burn_stats_pda, false),
+                AccountMeta::new_readonly(token_2022_program_id, false),
+                AccountMeta::new_readonly(memo_burn_program_id, false),
+                AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false),
+            ],
+        ));
+        
+        let blockhash = self.get_latest_blockhash().await?;
+        
+        let message = Message::new(&instructions, Some(user_pubkey));
+        let mut transaction = Transaction::new_unsigned(message);
+        transaction.message.recent_blockhash = blockhash;
+        
+        Ok(transaction)
+    }
+
+    /// Build an unsigned transaction to burn tokens for a project
+    pub async fn build_burn_tokens_for_project_transaction(
+        &self,
+        user_pubkey: &Pubkey,
+        project_id: u64,
+        amount: u64,
+        message: &str,
+    ) -> Result<Transaction, RpcError> {
+        // Validate amount
+        if amount < ProjectConfig::MIN_PROJECT_BURN_AMOUNT {
+            return Err(RpcError::InvalidParameter(format!(
+                "Burn amount must be at least {} MEMO tokens", 
+                ProjectConfig::MIN_PROJECT_BURN_AMOUNT / 1_000_000
+            )));
+        }
+        
+        if amount % 1_000_000 != 0 {
+            return Err(RpcError::InvalidParameter(
+                "Burn amount must be a whole number of tokens".to_string()
+            ));
+        }
+        
+        // Validate message length
+        if message.len() > 696 {
+            return Err(RpcError::InvalidParameter(
+                "Burn message too long (max 696 characters)".to_string()
+            ));
+        }
+        
+        log::info!("Building burn tokens for project transaction: {} tokens for project {}", 
+                  amount / 1_000_000, project_id);
+        
+        let project_program_id = ProjectConfig::get_program_id()?;
+        let memo_token_mint = ProjectConfig::get_memo_token_mint()?;
+        let token_2022_program_id = ProjectConfig::get_token_2022_program_id()?;
+        let memo_burn_program_id = ProjectConfig::get_memo_burn_program_id()?;
+        
+        let (project_pda, _) = ProjectConfig::get_project_pda(project_id)?;
+        let (burn_leaderboard_pda, _) = ProjectConfig::get_burn_leaderboard_pda()?;
+        let (user_global_burn_stats_pda, _) = ProjectConfig::get_user_global_burn_stats_pda(user_pubkey)?;
+        let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
+            user_pubkey,
+            &memo_token_mint,
+            &token_2022_program_id,
+        );
+        
+        let burn_data = ProjectBurnData::new(project_id, user_pubkey.to_string(), message.to_string());
+        burn_data.validate(project_id, &user_pubkey.to_string())?;
+        
+        let burn_memo = BurnMemo {
+            version: 1,
+            burn_amount: amount,
+            payload: burn_data.try_to_vec()
+                .map_err(|e| RpcError::Other(format!("Failed to serialize burn data: {}", e)))?,
+        };
+        
+        let memo_data_bytes = burn_memo.try_to_vec()
+            .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo: {}", e)))?;
+        let memo_data_base64 = base64::encode(&memo_data_bytes);
+        
+        ProjectConfig::validate_memo_length(memo_data_base64.as_bytes())?;
+        
+        let mut instructions = vec![];
+        
+        // Add compute budget instruction
+        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(400_000));
+        
+        // Add memo instruction
+        instructions.push(spl_memo::build_memo(memo_data_base64.as_bytes(), &[user_pubkey]));
+        
+        // Burn instruction
+        let mut instruction_data = ProjectConfig::get_burn_for_project_discriminator().to_vec();
+        instruction_data.extend_from_slice(&project_id.to_le_bytes());
+        instruction_data.extend_from_slice(&amount.to_le_bytes());
+        
+        instructions.push(Instruction::new_with_bytes(
+            project_program_id,
+            &instruction_data,
+            vec![
+                AccountMeta::new(*user_pubkey, true),
+                AccountMeta::new(project_pda, false),
+                AccountMeta::new(burn_leaderboard_pda, false),
+                AccountMeta::new(memo_token_mint, false),
+                AccountMeta::new(user_token_account, false),
+                AccountMeta::new(user_global_burn_stats_pda, false),
+                AccountMeta::new_readonly(token_2022_program_id, false),
+                AccountMeta::new_readonly(memo_burn_program_id, false),
+                AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false),
+            ],
+        ));
+        
+        let blockhash = self.get_latest_blockhash().await?;
+        
+        let message = Message::new(&instructions, Some(user_pubkey));
+        let mut transaction = Transaction::new_unsigned(message);
+        transaction.message.recent_blockhash = blockhash;
+        
+        Ok(transaction)
+    }
+
     /// Get global project statistics from the memo-project contract
     /// 
     /// # Returns
@@ -714,10 +1041,11 @@ impl RpcConnection {
             .as_str()
             .ok_or_else(|| RpcError::Other("Failed to get account owner".to_string()))?;
         
-        if owner != ProjectConfig::MEMO_PROJECT_PROGRAM_ID {
+        let expected_program_id = ProjectConfig::get_program_id()?.to_string();
+        if owner != expected_program_id {
             return Err(RpcError::Other(format!(
                 "Account not owned by memo-project program. Expected: {}, Got: {}", 
-                ProjectConfig::MEMO_PROJECT_PROGRAM_ID, owner
+                expected_program_id, owner
             )));
         }
         
@@ -769,10 +1097,11 @@ impl RpcConnection {
             .as_str()
             .ok_or_else(|| RpcError::Other("Failed to get account owner".to_string()))?;
         
-        if owner != ProjectConfig::MEMO_PROJECT_PROGRAM_ID {
+        let expected_program_id = ProjectConfig::get_program_id()?.to_string();
+        if owner != expected_program_id {
             return Err(RpcError::Other(format!(
                 "Account not owned by memo-project program. Expected: {}, Got: {}", 
-                ProjectConfig::MEMO_PROJECT_PROGRAM_ID, owner
+                expected_program_id, owner
             )));
         }
         
@@ -900,7 +1229,7 @@ impl RpcConnection {
         })
     }
     
-    /// Create a new project (requires burning tokens)
+    /// Legacy method - use build_create_project_transaction + sign in Session + send_signed_transaction
     /// 
     /// # Parameters
     /// * `name` - Project name (1-64 characters)
@@ -1128,6 +1457,8 @@ impl RpcConnection {
     /// * `tags` - New project tags (optional, max 4 tags, each max 32 characters)
     /// * `burn_amount` - Amount of MEMO tokens to burn (in lamports, must be >= 42,069,000,000)
     /// * `keypair_bytes` - The user's keypair bytes for signing
+    /// 
+    /// Legacy method - use build_update_project_transaction + sign in Session + send_signed_transaction
     /// 
     /// # Returns
     /// Result containing transaction signature
@@ -1359,6 +1690,7 @@ impl RpcConnection {
     }
 
     /// Burn tokens for a project
+    /// Legacy method - use build_burn_tokens_for_project_transaction + sign in Session + send_signed_transaction
     /// 
     /// # Parameters
     /// * `project_id` - The ID of the project to burn tokens for
@@ -1678,10 +2010,11 @@ impl RpcConnection {
             .as_str()
             .ok_or_else(|| RpcError::Other("Failed to get leaderboard account owner".to_string()))?;
         
-        if owner != ProjectConfig::MEMO_PROJECT_PROGRAM_ID {
+        let expected_program_id = ProjectConfig::get_program_id()?.to_string();
+        if owner != expected_program_id {
             return Err(RpcError::Other(format!(
                 "Account not owned by memo-project program. Expected: {}, Got: {}", 
-                ProjectConfig::MEMO_PROJECT_PROGRAM_ID, owner
+                expected_program_id, owner
             )));
         }
         

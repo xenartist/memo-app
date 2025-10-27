@@ -3,8 +3,13 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Request, RequestInit, RequestMode, Response};
 use std::fmt;
+use std::str::FromStr;
 use gloo_utils::format::JsValueSerdeExt;
 use js_sys::{Date, Math};
+use solana_sdk::transaction::Transaction;
+use base64;
+use bincode;
+use super::network_config::try_get_network_config;
 
 // error type
 #[derive(Debug, Deserialize)]
@@ -60,15 +65,8 @@ struct RpcResponse<T> {
 }
 
 impl RpcConnection {
-    // X1 testnet RPC endpoints list for load balancing and redundancy
-    const DEFAULT_RPC_ENDPOINTS: &'static [&'static str] = &[
-        "https://rpc.testnet.x1.xyz",
-        // "https://rpc-testnet.x1.wiki",
-        // attention: the following endpoints are examples, please configure the actual available X1 testnet RPC endpoints
-        // "https://rpc2.testnet.x1.xyz", 
-        // "https://rpc3.testnet.x1.xyz",
-        // if you need to add more endpoints, please uncomment and use the actual endpoint address
-    ];
+    // Fallback RPC endpoint (used before network is initialized during login)
+    const FALLBACK_RPC_ENDPOINT: &'static str = "https://rpc.testnet.x1.xyz";
     
     pub fn new() -> Self {
         let selected_endpoint = Self::select_random_endpoint();
@@ -78,7 +76,14 @@ impl RpcConnection {
 
     /// select a random endpoint from the RPC endpoint list
     fn select_random_endpoint() -> &'static str {
-        let endpoints = Self::DEFAULT_RPC_ENDPOINTS;
+        // Try to get network configuration endpoints
+        let endpoints = if let Some(config) = try_get_network_config() {
+            config.rpc_endpoints
+        } else {
+            // Network not initialized yet (before login), use fallback
+            log::debug!("Network not initialized, using fallback endpoint");
+            return Self::FALLBACK_RPC_ENDPOINT;
+        };
         
         // if there is only one endpoint, return it directly
         if endpoints.len() == 1 {
@@ -315,11 +320,6 @@ impl RpcConnection {
         Ok(result.to_string())
     }
 
-    pub async fn get_latest_blockhash(&self) -> Result<String, RpcError> {
-        let result: serde_json::Value = self.send_request("getLatestBlockhash", Vec::<String>::new()).await?;
-        Ok(result.to_string())
-    }
-
     pub async fn send_transaction(&self, serialized_tx: &str) -> Result<String, RpcError> {
         self.send_request("sendTransaction", vec![serialized_tx]).await
     }
@@ -370,6 +370,67 @@ impl RpcConnection {
         let result: serde_json::Value = self.send_request("simulateTransaction", params).await?;
         Ok(result.to_string())
     }
+
+    // ============ Common Transaction Utilities ============
+
+    /// Get the latest blockhash from the network
+    /// 
+    /// This is a common utility method used by all transaction builders.
+    /// 
+    /// # Returns
+    /// The recent blockhash as a Hash
+    pub async fn get_latest_blockhash(&self) -> Result<solana_sdk::hash::Hash, RpcError> {
+        let blockhash: serde_json::Value = self.send_request(
+            "getLatestBlockhash",
+            serde_json::json!([{
+                "commitment": "confirmed",
+                "minContextSlot": 0
+            }])
+        ).await?;
+        
+        let recent_blockhash = blockhash["value"]["blockhash"]
+            .as_str()
+            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
+        
+        solana_sdk::hash::Hash::from_str(recent_blockhash)
+            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))
+    }
+
+    /// Send a signed transaction to the network
+    /// 
+    /// This is a common utility method used by all modules after signing transactions.
+    /// 
+    /// # Parameters
+    /// * `transaction` - The signed transaction to send
+    /// 
+    /// # Returns
+    /// Transaction signature on success
+    pub async fn send_signed_transaction(
+        &self,
+        transaction: &Transaction,
+    ) -> Result<String, RpcError> {
+        // Serialize transaction
+        let serialized_tx = base64::encode(bincode::serialize(transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?);
+        
+        let params = serde_json::json!([
+            serialized_tx,
+            {
+                "encoding": "base64",
+                "preflightCommitment": "confirmed",
+                "skipPreflight": false,
+                "maxRetries": 3
+            }
+        ]);
+        
+        log::info!("Sending signed transaction...");
+        let result = self.send_request("sendTransaction", params).await?;
+        log::info!("Transaction sent successfully: {}", result);
+        
+        Ok(result)
+    }
+
+    // ============ End Transaction Utilities ============
 
     /// interface: get transaction details by signature
     /// return full transaction information, including meta, transaction, etc.

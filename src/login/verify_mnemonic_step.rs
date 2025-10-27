@@ -1,5 +1,6 @@
 use leptos::*;
 use crate::CreateWalletStep;
+use crate::core::NetworkType;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
@@ -13,7 +14,8 @@ struct WordState {
 #[component]
 pub fn VerifyMnemonicStep(
     mnemonic: ReadSignal<String>,
-    set_current_step: WriteSignal<CreateWalletStep>
+    set_current_step: WriteSignal<CreateWalletStep>,
+    _selected_network: RwSignal<NetworkType>,
 ) -> impl IntoView {
     let words: Vec<String> = mnemonic.get().split_whitespace().map(String::from).collect();
     let total_words = words.len();
@@ -44,15 +46,25 @@ pub fn VerifyMnemonicStep(
                 <h2>"Verify Your Mnemonic Phrase"</h2>
             </div>
             <p class="verify-instruction">
-                "Click the words in the correct order to verify your backup"
+                <i class="fas fa-hand-pointer"></i>
+                " Click the words in the correct order to verify your backup"
             </p>
 
             <div class="current-word-index">
+                <i class="fas fa-arrow-down"></i>
+                " "
                 {move || format!("Select word #{}", current_index.get() + 1)}
             </div>
 
             <div class="error-message">
-                {move || error_message.get()}
+                {move || if !error_message.get().is_empty() {
+                    view! {
+                        <i class="fas fa-times-circle"></i>
+                        <span>{error_message.get()}</span>
+                    }.into_view()
+                } else {
+                    view! { <></> }.into_view()
+                }}
             </div>
 
             <div class="word-grid">
@@ -81,9 +93,14 @@ pub fn VerifyMnemonicStep(
                         view! {
                             <button
                                 class="word-button"
+                                class:selected=word.selected
                                 on:click=on_click
                             >
-                                {if word.selected { String::new() } else { word.word }}
+                                {if word.selected { 
+                                    view! { <i class="fas fa-check"></i> }.into_view()
+                                } else { 
+                                    view! { <span>{word.word.clone()}</span> }.into_view()
+                                }}
                             </button>
                         }
                     }).collect_view()
@@ -91,6 +108,8 @@ pub fn VerifyMnemonicStep(
             </div>
 
             <div class="progress-bar">
+                <i class="fas fa-tasks"></i>
+                " "
                 {move || format!("Progress: {}/{}", current_index.get(), total_words)}
             </div>
         </div>

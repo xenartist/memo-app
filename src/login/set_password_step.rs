@@ -7,6 +7,7 @@ use crate::core::wallet::{
     get_default_derivation_path
 };
 use crate::core::encrypt;
+use crate::core::NetworkType;
 use hex;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
@@ -19,6 +20,7 @@ pub fn SetPasswordStep(
     set_current_step: WriteSignal<CreateWalletStep>,
     set_wallet_address: WriteSignal<String>,
     set_encrypted_seed: WriteSignal<String>,
+    selected_network: RwSignal<NetworkType>,
 ) -> impl IntoView {
     let (show_passphrase, set_show_passphrase) = create_signal(false);
     let (passphrase, set_passphrase) = create_signal(String::new());
@@ -126,6 +128,19 @@ pub fn SetPasswordStep(
                 <h2>"Set Password"</h2>
             </div>
             
+            // Display selected network (read-only)
+            <div class="info-message" style="margin: 1rem auto; max-width: 500px;">
+                <i class="fas fa-network-wired"></i>
+                <span>
+                    "Network: "
+                    {move || match selected_network.get() {
+                        NetworkType::Testnet => "Testnet",
+                        NetworkType::ProdStaging => "Prod Staging",
+                        NetworkType::Mainnet => "Mainnet",
+                    }}
+                </span>
+            </div>
+            
             <div class="advanced-options">
                 <label class="checkbox-label">
                     <input
@@ -137,10 +152,12 @@ pub fn SetPasswordStep(
                         // disable checkbox when encrypting
                         prop:disabled=move || is_encrypting.get()
                     />
-                    "Set BIP39 passphrase"
+                    <i class="fas fa-lock"></i>
+                    " Set BIP39 passphrase"
                 </label>
                 <p class="warning-text">
-                    "Only enable this if you understand BIP39 passphrase. This adds an additional layer of security but requires careful management."
+                    <i class="fas fa-exclamation-triangle"></i>
+                    " Only enable this if you understand BIP39 passphrase. This adds an additional layer of security but requires careful management."
                 </p>
             </div>
 
@@ -148,7 +165,10 @@ pub fn SetPasswordStep(
                 // BIP39 passphrase (conditional display)
                 {move || show_passphrase.get().then(|| view! {
                     <div class="passphrase-section">
-                        <h3 class="section-title">"BIP39 Passphrase"</h3>
+                        <h3 class="section-title">
+                            <i class="fas fa-key"></i>
+                            " BIP39 Passphrase"
+                        </h3>
                         <div class="input-group">
                             <input
                                 type="password"
@@ -176,7 +196,10 @@ pub fn SetPasswordStep(
 
                 // normal password input box
                 <div class="password-section">
-                    <h3 class="section-title">"Wallet Password"</h3>
+                    <h3 class="section-title">
+                        <i class="fas fa-shield-alt"></i>
+                        " Wallet Password"
+                    </h3>
                     <div class="input-group">
                         <input
                             type="password"
@@ -216,7 +239,14 @@ pub fn SetPasswordStep(
                 }}
 
                 <div class="error-message">
-                    {move || error_message.get()}
+                    {move || if !error_message.get().is_empty() {
+                        view! {
+                            <i class="fas fa-exclamation-circle"></i>
+                            <span>{error_message.get()}</span>
+                        }.into_view()
+                    } else {
+                        view! { <></> }.into_view()
+                    }}
                 </div>
 
                 <button 
@@ -224,7 +254,17 @@ pub fn SetPasswordStep(
                     class="wallet-btn"
                     prop:disabled=move || is_encrypting.get()
                 >
-                    {move || if is_encrypting.get() { "Encrypting..." } else { "Continue" }}
+                    {move || if is_encrypting.get() { 
+                        view! {
+                            <i class="fas fa-spinner fa-spin"></i>
+                            " Encrypting..."
+                        }.into_view()
+                    } else { 
+                        view! {
+                            <i class="fas fa-arrow-right"></i>
+                            " Continue"
+                        }.into_view()
+                    }}
                 </button>
             </form>
         </div>

@@ -1,4 +1,5 @@
 use super::rpc_base::{RpcConnection, RpcError};
+use super::network_config::get_program_ids;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use solana_sdk::{
@@ -27,14 +28,8 @@ pub struct SupplyTier {
 pub struct MintConfig;
 
 impl MintConfig {
-    // Mint contract program ID
-    pub const MINT_PROGRAM_ID: &'static str = "A31a17bhgQyRQygeZa1SybytjbCdjMpu6oPr9M3iQWzy";
-    
-    // Authorized mint token address - now using global constant
-    pub const TOKEN_MINT: &'static str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
-    
-    // Token 2022 Program ID
-    pub const TOKEN_2022_PROGRAM_ID: &'static str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+    // Note: Mint program ID, Token mint, and Token 2022 program ID are now 
+    // retrieved dynamically from network configuration
     
     // PDA Seeds
     pub const MINT_AUTHORITY_SEED: &'static [u8] = b"mint_authority";
@@ -50,17 +45,20 @@ impl MintConfig {
 // Helper functions
 impl MintConfig {
     pub fn get_mint_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MINT_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.mint_program_id)
             .map_err(|e| RpcError::Other(format!("Invalid mint program ID: {}", e)))
     }
     
     pub fn get_token_mint() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::TOKEN_MINT)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.token_mint)
             .map_err(|e| RpcError::Other(format!("Invalid token mint address: {}", e)))
     }
     
     pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::TOKEN_2022_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.token_2022_program_id)
             .map_err(|e| RpcError::Other(format!("Invalid Token 2022 program ID: {}", e)))
     }
     
@@ -196,7 +194,155 @@ impl MintConfig {
 
 // Mint RPC client implementation
 impl RpcConnection {
-    /// Mint tokens using the memo mint contract
+    /// Build an unsigned mint transaction
+    /// 
+    /// # Parameters
+    /// * `user_pubkey` - The user's public key
+    /// * `memo` - The memo text (must be 69-800 bytes)
+    /// 
+    /// # Returns
+    /// An unsigned Transaction ready to be signed
+    pub async fn build_mint_transaction(
+        &self,
+        user_pubkey: &Pubkey,
+        memo: &str,
+    ) -> Result<Transaction, RpcError> {
+        // Validate memo length
+        MintConfig::validate_memo_length(memo)?;
+        
+        log::info!("Building mint transaction for user: {} with memo length: {} bytes", user_pubkey, memo.len());
+        
+        // Get configuration values
+        let mint_program_id = MintConfig::get_mint_program_id()?;
+        let mint = MintConfig::get_token_mint()?;
+        let token_2022_program_id = MintConfig::get_token_2022_program_id()?;
+        
+        // Calculate mint authority PDA
+        let (mint_authority_pda, _) = MintConfig::get_mint_authority_pda()?;
+        
+        // Calculate user's token account (ATA) using Token 2022 program
+        let token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
+            user_pubkey,
+            &mint,
+            &token_2022_program_id,
+        );
+        
+        log::info!("Token account: {}", token_account);
+        log::info!("Mint authority PDA: {}", mint_authority_pda);
+        
+        // Check if token account exists
+        let token_account_info = self.get_account_info(&token_account.to_string(), Some("base64")).await?;
+        let token_account_info: serde_json::Value = serde_json::from_str(&token_account_info)
+            .map_err(|e| RpcError::Other(format!("Failed to parse token account info: {}", e)))?;
+        
+        // Build base instructions
+        let mut base_instructions = vec![];
+        
+        // Add memo instruction first
+        base_instructions.push(spl_memo::build_memo(
+            memo.as_bytes(),
+            &[user_pubkey],
+        ));
+        
+        // If token account doesn't exist, add create ATA instruction for Token 2022
+        if token_account_info["value"].is_null() {
+            log::info!("Token account does not exist, will create it");
+            base_instructions.push(
+                spl_associated_token_account::instruction::create_associated_token_account_idempotent(
+                    user_pubkey,           // Funding account (fee payer)
+                    user_pubkey,           // Wallet address  
+                    &mint,                 // Mint address
+                    &token_2022_program_id // Token 2022 program ID
+                )
+            );
+        }
+        
+        // Create the mint instruction
+        let instruction_data = MintConfig::get_process_mint_discriminator().to_vec();
+        
+        let accounts = vec![
+            AccountMeta::new(*user_pubkey, true),                   // user (signer)
+            AccountMeta::new(mint, false),                          // mint
+            AccountMeta::new_readonly(mint_authority_pda, false),   // mint_authority PDA
+            AccountMeta::new(token_account, false),                 // token_account
+            AccountMeta::new_readonly(token_2022_program_id, false), // Token 2022 program
+            AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false), // instructions sysvar
+        ];
+        
+        // Add mint instruction
+        base_instructions.push(Instruction::new_with_bytes(
+            mint_program_id,
+            &instruction_data,
+            accounts,
+        ));
+        
+        // Get latest blockhash
+        let recent_blockhash = self.get_latest_blockhash().await?;
+        
+        // Create simulation transaction (need to create a temporary keypair for simulation)
+        // Note: We'll simulate without compute budget to get the units needed
+        let sim_message = Message::new(
+            &base_instructions,
+            Some(user_pubkey),
+        );
+        
+        let mut sim_transaction = Transaction::new_unsigned(sim_message);
+        sim_transaction.message.recent_blockhash = recent_blockhash;
+        
+        // Note: For simulation, we need a signed transaction, but we'll use replaceRecentBlockhash
+        // The actual signature will be replaced later
+        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
+        
+        // Simulate transaction to get compute units consumption
+        let sim_options = serde_json::json!({
+            "encoding": "base64",
+            "commitment": "confirmed",
+            "replaceRecentBlockhash": true,
+            "sigVerify": false  // Don't verify signature in simulation
+        });
+        
+        let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
+        let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
+            .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
+        
+        // Parse simulation result to extract compute units consumed
+        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            log::info!("Mint simulation consumed {} compute units", units_consumed);
+            // Add 20% buffer
+            (units_consumed as f64 * MintConfig::COMPUTE_UNIT_BUFFER) as u64
+        } else {
+            return Err(RpcError::Other(
+                "Failed to get compute units from simulation".to_string()
+            ));
+        };
+        
+        log::info!("Using {} compute units for mint (with 20% buffer)", computed_units);
+        
+        // Build the final transaction with compute budget
+        let mut final_instructions = vec![];
+        
+        // Add compute budget instruction first
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+        
+        // Add all the base instructions
+        final_instructions.extend(base_instructions);
+        
+        // Create final unsigned transaction
+        let final_message = Message::new(
+            &final_instructions,
+            Some(user_pubkey),
+        );
+        
+        let mut final_transaction = Transaction::new_unsigned(final_message);
+        final_transaction.message.recent_blockhash = recent_blockhash;
+        
+        log::info!("Mint transaction built successfully, ready for signing");
+        
+        Ok(final_transaction)
+    }
+
+    /// Mint tokens using the memo mint contract (legacy method, kept for compatibility)
     /// 
     /// # Parameters
     /// * `memo` - The memo text (must be 69-800 bytes)
@@ -204,6 +350,9 @@ impl RpcConnection {
     /// 
     /// # Returns
     /// Transaction signature on success
+    /// 
+    /// # Note
+    /// This method is deprecated. Use build_mint_transaction + sign in Session + send_signed_transaction instead.
     pub async fn mint(
         &self,
         memo: &str,

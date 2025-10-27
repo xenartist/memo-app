@@ -61,6 +61,11 @@ impl Pixel {
         self.data[row * self.width + col] = !self.data[row * self.width + col];
     }
 
+    // Check if all pixels are false (blank image)
+    pub fn is_blank(&self) -> bool {
+        self.data.iter().all(|&p| !p)
+    }
+
     // Helper function to map 6 bits to a safe ASCII character
     fn map_to_safe_char(value: u8) -> char {
         assert!(value < 64, "Value must be less than 64");

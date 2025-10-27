@@ -1,11 +1,13 @@
 use leptos::*;
 use crate::CreateWalletStep;
 use crate::core::wallet::verify_mnemonic;
+use crate::core::NetworkType;
 
 #[component]
 pub fn ImportMnemonicStep(
     set_current_step: WriteSignal<CreateWalletStep>,
     set_mnemonic: WriteSignal<String>,
+    selected_network: RwSignal<NetworkType>,
 ) -> impl IntoView {
     let (mnemonic_input, set_mnemonic_input) = create_signal(String::new());
     let (error_message, set_error_message) = create_signal(String::new());
@@ -44,10 +46,24 @@ pub fn ImportMnemonicStep(
                 <h2>"Import Wallet"</h2>
             </div>
             
+            // Display selected network (read-only)
+            <div class="info-message" style="margin: 1rem auto; max-width: 500px;">
+                <i class="fas fa-network-wired"></i>
+                <span>
+                    "Network: "
+                    {move || match selected_network.get() {
+                        NetworkType::Testnet => "Testnet",
+                        NetworkType::ProdStaging => "Prod Staging",
+                        NetworkType::Mainnet => "Mainnet",
+                    }}
+                </span>
+            </div>
+            
             <form on:submit=on_submit>
                 <div class="mnemonic-input-section">
                     <p class="instruction-text">
-                        "Enter your 12 or 24 word recovery phrase"
+                        <i class="fas fa-key"></i>
+                        " Enter your 12 or 24 word recovery phrase"
                     </p>
                     
                     <textarea
@@ -61,11 +77,19 @@ pub fn ImportMnemonicStep(
                 </div>
 
                 <div class="error-message">
-                    {move || error_message.get()}
+                    {move || if !error_message.get().is_empty() {
+                        view! {
+                            <i class="fas fa-exclamation-circle"></i>
+                            <span>{error_message.get()}</span>
+                        }.into_view()
+                    } else {
+                        view! { <></> }.into_view()
+                    }}
                 </div>
 
                 <button type="submit" class="wallet-btn">
-                    "Continue"
+                    <i class="fas fa-arrow-right"></i>
+                    " Continue"
                 </button>
             </form>
         </div>

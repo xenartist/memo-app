@@ -1,4 +1,5 @@
 use super::rpc_base::{RpcConnection, RpcError};
+use super::network_config::get_program_ids;
 use serde::{Serialize, Deserialize};
 use borsh::{BorshSerialize, BorshDeserialize};
 use std::str::FromStr;
@@ -31,22 +32,12 @@ const BORSH_FIXED_OVERHEAD: usize = BORSH_U8_SIZE + BORSH_U64_SIZE + BORSH_VEC_L
 pub struct ChatConfig;
 
 impl ChatConfig {
-    /// Memo-chat program ID
-    pub const MEMO_CHAT_PROGRAM_ID: &'static str = "54ky4LNnRsbYioDSBKNrc5hG8HoDyZ6yhf8TuncxTBRF";
+    // Note: Program IDs and token mint are now retrieved dynamically from network configuration
     
     /// PDA Seeds for chat contract
     pub const GLOBAL_COUNTER_SEED: &'static [u8] = b"global_counter";
     pub const CHAT_GROUP_SEED: &'static [u8] = b"chat_group";
     pub const BURN_LEADERBOARD_SEED: &'static [u8] = b"burn_leaderboard";
-    
-    /// Memo-mint program ID (referenced by chat contract)
-    pub const MEMO_MINT_PROGRAM_ID: &'static str = "A31a17bhgQyRQygeZa1SybytjbCdjMpu6oPr9M3iQWzy";
-    
-    /// Token 2022 Program ID
-    pub const TOKEN_2022_PROGRAM_ID: &'static str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-    
-    /// Authorized MEMO token mint address
-    pub const MEMO_TOKEN_MINT: &'static str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
     
     /// Minimum burn amount required to create a chat group (42,069 tokens = 42,069,000,000 lamports)
     pub const MIN_BURN_AMOUNT: u64 = 42_069_000_000;
@@ -63,7 +54,8 @@ impl ChatConfig {
     
     /// Helper functions
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_CHAT_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.chat_program_id)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-chat program ID: {}", e)))
     }
     
@@ -87,19 +79,22 @@ impl ChatConfig {
     
     /// Helper to get memo-mint program ID
     pub fn get_memo_mint_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_MINT_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.mint_program_id)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-mint program ID: {}", e)))
     }
     
     /// Helper to get token mint
     pub fn get_memo_token_mint() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_TOKEN_MINT)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.token_mint)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo token mint: {}", e)))
     }
     
     /// Helper to get Token 2022 program ID
     pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::TOKEN_2022_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.token_2022_program_id)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid Token 2022 program ID: {}", e)))
     }
     
@@ -140,9 +135,6 @@ impl ChatConfig {
         Ok(())
     }
 
-    /// Memo-burn program ID (referenced by chat contract for group creation)  
-    pub const MEMO_BURN_PROGRAM_ID: &'static str = "FEjJ9KKJETocmaStfsFteFrktPchDLAVNTMeTvndoxaP";
-
     /// Get create_chat_group instruction discriminator
     pub fn get_create_chat_group_discriminator() -> [u8; 8] {
         let mut hasher = Sha256::new();
@@ -155,7 +147,8 @@ impl ChatConfig {
 
     /// Helper to get memo-burn program ID
     pub fn get_memo_burn_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_BURN_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.burn_program_id)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-burn program ID: {}", e)))
     }
 
@@ -610,6 +603,327 @@ impl LocalChatMessage {
 }
 
 impl RpcConnection {
+    /// Build an unsigned transaction to send a chat message
+    pub async fn build_send_chat_message_transaction(
+        &self,
+        user_pubkey: &Pubkey,
+        group_id: u64,
+        message: &str,
+        receiver: Option<String>,
+        reply_to_sig: Option<String>,
+    ) -> Result<Transaction, RpcError> {
+        // Validate message
+        if message.is_empty() {
+            return Err(RpcError::InvalidParameter("Message cannot be empty".to_string()));
+        }
+        if message.len() > 512 {
+            return Err(RpcError::InvalidParameter("Message too long (max 512 characters)".to_string()));
+        }
+        
+        log::info!("Building send chat message transaction to group {}: {} characters", group_id, message.len());
+        
+        let chat_program_id = ChatConfig::get_program_id()?;
+        let memo_mint_program_id = ChatConfig::get_memo_mint_program_id()?;
+        let memo_token_mint = ChatConfig::get_memo_token_mint()?;
+        let token_2022_program_id = ChatConfig::get_token_2022_program_id()?;
+        
+        let (chat_group_pda, _) = ChatConfig::get_chat_group_pda(group_id)?;
+        let (mint_authority_pda, _) = ChatConfig::get_mint_authority_pda()?;
+        
+        let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
+            user_pubkey,
+            &memo_token_mint,
+            &token_2022_program_id,
+        );
+        
+        // Check if user's token account exists
+        let token_account_info = self.get_account_info(&user_token_account.to_string(), Some("base64")).await?;
+        let token_account_info: serde_json::Value = serde_json::from_str(&token_account_info)
+            .map_err(|e| RpcError::Other(format!("Failed to parse token account info: {}", e)))?;
+        
+        // Prepare chat message data
+        let chat_message_data = ChatMessageData::new(
+            group_id,
+            user_pubkey.to_string(),
+            message.to_string(),
+            receiver,
+            reply_to_sig,
+        );
+        
+        chat_message_data.validate(group_id, &user_pubkey.to_string())?;
+        
+        let memo_data_bytes = chat_message_data.try_to_vec()
+            .map_err(|e| RpcError::Other(format!("Failed to serialize chat message data: {}", e)))?;
+        let memo_data_base64 = base64::encode(&memo_data_bytes);
+        
+        ChatConfig::validate_memo_length(memo_data_base64.as_bytes())?;
+        
+        // Build instructions
+        let mut instructions = vec![];
+        
+        // Add compute budget instruction (use a reasonable default)
+        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(400_000));
+        
+        // Add memo instruction
+        instructions.push(spl_memo::build_memo(
+            memo_data_base64.as_bytes(),
+            &[user_pubkey],
+        ));
+        
+        // If token account doesn't exist, create it
+        if token_account_info["value"].is_null() {
+            log::info!("User token account does not exist, will create it");
+            instructions.push(
+                spl_associated_token_account::instruction::create_associated_token_account_idempotent(
+                    user_pubkey,
+                    user_pubkey,
+                    &memo_token_mint,
+                    &token_2022_program_id
+                )
+            );
+        }
+        
+        // Create send_memo_to_group instruction
+        let mut instruction_data = ChatConfig::get_send_memo_to_group_discriminator().to_vec();
+        instruction_data.extend_from_slice(&group_id.to_le_bytes());
+        
+        let accounts = vec![
+            AccountMeta::new(*user_pubkey, true),
+            AccountMeta::new(chat_group_pda, false),
+            AccountMeta::new(memo_token_mint, false),
+            AccountMeta::new_readonly(mint_authority_pda, false),
+            AccountMeta::new(user_token_account, false),
+            AccountMeta::new_readonly(token_2022_program_id, false),
+            AccountMeta::new_readonly(memo_mint_program_id, false),
+            AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false),
+        ];
+        
+        instructions.push(Instruction::new_with_bytes(
+            chat_program_id,
+            &instruction_data,
+            accounts,
+        ));
+        
+        let blockhash = self.get_latest_blockhash().await?;
+        
+        let message = Message::new(&instructions, Some(user_pubkey));
+        let mut transaction = Transaction::new_unsigned(message);
+        transaction.message.recent_blockhash = blockhash;
+        
+        Ok(transaction)
+    }
+
+    /// Build an unsigned transaction to create a chat group
+    pub async fn build_create_chat_group_transaction(
+        &self,
+        user_pubkey: &Pubkey,
+        name: &str,
+        description: &str,
+        image: &str,
+        tags: Vec<String>,
+        min_memo_interval: Option<i64>,
+        burn_amount: u64,
+    ) -> Result<(Transaction, u64), RpcError> {
+        // Basic parameter validation
+        if name.is_empty() || name.len() > 64 {
+            return Err(RpcError::InvalidParameter(format!("Group name must be 1-64 characters, got {}", name.len())));
+        }
+        if description.len() > 128 {
+            return Err(RpcError::InvalidParameter(format!("Group description must be at most 128 characters, got {}", description.len())));
+        }
+        if burn_amount < ChatConfig::MIN_BURN_AMOUNT {
+            return Err(RpcError::InvalidParameter(format!("Burn amount must be at least {} MEMO tokens", ChatConfig::MIN_BURN_AMOUNT / 1_000_000)));
+        }
+        if burn_amount % 1_000_000 != 0 {
+            return Err(RpcError::InvalidParameter("Burn amount must be a whole number of tokens".to_string()));
+        }
+        
+        log::info!("Building create chat group transaction '{}': {} tokens", name, burn_amount / 1_000_000);
+        
+        // Get next group_id
+        let global_stats = self.get_chat_global_statistics().await?;
+        let expected_group_id = global_stats.total_groups;
+        
+        let chat_program_id = ChatConfig::get_program_id()?;
+        let memo_token_mint = ChatConfig::get_memo_token_mint()?;
+        let token_2022_program_id = ChatConfig::get_token_2022_program_id()?;
+        let memo_burn_program_id = ChatConfig::get_memo_burn_program_id()?;
+        
+        let (global_counter_pda, _) = ChatConfig::get_global_counter_pda()?;
+        let (chat_group_pda, _) = ChatConfig::get_chat_group_pda(expected_group_id)?;
+        let (burn_leaderboard_pda, _) = ChatConfig::get_burn_leaderboard_pda()?;
+        let (user_global_burn_stats_pda, _) = ChatConfig::get_user_global_burn_stats_pda(user_pubkey)?;
+        let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
+            user_pubkey, &memo_token_mint, &token_2022_program_id,
+        );
+        
+        // Prepare group creation data
+        let group_creation_data = ChatGroupCreationData::new(
+            expected_group_id,
+            name.to_string(),
+            description.to_string(),
+            image.to_string(),
+            tags,
+            min_memo_interval,
+        );
+        
+        let burn_memo = BurnMemo {
+            version: 1,
+            burn_amount,
+            payload: group_creation_data.try_to_vec()
+                .map_err(|e| RpcError::Other(format!("Failed to serialize group data: {}", e)))?,
+        };
+        
+        let memo_data_bytes = burn_memo.try_to_vec()
+            .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo: {}", e)))?;
+        let memo_data_base64 = base64::encode(&memo_data_bytes);
+        
+        ChatConfig::validate_memo_length(memo_data_base64.as_bytes())?;
+        
+        let mut instructions = vec![];
+        
+        // Add compute budget instruction
+        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(400_000));
+        
+        // Add memo instruction
+        instructions.push(Instruction {
+            program_id: spl_memo::id(),
+            accounts: vec![],
+            data: memo_data_base64.into_bytes(),
+        });
+        
+        // Create group instruction
+        let mut instruction_data = ChatConfig::get_create_chat_group_discriminator().to_vec();
+        instruction_data.extend_from_slice(&expected_group_id.to_le_bytes());
+        instruction_data.extend_from_slice(&burn_amount.to_le_bytes());
+        
+        instructions.push(Instruction::new_with_bytes(
+            chat_program_id,
+            &instruction_data,
+            vec![
+                AccountMeta::new(*user_pubkey, true),
+                AccountMeta::new(global_counter_pda, false),
+                AccountMeta::new(chat_group_pda, false),
+                AccountMeta::new(burn_leaderboard_pda, false),
+                AccountMeta::new(memo_token_mint, false),
+                AccountMeta::new(user_token_account, false),
+                AccountMeta::new(user_global_burn_stats_pda, false),
+                AccountMeta::new_readonly(token_2022_program_id, false),
+                AccountMeta::new_readonly(memo_burn_program_id, false),
+                AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
+                AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false),
+            ],
+        ));
+        
+        let blockhash = self.get_latest_blockhash().await?;
+        
+        let message = Message::new(&instructions, Some(user_pubkey));
+        let mut transaction = Transaction::new_unsigned(message);
+        transaction.message.recent_blockhash = blockhash;
+        
+        Ok((transaction, expected_group_id))
+    }
+
+    /// Build an unsigned transaction to burn tokens for a group
+    pub async fn build_burn_tokens_for_group_transaction(
+        &self,
+        user_pubkey: &Pubkey,
+        group_id: u64,
+        amount: u64,
+        message: &str,
+    ) -> Result<Transaction, RpcError> {
+        // Basic parameter validation
+        if amount < 1_000_000 {
+            return Err(RpcError::InvalidParameter("Burn amount must be at least 1 MEMO token".to_string()));
+        }
+        if amount % 1_000_000 != 0 {
+            return Err(RpcError::InvalidParameter("Burn amount must be a whole number of tokens".to_string()));
+        }
+        if message.len() > 512 {
+            return Err(RpcError::InvalidParameter("Burn message too long (max 512 characters)".to_string()));
+        }
+        
+        log::info!("Building burn tokens for group transaction: {} tokens for group {}", amount / 1_000_000, group_id);
+        
+        let chat_program_id = ChatConfig::get_program_id()?;
+        let memo_token_mint = ChatConfig::get_memo_token_mint()?;
+        let token_2022_program_id = ChatConfig::get_token_2022_program_id()?;
+        let memo_burn_program_id = ChatConfig::get_memo_burn_program_id()?;
+        
+        let (chat_group_pda, _) = ChatConfig::get_chat_group_pda(group_id)?;
+        let (burn_leaderboard_pda, _) = ChatConfig::get_burn_leaderboard_pda()?;
+        let (user_global_burn_stats_pda, _) = ChatConfig::get_user_global_burn_stats_pda(user_pubkey)?;
+        
+        let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
+            user_pubkey,
+            &memo_token_mint,
+            &token_2022_program_id,
+        );
+        
+        // Prepare burn data
+        let burn_data = ChatGroupBurnData::new(
+            group_id,
+            user_pubkey.to_string(),
+            message.to_string(),
+        );
+        
+        burn_data.validate(group_id, &user_pubkey.to_string())?;
+        
+        let burn_memo = BurnMemo {
+            version: 1,
+            burn_amount: amount,
+            payload: burn_data.try_to_vec()
+                .map_err(|e| RpcError::Other(format!("Failed to serialize burn data: {}", e)))?,
+        };
+        
+        let memo_data_bytes = burn_memo.try_to_vec()
+            .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo: {}", e)))?;
+        let memo_data_base64 = base64::encode(&memo_data_bytes);
+        
+        ChatConfig::validate_memo_length(memo_data_base64.as_bytes())?;
+        
+        let mut instructions = vec![];
+        
+        // Add compute budget instruction
+        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(400_000));
+        
+        // Add memo instruction
+        instructions.push(Instruction {
+            program_id: spl_memo::id(),
+            accounts: vec![],
+            data: memo_data_base64.into_bytes(),
+        });
+        
+        // Create burn instruction
+        let mut instruction_data = ChatConfig::get_burn_tokens_for_group_discriminator().to_vec();
+        instruction_data.extend_from_slice(&group_id.to_le_bytes());
+        instruction_data.extend_from_slice(&amount.to_le_bytes());
+        
+        instructions.push(Instruction::new_with_bytes(
+            chat_program_id,
+            &instruction_data,
+            vec![
+                AccountMeta::new(*user_pubkey, true),
+                AccountMeta::new(chat_group_pda, false),
+                AccountMeta::new(burn_leaderboard_pda, false),
+                AccountMeta::new(memo_token_mint, false),
+                AccountMeta::new(user_token_account, false),
+                AccountMeta::new(user_global_burn_stats_pda, false),
+                AccountMeta::new_readonly(token_2022_program_id, false),
+                AccountMeta::new_readonly(memo_burn_program_id, false),
+                AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false),
+            ],
+        ));
+        
+        let blockhash = self.get_latest_blockhash().await?;
+        
+        let message = Message::new(&instructions, Some(user_pubkey));
+        let mut transaction = Transaction::new_unsigned(message);
+        transaction.message.recent_blockhash = blockhash;
+        
+        Ok(transaction)
+    }
+
     /// Get global chat statistics from the memo-chat contract
     /// 
     /// # Returns
@@ -641,10 +955,11 @@ impl RpcConnection {
             .as_str()
             .ok_or_else(|| RpcError::Other("Failed to get account owner".to_string()))?;
         
-        if owner != ChatConfig::MEMO_CHAT_PROGRAM_ID {
+        let expected_program_id = ChatConfig::get_program_id()?.to_string();
+        if owner != expected_program_id {
             return Err(RpcError::Other(format!(
                 "Account not owned by memo-chat program. Expected: {}, Got: {}", 
-                ChatConfig::MEMO_CHAT_PROGRAM_ID, owner
+                expected_program_id, owner
             )));
         }
         
@@ -696,10 +1011,11 @@ impl RpcConnection {
             .as_str()
             .ok_or_else(|| RpcError::Other("Failed to get account owner".to_string()))?;
         
-        if owner != ChatConfig::MEMO_CHAT_PROGRAM_ID {
+        let expected_program_id = ChatConfig::get_program_id()?.to_string();
+        if owner != expected_program_id {
             return Err(RpcError::Other(format!(
                 "Account not owned by memo-chat program. Expected: {}, Got: {}", 
-                ChatConfig::MEMO_CHAT_PROGRAM_ID, owner
+                expected_program_id, owner
             )));
         }
         
@@ -1075,6 +1391,8 @@ impl RpcConnection {
     /// * `reply_to_sig` - Optional signature to reply to
     /// * `timeout_ms` - Timeout in milliseconds (default: 30000ms = 30s)
     /// 
+    /// Legacy method - use build_send_chat_message_transaction + sign in Session + send_signed_transaction
+    /// 
     /// # Returns
     /// Result containing signature or error (RpcError::Other for timeout)
     pub async fn send_chat_message_with_timeout(
@@ -1388,7 +1706,7 @@ impl RpcConnection {
         }
     }
 
-    /// Original method maintained for backward compatibility
+    /// Legacy method - use build_send_chat_message_transaction + sign in Session + send_signed_transaction
     pub async fn send_chat_message(
         &self,
         group_id: u64,
@@ -1400,7 +1718,7 @@ impl RpcConnection {
         self.send_chat_message_with_timeout(group_id, message, keypair_bytes, receiver, reply_to_sig, None).await
     }
 
-    /// Create a new chat group (requires burning tokens)
+    /// Legacy method - use build_create_chat_group_transaction + sign in Session + send_signed_transaction
     /// 
     /// # Parameters
     /// * `name` - Group name (1-64 characters)
@@ -1604,6 +1922,8 @@ impl RpcConnection {
     }
 
     /// Burn tokens for a chat group
+    /// 
+    /// Legacy method - use build_burn_tokens_for_group_transaction + sign in Session + send_signed_transaction
     /// 
     /// # Parameters
     /// * `group_id` - The ID of the chat group to burn tokens for
@@ -1858,10 +2178,11 @@ impl RpcConnection {
             .as_str()
             .ok_or_else(|| RpcError::Other("Failed to get leaderboard account owner".to_string()))?;
         
-        if owner != ChatConfig::MEMO_CHAT_PROGRAM_ID {
+        let expected_program_id = ChatConfig::get_program_id()?.to_string();
+        if owner != expected_program_id {
             return Err(RpcError::Other(format!(
                 "Account not owned by memo-chat program. Expected: {}, Got: {}", 
-                ChatConfig::MEMO_CHAT_PROGRAM_ID, owner
+                expected_program_id, owner
             )));
         }
         

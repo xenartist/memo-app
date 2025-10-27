@@ -1,4 +1,5 @@
 use super::rpc_base::{RpcConnection, RpcError};
+use super::network_config::get_program_ids;
 use serde::{Serialize, Deserialize};
 use borsh::{BorshSerialize, BorshDeserialize};
 use std::str::FromStr;
@@ -212,42 +213,36 @@ impl ProfileUpdateData {
 pub struct ProfileConfig;
 
 impl ProfileConfig {
-    /// Memo-profile program ID
-    pub const MEMO_PROFILE_PROGRAM_ID: &'static str = "BwQTxuShrwJR15U6Utdfmfr4kZ18VT6FA1fcp58sT8US";
+    // Note: Program IDs and token mint are now retrieved dynamically from network configuration
     
     /// PDA Seeds for profile contract
     pub const PROFILE_SEED: &'static [u8] = b"profile";
     
-    /// Memo-burn program ID (updated to the correct address)
-    pub const MEMO_BURN_PROGRAM_ID: &'static str = "FEjJ9KKJETocmaStfsFteFrktPchDLAVNTMeTvndoxaP";
-    
-    /// Token 2022 program ID
-    pub const TOKEN_2022_PROGRAM_ID: &'static str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-    
-    /// Memo token mint address (updated to the correct address)
-    pub const MEMO_TOKEN_MINT: &'static str = "HLCoc7wNDavNMfWWw2Bwd7U7A24cesuhBSNkxZgvZm1";
-    
     /// get program ID
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_PROFILE_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.profile_program_id)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-profile program ID: {}", e)))
     }
     
     /// get memo-burn program ID
     pub fn get_memo_burn_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_BURN_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.burn_program_id)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-burn program ID: {}", e)))
     }
     
     /// get Token 2022 program ID
     pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::TOKEN_2022_PROGRAM_ID)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.token_2022_program_id)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid token 2022 program ID: {}", e)))
     }
     
     /// get memo token mint
     pub fn get_memo_token_mint() -> Result<Pubkey, RpcError> {
-        Pubkey::from_str(Self::MEMO_TOKEN_MINT)
+        let program_ids = get_program_ids();
+        Pubkey::from_str(program_ids.token_mint)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo token mint: {}", e)))
     }
     
@@ -292,7 +287,230 @@ impl ProfileConfig {
 
 // Profile RPC implementation
 impl RpcConnection {
-    /// create user profile
+    /// Build an unsigned transaction to create user profile
+    pub async fn build_create_profile_transaction(
+        &self,
+        user_pubkey: &Pubkey,
+        burn_amount: u64,
+        username: &str,
+        profile_image: &str,
+        about_me: Option<String>,
+    ) -> Result<Transaction, RpcError> {
+        log::info!("Building create profile transaction for user with burn amount: {} tokens", burn_amount);
+        
+        if burn_amount < 420 {
+            return Err(RpcError::Other("Burn amount too small (minimum: 420 tokens)".to_string()));
+        }
+        
+        let program_id = ProfileConfig::get_program_id()?;
+        let memo_burn_program_id = ProfileConfig::get_memo_burn_program_id()?;
+        let token_2022_program_id = ProfileConfig::get_token_2022_program_id()?;
+        let memo_token_mint = ProfileConfig::get_memo_token_mint()?;
+        
+        let (profile_pda, _) = ProfileConfig::get_profile_pda(user_pubkey)?;
+        let (user_global_burn_stats_pda, _) = ProfileConfig::get_user_global_burn_stats_pda(user_pubkey)?;
+        
+        let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
+            user_pubkey,
+            &memo_token_mint,
+            &token_2022_program_id,
+        );
+        
+        let profile_creation_data = ProfileCreationData::new(
+            user_pubkey.to_string(),
+            username.to_string(),
+            profile_image.to_string(),
+            about_me,
+        );
+        
+        profile_creation_data.validate(*user_pubkey)?;
+        
+        let burn_amount_units = burn_amount * 1_000_000;
+        let burn_memo = BurnMemo {
+            version: 1,
+            burn_amount: burn_amount_units,
+            payload: profile_creation_data.try_to_vec()
+                .map_err(|e| RpcError::Other(format!("Failed to serialize profile data: {}", e)))?,
+        };
+        
+        let memo_data_bytes = burn_memo.try_to_vec()
+            .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo: {}", e)))?;
+        let memo_data_base64 = base64::encode(&memo_data_bytes);
+        
+        if memo_data_base64.len() < 69 || memo_data_base64.len() > 800 {
+            return Err(RpcError::Other("Memo length invalid (must be 69-800 chars)".to_string()));
+        }
+        
+        let memo_instruction = solana_sdk::instruction::Instruction {
+            program_id: spl_memo::id(),
+            accounts: vec![],
+            data: memo_data_base64.into_bytes(),
+        };
+        
+        let mut instruction_data = ProfileConfig::get_create_profile_discriminator().to_vec();
+        instruction_data.extend_from_slice(&burn_amount_units.to_le_bytes());
+        
+        let profile_instruction = solana_sdk::instruction::Instruction::new_with_bytes(
+            program_id,
+            &instruction_data,
+            vec![
+                AccountMeta::new(*user_pubkey, true),
+                AccountMeta::new(profile_pda, false),
+                AccountMeta::new(memo_token_mint, false),
+                AccountMeta::new(user_token_account, false),
+                AccountMeta::new(user_global_burn_stats_pda, false),
+                AccountMeta::new_readonly(token_2022_program_id, false),
+                AccountMeta::new_readonly(memo_burn_program_id, false),
+                AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
+                AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false),
+            ],
+        );
+        
+        let blockhash = self.get_latest_blockhash().await?;
+        
+        let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(400_000);
+        let message = Message::new(
+            &[compute_budget_ix, memo_instruction, profile_instruction],
+            Some(user_pubkey),
+        );
+        
+        let mut transaction = Transaction::new_unsigned(message);
+        transaction.message.recent_blockhash = blockhash;
+        
+        Ok(transaction)
+    }
+
+    /// Build an unsigned transaction to update user profile
+    pub async fn build_update_profile_transaction(
+        &self,
+        user_pubkey: &Pubkey,
+        burn_amount: u64,
+        username: Option<String>,
+        image: Option<String>,
+        about_me: Option<Option<String>>,
+    ) -> Result<Transaction, RpcError> {
+        log::info!("Building update profile transaction with burn amount: {} tokens", burn_amount);
+        
+        let program_id = ProfileConfig::get_program_id()?;
+        let memo_burn_program_id = ProfileConfig::get_memo_burn_program_id()?;
+        let token_2022_program_id = ProfileConfig::get_token_2022_program_id()?;
+        let memo_token_mint = ProfileConfig::get_memo_token_mint()?;
+        
+        let (profile_pda, _) = ProfileConfig::get_profile_pda(user_pubkey)?;
+        let (user_global_burn_stats_pda, _) = ProfileConfig::get_user_global_burn_stats_pda(user_pubkey)?;
+        
+        let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
+            user_pubkey,
+            &memo_token_mint,
+            &token_2022_program_id,
+        );
+        
+        let profile_update_data = ProfileUpdateData::new(
+            user_pubkey.to_string(),
+            username.clone(),
+            image.clone(),
+            about_me.clone(),
+        );
+        
+        let burn_amount_units = burn_amount * 1_000_000;
+        let burn_memo = BurnMemo {
+            version: 1,
+            burn_amount: burn_amount_units,
+            payload: profile_update_data.try_to_vec()
+                .map_err(|e| RpcError::Other(format!("Failed to serialize profile data: {}", e)))?,
+        };
+        
+        let memo_data_bytes = burn_memo.try_to_vec()
+            .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo: {}", e)))?;
+        let memo_data_base64 = base64::encode(&memo_data_bytes);
+        
+        let memo_instruction = solana_sdk::instruction::Instruction {
+            program_id: spl_memo::id(),
+            accounts: vec![],
+            data: memo_data_base64.into_bytes(),
+        };
+        
+        // Create update_profile instruction with proper parameter serialization
+        let mut instruction_data = ProfileConfig::get_update_profile_discriminator().to_vec();
+        instruction_data.extend_from_slice(&burn_amount_units.to_le_bytes());
+        
+        // Serialize Option<String> parameters (using Borsh format)
+        instruction_data.extend_from_slice(&username.try_to_vec()
+            .map_err(|e| RpcError::Other(format!("Failed to serialize username: {}", e)))?);
+        instruction_data.extend_from_slice(&image.try_to_vec()
+            .map_err(|e| RpcError::Other(format!("Failed to serialize image: {}", e)))?);
+        instruction_data.extend_from_slice(&about_me.try_to_vec()
+            .map_err(|e| RpcError::Other(format!("Failed to serialize about_me: {}", e)))?);
+        
+        let profile_instruction = solana_sdk::instruction::Instruction::new_with_bytes(
+            program_id,
+            &instruction_data,
+            vec![
+                AccountMeta::new(*user_pubkey, true),
+                AccountMeta::new(memo_token_mint, false),
+                AccountMeta::new(user_token_account, false),
+                AccountMeta::new(profile_pda, false),
+                AccountMeta::new(user_global_burn_stats_pda, false),
+                AccountMeta::new_readonly(token_2022_program_id, false),
+                AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false),
+                AccountMeta::new_readonly(memo_burn_program_id, false),
+            ],
+        );
+        
+        let blockhash = self.get_latest_blockhash().await?;
+        
+        let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(400_000);
+        let message = Message::new(
+            &[compute_budget_ix, memo_instruction, profile_instruction],
+            Some(user_pubkey),
+        );
+        
+        let mut transaction = Transaction::new_unsigned(message);
+        transaction.message.recent_blockhash = blockhash;
+        
+        Ok(transaction)
+    }
+
+    /// Build an unsigned transaction to delete user profile
+    pub async fn build_delete_profile_transaction(
+        &self,
+        user_pubkey: &Pubkey,
+    ) -> Result<Transaction, RpcError> {
+        log::info!("Building delete profile transaction for user: {}", user_pubkey);
+        
+        let program_id = ProfileConfig::get_program_id()?;
+        let (user_profile_pda, _) = Pubkey::find_program_address(
+            &[b"profile", user_pubkey.as_ref()],
+            &program_id
+        );
+        
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(b"global:delete_profile");
+        let hash = hasher.finalize();
+        let instruction_data = hash[..8].to_vec();
+        
+        let instruction = Instruction::new_with_bytes(
+            program_id,
+            &instruction_data,
+            vec![
+                AccountMeta::new(*user_pubkey, true),
+                AccountMeta::new(user_profile_pda, false),
+            ],
+        );
+        
+        let blockhash = self.get_latest_blockhash().await?;
+        
+        let message = Message::new(&[instruction], Some(user_pubkey));
+        let mut transaction = Transaction::new_unsigned(message);
+        transaction.message.recent_blockhash = blockhash;
+        
+        Ok(transaction)
+    }
+
+    /// create user profile (legacy method)
+    /// 
+    /// # Note
+    /// Deprecated. Use build_create_profile_transaction + sign in Session + send_signed_transaction
     pub async fn create_profile(
         &self,
         keypair: &Keypair,
@@ -447,7 +665,10 @@ impl RpcConnection {
         self.send_request("sendTransaction", params).await
     }
 
-    /// update user profile (simplified interface)
+    /// update user profile (legacy method)
+    /// 
+    /// # Note
+    /// Deprecated. Use build_update_profile_transaction + sign in Session + send_signed_transaction
     pub async fn update_profile(
         &self,
         keypair: &Keypair,
@@ -612,7 +833,10 @@ impl RpcConnection {
         self.send_request("sendTransaction", params).await
     }
 
-    /// delete user profile
+    /// delete user profile (legacy method)
+    /// 
+    /// # Note
+    /// Deprecated. Use build_delete_profile_transaction + sign in Session + send_signed_transaction
     pub async fn delete_profile(&self, keypair: &Keypair) -> Result<String, RpcError> {
         let program_id = ProfileConfig::get_program_id()?;
         let target_pubkey = keypair.pubkey();
