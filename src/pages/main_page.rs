@@ -54,7 +54,8 @@ fn is_menu_available(menu_item: &MenuItem, network: Option<NetworkType>) -> bool
 #[component]
 pub fn MainPage(
     session: RwSignal<Session>,
-    on_logout: impl Fn() + 'static
+    on_logout: impl Fn() + 'static,
+    on_lock_screen: impl Fn() + 'static
 ) -> impl IntoView {
     let (version_status, set_version_status) = create_signal(String::from("Testing RPC connection..."));
     let (blockhash_status, set_blockhash_status) = create_signal(String::from("Getting latest blockhash..."));
@@ -293,6 +294,12 @@ pub fn MainPage(
         on_logout();
     };
 
+    // lock screen handler
+    let handle_lock_click = move |_| {
+        add_log_entry("INFO", "Screen locked");
+        on_lock_screen();
+    };
+
     // initialize burn stats handler
     let initialize_burn_stats = move |_| {
         // 1. immediately update UI state (sync)
@@ -375,7 +382,7 @@ pub fn MainPage(
     view! {
         <div class="main-page">
             <div class="top-bar">
-                // Left side - Logout button and Initialize Burn Stats button
+                // Left side - Control buttons
                 <div class="left-controls">
                     // Logout button
                     <button
@@ -385,6 +392,16 @@ pub fn MainPage(
                     >
                         <i class="fas fa-sign-out-alt"></i>
                         <span>"Logout"</span>
+                    </button>
+                    
+                    // Lock Screen button
+                    <button
+                        class="lock-screen-btn"
+                        on:click=handle_lock_click
+                        title="Lock screen"
+                    >
+                        <i class="fas fa-lock"></i>
+                        <span>"Lock"</span>
                     </button>
                     
                     // Initialize Burn Stats button (only show if needed)

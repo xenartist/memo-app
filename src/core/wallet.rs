@@ -148,6 +148,12 @@ impl Wallet {
         }
         Err(WalletError::Storage("Wallet not found".to_string()))
     }
+
+    // get encrypted seed from storage without loading the entire wallet
+    pub async fn get_encrypted_seed_from_storage() -> Result<String, WalletError> {
+        let wallet = Self::load().await?;
+        Ok(wallet.encrypted_seed)
+    }
 }
 
 #[cfg(test)]

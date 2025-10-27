@@ -120,6 +120,36 @@
     font-size: 14px;
 }
 
+/* Lock Screen button */
+.lock-screen-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.lock-screen-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.lock-screen-btn:active {
+    transform: translateY(0);
+}
+
+.lock-screen-btn i {
+    font-size: 14px;
+}
+
 /* Initialize Burn Stats button */
 .init-burn-stats-btn {
     display: flex;
@@ -955,6 +985,14 @@
         padding: 8px 12px;
     }
 
+    .lock-screen-btn span {
+        display: none;
+    }
+    
+    .lock-screen-btn {
+        padding: 8px 12px;
+    }
+
     .left-controls {
         order: 2;
     }
@@ -970,6 +1008,7 @@
 .import-btn:focus,
 .init-burn-stats-btn:focus,
 .logout-btn:focus,
+.lock-screen-btn:focus,
 .btn-primary:focus,
 .btn-secondary:focus,
 .got-it-btn:focus {
