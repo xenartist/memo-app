@@ -218,6 +218,9 @@ impl ProfileConfig {
     /// PDA Seeds for profile contract
     pub const PROFILE_SEED: &'static [u8] = b"profile";
     
+    /// Compute budget configuration
+    pub const COMPUTE_UNIT_BUFFER: f64 = 1.5; // 50% buffer (CPI calls are unpredictable in simulation)
+    
     /// get program ID
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
         let program_ids = get_program_ids();
@@ -366,14 +369,51 @@ impl RpcConnection {
             ],
         );
         
+        // Build base instructions (without compute budget)
+        let base_instructions = vec![
+            memo_instruction,
+            profile_instruction,
+        ];
+        
         let blockhash = self.get_latest_blockhash().await?;
         
-        let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(400_000);
-        let message = Message::new(
-            &[compute_budget_ix, memo_instruction, profile_instruction],
-            Some(user_pubkey),
-        );
+        // Create simulation transaction
+        let sim_message = Message::new(&base_instructions, Some(user_pubkey));
+        let mut sim_transaction = Transaction::new_unsigned(sim_message);
+        sim_transaction.message.recent_blockhash = blockhash;
         
+        // Serialize and simulate
+        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
+        
+        let sim_options = serde_json::json!({
+            "encoding": "base64",
+            "commitment": "confirmed",
+            "replaceRecentBlockhash": true,
+            "sigVerify": false
+        });
+        
+        log::info!("Simulating profile creation transaction...");
+        let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
+        let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
+            .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
+        
+        // Parse compute units consumed
+        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            log::info!("Profile creation simulation consumed {} compute units", units_consumed);
+            (units_consumed as f64 * ProfileConfig::COMPUTE_UNIT_BUFFER) as u64
+        } else {
+            return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
+        };
+        
+        log::info!("Using {} compute units for profile creation (with 50% buffer)", computed_units);
+        
+        // Build final transaction with compute budget
+        let mut final_instructions = vec![];
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+        final_instructions.extend(base_instructions);
+        
+        let message = Message::new(&final_instructions, Some(user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
         transaction.message.recent_blockhash = blockhash;
         
@@ -457,14 +497,51 @@ impl RpcConnection {
             ],
         );
         
+        // Build base instructions (without compute budget)
+        let base_instructions = vec![
+            memo_instruction,
+            profile_instruction,
+        ];
+        
         let blockhash = self.get_latest_blockhash().await?;
         
-        let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(400_000);
-        let message = Message::new(
-            &[compute_budget_ix, memo_instruction, profile_instruction],
-            Some(user_pubkey),
-        );
+        // Create simulation transaction
+        let sim_message = Message::new(&base_instructions, Some(user_pubkey));
+        let mut sim_transaction = Transaction::new_unsigned(sim_message);
+        sim_transaction.message.recent_blockhash = blockhash;
         
+        // Serialize and simulate
+        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
+        
+        let sim_options = serde_json::json!({
+            "encoding": "base64",
+            "commitment": "confirmed",
+            "replaceRecentBlockhash": true,
+            "sigVerify": false
+        });
+        
+        log::info!("Simulating profile update transaction...");
+        let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
+        let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
+            .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
+        
+        // Parse compute units consumed
+        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            log::info!("Profile update simulation consumed {} compute units", units_consumed);
+            (units_consumed as f64 * ProfileConfig::COMPUTE_UNIT_BUFFER) as u64
+        } else {
+            return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
+        };
+        
+        log::info!("Using {} compute units for profile update (with 50% buffer)", computed_units);
+        
+        // Build final transaction with compute budget
+        let mut final_instructions = vec![];
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+        final_instructions.extend(base_instructions);
+        
+        let message = Message::new(&final_instructions, Some(user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
         transaction.message.recent_blockhash = blockhash;
         
@@ -630,17 +707,55 @@ impl RpcConnection {
         let blockhash = solana_sdk::hash::Hash::from_str(blockhash_str)
             .map_err(|e| RpcError::Other(format!("Failed to parse blockhash: {}", e)))?;
         
-        // **create transaction (using the same method as the test client)**
-        let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(400_000);
+        // Build base instructions (without compute budget)
+        let base_instructions = vec![
+            memo_instruction,
+            profile_instruction,
+        ];
+        
+        // Create simulation transaction
+        let sim_message = Message::new(&base_instructions, Some(&user_pubkey));
+        let mut sim_transaction = Transaction::new_unsigned(sim_message);
+        sim_transaction.message.recent_blockhash = blockhash;
+        sim_transaction.sign(&[&keypair], blockhash);
+        
+        // Serialize and simulate
+        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
+        
+        let sim_options = serde_json::json!({
+            "encoding": "base64",
+            "commitment": "confirmed",
+            "replaceRecentBlockhash": true,
+            "sigVerify": false
+        });
+        
+        log::info!("Simulating profile creation transaction...");
+        let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
+        let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
+            .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
+        
+        // Parse compute units consumed
+        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            log::info!("Profile creation simulation consumed {} compute units", units_consumed);
+            (units_consumed as f64 * ProfileConfig::COMPUTE_UNIT_BUFFER) as u64
+        } else {
+            return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
+        };
+        
+        log::info!("Using {} compute units for profile creation (with 50% buffer)", computed_units);
+        
+        // **create transaction with computed CU**
+        let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32);
         
         let transaction = Transaction::new_signed_with_payer(
             &[
-                // Index 0: Compute budget instruction (required for CU optimization)
+                // Index 0: Compute budget instruction (with dynamically computed CU)
                 compute_budget_ix,
                 // Index 1: SPL Memo instruction (REQUIRED at this position)
-                memo_instruction,
+                base_instructions[0].clone(),
                 // Index 2: Profile creation instruction
-                profile_instruction,
+                base_instructions[1].clone(),
             ],
             Some(&user_pubkey),
             &[&keypair],
@@ -798,17 +913,55 @@ impl RpcConnection {
         let blockhash = solana_sdk::hash::Hash::from_str(blockhash_str)
             .map_err(|e| RpcError::Other(format!("Failed to parse blockhash: {}", e)))?;
         
-        // **create transaction (following the contract requirements)**
-        let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(400_000);
+        // Build base instructions (without compute budget)
+        let base_instructions = vec![
+            memo_instruction,
+            update_instruction,
+        ];
+        
+        // Create simulation transaction
+        let sim_message = Message::new(&base_instructions, Some(&user_pubkey));
+        let mut sim_transaction = Transaction::new_unsigned(sim_message);
+        sim_transaction.message.recent_blockhash = blockhash;
+        sim_transaction.sign(&[&keypair], blockhash);
+        
+        // Serialize and simulate
+        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
+        
+        let sim_options = serde_json::json!({
+            "encoding": "base64",
+            "commitment": "confirmed",
+            "replaceRecentBlockhash": true,
+            "sigVerify": false
+        });
+        
+        log::info!("Simulating profile update transaction...");
+        let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
+        let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
+            .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
+        
+        // Parse compute units consumed
+        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            log::info!("Profile update simulation consumed {} compute units", units_consumed);
+            (units_consumed as f64 * ProfileConfig::COMPUTE_UNIT_BUFFER) as u64
+        } else {
+            return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
+        };
+        
+        log::info!("Using {} compute units for profile update (with 50% buffer)", computed_units);
+        
+        // **create transaction with computed CU**
+        let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32);
         
         let transaction = Transaction::new_signed_with_payer(
             &[
-                // Index 0: Compute budget instruction
+                // Index 0: Compute budget instruction (with dynamically computed CU)
                 compute_budget_ix,
                 // Index 1: SPL Memo instruction (REQUIRED at this position)
-                memo_instruction,
+                base_instructions[0].clone(),
                 // Index 2: Update profile instruction
-                update_instruction,
+                base_instructions[1].clone(),
             ],
             Some(&user_pubkey),
             &[&keypair],

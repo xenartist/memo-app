@@ -57,7 +57,7 @@ impl ProjectConfig {
     pub const MAX_PAYLOAD_LENGTH: usize = Self::MAX_MEMO_LENGTH - BORSH_FIXED_OVERHEAD; // 800 - 13 = 787
     
     /// Compute budget configuration
-    pub const COMPUTE_UNIT_BUFFER: f64 = 1.2; // 20% buffer for project operations
+    pub const COMPUTE_UNIT_BUFFER: f64 = 1.5; // 50% buffer (CPI calls are unpredictable in simulation)
     
     /// Helper functions
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
@@ -753,20 +753,18 @@ impl RpcConnection {
         
         ProjectConfig::validate_memo_length(memo_data_base64.as_bytes())?;
         
-        let mut instructions = vec![];
-        
-        // Add compute budget instruction
-        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(400_000));
+        // Build base instructions (without compute budget)
+        let mut base_instructions = vec![];
         
         // Add memo instruction
-        instructions.push(spl_memo::build_memo(memo_data_base64.as_bytes(), &[user_pubkey]));
+        base_instructions.push(spl_memo::build_memo(memo_data_base64.as_bytes(), &[user_pubkey]));
         
         // Create project instruction
         let mut instruction_data = ProjectConfig::get_create_project_discriminator().to_vec();
         instruction_data.extend_from_slice(&expected_project_id.to_le_bytes());
         instruction_data.extend_from_slice(&burn_amount.to_le_bytes());
         
-        instructions.push(Instruction::new_with_bytes(
+        base_instructions.push(Instruction::new_with_bytes(
             project_program_id,
             &instruction_data,
             vec![
@@ -786,7 +784,43 @@ impl RpcConnection {
         
         let blockhash = self.get_latest_blockhash().await?;
         
-        let message = Message::new(&instructions, Some(user_pubkey));
+        // Create simulation transaction
+        let sim_message = Message::new(&base_instructions, Some(user_pubkey));
+        let mut sim_transaction = Transaction::new_unsigned(sim_message);
+        sim_transaction.message.recent_blockhash = blockhash;
+        
+        // Serialize and simulate
+        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
+        
+        let sim_options = serde_json::json!({
+            "encoding": "base64",
+            "commitment": "confirmed",
+            "replaceRecentBlockhash": true,
+            "sigVerify": false
+        });
+        
+        log::info!("Simulating create project transaction...");
+        let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
+        let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
+            .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
+        
+        // Parse compute units consumed
+        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            log::info!("Create project simulation consumed {} compute units", units_consumed);
+            (units_consumed as f64 * ProjectConfig::COMPUTE_UNIT_BUFFER) as u64
+        } else {
+            return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
+        };
+        
+        log::info!("Using {} compute units for create project (with 50% buffer)", computed_units);
+        
+        // Build final transaction with compute budget
+        let mut final_instructions = vec![];
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+        final_instructions.extend(base_instructions);
+        
+        let message = Message::new(&final_instructions, Some(user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
         transaction.message.recent_blockhash = blockhash;
         
@@ -872,20 +906,18 @@ impl RpcConnection {
         
         ProjectConfig::validate_memo_length(memo_data_base64.as_bytes())?;
         
-        let mut instructions = vec![];
-        
-        // Add compute budget instruction
-        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(400_000));
+        // Build base instructions (without compute budget)
+        let mut base_instructions = vec![];
         
         // Add memo instruction
-        instructions.push(spl_memo::build_memo(memo_data_base64.as_bytes(), &[user_pubkey]));
+        base_instructions.push(spl_memo::build_memo(memo_data_base64.as_bytes(), &[user_pubkey]));
         
         // Update project instruction
         let mut instruction_data = ProjectConfig::get_update_project_discriminator().to_vec();
         instruction_data.extend_from_slice(&project_id.to_le_bytes());
         instruction_data.extend_from_slice(&burn_amount.to_le_bytes());
         
-        instructions.push(Instruction::new_with_bytes(
+        base_instructions.push(Instruction::new_with_bytes(
             project_program_id,
             &instruction_data,
             vec![
@@ -903,7 +935,43 @@ impl RpcConnection {
         
         let blockhash = self.get_latest_blockhash().await?;
         
-        let message = Message::new(&instructions, Some(user_pubkey));
+        // Create simulation transaction
+        let sim_message = Message::new(&base_instructions, Some(user_pubkey));
+        let mut sim_transaction = Transaction::new_unsigned(sim_message);
+        sim_transaction.message.recent_blockhash = blockhash;
+        
+        // Serialize and simulate
+        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
+        
+        let sim_options = serde_json::json!({
+            "encoding": "base64",
+            "commitment": "confirmed",
+            "replaceRecentBlockhash": true,
+            "sigVerify": false
+        });
+        
+        log::info!("Simulating update project transaction...");
+        let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
+        let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
+            .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
+        
+        // Parse compute units consumed
+        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            log::info!("Update project simulation consumed {} compute units", units_consumed);
+            (units_consumed as f64 * ProjectConfig::COMPUTE_UNIT_BUFFER) as u64
+        } else {
+            return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
+        };
+        
+        log::info!("Using {} compute units for update project (with 50% buffer)", computed_units);
+        
+        // Build final transaction with compute budget
+        let mut final_instructions = vec![];
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+        final_instructions.extend(base_instructions);
+        
+        let message = Message::new(&final_instructions, Some(user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
         transaction.message.recent_blockhash = blockhash;
         
@@ -972,20 +1040,18 @@ impl RpcConnection {
         
         ProjectConfig::validate_memo_length(memo_data_base64.as_bytes())?;
         
-        let mut instructions = vec![];
-        
-        // Add compute budget instruction
-        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(400_000));
+        // Build base instructions (without compute budget)
+        let mut base_instructions = vec![];
         
         // Add memo instruction
-        instructions.push(spl_memo::build_memo(memo_data_base64.as_bytes(), &[user_pubkey]));
+        base_instructions.push(spl_memo::build_memo(memo_data_base64.as_bytes(), &[user_pubkey]));
         
         // Burn instruction
         let mut instruction_data = ProjectConfig::get_burn_for_project_discriminator().to_vec();
         instruction_data.extend_from_slice(&project_id.to_le_bytes());
         instruction_data.extend_from_slice(&amount.to_le_bytes());
         
-        instructions.push(Instruction::new_with_bytes(
+        base_instructions.push(Instruction::new_with_bytes(
             project_program_id,
             &instruction_data,
             vec![
@@ -1003,7 +1069,43 @@ impl RpcConnection {
         
         let blockhash = self.get_latest_blockhash().await?;
         
-        let message = Message::new(&instructions, Some(user_pubkey));
+        // Create simulation transaction
+        let sim_message = Message::new(&base_instructions, Some(user_pubkey));
+        let mut sim_transaction = Transaction::new_unsigned(sim_message);
+        sim_transaction.message.recent_blockhash = blockhash;
+        
+        // Serialize and simulate
+        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
+        
+        let sim_options = serde_json::json!({
+            "encoding": "base64",
+            "commitment": "confirmed",
+            "replaceRecentBlockhash": true,
+            "sigVerify": false
+        });
+        
+        log::info!("Simulating burn tokens for project transaction...");
+        let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
+        let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
+            .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
+        
+        // Parse compute units consumed
+        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            log::info!("Burn tokens for project simulation consumed {} compute units", units_consumed);
+            (units_consumed as f64 * ProjectConfig::COMPUTE_UNIT_BUFFER) as u64
+        } else {
+            return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
+        };
+        
+        log::info!("Using {} compute units for burn tokens for project (with 50% buffer)", computed_units);
+        
+        // Build final transaction with compute budget
+        let mut final_instructions = vec![];
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+        final_instructions.extend(base_instructions);
+        
+        let message = Message::new(&final_instructions, Some(user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
         transaction.message.recent_blockhash = blockhash;
         
