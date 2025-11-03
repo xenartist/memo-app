@@ -39,7 +39,7 @@ impl MintConfig {
     pub const MAX_MEMO_LENGTH: usize = 800;
     
     // Compute budget configuration
-    pub const COMPUTE_UNIT_BUFFER: f64 = 1.2; // 20% buffer
+    pub const COMPUTE_UNIT_BUFFER: f64 = 1.5; // 50% buffer
 }
 
 // Helper functions
@@ -309,7 +309,7 @@ impl RpcConnection {
         // Parse simulation result to extract compute units consumed
         let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
             log::info!("Mint simulation consumed {} compute units", units_consumed);
-            // Add 20% buffer
+            // Add buffer to account for actual execution variations
             (units_consumed as f64 * MintConfig::COMPUTE_UNIT_BUFFER) as u64
         } else {
             return Err(RpcError::Other(
@@ -317,7 +317,7 @@ impl RpcConnection {
             ));
         };
         
-        log::info!("Using {} compute units for mint (with 20% buffer)", computed_units);
+        log::info!("Using {} compute units for mint (with 50% buffer)", computed_units);
         
         // Build the final transaction with compute budget
         let mut final_instructions = vec![];
@@ -477,7 +477,7 @@ impl RpcConnection {
         // Parse simulation result to extract compute units consumed
         let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
             log::info!("Mint simulation consumed {} compute units", units_consumed);
-            // 10% buffer
+            // Add buffer to account for actual execution variations
             (units_consumed as f64 * MintConfig::COMPUTE_UNIT_BUFFER) as u64
         } else {
             return Err(RpcError::Other(
@@ -485,7 +485,7 @@ impl RpcConnection {
             ));
         };
         
-        log::info!("Using {} compute units for mint (simulation: {}, +20% buffer)", 
+        log::info!("Using {} compute units for mint (simulation: {}, +50% buffer)", 
             computed_units, 
             sim_result["value"]["unitsConsumed"].as_u64().unwrap_or(0)
         );
