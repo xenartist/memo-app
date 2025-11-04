@@ -7,7 +7,6 @@ pub mod memo_card_details;
 pub mod burn_page;
 pub mod burn_form;
 pub mod mint_page;
-pub mod mint_page_legacy;
 pub mod mint_form;
 pub mod log_view;
 pub mod pixel_view;

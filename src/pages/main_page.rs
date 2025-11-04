@@ -6,7 +6,6 @@ use crate::pages::home_page::HomePage;
 use crate::pages::profile_page::ProfilePage;
 use crate::pages::settings_page::SettingsPage;
 use crate::pages::mint_page::MintPage;
-use crate::pages::mint_page_legacy::MintPage as MintPageLegacy;
 use crate::pages::burn_page::BurnPage;
 use crate::pages::chat_page::ChatPage;
 use crate::pages::project_page::ProjectPage;
@@ -27,7 +26,6 @@ enum MenuItem {
     Project,
     Chat,
     Faucet,
-    MintLegacy,
     Burn,
     Profile,
     Settings,
