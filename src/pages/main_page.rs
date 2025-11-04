@@ -5,7 +5,6 @@ use crate::core::NetworkType;
 use crate::pages::profile_page::ProfilePage;
 use crate::pages::settings_page::SettingsPage;
 use crate::pages::mint_page::MintPage;
-use crate::pages::burn_page::BurnPage;
 use crate::pages::chat_page::ChatPage;
 use crate::pages::project_page::ProjectPage;
 use crate::pages::faucet_page::FaucetPage;
@@ -24,7 +23,6 @@ enum MenuItem {
     Project,
     Chat,
     Faucet,
-    Burn,
     Profile,
     Settings,
 }
