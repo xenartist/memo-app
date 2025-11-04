@@ -1,7 +1,6 @@
 use leptos::*;
 use crate::pages::pixel_view::PixelView;
 use crate::pages::memo_card::MemoDetails;
-use crate::pages::burn_onchain::{BurnOnchain, BurnOptions};
 use crate::core::session::Session;
 use gloo_timers::future::TimeoutFuture;
 use wasm_bindgen_futures::spawn_local;
@@ -25,8 +24,6 @@ pub fn MemoCardDetails(
     memo_details: ReadSignal<Option<MemoDetails>>,
     /// session for signing transactions
     session: RwSignal<Session>,
-    /// burn button callback (optional) - update to handle burn choice callback
-    #[prop(optional)] on_burn_choice: Option<Callback<(String, BurnOptions)>>,
     /// custom close callback (optional)
     #[prop(optional)] on_close: Option<Callback<()>>,
     /// burn success callback (optional)
@@ -37,10 +34,6 @@ pub fn MemoCardDetails(
     // ✅ create independent state for each copy button
     let (show_copied_mint, set_show_copied_mint) = create_signal(false);
     let (show_copied_burn, set_show_copied_burn) = create_signal(false);
-    
-    // add state for BurnOnchain dialog
-    let (show_burn_onchain, set_show_burn_onchain) = create_signal(false);
-    let (burn_signature, set_burn_signature) = create_signal(String::new());
     
     // format timestamp function
     let format_timestamp = move |timestamp: i64| -> String {
@@ -58,25 +51,7 @@ pub fn MemoCardDetails(
         }
     };
 
-    // handle burn button click - update to open BurnOnchain dialog
-    let handle_burn = move |signature: String| {
-        set_burn_signature.set(signature);
-        set_show_burn_onchain.set(true);
-    };
-
-    // handle burn choice from BurnOnchain component
-    let handle_burn_choice = move |signature: String, burn_options: BurnOptions| {
-        if let Some(callback) = &on_burn_choice {
-            callback.call((signature, burn_options));
-        }
-        set_show_burn_onchain.set(false);
-        handle_close(); // also close details dialog
-    };
-
-    // handle burn onchain close
-    let handle_burn_onchain_close = move |_: ()| {
-        set_show_burn_onchain.set(false);
-    };
+    // Burn functionality removed - burn_onchain has been deprecated
 
     // ✅ create copy functions for mint and burn signatures
     let copy_mint_signature = move |signature: String| {
@@ -330,28 +305,7 @@ pub fn MemoCardDetails(
                                             }
                                         }}
 
-                                        // Burn button (only show if callback is provided)
-                                        {
-                                            if on_burn_choice.is_some() {
-                                                let sig = details.signature.clone();
-                                                view! {
-                                                    <div class="detail-actions">
-                                                        <button 
-                                                            class="detail-burn-btn"
-                                                            on:click=move |_| {
-                                                                log::info!("Burn clicked from details for signature: {}", sig);
-                                                                handle_burn(sig.clone());
-                                                            }
-                                                        >
-                                                            <i class="fas fa-fire"></i>
-                                                            " Burn This MEMO"
-                                                        </button>
-                                                    </div>
-                                                }.into_view()
-                                            } else {
-                                                view! { <div></div> }.into_view()
-                                            }
-                                        }
+                                        // Burn button removed - burn_onchain functionality has been deprecated
                                     </div>
                                 }.into_view()
                             } else {
@@ -367,24 +321,6 @@ pub fn MemoCardDetails(
             </div>
         </Show>
 
-        // BurnOnchain dialog
-        <BurnOnchain
-            show_modal=show_burn_onchain.into()
-            set_show_modal=set_show_burn_onchain
-            signature=burn_signature.into()
-            memo_details=memo_details
-            session=session
-            on_burn_choice=Callback::new(move |(sig, burn_options): (String, BurnOptions)| {
-                handle_burn_choice(sig, burn_options);
-            })
-            on_close=Callback::new(handle_burn_onchain_close)
-            on_burn_success=on_burn_success.unwrap_or_else(|| {
-                Callback::new(|_: (String, u64)| {})
-            })
-            on_burn_error=on_burn_error.unwrap_or_else(|| {
-                Callback::new(|_: String| {})
-            })
-        />
     }
 }
 

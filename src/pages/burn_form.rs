@@ -3,7 +3,6 @@ use crate::core::session::Session;
 use crate::core::rpc_base::RpcConnection;
 use crate::pages::memo_card_details::MemoCardDetails;
 use crate::pages::memo_card::MemoDetails;
-use crate::pages::burn_onchain::BurnOptions;
 
 #[component]
 pub fn BurnForm(
@@ -106,39 +105,7 @@ pub fn BurnForm(
         });
     };
 
-    // Handle burn callback from MemoCardDetails
-    let handle_burn_from_details = Callback::new(move |(signature, burn_options): (String, BurnOptions)| {
-        log::info!("Burn choice made from burn form for signature: {}, options: {:?}", signature, burn_options);
-        
-        // process different burn options combinations
-        if burn_options.personal_collection && burn_options.global_glory_collection {
-            log::info!("Burning to both personal onchain collection and global glory onchain collection: {}", signature);
-            // TODO: implement logic to add to both personal onchain collection and global glory onchain collection
-        } else if burn_options.personal_collection {
-            log::info!("Burning to personal onchain collection only: {}", signature);
-            // TODO: implement logic to add to personal onchain collection
-        } else if burn_options.global_glory_collection {
-            log::info!("Burning to global glory onchain collection only: {}", signature);
-            // TODO: implement logic to add to global glory onchain collection
-        } else {
-            log::info!("Regular burn (no special options): {}", signature);
-            // TODO: implement regular burn logic
-        }
-        
-        // simulate burn completion, call success callback
-        wasm_bindgen_futures::spawn_local(async move {
-            gloo_timers::future::TimeoutFuture::new(2000).await;
-            
-            // Close the details modal
-            set_show_details_modal.set(false);
-            set_error_message.set("✅ Burn transaction completed successfully".to_string());
-            
-            // call the success callback if provided
-            if let Some(callback) = on_burn_success {
-                callback.call((signature, 100)); // dummy amount for now
-            }
-        });
-    });
+    // Burn callback removed - burn_onchain functionality has been deprecated
 
     // Handle modal close
     let handle_details_close = Callback::new(move |_: ()| {
@@ -248,7 +215,6 @@ pub fn BurnForm(
                 set_show_modal=set_show_details_modal
                 memo_details=current_memo_details.into()
                 session=session
-                on_burn_choice=handle_burn_from_details
                 on_close=handle_details_close
                 on_burn_success=on_burn_success.unwrap_or_else(|| {
                     Callback::new(|_: (String, u64)| {})
