@@ -7,7 +7,6 @@ pub mod rpc_base;
 pub mod rpc_token;
 pub mod pixel;
 pub mod cache;
-pub mod transaction;
 pub mod rpc_mint;
 pub mod rpc_chat;
 pub mod rpc_project;
