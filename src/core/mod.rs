@@ -4,7 +4,6 @@ pub mod wallet;
 pub mod session;
 pub mod backpack;
 pub mod rpc_base;
-pub mod rpc_token;
 pub mod pixel;
 pub mod rpc_mint;
 pub mod rpc_chat;
