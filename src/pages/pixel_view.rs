@@ -3,6 +3,8 @@ use leptos::html::Canvas;
 use web_sys::{HtmlCanvasElement, CanvasRenderingContext2d, MouseEvent};
 use wasm_bindgen::{JsCast, JsValue};
 use crate::core::pixel::Pixel;
+use wasm_bindgen_futures::spawn_local;
+use gloo_timers::future::TimeoutFuture;
 
 #[component]
 pub fn PixelView(
@@ -173,4 +175,47 @@ fn request_animation_frame(f: impl FnOnce() + 'static) {
         .unwrap();
     
     closure.forget();
+}
+
+// lazy loading pixel view
+#[component]
+pub fn LazyPixelView(
+    art: String,
+    size: u32,
+) -> impl IntoView {
+    let (is_loaded, set_is_loaded) = create_signal(false);
+    
+    // use signal to store art string, avoid moving issues
+    let (art_signal, _) = create_signal(art);
+    
+    // async decode, add delay to avoid blocking UI
+    create_effect(move |_| {
+        spawn_local(async move {
+            // Canvas rendering is fast, can shorten delay
+            TimeoutFuture::new(50).await;
+            set_is_loaded.set(true);
+        });
+    });
+    
+    view! {
+        {move || {
+            if is_loaded.get() {
+                view! {
+                    <PixelView
+                        art={art_signal.get()}
+                        size=size
+                        editable=false
+                        show_grid=false
+                    />
+                }.into_view()
+            } else {
+                view! {
+                    <div class="pixel-loading" style="display: flex; align-items: center; justify-content: center; height: 128px; color: #666; background-color: #f8f9fa; border-radius: 6px;">
+                        <i class="fas fa-spinner fa-spin" style="margin-right: 8px;"></i>
+                        <span>"Loading..."</span>
+                    </div>
+                }.into_view()
+            }
+        }}
+    }
 } 
