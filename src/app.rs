@@ -45,14 +45,14 @@ pub fn App() -> impl IntoView {
     // Lock screen state
     let (is_screen_locked, set_is_screen_locked) = create_signal(false);
 
-    // Logout handler - clears session and returns to login screen
+    // Logout handler - clears session and returns to initial screen
     let handle_logout = move || {
         log::info!("Logging out...");
         // Clear session data
         session.update(|s| s.logout());
-        // Return to login screen
+        // Return to initial screen (allows choosing between internal wallet and Backpack)
         set_show_main_page.set(false);
-        set_current_step.set(CreateWalletStep::Login);
+        set_current_step.set(CreateWalletStep::Initial);
     };
 
     // Lock screen handler

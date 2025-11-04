@@ -5,7 +5,6 @@ use borsh::{BorshSerialize, BorshDeserialize};
 use std::str::FromStr;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::{
-    signature::{Keypair, Signer},
     instruction::{AccountMeta, Instruction},
     transaction::Transaction,
     message::Message,
@@ -14,7 +13,6 @@ use solana_sdk::{
 use spl_memo;
 use base64;
 use bincode;
-use wasm_bindgen::prelude::*;
 use spl_associated_token_account;
 use log;
 use sha2::{Digest, Sha256};
@@ -218,6 +216,9 @@ impl ProfileConfig {
     /// PDA Seeds for profile contract
     pub const PROFILE_SEED: &'static [u8] = b"profile";
     
+    /// Compute budget configuration
+    pub const COMPUTE_UNIT_BUFFER: f64 = 1.0; // 0% buffer - exact simulation
+    
     /// get program ID
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
         let program_ids = get_program_ids();
@@ -366,14 +367,54 @@ impl RpcConnection {
             ],
         );
         
+        // Build base instructions (without compute budget)
+        let base_instructions = vec![
+            memo_instruction,
+            profile_instruction,
+        ];
+        
         let blockhash = self.get_latest_blockhash().await?;
         
-        let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(400_000);
-        let message = Message::new(
-            &[compute_budget_ix, memo_instruction, profile_instruction],
-            Some(user_pubkey),
-        );
+        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Note: Keep same instruction order as final transaction (memo at index 0)
+        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
+        let mut sim_instructions = base_instructions.clone();
+        sim_instructions.push(dummy_compute_budget_ix);
+        let sim_message = Message::new(&sim_instructions, Some(user_pubkey));
+        let mut sim_transaction = Transaction::new_unsigned(sim_message);
+        sim_transaction.message.recent_blockhash = blockhash;
         
+        // Serialize and simulate
+        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
+        
+        let sim_options = serde_json::json!({
+            "encoding": "base64",
+            "commitment": "confirmed",
+            "replaceRecentBlockhash": true,
+            "sigVerify": false
+        });
+        
+        log::info!("Simulating profile creation transaction...");
+        let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
+        let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
+            .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
+        
+        // Parse compute units consumed
+        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            log::info!("Profile creation simulation consumed {} compute units", units_consumed);
+            (units_consumed as f64 * ProfileConfig::COMPUTE_UNIT_BUFFER) as u64
+        } else {
+            return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
+        };
+        
+        log::info!("Using {} compute units for profile creation (0% buffer)", computed_units);
+        
+        // Build final transaction: memo at index 0, then other instructions, compute budget at end
+        let mut final_instructions = base_instructions;
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+        
+        let message = Message::new(&final_instructions, Some(user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
         transaction.message.recent_blockhash = blockhash;
         
@@ -457,14 +498,54 @@ impl RpcConnection {
             ],
         );
         
+        // Build base instructions (without compute budget)
+        let base_instructions = vec![
+            memo_instruction,
+            profile_instruction,
+        ];
+        
         let blockhash = self.get_latest_blockhash().await?;
         
-        let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(400_000);
-        let message = Message::new(
-            &[compute_budget_ix, memo_instruction, profile_instruction],
-            Some(user_pubkey),
-        );
+        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Note: Keep same instruction order as final transaction (memo at index 0)
+        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
+        let mut sim_instructions = base_instructions.clone();
+        sim_instructions.push(dummy_compute_budget_ix);
+        let sim_message = Message::new(&sim_instructions, Some(user_pubkey));
+        let mut sim_transaction = Transaction::new_unsigned(sim_message);
+        sim_transaction.message.recent_blockhash = blockhash;
         
+        // Serialize and simulate
+        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
+        
+        let sim_options = serde_json::json!({
+            "encoding": "base64",
+            "commitment": "confirmed",
+            "replaceRecentBlockhash": true,
+            "sigVerify": false
+        });
+        
+        log::info!("Simulating profile update transaction...");
+        let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
+        let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
+            .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
+        
+        // Parse compute units consumed
+        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            log::info!("Profile update simulation consumed {} compute units", units_consumed);
+            (units_consumed as f64 * ProfileConfig::COMPUTE_UNIT_BUFFER) as u64
+        } else {
+            return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
+        };
+        
+        log::info!("Using {} compute units for profile update (0% buffer)", computed_units);
+        
+        // Build final transaction: memo at index 0, then other instructions, compute budget at end
+        let mut final_instructions = base_instructions;
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+        
+        let message = Message::new(&final_instructions, Some(user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
         transaction.message.recent_blockhash = blockhash;
         
@@ -505,419 +586,6 @@ impl RpcConnection {
         transaction.message.recent_blockhash = blockhash;
         
         Ok(transaction)
-    }
-
-    /// create user profile (legacy method)
-    /// 
-    /// # Note
-    /// Deprecated. Use build_create_profile_transaction + sign in Session + send_signed_transaction
-    pub async fn create_profile(
-        &self,
-        keypair: &Keypair,
-        burn_amount: u64,
-        username: &str,
-        profile_image: &str,
-        about_me: &str,
-    ) -> Result<String, RpcError> {
-        let about_me_opt = if about_me.is_empty() { None } else { Some(about_me.to_string()) };
-        self.create_profile_full(keypair.to_bytes().as_ref(), username, profile_image, about_me_opt, burn_amount).await
-    }
-
-    /// full create user profile method
-    async fn create_profile_full(
-        &self,
-        keypair_bytes: &[u8],
-        username: &str,
-        profile_image: &str,
-        about_me: Option<String>,
-        burn_amount: u64,
-    ) -> Result<String, RpcError> {
-        log::info!("Creating profile for user with burn amount: {} tokens", burn_amount);
-        
-        // validate minimum burn amount
-        if burn_amount < 420 {
-            return Err(RpcError::Other("Burn amount too small (minimum: 420 tokens)".to_string()));
-        }
-        
-        // create keypair
-        let keypair = Keypair::from_bytes(keypair_bytes)
-            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
-        let user_pubkey = keypair.pubkey();
-        
-        // get necessary addresses
-        let program_id = ProfileConfig::get_program_id()?;
-        let memo_burn_program_id = ProfileConfig::get_memo_burn_program_id()?;
-        let token_2022_program_id = ProfileConfig::get_token_2022_program_id()?;
-        let memo_token_mint = ProfileConfig::get_memo_token_mint()?;
-        
-        // calculate PDA
-        let (profile_pda, _) = ProfileConfig::get_profile_pda(&user_pubkey)?;
-        let (user_global_burn_stats_pda, _) = ProfileConfig::get_user_global_burn_stats_pda(&user_pubkey)?;
-        
-        // calculate user token account
-        let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
-            &user_pubkey,
-            &memo_token_mint,
-            &token_2022_program_id,
-        );
-        
-        // prepare profile creation data (using the correct structure)
-        let profile_creation_data = ProfileCreationData::new(
-            user_pubkey.to_string(),
-            username.to_string(),
-            profile_image.to_string(),
-            about_me,
-        );
-        
-        // validate data
-        profile_creation_data.validate(user_pubkey)?;
-        
-        // create BurnMemo
-        let burn_amount_units = burn_amount * 1_000_000; // convert to units
-        let burn_memo = BurnMemo {
-            version: 1, // BURN_MEMO_VERSION
-            burn_amount: burn_amount_units,
-            payload: profile_creation_data.try_to_vec()
-                .map_err(|e| RpcError::Other(format!("Failed to serialize profile data: {}", e)))?,
-        };
-        
-        // serialize and encode to Base64
-        let memo_data_bytes = burn_memo.try_to_vec()
-            .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo: {}", e)))?;
-        let memo_data_base64 = base64::encode(&memo_data_bytes);
-        
-        log::info!("Profile creation memo data size: {} bytes", memo_data_base64.len());
-        
-        // validate memo length
-        if memo_data_base64.len() < 69 {
-            return Err(RpcError::Other("Memo too short (min 69 chars)".to_string()));
-        }
-        if memo_data_base64.len() > 800 {
-            return Err(RpcError::Other("Memo too long (max 800 chars)".to_string()));
-        }
-        
-        // **create memo instruction (using the same method as the test client)**
-        let memo_instruction = solana_sdk::instruction::Instruction {
-            program_id: spl_memo::id(),
-            accounts: vec![],
-            data: memo_data_base64.into_bytes(),
-        };
-        
-        // **create profile instruction (using the same method as the test client)**
-        let mut instruction_data = ProfileConfig::get_create_profile_discriminator().to_vec();
-        instruction_data.extend_from_slice(&burn_amount_units.to_le_bytes());
-        
-        let profile_instruction = solana_sdk::instruction::Instruction::new_with_bytes(
-            program_id,
-            &instruction_data,
-            vec![
-                AccountMeta::new(user_pubkey, true),                      // user (signer)
-                AccountMeta::new(profile_pda, false),                     // profile
-                AccountMeta::new(memo_token_mint, false),                 // mint
-                AccountMeta::new(user_token_account, false),              // user_token_account
-                AccountMeta::new(user_global_burn_stats_pda, false),      // user_global_burn_stats
-                AccountMeta::new_readonly(token_2022_program_id, false),  // token_program
-                AccountMeta::new_readonly(memo_burn_program_id, false),   // memo_burn_program
-                AccountMeta::new_readonly(solana_sdk::system_program::id(), false), // system_program
-                AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false), // instructions
-            ],
-        );
-        
-        // get blockhash
-        let blockhash_response: serde_json::Value = self.send_request("getLatestBlockhash", serde_json::json!([])).await?;
-        let blockhash_str = blockhash_response["value"]["blockhash"].as_str()
-            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
-        let blockhash = solana_sdk::hash::Hash::from_str(blockhash_str)
-            .map_err(|e| RpcError::Other(format!("Failed to parse blockhash: {}", e)))?;
-        
-        // **create transaction (using the same method as the test client)**
-        let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(400_000);
-        
-        let transaction = Transaction::new_signed_with_payer(
-            &[
-                // Index 0: Compute budget instruction (required for CU optimization)
-                compute_budget_ix,
-                // Index 1: SPL Memo instruction (REQUIRED at this position)
-                memo_instruction,
-                // Index 2: Profile creation instruction
-                profile_instruction,
-            ],
-            Some(&user_pubkey),
-            &[&keypair],
-            blockhash,
-        );
-        
-        // serialize transaction
-        let serialized_tx = base64::encode(bincode::serialize(&transaction)
-            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?);
-        
-        // send transaction
-        let params = serde_json::json!([
-            serialized_tx,
-            {
-                "encoding": "base64",
-                "preflightCommitment": "confirmed",
-                "skipPreflight": false,
-                "maxRetries": 3
-            }
-        ]);
-        
-        self.send_request("sendTransaction", params).await
-    }
-
-    /// update user profile (legacy method)
-    /// 
-    /// # Note
-    /// Deprecated. Use build_update_profile_transaction + sign in Session + send_signed_transaction
-    pub async fn update_profile(
-        &self,
-        keypair: &Keypair,
-        burn_amount: u64,
-        username: Option<String>,
-        image: Option<String>,
-        about_me: Option<String>, // simplified to single layer Option
-    ) -> Result<String, RpcError> {
-        // convert to nested Option here
-        let about_me_nested = match about_me {
-            None => None,           // not update
-            Some(text) if text.is_empty() => Some(None), // clear
-            Some(text) => Some(Some(text)), // set new value
-        };
-        
-        self.update_profile_full(
-            keypair.to_bytes().as_ref(),
-            username,
-            image,
-            about_me_nested, // pass nested Option
-            burn_amount
-        ).await
-    }
-
-    /// full update user profile method
-    async fn update_profile_full(
-        &self,
-        keypair_bytes: &[u8],
-        username: Option<String>,
-        image: Option<String>,
-        about_me: Option<Option<String>>,
-        burn_amount: u64,
-    ) -> Result<String, RpcError> {
-        log::info!("Updating profile with burn amount: {} tokens", burn_amount);
-        
-        // validate minimum burn amount (contract requires update also needs 420 tokens)
-        if burn_amount < 420 {
-            return Err(RpcError::Other("Burn amount too small (minimum: 420 tokens)".to_string()));
-        }
-        
-        // create keypair
-        let keypair = Keypair::from_bytes(keypair_bytes)
-            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
-        let user_pubkey = keypair.pubkey();
-        
-        // get necessary addresses
-        let program_id = ProfileConfig::get_program_id()?;
-        let memo_burn_program_id = ProfileConfig::get_memo_burn_program_id()?;
-        let token_2022_program_id = ProfileConfig::get_token_2022_program_id()?;
-        let memo_token_mint = ProfileConfig::get_memo_token_mint()?;
-        
-        // calculate PDA
-        let (profile_pda, _) = ProfileConfig::get_profile_pda(&user_pubkey)?;
-        let (user_global_burn_stats_pda, _) = ProfileConfig::get_user_global_burn_stats_pda(&user_pubkey)?;
-        
-        // calculate user token account
-        let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
-            &user_pubkey,
-            &memo_token_mint,
-            &token_2022_program_id,
-        );
-        
-        // prepare profile update data
-        let profile_update_data = ProfileUpdateData::new(
-            user_pubkey.to_string(),
-            username.clone(),
-            image.clone(),
-            about_me.clone(),
-        );
-        
-        // validate data
-        profile_update_data.validate(user_pubkey)?;
-        
-        // create BurnMemo
-        let burn_amount_units = burn_amount * 1_000_000; // convert to units
-        let burn_memo = BurnMemo {
-            version: 1,
-            burn_amount: burn_amount_units,
-            payload: profile_update_data.try_to_vec()
-                .map_err(|e| RpcError::Other(format!("Failed to serialize profile update data: {}", e)))?,
-        };
-        
-        // serialize and encode to Base64
-        let memo_data_bytes = burn_memo.try_to_vec()
-            .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo: {}", e)))?;
-        let memo_data_base64 = base64::encode(&memo_data_bytes);
-        
-        log::info!("Profile update memo data size: {} bytes", memo_data_base64.len());
-        
-        // **create memo instruction (following the contract requirements)**
-        let memo_instruction = solana_sdk::instruction::Instruction {
-            program_id: spl_memo::id(),
-            accounts: vec![],
-            data: memo_data_base64.into_bytes(),
-        };
-        
-        // **create update_profile instruction (note: contract's update_profile requires parameters)**
-        let mut instruction_data = ProfileConfig::get_update_profile_discriminator().to_vec();
-        // according to the contract, update_profile instruction requires these parameters:
-        // burn_amount: u64, username: Option<String>, image: Option<String>, about_me: Option<Option<String>>
-        instruction_data.extend_from_slice(&burn_amount_units.to_le_bytes());
-        
-        // serialize Option<String> parameters (using Anchor/Borsh format)
-        instruction_data.extend_from_slice(&username.try_to_vec().map_err(|e| RpcError::Other(format!("Failed to serialize username: {}", e)))?);
-        instruction_data.extend_from_slice(&image.try_to_vec().map_err(|e| RpcError::Other(format!("Failed to serialize image: {}", e)))?);
-        instruction_data.extend_from_slice(&about_me.try_to_vec().map_err(|e| RpcError::Other(format!("Failed to serialize about_me: {}", e)))?);
-        
-        let update_instruction = solana_sdk::instruction::Instruction::new_with_bytes(
-            program_id,
-            &instruction_data,
-            vec![
-                AccountMeta::new(user_pubkey, true),                      // user (signer)
-                AccountMeta::new(memo_token_mint, false),                 // mint
-                AccountMeta::new(user_token_account, false),              // user_token_account
-                AccountMeta::new(profile_pda, false),                     // profile
-                AccountMeta::new(user_global_burn_stats_pda, false),      // user_global_burn_stats
-                AccountMeta::new_readonly(token_2022_program_id, false),  // token_program
-                AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false), // instructions
-                AccountMeta::new_readonly(memo_burn_program_id, false),   // memo_burn_program
-            ],
-        );
-        
-        // get blockhash
-        let blockhash_response: serde_json::Value = self.send_request("getLatestBlockhash", serde_json::json!([])).await?;
-        let blockhash_str = blockhash_response["value"]["blockhash"].as_str()
-            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
-        let blockhash = solana_sdk::hash::Hash::from_str(blockhash_str)
-            .map_err(|e| RpcError::Other(format!("Failed to parse blockhash: {}", e)))?;
-        
-        // **create transaction (following the contract requirements)**
-        let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(400_000);
-        
-        let transaction = Transaction::new_signed_with_payer(
-            &[
-                // Index 0: Compute budget instruction
-                compute_budget_ix,
-                // Index 1: SPL Memo instruction (REQUIRED at this position)
-                memo_instruction,
-                // Index 2: Update profile instruction
-                update_instruction,
-            ],
-            Some(&user_pubkey),
-            &[&keypair],
-            blockhash,
-        );
-        
-        // serialize transaction
-        let serialized_tx = base64::encode(bincode::serialize(&transaction)
-            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?);
-        
-        // send transaction
-        let params = serde_json::json!([
-            serialized_tx,
-            {
-                "encoding": "base64",
-                "preflightCommitment": "confirmed",
-                "skipPreflight": false,
-                "maxRetries": 3
-            }
-        ]);
-        
-        self.send_request("sendTransaction", params).await
-    }
-
-    /// delete user profile (legacy method)
-    /// 
-    /// # Note
-    /// Deprecated. Use build_delete_profile_transaction + sign in Session + send_signed_transaction
-    pub async fn delete_profile(&self, keypair: &Keypair) -> Result<String, RpcError> {
-        let program_id = ProfileConfig::get_program_id()?;
-        let target_pubkey = keypair.pubkey();
-        
-        // Calculate user profile PDA - should match contract seeds: [b"profile", user.key().as_ref()]
-        let (user_profile_pda, bump) = Pubkey::find_program_address(
-            &[b"profile", target_pubkey.as_ref()],
-            &program_id
-        );
-        
-        // Get latest blockhash
-        let blockhash: serde_json::Value = self.send_request(
-            "getLatestBlockhash",
-            serde_json::json!([{
-                "commitment": "confirmed",
-                "minContextSlot": 0
-            }])
-        ).await?;
-
-        let recent_blockhash = blockhash["value"]["blockhash"]
-            .as_str()
-            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
-
-        // Create delete_profile instruction data (discriminator)
-        // For Anchor programs, the discriminator is the first 8 bytes of sha256("global:delete_profile")
-        let mut hasher = sha2::Sha256::new();
-        hasher.update(b"global:delete_profile");
-        let hash = hasher.finalize();
-        let instruction_data = hash[..8].to_vec();
-
-        // Create the instruction with correct accounts for new contract
-        let instruction = Instruction::new_with_bytes(
-            program_id,
-            &instruction_data,
-            vec![
-                AccountMeta::new(target_pubkey, true),      // user (signer, mutable)
-                AccountMeta::new(user_profile_pda, false),  // profile (mutable, PDA)
-            ],
-        );
-
-        // Create transaction
-        let message = Message::new(
-            &[instruction],
-            Some(&target_pubkey), // fee payer
-        );
-
-        let mut transaction = Transaction::new_unsigned(message);
-        transaction.message.recent_blockhash = recent_blockhash.parse()
-            .map_err(|_| RpcError::Other("Invalid blockhash format".to_string()))?;
-
-        // Sign transaction
-        transaction.sign(&[keypair], transaction.message.recent_blockhash);
-
-        // Serialize and send transaction
-        let serialized = bincode::serialize(&transaction)
-            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?;
-
-        let base64_tx = base64::encode(&serialized);
-
-        let response: serde_json::Value = self.send_request(
-            "sendTransaction",
-            serde_json::json!([
-                base64_tx,
-                {
-                    "skipPreflight": false,
-                    "preflightCommitment": "confirmed",
-                    "encoding": "base64",
-                    "maxRetries": 3
-                }
-            ])
-        ).await?;
-
-        if let Some(error) = response.get("error") {
-            return Err(RpcError::Other(format!("Transaction failed: {}", error)));
-        }
-
-        let signature = response.as_str()
-            .ok_or_else(|| RpcError::Other("Invalid response format".to_string()))?;
-
-        log::info!("Delete profile transaction sent: {}", signature);
-        Ok(signature.to_string())
     }
 
     /// get user profile

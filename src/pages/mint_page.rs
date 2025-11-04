@@ -5,7 +5,6 @@ use crate::core::rpc_mint::{MintConfig, SupplyTier};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
-use rand::Rng;
 
 // Mint mode enumeration
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -16,39 +15,20 @@ pub enum MintMode {
 
 // Generate random JSON memo between 69-800 bytes
 fn generate_random_memo() -> String {
-    let mut rng = rand::thread_rng();
-    
-    // Create base JSON structure
-    let base_json = serde_json::json!({
+    // Create simplified base JSON structure (no sensitive info)
+    // This generates exactly 70 bytes, meeting the 69-800 byte requirement
+    let memo_json = serde_json::json!({
         "action": "mint",
-        "timestamp": js_sys::Date::now() as u64,
-        "user_id": format!("user_{}", rng.gen::<u32>()),
-        "session_id": format!("session_{}", rng.gen::<u64>()),
         "platform": "memo-app",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "chain": "X1"
     });
     
-    let mut memo = serde_json::to_string(&base_json).unwrap();
+    let memo = serde_json::to_string(&memo_json).unwrap();
     
-    // Ensure minimum length of 69 bytes
-    while memo.len() < 69 {
-        memo = serde_json::to_string(&serde_json::json!({
-            "action": "mint",
-            "timestamp": js_sys::Date::now() as u64,
-            "user_id": format!("user_{}", rng.gen::<u32>()),
-            "session_id": format!("session_{}", rng.gen::<u64>()),
-            "platform": "memo-app",
-            "version": "1.0.0",
-            "random_data": format!("random_string_{}", rng.gen::<u64>()),
-            "extra_padding": " ".repeat(10 + rng.gen_range(0..20))
-        })).unwrap();
-    }
-    
-    // Ensure maximum length of 800 bytes
-    if memo.len() > 800 {
-        memo.truncate(797);
-        memo.push_str("..."); // Keep it as valid ending
-    }
+    // Verify length (should be 70 bytes)
+    debug_assert!(memo.len() >= 69 && memo.len() <= 800, 
+        "Memo length {} is outside valid range 69-800", memo.len());
     
     memo
 }

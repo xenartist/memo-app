@@ -160,6 +160,9 @@ impl Session {
     
     /// Logout and clear session
     pub fn logout(&mut self) {
+        // Check if Backpack wallet BEFORE clearing wallet_type
+        let is_backpack = self.is_backpack();
+        
         // Clear all session data
         self.wallet_type = WalletType::Internal; // Reset to default
         self.encrypted_seed = None;
@@ -174,7 +177,7 @@ impl Session {
         self.network = None;
         
         // If Backpack wallet, disconnect
-        if self.is_backpack() {
+        if is_backpack {
             wasm_bindgen_futures::spawn_local(async {
                 if let Err(e) = BackpackWallet::disconnect().await {
                     log::warn!("Failed to disconnect Backpack wallet: {}", e);

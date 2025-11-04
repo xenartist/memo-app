@@ -57,6 +57,10 @@ pub fn MainPage(
     on_logout: impl Fn() + 'static,
     on_lock_screen: impl Fn() + 'static
 ) -> impl IntoView {
+    // Store callbacks to avoid ownership issues in <Show> components
+    let on_logout = store_value(on_logout);
+    let on_lock_screen = store_value(on_lock_screen);
+    
     let (version_status, set_version_status) = create_signal(String::from("Testing RPC connection..."));
     let (blockhash_status, set_blockhash_status) = create_signal(String::from("Getting latest blockhash..."));
     
@@ -294,13 +298,13 @@ pub fn MainPage(
     // logout handler
     let handle_logout_click = move |_| {
         add_log_entry("INFO", "User logged out");
-        on_logout();
+        on_logout.with_value(|f| f());
     };
 
     // lock screen handler
     let handle_lock_click = move |_| {
         add_log_entry("INFO", "Screen locked");
-        on_lock_screen();
+        on_lock_screen.with_value(|f| f());
     };
 
     // initialize burn stats handler
@@ -397,15 +401,17 @@ pub fn MainPage(
                         <span>"Logout"</span>
                     </button>
                     
-                    // Lock Screen button
-                    <button
-                        class="lock-screen-btn"
-                        on:click=handle_lock_click
-                        title="Lock screen"
-                    >
-                        <i class="fas fa-lock"></i>
-                        <span>"Lock"</span>
-                    </button>
+                    // Lock Screen button - only show for internal wallet
+                    <Show when=move || session.with(|s| s.is_internal_wallet())>
+                        <button
+                            class="lock-screen-btn"
+                            on:click=handle_lock_click
+                            title="Lock screen"
+                        >
+                            <i class="fas fa-lock"></i>
+                            <span>"Lock"</span>
+                        </button>
+                    </Show>
                     
                     // Initialize Burn Stats button (only show if needed and in testnet)
                     <Show when=move || {
