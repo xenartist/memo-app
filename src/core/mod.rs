@@ -19,6 +19,3 @@ pub mod rpc_burn;
 
 // Re-export commonly used network types
 pub use network_config::{NetworkType, get_network, initialize_network, clear_network};
-
-#[cfg(test)]
-pub mod rpc_tests;

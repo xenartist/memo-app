@@ -3,7 +3,6 @@ use super::network_config::get_program_ids;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use solana_sdk::{
-    signature::{Keypair, Signer},
     instruction::{AccountMeta, Instruction},
     transaction::Transaction,
     message::Message,
@@ -39,7 +38,7 @@ impl MintConfig {
     pub const MAX_MEMO_LENGTH: usize = 800;
     
     // Compute budget configuration
-    pub const COMPUTE_UNIT_BUFFER: f64 = 1.5; // 50% buffer
+    pub const COMPUTE_UNIT_BUFFER: f64 = 1.0; // No buffer - using exact simulation value
 }
 
 // Helper functions
@@ -279,10 +278,15 @@ impl RpcConnection {
         // Get latest blockhash
         let recent_blockhash = self.get_latest_blockhash().await?;
         
-        // Create simulation transaction (need to create a temporary keypair for simulation)
-        // Note: We'll simulate without compute budget to get the units needed
+        // Create simulation transaction with a dummy compute budget instruction
+        // Contract requires memo at index 0, so compute budget must be after base instructions
+        // Note: Compute budget instructions are processed by Solana runtime before instruction execution
+        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(400_000);
+        let mut sim_instructions = base_instructions.clone();
+        sim_instructions.push(dummy_compute_budget_ix);
+        
         let sim_message = Message::new(
-            &base_instructions,
+            &sim_instructions,
             Some(user_pubkey),
         );
         
@@ -309,7 +313,7 @@ impl RpcConnection {
         // Parse simulation result to extract compute units consumed
         let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
             log::info!("Mint simulation consumed {} compute units", units_consumed);
-            // Add buffer to account for actual execution variations
+            // Using exact simulation value (no buffer)
             (units_consumed as f64 * MintConfig::COMPUTE_UNIT_BUFFER) as u64
         } else {
             return Err(RpcError::Other(
@@ -317,16 +321,14 @@ impl RpcConnection {
             ));
         };
         
-        log::info!("Using {} compute units for mint (with 50% buffer)", computed_units);
+        log::info!("Using {} compute units for mint (exact simulation value, no buffer)", computed_units);
         
         // Build the final transaction with compute budget
-        let mut final_instructions = vec![];
+        // Contract requires memo at index 0, so add base instructions first, then compute budget
+        let mut final_instructions = base_instructions;
         
-        // Add compute budget instruction first
+        // Add compute budget instruction at the end (will be processed by runtime first anyway)
         final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
-        
-        // Add all the base instructions
-        final_instructions.extend(base_instructions);
         
         // Create final unsigned transaction
         let final_message = Message::new(
@@ -340,195 +342,6 @@ impl RpcConnection {
         log::info!("Mint transaction built successfully, ready for signing");
         
         Ok(final_transaction)
-    }
-
-    /// Mint tokens using the memo mint contract (legacy method, kept for compatibility)
-    /// 
-    /// # Parameters
-    /// * `memo` - The memo text (must be 69-800 bytes)
-    /// * `keypair_bytes` - The user's keypair bytes for signing
-    /// 
-    /// # Returns
-    /// Transaction signature on success
-    /// 
-    /// # Note
-    /// This method is deprecated. Use build_mint_transaction + sign in Session + send_signed_transaction instead.
-    pub async fn mint(
-        &self,
-        memo: &str,
-        keypair_bytes: &[u8],
-    ) -> Result<String, RpcError> {
-        // Validate memo length
-        MintConfig::validate_memo_length(memo)?;
-        
-        log::info!("Starting mint operation with memo length: {} bytes", memo.len());
-        
-        // Get configuration values
-        let mint_program_id = MintConfig::get_mint_program_id()?;
-        let mint = MintConfig::get_token_mint()?;
-        let token_2022_program_id = MintConfig::get_token_2022_program_id()?;
-        
-        // Create keypair from bytes and get pubkey
-        let keypair = Keypair::from_bytes(keypair_bytes)
-            .map_err(|e| RpcError::Other(format!("Failed to create keypair: {}", e)))?;
-        let user_pubkey = keypair.pubkey();
-        
-        log::info!("User pubkey: {}", user_pubkey);
-        
-        // Calculate mint authority PDA
-        let (mint_authority_pda, _) = MintConfig::get_mint_authority_pda()?;
-        
-        // Calculate user's token account (ATA) using Token 2022 program
-        let token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
-            &user_pubkey,
-            &mint,
-            &token_2022_program_id,
-        );
-        
-        log::info!("Token account: {}", token_account);
-        log::info!("Mint authority PDA: {}", mint_authority_pda);
-        
-        // Check if token account exists
-        let token_account_info = self.get_account_info(&token_account.to_string(), Some("base64")).await?;
-        let token_account_info: serde_json::Value = serde_json::from_str(&token_account_info)
-            .map_err(|e| RpcError::Other(format!("Failed to parse token account info: {}", e)))?;
-        
-        // Build base instructions (for simulation first)
-        let mut base_instructions = vec![];
-        
-        // Add memo instruction first
-        base_instructions.push(spl_memo::build_memo(
-            memo.as_bytes(),
-            &[&user_pubkey],
-        ));
-        
-        // If token account doesn't exist, add create ATA instruction for Token 2022
-        if token_account_info["value"].is_null() {
-            log::info!("Token account does not exist, creating it...");
-            base_instructions.push(
-                spl_associated_token_account::instruction::create_associated_token_account_idempotent(
-                    &user_pubkey,           // Funding account (fee payer)
-                    &user_pubkey,           // Wallet address  
-                    &mint,                  // Mint address
-                    &token_2022_program_id  // Token 2022 program ID
-                )
-            );
-        }
-        
-        // Create the mint instruction
-        let instruction_data = MintConfig::get_process_mint_discriminator().to_vec();
-        
-        let accounts = vec![
-            AccountMeta::new(user_pubkey, true),                    // user (signer)
-            AccountMeta::new(mint, false),                          // mint
-            AccountMeta::new_readonly(mint_authority_pda, false),   // mint_authority PDA
-            AccountMeta::new(token_account, false),                 // token_account
-            AccountMeta::new_readonly(token_2022_program_id, false), // Token 2022 program
-            AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false), // instructions sysvar
-        ];
-        
-        // Add mint instruction
-        base_instructions.push(Instruction::new_with_bytes(
-            mint_program_id,
-            &instruction_data,
-            accounts,
-        ));
-        
-        // Get latest blockhash
-        let blockhash: serde_json::Value = self.send_request(
-            "getLatestBlockhash",
-            serde_json::json!([{
-                "commitment": "confirmed",
-                "minContextSlot": 0
-            }])
-        ).await?;
-        
-        let recent_blockhash = blockhash["value"]["blockhash"]
-            .as_str()
-            .ok_or_else(|| RpcError::Other("Failed to get blockhash".to_string()))?;
-        
-        // Create simulation transaction (without compute budget instruction)
-        let sim_message = Message::new(
-            &base_instructions,
-            Some(&user_pubkey),
-        );
-        
-        let mut sim_transaction = Transaction::new_unsigned(sim_message);
-        sim_transaction.message.recent_blockhash = solana_sdk::hash::Hash::from_str(recent_blockhash)
-            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
-        sim_transaction.sign(&[&keypair], sim_transaction.message.recent_blockhash);
-        
-        // Serialize simulation transaction
-        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
-            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
-        
-        // Simulate transaction to get compute units consumption
-        let sim_options = serde_json::json!({
-            "encoding": "base64",
-            "commitment": "confirmed",
-            "replaceRecentBlockhash": true,
-            "sigVerify": false
-        });
-        
-        let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
-        let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
-            .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
-        
-        // Parse simulation result to extract compute units consumed
-        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
-            log::info!("Mint simulation consumed {} compute units", units_consumed);
-            // Add buffer to account for actual execution variations
-            (units_consumed as f64 * MintConfig::COMPUTE_UNIT_BUFFER) as u64
-        } else {
-            return Err(RpcError::Other(
-                "Failed to get compute units from simulation - cannot proceed without accurate CU estimation".to_string()
-            ));
-        };
-        
-        log::info!("Using {} compute units for mint (simulation: {}, +50% buffer)", 
-            computed_units, 
-            sim_result["value"]["unitsConsumed"].as_u64().unwrap_or(0)
-        );
-        
-        // Now build the final transaction with the calculated compute units
-        let mut final_instructions = vec![];
-        
-        // Add compute budget instruction first
-        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
-        
-        // Add all the base instructions
-        final_instructions.extend(base_instructions);
-        
-        // Create and sign final transaction
-        let final_message = Message::new(
-            &final_instructions,
-            Some(&user_pubkey),
-        );
-        
-        let mut final_transaction = Transaction::new_unsigned(final_message);
-        final_transaction.message.recent_blockhash = solana_sdk::hash::Hash::from_str(recent_blockhash)
-            .map_err(|e| RpcError::Other(format!("Invalid blockhash: {}", e)))?;
-        final_transaction.sign(&[&keypair], final_transaction.message.recent_blockhash);
-        
-        // Serialize and send final transaction
-        let final_serialized_tx = base64::encode(bincode::serialize(&final_transaction)
-            .map_err(|e| RpcError::Other(format!("Failed to serialize final transaction: {}", e)))?);
-        
-        let params = serde_json::json!([
-            final_serialized_tx,
-            {
-                "encoding": "base64",
-                "preflightCommitment": "confirmed",
-                "skipPreflight": false,
-                "maxRetries": 3
-            }
-        ]);
-        
-        log::info!("Sending mint transaction...");
-        let result = self.send_request("sendTransaction", params).await?;
-        log::info!("Mint transaction sent successfully");
-        
-        Ok(result)
     }
 
     /// Get the current supply of the mint token

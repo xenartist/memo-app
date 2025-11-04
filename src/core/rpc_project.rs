@@ -57,7 +57,7 @@ impl ProjectConfig {
     pub const MAX_PAYLOAD_LENGTH: usize = Self::MAX_MEMO_LENGTH - BORSH_FIXED_OVERHEAD; // 800 - 13 = 787
     
     /// Compute budget configuration
-    pub const COMPUTE_UNIT_BUFFER: f64 = 1.5; // 50% buffer (CPI calls are unpredictable in simulation)
+    pub const COMPUTE_UNIT_BUFFER: f64 = 1.0; // 0% buffer - exact simulation
     
     /// Helper functions
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
@@ -784,8 +784,12 @@ impl RpcConnection {
         
         let blockhash = self.get_latest_blockhash().await?;
         
-        // Create simulation transaction
-        let sim_message = Message::new(&base_instructions, Some(user_pubkey));
+        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Note: Keep same instruction order as final transaction (memo at index 0)
+        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
+        let mut sim_instructions = base_instructions.clone();
+        sim_instructions.push(dummy_compute_budget_ix);
+        let sim_message = Message::new(&sim_instructions, Some(user_pubkey));
         let mut sim_transaction = Transaction::new_unsigned(sim_message);
         sim_transaction.message.recent_blockhash = blockhash;
         
@@ -813,12 +817,11 @@ impl RpcConnection {
             return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
         };
         
-        log::info!("Using {} compute units for create project (with 50% buffer)", computed_units);
+        log::info!("Using {} compute units for create project (0% buffer)", computed_units);
         
-        // Build final transaction with compute budget
-        let mut final_instructions = vec![];
+        // Build final transaction: memo at index 0, then other instructions, compute budget at end
+        let mut final_instructions = base_instructions;
         final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
-        final_instructions.extend(base_instructions);
         
         let message = Message::new(&final_instructions, Some(user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
@@ -935,8 +938,12 @@ impl RpcConnection {
         
         let blockhash = self.get_latest_blockhash().await?;
         
-        // Create simulation transaction
-        let sim_message = Message::new(&base_instructions, Some(user_pubkey));
+        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Note: Keep same instruction order as final transaction (memo at index 0)
+        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
+        let mut sim_instructions = base_instructions.clone();
+        sim_instructions.push(dummy_compute_budget_ix);
+        let sim_message = Message::new(&sim_instructions, Some(user_pubkey));
         let mut sim_transaction = Transaction::new_unsigned(sim_message);
         sim_transaction.message.recent_blockhash = blockhash;
         
@@ -964,12 +971,11 @@ impl RpcConnection {
             return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
         };
         
-        log::info!("Using {} compute units for update project (with 50% buffer)", computed_units);
+        log::info!("Using {} compute units for update project (0% buffer)", computed_units);
         
-        // Build final transaction with compute budget
-        let mut final_instructions = vec![];
+        // Build final transaction: memo at index 0, then other instructions, compute budget at end
+        let mut final_instructions = base_instructions;
         final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
-        final_instructions.extend(base_instructions);
         
         let message = Message::new(&final_instructions, Some(user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
@@ -1069,8 +1075,12 @@ impl RpcConnection {
         
         let blockhash = self.get_latest_blockhash().await?;
         
-        // Create simulation transaction
-        let sim_message = Message::new(&base_instructions, Some(user_pubkey));
+        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Note: Keep same instruction order as final transaction (memo at index 0)
+        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
+        let mut sim_instructions = base_instructions.clone();
+        sim_instructions.push(dummy_compute_budget_ix);
+        let sim_message = Message::new(&sim_instructions, Some(user_pubkey));
         let mut sim_transaction = Transaction::new_unsigned(sim_message);
         sim_transaction.message.recent_blockhash = blockhash;
         
@@ -1098,12 +1108,11 @@ impl RpcConnection {
             return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
         };
         
-        log::info!("Using {} compute units for burn tokens for project (with 50% buffer)", computed_units);
+        log::info!("Using {} compute units for burn tokens for project (0% buffer)", computed_units);
         
-        // Build final transaction with compute budget
-        let mut final_instructions = vec![];
+        // Build final transaction: memo at index 0, then other instructions, compute budget at end
+        let mut final_instructions = base_instructions;
         final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
-        final_instructions.extend(base_instructions);
         
         let message = Message::new(&final_instructions, Some(user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
@@ -1478,8 +1487,12 @@ impl RpcConnection {
         let blockhash = solana_sdk::hash::Hash::from_str(blockhash_str)
             .map_err(|e| RpcError::Other(format!("Failed to parse blockhash: {}", e)))?;
         
-        // Create simulation transaction (without compute budget instruction)
-        let sim_message = Message::new(&base_instructions, Some(&user_pubkey));
+        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Note: Keep same instruction order as final transaction (memo at index 0)
+        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
+        let mut sim_instructions = base_instructions.clone();
+        sim_instructions.push(dummy_compute_budget_ix);
+        let sim_message = Message::new(&sim_instructions, Some(&user_pubkey));
         let mut sim_transaction = Transaction::new_unsigned(sim_message);
         sim_transaction.message.recent_blockhash = blockhash;
         sim_transaction.sign(&[&keypair], blockhash);
@@ -1504,10 +1517,9 @@ impl RpcConnection {
         // Parse simulation result to extract compute units consumed
         let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
             log::info!("Project creation simulation consumed {} compute units", units_consumed);
-            // Apply buffer
             let final_units = (units_consumed as f64 * ProjectConfig::COMPUTE_UNIT_BUFFER) as u64;
             
-            log::info!("CU calculation for project creation: simulated={}, final={} (+20%)", 
+            log::info!("CU calculation for project creation: simulated={}, final={} (0% buffer)", 
                       units_consumed, final_units);
             
             final_units
@@ -1518,14 +1530,11 @@ impl RpcConnection {
 
         log::info!("Using {} compute units for project creation", computed_units);
         
-        // Now build the final transaction with the calculated compute units
-        let mut final_instructions = vec![];
+        // Build final transaction: memo at index 0, then other instructions, compute budget at end
+        let mut final_instructions = base_instructions;
 
-        // Add compute budget instruction first
+        // Add compute budget instruction at the end
         final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
-
-        // Add all base instructions
-        final_instructions.extend(base_instructions);
         
         // Create and sign final transaction
         let final_message = Message::new(&final_instructions, Some(&user_pubkey));
@@ -1706,8 +1715,12 @@ impl RpcConnection {
         let blockhash = solana_sdk::hash::Hash::from_str(blockhash_str)
             .map_err(|e| RpcError::Other(format!("Failed to parse blockhash: {}", e)))?;
         
-        // Create simulation transaction (without compute budget instruction)
-        let sim_message = Message::new(&base_instructions, Some(&user_pubkey));
+        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Note: Keep same instruction order as final transaction (memo at index 0)
+        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
+        let mut sim_instructions = base_instructions.clone();
+        sim_instructions.push(dummy_compute_budget_ix);
+        let sim_message = Message::new(&sim_instructions, Some(&user_pubkey));
         let mut sim_transaction = Transaction::new_unsigned(sim_message);
         sim_transaction.message.recent_blockhash = blockhash;
         sim_transaction.sign(&[&keypair], blockhash);
@@ -1732,10 +1745,9 @@ impl RpcConnection {
         // Parse simulation result to extract compute units consumed
         let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
             log::info!("Update project simulation consumed {} compute units", units_consumed);
-            // Apply buffer
             let final_units = (units_consumed as f64 * ProjectConfig::COMPUTE_UNIT_BUFFER) as u64;
             
-            log::info!("CU calculation for update project: simulated={}, final={} (+20%)", 
+            log::info!("CU calculation for update project: simulated={}, final={} (0% buffer)", 
                       units_consumed, final_units);
             
             final_units
@@ -1744,17 +1756,13 @@ impl RpcConnection {
             return Err(RpcError::Other("Simulation failed to provide compute units".to_string()));
         };
 
-        // Use calculated CU
         log::info!("Using {} compute units for update project", computed_units);
         
-        // Now build the final transaction with the calculated compute units
-        let mut final_instructions = vec![];
+        // Build final transaction: memo at index 0, then other instructions, compute budget at end
+        let mut final_instructions = base_instructions;
 
-        // Add compute budget instruction first
+        // Add compute budget instruction at the end
         final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
-
-        // Add all base instructions
-        final_instructions.extend(base_instructions);
         
         // Create and sign final transaction
         let final_message = Message::new(&final_instructions, Some(&user_pubkey));
@@ -1940,8 +1948,12 @@ impl RpcConnection {
         let blockhash = solana_sdk::hash::Hash::from_str(blockhash_str)
             .map_err(|e| RpcError::Other(format!("Failed to parse blockhash: {}", e)))?;
         
-        // Create simulation transaction (without compute budget instruction)
-        let sim_message = Message::new(&base_instructions, Some(&user_pubkey));
+        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Note: Keep same instruction order as final transaction (memo at index 0)
+        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
+        let mut sim_instructions = base_instructions.clone();
+        sim_instructions.push(dummy_compute_budget_ix);
+        let sim_message = Message::new(&sim_instructions, Some(&user_pubkey));
         let mut sim_transaction = Transaction::new_unsigned(sim_message);
         sim_transaction.message.recent_blockhash = blockhash;
         sim_transaction.sign(&[&keypair], blockhash);
@@ -1966,10 +1978,9 @@ impl RpcConnection {
         // Parse simulation result to extract compute units consumed
         let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
             log::info!("Burn tokens for project simulation consumed {} compute units", units_consumed);
-            // Apply buffer
             let final_units = (units_consumed as f64 * ProjectConfig::COMPUTE_UNIT_BUFFER) as u64;
             
-            log::info!("CU calculation for burn tokens: simulated={}, final={} (+20%)", 
+            log::info!("CU calculation for burn tokens: simulated={}, final={} (0% buffer)", 
                       units_consumed, final_units);
             
             final_units
@@ -1978,17 +1989,13 @@ impl RpcConnection {
             return Err(RpcError::Other("Simulation failed to provide compute units".to_string()));
         };
 
-        // Use calculated CU
         log::info!("Using {} compute units for burn tokens for project", computed_units);
         
-        // Now build the final transaction with the calculated compute units
-        let mut final_instructions = vec![];
+        // Build final transaction: memo at index 0, then other instructions, compute budget at end
+        let mut final_instructions = base_instructions;
 
-        // Add compute budget instruction first
+        // Add compute budget instruction at the end
         final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
-
-        // Add all base instructions
-        final_instructions.extend(base_instructions);
         
         // Create and sign final transaction
         let final_message = Message::new(&final_instructions, Some(&user_pubkey));

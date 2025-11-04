@@ -49,7 +49,7 @@ impl BurnConfig {
     pub const MAX_PAYLOAD_LENGTH: usize = Self::MAX_MEMO_LENGTH - BORSH_FIXED_OVERHEAD; // 800 - 13 = 787
     
     /// Compute budget configuration
-    pub const COMPUTE_UNIT_BUFFER: f64 = 1.2; // 20% buffer for burn operations
+    pub const COMPUTE_UNIT_BUFFER: f64 = 1.0; // 0% buffer - exact simulation
     pub const MIN_COMPUTE_UNITS: u64 = 300_000;
     
     /// PDA Seeds
@@ -267,8 +267,13 @@ impl RpcConnection {
         };
         
         let blockhash = self.get_latest_blockhash().await?;
-        let base_instructions = vec![memo_instruction.clone(), burn_instruction.clone()];
-        let message = Message::new(&base_instructions, Some(user_pubkey));
+        
+        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Note: Keep same instruction order as final transaction (memo at index 0)
+        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
+        let mut sim_instructions = vec![memo_instruction.clone(), burn_instruction.clone()];
+        sim_instructions.push(dummy_compute_budget_ix);
+        let message = Message::new(&sim_instructions, Some(user_pubkey));
         let mut sim_transaction = Transaction::new_unsigned(message);
         sim_transaction.message.recent_blockhash = blockhash;
         
@@ -293,10 +298,11 @@ impl RpcConnection {
             400_000u64
         };
         
+        // Build final transaction: memo at index 0, then other instructions, compute budget at end
         let mut final_instructions = vec![];
-        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
         final_instructions.push(memo_instruction);
         final_instructions.push(burn_instruction);
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
         
         let final_message = Message::new(&final_instructions, Some(user_pubkey));
         let mut final_transaction = Transaction::new_unsigned(final_message);
@@ -570,8 +576,13 @@ impl RpcConnection {
         
         // Build transaction for simulation - get latest blockhash
         let blockhash = self.get_latest_blockhash().await?;
-        let base_instructions = vec![memo_instruction.clone(), burn_instruction.clone()];
-        let message = Message::new(&base_instructions, Some(&user_pubkey));
+        
+        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Note: Keep same instruction order as final transaction (memo at index 0)
+        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
+        let mut sim_instructions = vec![memo_instruction.clone(), burn_instruction.clone()];
+        sim_instructions.push(dummy_compute_budget_ix);
+        let message = Message::new(&sim_instructions, Some(&user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
         transaction.message.recent_blockhash = blockhash;
         transaction.sign(&[&keypair], transaction.message.recent_blockhash);
@@ -601,13 +612,13 @@ impl RpcConnection {
             400_000u64
         };
         
-        log::info!("Using {} compute units for burn operation", computed_units);
+        log::info!("Using {} compute units for burn operation (0% buffer)", computed_units);
         
-        // Build final transaction with compute budget
+        // Build final transaction: memo at index 0, then other instructions, compute budget at end
         let mut final_instructions = vec![];
-        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
         final_instructions.push(memo_instruction);
         final_instructions.push(burn_instruction);
+        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
         
         let final_message = Message::new(&final_instructions, Some(&user_pubkey));
         let mut final_transaction = Transaction::new_unsigned(final_message);

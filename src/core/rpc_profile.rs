@@ -219,7 +219,7 @@ impl ProfileConfig {
     pub const PROFILE_SEED: &'static [u8] = b"profile";
     
     /// Compute budget configuration
-    pub const COMPUTE_UNIT_BUFFER: f64 = 1.5; // 50% buffer (CPI calls are unpredictable in simulation)
+    pub const COMPUTE_UNIT_BUFFER: f64 = 1.0; // 0% buffer - exact simulation
     
     /// get program ID
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
@@ -377,8 +377,12 @@ impl RpcConnection {
         
         let blockhash = self.get_latest_blockhash().await?;
         
-        // Create simulation transaction
-        let sim_message = Message::new(&base_instructions, Some(user_pubkey));
+        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Note: Keep same instruction order as final transaction (memo at index 0)
+        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
+        let mut sim_instructions = base_instructions.clone();
+        sim_instructions.push(dummy_compute_budget_ix);
+        let sim_message = Message::new(&sim_instructions, Some(user_pubkey));
         let mut sim_transaction = Transaction::new_unsigned(sim_message);
         sim_transaction.message.recent_blockhash = blockhash;
         
@@ -406,12 +410,11 @@ impl RpcConnection {
             return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
         };
         
-        log::info!("Using {} compute units for profile creation (with 50% buffer)", computed_units);
+        log::info!("Using {} compute units for profile creation (0% buffer)", computed_units);
         
-        // Build final transaction with compute budget
-        let mut final_instructions = vec![];
+        // Build final transaction: memo at index 0, then other instructions, compute budget at end
+        let mut final_instructions = base_instructions;
         final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
-        final_instructions.extend(base_instructions);
         
         let message = Message::new(&final_instructions, Some(user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
@@ -505,8 +508,12 @@ impl RpcConnection {
         
         let blockhash = self.get_latest_blockhash().await?;
         
-        // Create simulation transaction
-        let sim_message = Message::new(&base_instructions, Some(user_pubkey));
+        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Note: Keep same instruction order as final transaction (memo at index 0)
+        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
+        let mut sim_instructions = base_instructions.clone();
+        sim_instructions.push(dummy_compute_budget_ix);
+        let sim_message = Message::new(&sim_instructions, Some(user_pubkey));
         let mut sim_transaction = Transaction::new_unsigned(sim_message);
         sim_transaction.message.recent_blockhash = blockhash;
         
@@ -534,12 +541,11 @@ impl RpcConnection {
             return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
         };
         
-        log::info!("Using {} compute units for profile update (with 50% buffer)", computed_units);
+        log::info!("Using {} compute units for profile update (0% buffer)", computed_units);
         
-        // Build final transaction with compute budget
-        let mut final_instructions = vec![];
+        // Build final transaction: memo at index 0, then other instructions, compute budget at end
+        let mut final_instructions = base_instructions;
         final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
-        final_instructions.extend(base_instructions);
         
         let message = Message::new(&final_instructions, Some(user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
@@ -713,8 +719,12 @@ impl RpcConnection {
             profile_instruction,
         ];
         
-        // Create simulation transaction
-        let sim_message = Message::new(&base_instructions, Some(&user_pubkey));
+        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Note: Keep same instruction order as final transaction (memo at index 0)
+        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
+        let mut sim_instructions = base_instructions.clone();
+        sim_instructions.push(dummy_compute_budget_ix);
+        let sim_message = Message::new(&sim_instructions, Some(&user_pubkey));
         let mut sim_transaction = Transaction::new_unsigned(sim_message);
         sim_transaction.message.recent_blockhash = blockhash;
         sim_transaction.sign(&[&keypair], blockhash);
@@ -743,19 +753,19 @@ impl RpcConnection {
             return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
         };
         
-        log::info!("Using {} compute units for profile creation (with 50% buffer)", computed_units);
+        log::info!("Using {} compute units for profile creation (0% buffer)", computed_units);
         
-        // **create transaction with computed CU**
+        // Build final transaction: memo at index 0, then other instructions, compute budget at end
         let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32);
         
         let transaction = Transaction::new_signed_with_payer(
             &[
-                // Index 0: Compute budget instruction (with dynamically computed CU)
-                compute_budget_ix,
-                // Index 1: SPL Memo instruction (REQUIRED at this position)
+                // Index 0: SPL Memo instruction (REQUIRED at this position by contract)
                 base_instructions[0].clone(),
-                // Index 2: Profile creation instruction
+                // Index 1: Profile creation instruction
                 base_instructions[1].clone(),
+                // Index 2: Compute budget instruction at the end
+                compute_budget_ix,
             ],
             Some(&user_pubkey),
             &[&keypair],
@@ -919,8 +929,12 @@ impl RpcConnection {
             update_instruction,
         ];
         
-        // Create simulation transaction
-        let sim_message = Message::new(&base_instructions, Some(&user_pubkey));
+        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Note: Keep same instruction order as final transaction (memo at index 0)
+        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
+        let mut sim_instructions = base_instructions.clone();
+        sim_instructions.push(dummy_compute_budget_ix);
+        let sim_message = Message::new(&sim_instructions, Some(&user_pubkey));
         let mut sim_transaction = Transaction::new_unsigned(sim_message);
         sim_transaction.message.recent_blockhash = blockhash;
         sim_transaction.sign(&[&keypair], blockhash);
@@ -949,19 +963,19 @@ impl RpcConnection {
             return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
         };
         
-        log::info!("Using {} compute units for profile update (with 50% buffer)", computed_units);
+        log::info!("Using {} compute units for profile update (0% buffer)", computed_units);
         
-        // **create transaction with computed CU**
+        // Build final transaction: memo at index 0, then other instructions, compute budget at end
         let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32);
         
         let transaction = Transaction::new_signed_with_payer(
             &[
-                // Index 0: Compute budget instruction (with dynamically computed CU)
-                compute_budget_ix,
-                // Index 1: SPL Memo instruction (REQUIRED at this position)
+                // Index 0: SPL Memo instruction (REQUIRED at this position by contract)
                 base_instructions[0].clone(),
-                // Index 2: Update profile instruction
+                // Index 1: Update profile instruction
                 base_instructions[1].clone(),
+                // Index 2: Compute budget instruction at the end
+                compute_budget_ix,
             ],
             Some(&user_pubkey),
             &[&keypair],
