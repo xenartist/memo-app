@@ -1,8 +1,7 @@
 use leptos::*;
 use wasm_bindgen::JsCast;
-use crate::core::session::{Session, SessionError};
+use crate::core::session::Session;
 use crate::core::rpc_token::ProgramConfig;
-use crate::core::storage_burn::get_burn_storage;
 use crate::pages::memo_card::MemoDetails;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
@@ -366,18 +365,6 @@ async fn perform_burn(
     session.update(|s| s.mark_balance_update_needed());
 
     log::info!("✅ Burn transaction submitted: {}", transaction_signature);
-
-    // ✅ use new save interface
-    let burn_storage = get_burn_storage();
-    burn_storage.save_burn_record_async(
-        &transaction_signature,    // burn signature
-        &signature,               // original mint signature
-        Some(burn_message),       // burn message
-        &mint_memo_json,         // original mint memo information
-        amount
-    ).await.map_err(|e| format!("Failed to save burn record: {}", e))?;
-
-    log::info!("✅ Burn record saved to local storage");
 
     Ok((transaction_signature, amount))
 } 
