@@ -1,0 +1,615 @@
+/* Mint Form Styles */
+
+/* Main form container */
+.mint-form {
+    background: white;
+    padding: 32px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Form wrapper styles */
+.mint-form-wrapper {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    width: 100%;
+    max-width: 100%;
+    margin: 0 auto;
+}
+
+.mint-form-container {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+/* Form header */
+.mint-form-header {
+    background-color: #f8f9fa;
+    padding: 12px 24px;
+    border-bottom: 1px solid #dee2e6;
+    width: 100%;
+    box-sizing: border-box;
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.mint-form-header .back-btn {
+    background-color: #6c757d;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    position: static;
+    display: inline-block;
+}
+
+.mint-form-header .back-btn:hover {
+    background-color: #5a6268;
+}
+
+/* Form content */
+.mint-form-container .mint-form,
+.mint-form-wrapper .mint-form {
+    margin: 0;
+    padding: 24px;
+    background: transparent;
+    box-shadow: none;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Minting mode selection */
+.minting-mode-group {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 3px 6px; 
+    margin-top: 8px;
+    max-width: 200px; 
+}
+
+.minting-mode-group .radio-label {
+    display: flex;
+    align-items: center;
+    gap: 2px; 
+    cursor: pointer;
+    font-size: 14px;
+    white-space: nowrap;
+    justify-content: flex-start;
+    padding: 3px 2px;
+    border-radius: 3px;
+    transition: background-color 0.2s ease;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.minting-mode-group .radio-label:hover {
+    background-color: #f8f9fa;
+}
+
+.minting-mode-group .radio-label input[type="radio"] {
+    margin: 0;
+    cursor: pointer;
+    scale: 0.8; 
+    flex-shrink: 0;
+    width: 14px; 
+    height: 14px;
+}
+
+.minting-mode-group .radio-label input[type="radio"]:checked + .radio-text {
+    color: #007bff;
+    font-weight: 500;
+}
+
+.minting-mode-group .radio-text {
+    font-size: 14px;
+    color: #333;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: calc(100% - 16px);
+    flex: 1;
+    min-width: 0;
+}
+
+.radio-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.radio-label input[type="radio"] {
+    margin: 0;
+    cursor: pointer;
+}
+
+.radio-text {
+    font-size: 14px;
+    color: #333;
+}
+
+/* Grid size selection */
+.grid-size-group {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 3px 6px;
+    margin-top: 8px;
+    max-width: 100%;
+}
+
+.grid-size-group .radio-label {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    cursor: pointer;
+    font-size: 14px;
+    white-space: nowrap;
+    justify-content: flex-start;
+    padding: 3px 2px;
+    border-radius: 3px;
+    transition: background-color 0.2s ease;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.grid-size-group .radio-label:hover {
+    background-color: #f8f9fa;
+}
+
+.grid-size-group .radio-label input[type="radio"] {
+    margin: 0;
+    cursor: pointer;
+    scale: 0.8;
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+}
+
+.grid-size-group .radio-label input[type="radio"]:checked + .radio-text {
+    color: #007bff;
+    font-weight: 500;
+}
+
+.grid-size-group .radio-text {
+    font-size: 14px;
+    color: #333;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: calc(100% - 16px);
+    flex: 1;
+    min-width: 0;
+}
+
+/* Form layout - two column design */
+.form-layout {
+    display: flex;
+    gap: 3rem;
+    align-items: flex-start;
+    margin-bottom: 2rem;
+}
+
+.form-left,
+.form-right {
+    flex: 1;
+}
+
+.form-left {
+    min-width: 400px;
+    max-width: 400px;
+}
+
+.form-right {
+    min-width: 400px;
+}
+
+/* Adjust textarea in left column for better proportions */
+.form-left textarea {
+    min-height: 120px;
+    resize: vertical;
+}
+
+/* Memo preview styles - full width below columns */
+.memo-preview {
+    margin-top: 1.5rem;
+    padding: 12px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border-top: 2px solid #e9ecef;
+}
+
+.memo-length {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
+}
+
+.memo-length .label {
+    color: #666;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.memo-length .value {
+    font-family: monospace;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+/* Buttons */
+.start-minting-btn {
+    background-color: #28a745;
+    color: white;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    min-width: 120px;
+}
+
+.start-minting-btn:hover:not(:disabled) {
+    background-color: #218838;
+}
+
+.start-minting-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.button-group .back-btn {
+    background-color: #6c757d;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    margin-right: auto;
+}
+
+.button-group .back-btn:hover {
+    background-color: #5a6268;
+}
+
+/* Storage status display */
+.storage-status {
+    margin: 10px 0;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.storage-info {
+    color: #666;
+}
+
+.storage-status.warning {
+    background-color: #fff3cd;
+    border: 1px solid #ffc107;
+    color: #856404;
+}
+
+.storage-status.full {
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+}
+
+/* Auto minting controls */
+.auto-minting-controls {
+    margin-top: 16px;
+    padding: 16px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    border-left: 4px solid #007bff;
+}
+
+.auto-progress {
+    margin-top: 12px;
+}
+
+.progress-text {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background-color: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.progress-fill {
+    height: 100%;
+    background-color: #007bff;
+    border-radius: 4px;
+    width: 0%;
+}
+
+.stop-auto-btn {
+    background-color: #dc3545;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.stop-auto-btn:hover {
+    background-color: #c82333;
+}
+
+.stop-auto-btn:active {
+    background-color: #bd2130;
+}
+
+.stop-auto-btn:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+/* Minting progress */
+.minting-progress {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 16px;
+    background-color: #e3f2fd;
+    border: 1px solid #2196f3;
+    border-radius: 6px;
+    color: #1976d2;
+    font-weight: 500;
+}
+
+.minting-progress i {
+    color: #2196f3;
+    font-size: 16px;
+}
+
+/* Profile info and status */
+.profile-info {
+    margin-bottom: 20px;
+    padding: 16px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+}
+
+.profile-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.profile-status.success {
+    color: #28a745;
+    font-weight: 500;
+}
+
+.profile-status.warning {
+    color: #ffc107;
+    font-weight: 500;
+}
+
+/* Encrypting status */
+.encrypting-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 16px;
+    background-color: #e3f2fd;
+    border: 1px solid #2196f3;
+    border-radius: 6px;
+    color: #1976d2;
+    font-weight: 500;
+}
+
+.encrypting-status i {
+    color: #007bff;
+    font-size: 16px;
+}
+
+/* Disabled input styling */
+input:disabled {
+    background-color: #f8f9fa;
+    color: #6c757d;
+    cursor: not-allowed;
+}
+
+/* Responsive design for smaller screens */
+@media (max-width: 1024px) {
+    .form-layout {
+        flex-direction: column;
+        gap: 2rem;
+    }
+    
+    .form-left,
+    .form-right {
+        min-width: unset;
+        width: 100%;
+    }
+    
+    .grid-size-group {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 4px 8px;
+    }
+    
+    .grid-size-group .radio-label {
+        font-size: 13px;
+        padding: 3px 2px;
+    }
+    
+    .grid-size-group .radio-text {
+        font-size: 13px;
+        max-width: calc(100% - 16px);
+    }
+}
+
+@media (max-width: 768px) {
+    .mint-form {
+        padding: 20px;
+    }
+    
+    .form-layout {
+        gap: 1.5rem;
+    }
+    
+    .form-right .pixel-grid {
+        max-width: 100%;
+    }
+    
+    .mint-form-header {
+        padding: 12px 16px;
+    }
+    
+    .mint-form-container .mint-form,
+    .mint-form-wrapper .mint-form {
+        padding: 16px;
+    }
+    
+    .grid-size-group {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 4px 8px;
+    }
+    
+    .grid-size-group .radio-label {
+        font-size: 13px;
+        padding: 2px 1px;
+    }
+    
+    .grid-size-group .radio-text {
+        font-size: 13px;
+    }
+    
+    .minting-mode-group {
+        max-width: 180px;
+    }
+    
+    .minting-mode-group .radio-label {
+        font-size: 13px;
+        padding: 2px 1px;
+    }
+    
+    .minting-mode-group .radio-text {
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 480px) {
+    .grid-size-group {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px 8px;
+    }
+    
+    .grid-size-group .radio-label {
+        font-size: 13px;
+        padding: 4px 3px;
+        gap: 2px;
+    }
+    
+    .grid-size-group .radio-label input[type="radio"] {
+        scale: 0.8;
+    }
+    
+    .grid-size-group .radio-text {
+        font-size: 13px;
+        max-width: calc(100% - 16px);
+    }
+    
+    .form-layout {
+        gap: 1rem;
+    }
+    
+    .minting-mode-group {
+        max-width: 160px;
+        gap: 2px 4px;
+    }
+    
+    .minting-mode-group .radio-label {
+        font-size: 12px;
+        padding: 2px 1px;
+    }
+    
+    .minting-mode-group .radio-text {
+        font-size: 12px;
+    }
+} 
+
+/* Mint Form Header */
+.mint-form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px 16px 24px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f8f9fa;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+}
+
+.mint-form-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mint-form-close-btn {
+    background: none;
+    border: none;
+    font-size: 16px;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+}
+
+.mint-form-close-btn:hover {
+    background-color: #f3f4f6;
+    color: #374151;
+}
+
+/* Adjust the form content to account for the header */
+.mint-form-component .mint-form {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+} 

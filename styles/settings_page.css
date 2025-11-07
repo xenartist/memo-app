@@ -1,0 +1,347 @@
+/* Settings Page Styles */
+
+.settings-page {
+    padding: 24px;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.settings-page h2 {
+    color: #333;
+    font-size: 2rem;
+    margin-bottom: 2rem;
+    font-weight: 600;
+    text-align: center;
+}
+
+/* Settings sections */
+.settings-section {
+    background: white;
+    padding: 24px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 24px;
+}
+
+.settings-section:last-child {
+    margin-bottom: 0;
+}
+
+.settings-section h3 {
+    margin: 0 0 20px 0;
+    color: #333;
+    font-size: 1.3rem;
+    font-weight: 600;
+    border-bottom: 2px solid #f8f9fa;
+    padding-bottom: 8px;
+}
+
+/* RPC settings */
+.rpc-settings {
+    width: 100%;
+}
+
+/* Network groups */
+.network-group {
+    margin-bottom: 24px;
+}
+
+.network-group:last-child {
+    margin-bottom: 0;
+}
+
+.network-group h4 {
+    margin: 0 0 12px 0;
+    color: #666;
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+/* Radio options */
+.radio-option {
+    display: flex;
+    align-items: center;
+    margin: 8px 0;
+    gap: 8px;
+    padding: 8px 0;
+}
+
+.radio-option input[type="radio"] {
+    margin: 0;
+    cursor: pointer;
+}
+
+.radio-option label {
+    margin-right: 12px;
+    color: #333;
+    cursor: pointer;
+    font-size: 14px;
+    user-select: none;
+}
+
+/* Custom RPC input */
+.custom-rpc-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    margin-left: 8px;
+    transition: border-color 0.2s ease;
+    font-family: monospace;
+}
+
+.custom-rpc-input:focus {
+    border-color: #007bff;
+    outline: none;
+}
+
+.custom-rpc-input:disabled {
+    background-color: #f5f5f5;
+    color: #999;
+    cursor: not-allowed;
+}
+
+.custom-rpc-input::placeholder {
+    color: #aaa;
+    font-style: italic;
+}
+
+/* Current RPC display */
+.current-rpc {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid #eee;
+}
+
+.current-rpc h4 {
+    margin: 0 0 8px 0;
+    color: #666;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.rpc-url {
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    font-family: monospace;
+    color: #333;
+    font-size: 13px;
+    word-break: break-all;
+    border: 1px solid #e9ecef;
+}
+
+/* Status indicators */
+.rpc-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 8px;
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: 500;
+}
+
+.rpc-status.connected {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.rpc-status.connecting {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeaa7;
+}
+
+.rpc-status.error {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+/* Network type badges */
+.network-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin-left: 8px;
+}
+
+.network-badge.mainnet {
+    background-color: #28a745;
+    color: white;
+}
+
+.network-badge.testnet {
+    background-color: #ffc107;
+    color: #212529;
+}
+
+.network-badge.devnet {
+    background-color: #6f42c1;
+    color: white;
+}
+
+.network-badge.custom {
+    background-color: #6c757d;
+    color: white;
+}
+
+/* Settings form actions */
+.settings-actions {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid #eee;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.settings-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.save-btn {
+    background-color: #28a745;
+    color: white;
+}
+
+.save-btn:hover:not(:disabled) {
+    background-color: #218838;
+}
+
+.save-btn:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.reset-btn {
+    background-color: #6c757d;
+    color: white;
+}
+
+.reset-btn:hover:not(:disabled) {
+    background-color: #5a6268;
+}
+
+/* Connection test */
+.connection-test {
+    margin-top: 12px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.connection-test.success {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.connection-test.error {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.connection-test.testing {
+    background-color: #e2e3e5;
+    color: #383d41;
+    border: 1px solid #d6d8db;
+}
+
+/* Loading spinner for connection test */
+.test-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid transparent;
+    border-top: 2px solid currentColor;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .settings-page {
+        padding: 16px;
+    }
+    
+    .settings-section {
+        padding: 20px 16px;
+    }
+    
+    .radio-option {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .custom-rpc-input {
+        margin-left: 0;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    
+    .settings-actions {
+        flex-direction: column;
+    }
+    
+    .settings-btn {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .settings-page {
+        padding: 12px;
+    }
+    
+    .settings-section {
+        padding: 16px 12px;
+    }
+    
+    .settings-section h3 {
+        font-size: 1.1rem;
+    }
+    
+    .network-group h4 {
+        font-size: 0.9rem;
+    }
+    
+    .radio-option label {
+        font-size: 13px;
+    }
+    
+    .custom-rpc-input {
+        font-size: 13px;
+        padding: 6px 10px;
+    }
+    
+    .rpc-url {
+        font-size: 12px;
+        padding: 6px 10px;
+    }
+} 

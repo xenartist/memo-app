@@ -1,0 +1,257 @@
+/* Lock Screen Overlay Styles */
+
+.lock-screen-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.95);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from { 
+        opacity: 0; 
+    }
+    to { 
+        opacity: 1; 
+    }
+}
+
+.lock-screen-content {
+    background: white;
+    padding: 48px;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    text-align: center;
+    max-width: 400px;
+    width: 90%;
+    animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.lock-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 24px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 36px;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.lock-screen-content h2 {
+    margin: 0 0 16px 0;
+    color: #333;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.lock-message {
+    color: #666;
+    margin: 0 0 32px 0;
+    font-size: 15px;
+}
+
+.unlock-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+}
+
+.password-input {
+    width: 100%;
+    padding: 14px 16px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: all 0.2s;
+    background: #f8f9fa;
+    box-sizing: border-box;
+}
+
+.password-input:focus {
+    outline: none;
+    border-color: #667eea;
+    background: white;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.password-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.unlock-btn {
+    width: 100%;
+    padding: 14px 24px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-sizing: border-box;
+}
+
+.unlock-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.unlock-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.unlock-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.unlock-btn i {
+    font-size: 16px;
+}
+
+.error-message {
+    width: 100%;
+    color: #dc3545;
+    font-size: 14px;
+    margin: 0;
+    padding: 10px;
+    background: #fee;
+    border-radius: 6px;
+    border-left: 4px solid #dc3545;
+    box-sizing: border-box;
+    text-align: left;
+}
+
+/* Backpack wallet specific styles */
+.backpack-lock-message {
+    padding: 24px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #ffc107;
+}
+
+.backpack-lock-message p {
+    margin: 0;
+    color: #333;
+    font-size: 15px;
+}
+
+.backpack-lock-message .hint {
+    color: #666;
+    font-size: 14px;
+    margin-top: 8px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .lock-screen-content {
+        padding: 32px 24px;
+        width: 85%;
+    }
+
+    .lock-icon {
+        width: 64px;
+        height: 64px;
+        font-size: 28px;
+        margin-bottom: 20px;
+    }
+
+    .lock-screen-content h2 {
+        font-size: 20px;
+        margin-bottom: 12px;
+    }
+
+    .lock-message {
+        font-size: 14px;
+        margin-bottom: 24px;
+    }
+
+    .password-input {
+        padding: 12px 14px;
+        font-size: 15px;
+    }
+
+    .unlock-btn {
+        padding: 12px 20px;
+        font-size: 15px;
+    }
+}
+
+@media (max-width: 480px) {
+    .lock-screen-content {
+        padding: 24px 20px;
+        width: 90%;
+    }
+
+    .lock-icon {
+        width: 56px;
+        height: 56px;
+        font-size: 24px;
+        margin-bottom: 16px;
+    }
+
+    .lock-screen-content h2 {
+        font-size: 18px;
+    }
+
+    .backpack-lock-message {
+        padding: 20px;
+    }
+
+    .backpack-lock-message p {
+        font-size: 14px;
+    }
+}
+
+/* Focus visible for accessibility */
+.password-input:focus-visible,
+.unlock-btn:focus-visible {
+    outline: 2px solid #667eea;
+    outline-offset: 2px;
+}
+
+/* Loading spinner animation */
+.fa-spin {
+    animation: fa-spin 1s infinite linear;
+}
+
+@keyframes fa-spin {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
