@@ -1,9 +1,11 @@
 use leptos::*;
 use crate::core::session::WalletType;
+use wasm_bindgen_futures::spawn_local;
+use gloo_timers::future::TimeoutFuture;
 
 #[component]
 pub fn LockScreen(
-    on_unlock: impl Fn(String) + 'static,
+    on_unlock: impl Fn(String, Box<dyn Fn(Result<(), String>)>) + 'static,
     wallet_type: impl Fn() -> WalletType + 'static,
 ) -> impl IntoView {
     let (password, set_password) = create_signal(String::new());
@@ -23,10 +25,33 @@ pub fn LockScreen(
             return;
         }
         
+        // 1. immediately update UI state (sync)
         set_is_unlocking.set(true);
         set_error_message.set(String::new());
         
-        on_unlock.with_value(|f| f(pwd));
+        let set_error = set_error_message;
+        let set_unlocking = set_is_unlocking;
+        let on_unlock_clone = on_unlock;
+        
+        // 2. async delay execution (give UI time to update)
+        spawn_local(async move {
+            TimeoutFuture::new(100).await; // 100ms delay
+            
+            on_unlock_clone.with_value(|f| {
+                f(pwd, Box::new(move |result| {
+                    match result {
+                        Ok(_) => {
+                            // Success - component will be unmounted, no need to reset state
+                        },
+                        Err(err) => {
+                            // Error - reset unlocking state and show error message
+                            set_unlocking.set(false);
+                            set_error.set(err);
+                        }
+                    }
+                }));
+            });
+        });
     };
     
     let handle_keydown = move |ev: ev::KeyboardEvent| {
@@ -37,10 +62,33 @@ pub fn LockScreen(
                 return;
             }
             
+            // 1. immediately update UI state (sync)
             set_is_unlocking.set(true);
             set_error_message.set(String::new());
             
-            on_unlock.with_value(|f| f(pwd));
+            let set_error = set_error_message;
+            let set_unlocking = set_is_unlocking;
+            let on_unlock_clone = on_unlock;
+            
+            // 2. async delay execution (give UI time to update)
+            spawn_local(async move {
+                TimeoutFuture::new(100).await; // 100ms delay
+                
+                on_unlock_clone.with_value(|f| {
+                    f(pwd, Box::new(move |result| {
+                        match result {
+                            Ok(_) => {
+                                // Success - component will be unmounted, no need to reset state
+                            },
+                            Err(err) => {
+                                // Error - reset unlocking state and show error message
+                                set_unlocking.set(false);
+                                set_error.set(err);
+                            }
+                        }
+                    }));
+                });
+            });
         }
     };
 

@@ -64,7 +64,7 @@ pub fn App() -> impl IntoView {
     };
 
     // Unlock screen handler
-    let handle_unlock_screen = move |password: String| {
+    let handle_unlock_screen = move |password: String, callback: Box<dyn Fn(Result<(), String>)>| {
         let session_clone = session;
         let set_locked = set_is_screen_locked;
         
@@ -81,16 +81,19 @@ pub fn App() -> impl IntoView {
                             session_clone.set(temp_session);
                             set_locked.set(false);
                             add_log_entry("INFO", "Screen unlocked successfully");
+                            callback(Ok(()));
                         },
                         _ => {
                             // Password incorrect
                             add_log_entry("ERROR", "Invalid password");
+                            callback(Err("Invalid password".to_string()));
                         }
                     }
                 },
                 Err(e) => {
                     log::error!("Failed to get encrypted seed: {:?}", e);
                     add_log_entry("ERROR", "Failed to unlock screen");
+                    callback(Err("Failed to unlock screen".to_string()));
                 }
             }
         });
