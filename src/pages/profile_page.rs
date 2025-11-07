@@ -1,8 +1,7 @@
 use leptos::*;
 use crate::core::session::Session;
 use crate::core::rpc_profile::UserProfile;
-use crate::pages::pixel_view::PixelView;
-use crate::pages::memo_card::LazyPixelView;
+use crate::pages::pixel_view::{PixelView, LazyPixelView};
 use crate::core::pixel::Pixel;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::JsCast;

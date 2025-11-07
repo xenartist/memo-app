@@ -2,12 +2,9 @@ use leptos::*;
 use crate::core::rpc_base::RpcConnection;
 use crate::core::session::Session;
 use crate::core::NetworkType;
-use crate::pages::home_page::HomePage;
 use crate::pages::profile_page::ProfilePage;
 use crate::pages::settings_page::SettingsPage;
 use crate::pages::mint_page::MintPage;
-use crate::pages::mint_page_legacy::MintPage as MintPageLegacy;
-use crate::pages::burn_page::BurnPage;
 use crate::pages::chat_page::ChatPage;
 use crate::pages::project_page::ProjectPage;
 use crate::pages::faucet_page::FaucetPage;
@@ -22,13 +19,10 @@ use gloo_timers::future::TimeoutFuture;
 // menu item enum
 #[derive(Clone, PartialEq)]
 enum MenuItem {
-    Home,
     Mint,
     Project,
     Chat,
     Faucet,
-    MintLegacy,
-    Burn,
     Profile,
     Settings,
 }
@@ -594,13 +588,6 @@ pub fn MainPage(
                     <Show when=move || is_menu_available(&MenuItem::Profile, current_network())>
                         <div style=move || if current_menu.get() == MenuItem::Profile { "display: block;" } else { "display: none;" }>
                             <ProfilePage session=session/>
-                        </div>
-                    </Show>
-                    
-                    // Home page (currently not in menu, but keep for completeness)
-                    <Show when=move || is_menu_available(&MenuItem::Home, current_network())>
-                        <div style=move || if current_menu.get() == MenuItem::Home { "display: block;" } else { "display: none;" }>
-                            <HomePage session=session/>
                         </div>
                     </Show>
                 </div>

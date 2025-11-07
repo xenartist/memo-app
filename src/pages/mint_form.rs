@@ -2,16 +2,12 @@ use leptos::*;
 use leptos::leptos_dom::ev::SubmitEvent;
 use crate::core::session::Session;
 use crate::core::pixel::Pixel;
-use crate::core::storage_mint::get_mint_storage;
 use crate::pages::pixel_view::PixelView;
-use web_sys::{HtmlInputElement, File, FileReader, Event, ProgressEvent, window};
+use web_sys::{HtmlInputElement, FileReader, Event, ProgressEvent, window};
 use wasm_bindgen::{JsCast, closure::Closure};
 use js_sys::Uint8Array;
-use gloo_utils::format::JsValueSerdeExt;
-use std::time::Duration;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
-use hex;
 use serde_json;
 use std::rc::Rc;
 
@@ -161,13 +157,6 @@ pub fn MintForm(
                 match session_update.mint(&memo_json).await {
                     Ok(signature) => {
                         log::info!("Mint transaction confirmed: {}", signature);
-                        let sig_clone = signature.clone();
-                        let memo_clone = memo_json.clone();
-                        spawn_local(async move {
-                            if let Err(e) = get_mint_storage().save_mint_record_async(&sig_clone, &memo_clone).await {
-                                log::error!("Failed to save mint record: {}", e);
-                            }
-                        });
 
                         match session_update.fetch_and_cache_user_profile().await {
                             Ok(Some(profile)) => {

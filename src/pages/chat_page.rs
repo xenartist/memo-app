@@ -7,8 +7,7 @@ use crate::core::rpc_chat::{ChatStatistics, ChatGroupInfo, ChatMessage, ChatMess
 use crate::core::rpc_profile::{UserDisplayInfo};
 use crate::core::rpc_mint::MintConfig;
 use crate::pages::log_view::add_log_entry;
-use crate::pages::memo_card::LazyPixelView;
-use crate::pages::pixel_view::PixelView;
+use crate::pages::pixel_view::{PixelView, LazyPixelView};
 use crate::core::pixel::Pixel;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
