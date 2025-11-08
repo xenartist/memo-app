@@ -702,11 +702,17 @@ impl RpcConnection {
         
         let blockhash = self.get_latest_blockhash().await?;
         
-        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Simulate with dummy compute budget instructions for accurate CU estimation
         // Note: Keep same instruction order as final transaction (memo at index 0)
-        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
         let mut sim_instructions = base_instructions.clone();
-        sim_instructions.push(dummy_compute_budget_ix);
+        sim_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32));
+        
+        // If user has set a price, include it in simulation to match final transaction
+        if let Some(settings) = crate::core::settings::load_current_network_settings() {
+            if let Some(price) = settings.get_cu_price_micro_lamports() {
+                sim_instructions.push(ComputeBudgetInstruction::set_compute_unit_price(price));
+            }
+        }
         let sim_message = Message::new(&sim_instructions, Some(user_pubkey));
         let mut sim_transaction = Transaction::new_unsigned(sim_message);
         sim_transaction.message.recent_blockhash = blockhash;
@@ -728,18 +734,22 @@ impl RpcConnection {
             .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
         
         // Parse compute units consumed
-        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+        let simulated_cu = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
             log::info!("Send chat message simulation consumed {} compute units", units_consumed);
-            (units_consumed as f64 * ChatConfig::COMPUTE_UNIT_BUFFER) as u64
+            units_consumed
         } else {
             return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
         };
         
-        log::info!("Using {} compute units for send chat message (0% buffer)", computed_units);
-        
         // Build final transaction: memo at index 0, then other instructions, compute budget at end
         let mut final_instructions = base_instructions;
-        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+        
+        // Add compute budget instructions using unified method
+        let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
+            simulated_cu,
+            ChatConfig::COMPUTE_UNIT_BUFFER
+        );
+        final_instructions.extend(compute_budget_ixs);
         
         let message = Message::new(&final_instructions, Some(user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
@@ -850,11 +860,17 @@ impl RpcConnection {
         
         let blockhash = self.get_latest_blockhash().await?;
         
-        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Simulate with dummy compute budget instructions for accurate CU estimation
         // Note: Keep same instruction order as final transaction (memo at index 0)
-        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
         let mut sim_instructions = base_instructions.clone();
-        sim_instructions.push(dummy_compute_budget_ix);
+        sim_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32));
+        
+        // If user has set a price, include it in simulation to match final transaction
+        if let Some(settings) = crate::core::settings::load_current_network_settings() {
+            if let Some(price) = settings.get_cu_price_micro_lamports() {
+                sim_instructions.push(ComputeBudgetInstruction::set_compute_unit_price(price));
+            }
+        }
         let sim_message = Message::new(&sim_instructions, Some(user_pubkey));
         let mut sim_transaction = Transaction::new_unsigned(sim_message);
         sim_transaction.message.recent_blockhash = blockhash;
@@ -876,18 +892,22 @@ impl RpcConnection {
             .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
         
         // Parse compute units consumed
-        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+        let simulated_cu = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
             log::info!("Create chat group simulation consumed {} compute units", units_consumed);
-            (units_consumed as f64 * ChatConfig::COMPUTE_UNIT_BUFFER) as u64
+            units_consumed
         } else {
             return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
         };
         
-        log::info!("Using {} compute units for create chat group (0% buffer)", computed_units);
-        
         // Build final transaction: memo at index 0, then other instructions, compute budget at end
         let mut final_instructions = base_instructions;
-        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+        
+        // Add compute budget instructions using unified method
+        let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
+            simulated_cu,
+            ChatConfig::COMPUTE_UNIT_BUFFER
+        );
+        final_instructions.extend(compute_budget_ixs);
         
         let message = Message::new(&final_instructions, Some(user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
@@ -987,11 +1007,17 @@ impl RpcConnection {
         
         let blockhash = self.get_latest_blockhash().await?;
         
-        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Simulate with dummy compute budget instructions for accurate CU estimation
         // Note: Keep same instruction order as final transaction (memo at index 0)
-        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
         let mut sim_instructions = base_instructions.clone();
-        sim_instructions.push(dummy_compute_budget_ix);
+        sim_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32));
+        
+        // If user has set a price, include it in simulation to match final transaction
+        if let Some(settings) = crate::core::settings::load_current_network_settings() {
+            if let Some(price) = settings.get_cu_price_micro_lamports() {
+                sim_instructions.push(ComputeBudgetInstruction::set_compute_unit_price(price));
+            }
+        }
         let sim_message = Message::new(&sim_instructions, Some(user_pubkey));
         let mut sim_transaction = Transaction::new_unsigned(sim_message);
         sim_transaction.message.recent_blockhash = blockhash;
@@ -1013,18 +1039,22 @@ impl RpcConnection {
             .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
         
         // Parse compute units consumed
-        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+        let simulated_cu = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
             log::info!("Burn tokens for group simulation consumed {} compute units", units_consumed);
-            (units_consumed as f64 * ChatConfig::COMPUTE_UNIT_BUFFER) as u64
+            units_consumed
         } else {
             return Err(RpcError::Other("Failed to get compute units from simulation".to_string()));
         };
         
-        log::info!("Using {} compute units for burn tokens for group (0% buffer)", computed_units);
-        
         // Build final transaction: memo at index 0, then other instructions, compute budget at end
         let mut final_instructions = base_instructions;
-        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+        
+        // Add compute budget instructions using unified method
+        let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
+            simulated_cu,
+            ChatConfig::COMPUTE_UNIT_BUFFER
+        );
+        final_instructions.extend(compute_budget_ixs);
         
         let message = Message::new(&final_instructions, Some(user_pubkey));
         let mut transaction = Transaction::new_unsigned(message);
@@ -1674,11 +1704,17 @@ impl RpcConnection {
         let blockhash = solana_sdk::hash::Hash::from_str(blockhash_str)
             .map_err(|e| RpcError::Other(format!("Failed to parse blockhash: {}", e)))?;
         
-        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Simulate with dummy compute budget instructions for accurate CU estimation
         // Note: Keep same instruction order as final transaction (memo at index 0)
-        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
         let mut sim_instructions = base_instructions.clone();
-        sim_instructions.push(dummy_compute_budget_ix);
+        sim_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32));
+        
+        // If user has set a price, include it in simulation to match final transaction
+        if let Some(settings) = crate::core::settings::load_current_network_settings() {
+            if let Some(price) = settings.get_cu_price_micro_lamports() {
+                sim_instructions.push(ComputeBudgetInstruction::set_compute_unit_price(price));
+            }
+        }
         let sim_message = Message::new(&sim_instructions, Some(&user_pubkey));
         let mut sim_transaction = Transaction::new_unsigned(sim_message);
         sim_transaction.message.recent_blockhash = blockhash;
@@ -1702,20 +1738,13 @@ impl RpcConnection {
             .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
 
         // Parse simulation result to extract compute units consumed
-        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+        let simulated_cu = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
             log::info!("Chat message simulation consumed {} compute units", units_consumed);
-            let final_units = (units_consumed as f64 * ChatConfig::COMPUTE_UNIT_BUFFER) as u64;
-            
-            log::info!("CU calculation: simulated={}, final={} (0% buffer)", 
-                      units_consumed, final_units);
-            
-            final_units
+            units_consumed
         } else {
             log::error!("Failed to get compute units from simulation");
             return Err(RpcError::Other("Simulation failed to provide compute units".to_string()));
         };
-
-        log::info!("Using {} compute units for chat message", computed_units);
         
         // Build final transaction: memo at index 0, then other instructions, compute budget at end
         let mut final_instructions = vec![];
@@ -1762,8 +1791,12 @@ impl RpcConnection {
 
         final_instructions.push(send_memo_instruction);
         
-        // Add compute budget instruction at the end
-        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+        // Add compute budget instructions using unified method
+        let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
+            simulated_cu,
+            ChatConfig::COMPUTE_UNIT_BUFFER
+        );
+        final_instructions.extend(compute_budget_ixs);
         
         // Create and sign final transaction
         let final_message = Message::new(&final_instructions, Some(&user_pubkey));
