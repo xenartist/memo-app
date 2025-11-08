@@ -10,6 +10,7 @@ pub mod rpc_chat;
 pub mod rpc_project;
 pub mod rpc_profile;
 pub mod rpc_burn;
+pub mod settings;
 
 // Re-export commonly used network types
 pub use network_config::{NetworkType, get_network, initialize_network, clear_network};
