@@ -23,6 +23,53 @@
     margin-bottom: 24px;
 }
 
+.settings-section-network {
+    border: 1px solid transparent;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.settings-section-network.settings-network-testnet {
+    border-color: #ef5350;
+    box-shadow: 0 6px 18px rgba(239, 83, 80, 0.15);
+    background-color: #fff5f5;
+}
+
+.settings-section-network.settings-network-staging {
+    border-color: #ff9800;
+    box-shadow: 0 6px 18px rgba(255, 152, 0, 0.15);
+    background-color: #fff8e6;
+}
+
+.settings-section-network.settings-network-mainnet {
+    border-color: #66bb6a;
+    box-shadow: 0 6px 18px rgba(102, 187, 106, 0.15);
+    background-color: #f3fbf3;
+}
+
+.settings-section-network.settings-network-testnet h3 {
+    color: #c62828;
+}
+
+.settings-section-network.settings-network-staging h3 {
+    color: #e65100;
+}
+
+.settings-section-network.settings-network-mainnet h3 {
+    color: #2e7d32;
+}
+
+.settings-section-network.settings-network-testnet .network-group h4 {
+    color: #c62828;
+}
+
+.settings-section-network.settings-network-staging .network-group h4 {
+    color: #e65100;
+}
+
+.settings-section-network.settings-network-mainnet .network-group h4 {
+    color: #2e7d32;
+}
+
 .settings-section:last-child {
     margin-bottom: 0;
 }
@@ -55,6 +102,12 @@
     color: #666;
     font-size: 1rem;
     font-weight: 500;
+}
+
+.network-description {
+    margin: 4px 0 16px 0;
+    color: #777;
+    font-size: 0.9rem;
 }
 
 /* Radio options */
@@ -164,6 +217,16 @@
     border: 1px solid #f5c6cb;
 }
 
+.settings-warning {
+    padding: 12px 16px;
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeeba;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    margin: 0;
+}
+
 /* Network type badges */
 .network-badge {
     display: inline-block;
@@ -205,14 +268,28 @@
     gap: 12px;
 }
 
+.save-feedback {
+    margin-top: 12px;
+    color: #28a745;
+    font-size: 0.9rem;
+    text-align: right;
+}
+
 .settings-btn {
-    padding: 8px 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 20px;
     border: none;
-    border-radius: 4px;
-    font-size: 14px;
-    font-weight: 500;
+    border-radius: 6px;
+    font-size: 15px;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+    letter-spacing: 0.3px;
+    white-space: nowrap;
 }
 
 .save-btn {
@@ -220,19 +297,31 @@
     color: white;
 }
 
+.reset-btn {
+    background-color: #6c757d;
+    color: white;
+}
+
+.settings-btn i {
+    font-size: 14px;
+}
+
 .save-btn:hover:not(:disabled) {
     background-color: #218838;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
+}
+
+.save-btn:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(40, 167, 69, 0.2);
 }
 
 .save-btn:disabled {
     background-color: #6c757d;
     cursor: not-allowed;
-    opacity: 0.6;
-}
-
-.reset-btn {
-    background-color: #6c757d;
-    color: white;
+    opacity: 0.65;
+    box-shadow: none;
 }
 
 .reset-btn:hover:not(:disabled) {
@@ -266,6 +355,48 @@
     background-color: #e2e3e5;
     color: #383d41;
     border: 1px solid #d6d8db;
+}
+
+.form-field {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 20px;
+}
+
+.form-field label {
+    font-weight: 500;
+    color: #444;
+    margin-bottom: 8px;
+}
+
+.form-field input[type="number"] {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.2s ease;
+}
+
+.form-field input[type="number"]:focus {
+    border-color: #007bff;
+    outline: none;
+}
+
+.form-field input[type="number"]::-webkit-outer-spin-button,
+.form-field input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.form-field input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+.field-help {
+    margin-top: 6px;
+    color: #6c757d;
+    font-size: 12px;
+    line-height: 1.4;
 }
 
 /* Loading spinner for connection test */

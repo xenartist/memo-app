@@ -36,11 +36,11 @@ fn is_menu_available(menu_item: &MenuItem, network: Option<NetworkType>) -> bool
         }
         Some(NetworkType::ProdStaging) | Some(NetworkType::Mainnet) => {
             // Production and Staging: Only Mint page available
-            matches!(menu_item, MenuItem::Mint)
+            matches!(menu_item, MenuItem::Mint | MenuItem::Settings)
         }
         None => {
             // If network not set (shouldn't happen), default to restricted mode
-            matches!(menu_item, MenuItem::Mint)
+            matches!(menu_item, MenuItem::Mint | MenuItem::Settings)
         }
     }
 }
@@ -523,6 +523,18 @@ pub fn MainPage(
                             <span>"Profile"</span>
                         </div>
                     </Show>
+
+                    // Settings - available on all networks
+                    <Show when=move || is_menu_available(&MenuItem::Settings, current_network())>
+                        <div
+                            class="menu-item"
+                            class:active=move || current_menu.get() == MenuItem::Settings
+                            on:click=move |_| set_current_menu.set(MenuItem::Settings)
+                        >
+                            <i class="fas fa-cog"></i>
+                            <span>"Settings"</span>
+                        </div>
+                    </Show>
                     
                     // Network status indicator at bottom of sidebar
                     <div class="sidebar-network-status">
@@ -588,6 +600,13 @@ pub fn MainPage(
                     <Show when=move || is_menu_available(&MenuItem::Profile, current_network())>
                         <div style=move || if current_menu.get() == MenuItem::Profile { "display: block;" } else { "display: none;" }>
                             <ProfilePage session=session/>
+                        </div>
+                    </Show>
+
+                    // Settings - available on all networks
+                    <Show when=move || is_menu_available(&MenuItem::Settings, current_network())>
+                        <div style=move || if current_menu.get() == MenuItem::Settings { "display: block;" } else { "display: none;" }>
+                            <SettingsPage/>
                         </div>
                     </Show>
                 </div>

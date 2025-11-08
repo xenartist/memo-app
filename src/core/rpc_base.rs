@@ -7,9 +7,12 @@ use std::str::FromStr;
 use gloo_utils::format::JsValueSerdeExt;
 use js_sys::{Date, Math};
 use solana_sdk::transaction::Transaction;
+use solana_sdk::instruction::Instruction;
+use solana_sdk::compute_budget::ComputeBudgetInstruction;
 use base64;
 use bincode;
 use super::network_config::try_get_network_config;
+use super::settings::load_current_network_settings;
 
 // error type
 #[derive(Debug, Deserialize)]
@@ -71,34 +74,42 @@ impl RpcConnection {
     pub fn new() -> Self {
         let selected_endpoint = Self::select_random_endpoint();
         log::debug!("Selected RPC endpoint: {}", selected_endpoint);
-        Self::with_endpoint(selected_endpoint)
+        Self::with_endpoint(&selected_endpoint)
     }
 
     /// select a random endpoint from the RPC endpoint list
-    fn select_random_endpoint() -> &'static str {
+    /// Checks user settings first for custom RPC, then falls back to configured endpoints
+    fn select_random_endpoint() -> String {
         // Try to get network configuration endpoints
         let endpoints = if let Some(config) = try_get_network_config() {
+            // Check if user has configured a custom RPC endpoint
+            if let Some(settings) = load_current_network_settings() {
+                if let Some(custom_endpoint) = settings.custom_rpc_endpoint() {
+                    log::debug!("Using custom RPC endpoint from settings: {}", custom_endpoint);
+                    return custom_endpoint;
+                }
+            }
             config.rpc_endpoints
         } else {
             // Network not initialized yet (before login), use fallback
             log::debug!("Network not initialized, using fallback endpoint");
-            return Self::FALLBACK_RPC_ENDPOINT;
+            return Self::FALLBACK_RPC_ENDPOINT.to_string();
         };
         
         // if there is only one endpoint, return it directly
         if endpoints.len() == 1 {
-            return endpoints[0];
+            return endpoints[0].to_string();
         }
         
         // use high quality random number generator to select endpoint
         if let Some(random_value) = Self::try_crypto_random() {
             let index = (random_value as usize) % endpoints.len();
-            endpoints[index]
+            endpoints[index].to_string()
         } else {
             // fallback scheme: use Math.random()
             let random_value = Math::random();
             let index = (random_value * endpoints.len() as f64) as usize;
-            endpoints[index.min(endpoints.len() - 1)]
+            endpoints[index.min(endpoints.len() - 1)].to_string()
         }
     }
 
@@ -431,6 +442,57 @@ impl RpcConnection {
     }
 
     // ============ End Transaction Utilities ============
+
+    /// Apply compute budget instructions based on user settings
+    /// 
+    /// This method adds compute budget instructions to the transaction based on:
+    /// 1. Simulated compute units (with optional buffer from settings)
+    /// 2. Optional compute unit price for priority fees
+    /// 
+    /// # Parameters
+    /// * `simulated_cu` - The compute units consumed in simulation
+    /// * `default_multiplier` - Default multiplier if no settings exist (usually 1.0)
+    /// 
+    /// # Returns
+    /// A vector of compute budget instructions to prepend to the transaction
+    pub fn build_compute_budget_instructions(
+        simulated_cu: u64,
+        default_multiplier: f64,
+    ) -> Vec<Instruction> {
+        let mut instructions = Vec::new();
+        
+        // Load user settings
+        let user_settings = load_current_network_settings();
+        
+        // Calculate final compute unit limit
+        let cu_multiplier = user_settings
+            .as_ref()
+            .map(|s| s.get_cu_buffer_multiplier())
+            .unwrap_or(default_multiplier);
+        
+        let final_cu = ((simulated_cu as f64) * cu_multiplier).ceil() as u64;
+        let final_cu_u32 = final_cu.min(u32::MAX as u64) as u32;
+        
+        log::info!(
+            "Compute budget: simulated={} CU, multiplier={:.2}, final={} CU",
+            simulated_cu,
+            cu_multiplier,
+            final_cu_u32
+        );
+        
+        // Add compute unit limit instruction
+        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(final_cu_u32));
+        
+        // Add compute unit price instruction if user has set a priority fee
+        if let Some(settings) = user_settings {
+            if let Some(price) = settings.get_cu_price_micro_lamports() {
+                log::info!("Setting compute unit price: {} micro-lamports", price);
+                instructions.push(ComputeBudgetInstruction::set_compute_unit_price(price));
+            }
+        }
+        
+        instructions
+    }
 
     /// interface: get transaction details by signature
     /// return full transaction information, including meta, transaction, etc.

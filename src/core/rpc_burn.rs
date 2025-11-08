@@ -265,11 +265,17 @@ impl RpcConnection {
         
         let blockhash = self.get_latest_blockhash().await?;
         
-        // Simulate with dummy compute budget instruction for accurate CU estimation
+        // Simulate with dummy compute budget instructions for accurate CU estimation
         // Note: Keep same instruction order as final transaction (memo at index 0)
-        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32);
         let mut sim_instructions = vec![memo_instruction.clone(), burn_instruction.clone()];
-        sim_instructions.push(dummy_compute_budget_ix);
+        sim_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32));
+        
+        // If user has set a price, include it in simulation to match final transaction
+        if let Some(settings) = crate::core::settings::load_current_network_settings() {
+            if let Some(price) = settings.get_cu_price_micro_lamports() {
+                sim_instructions.push(ComputeBudgetInstruction::set_compute_unit_price(price));
+            }
+        }
         let message = Message::new(&sim_instructions, Some(user_pubkey));
         let mut sim_transaction = Transaction::new_unsigned(message);
         sim_transaction.message.recent_blockhash = blockhash;
@@ -288,9 +294,8 @@ impl RpcConnection {
         let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
             .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
         
-        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
-            let with_buffer = (units_consumed as f64 * BurnConfig::COMPUTE_UNIT_BUFFER) as u64;
-            std::cmp::max(with_buffer, BurnConfig::MIN_COMPUTE_UNITS)
+        let simulated_cu = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            std::cmp::max(units_consumed, BurnConfig::MIN_COMPUTE_UNITS)
         } else {
             400_000u64
         };
@@ -299,7 +304,13 @@ impl RpcConnection {
         let mut final_instructions = vec![];
         final_instructions.push(memo_instruction);
         final_instructions.push(burn_instruction);
-        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+        
+        // Add compute budget instructions using unified method
+        let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
+            simulated_cu,
+            BurnConfig::COMPUTE_UNIT_BUFFER
+        );
+        final_instructions.extend(compute_budget_ixs);
         
         let final_message = Message::new(&final_instructions, Some(user_pubkey));
         let mut final_transaction = Transaction::new_unsigned(final_message);
@@ -351,15 +362,20 @@ impl RpcConnection {
         let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
             .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
         
-        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
-            let with_buffer = (units_consumed as f64 * BurnConfig::COMPUTE_UNIT_BUFFER) as u64;
-            std::cmp::max(with_buffer, BurnConfig::MIN_COMPUTE_UNITS)
+        let simulated_cu = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+            std::cmp::max(units_consumed, BurnConfig::MIN_COMPUTE_UNITS)
         } else {
             300_000u64
         };
         
         let mut final_instructions = vec![];
-        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+        
+        // Add compute budget instructions using unified method
+        let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
+            simulated_cu,
+            BurnConfig::COMPUTE_UNIT_BUFFER
+        );
+        final_instructions.extend(compute_budget_ixs);
         final_instructions.push(instruction);
         
         let final_message = Message::new(&final_instructions, Some(user_pubkey));

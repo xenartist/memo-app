@@ -278,12 +278,18 @@ impl RpcConnection {
         // Get latest blockhash
         let recent_blockhash = self.get_latest_blockhash().await?;
         
-        // Create simulation transaction with a dummy compute budget instruction
+        // Create simulation transaction with dummy compute budget instructions
         // Contract requires memo at index 0, so compute budget must be after base instructions
         // Note: Compute budget instructions are processed by Solana runtime before instruction execution
-        let dummy_compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(400_000);
         let mut sim_instructions = base_instructions.clone();
-        sim_instructions.push(dummy_compute_budget_ix);
+        sim_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(400_000));
+        
+        // If user has set a price, include it in simulation to match final transaction
+        if let Some(settings) = crate::core::settings::load_current_network_settings() {
+            if let Some(price) = settings.get_cu_price_micro_lamports() {
+                sim_instructions.push(ComputeBudgetInstruction::set_compute_unit_price(price));
+            }
+        }
         
         let sim_message = Message::new(
             &sim_instructions,
@@ -311,24 +317,25 @@ impl RpcConnection {
             .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
         
         // Parse simulation result to extract compute units consumed
-        let computed_units = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
+        let simulated_cu = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
             log::info!("Mint simulation consumed {} compute units", units_consumed);
-            // Using exact simulation value (no buffer)
-            (units_consumed as f64 * MintConfig::COMPUTE_UNIT_BUFFER) as u64
+            units_consumed
         } else {
             return Err(RpcError::Other(
                 "Failed to get compute units from simulation".to_string()
             ));
         };
         
-        log::info!("Using {} compute units for mint (exact simulation value, no buffer)", computed_units);
-        
         // Build the final transaction with compute budget
         // Contract requires memo at index 0, so add base instructions first, then compute budget
         let mut final_instructions = base_instructions;
         
-        // Add compute budget instruction at the end (will be processed by runtime first anyway)
-        final_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(computed_units as u32));
+        // Add compute budget instructions (limit + optional price) using unified method
+        let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
+            simulated_cu,
+            MintConfig::COMPUTE_UNIT_BUFFER
+        );
+        final_instructions.extend(compute_budget_ixs);
         
         // Create final unsigned transaction
         let final_message = Message::new(
