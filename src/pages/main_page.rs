@@ -195,11 +195,8 @@ pub fn MainPage(
                     },
                     Ok(None) => {
                         log::info!("No user burn stats exist on blockchain");
-                        // Show welcome info dialog after a short delay (only in testnet)
-                        let is_testnet = session_clone.with_untracked(|s| {
-                            matches!(s.get_network(), Some(NetworkType::Testnet))
-                        });
-                        if !has_shown_welcome.get_untracked() && is_testnet {
+                        // Show welcome info dialog after a short delay
+                        if !has_shown_welcome.get_untracked() {
                             set_timeout(move || {
                                 set_show_welcome_info.set(true);
                                 set_has_shown_welcome.set(true);
@@ -407,11 +404,8 @@ pub fn MainPage(
                         </button>
                     </Show>
                     
-                    // Initialize Burn Stats button (only show if needed and in testnet)
-                    <Show when=move || {
-                        needs_burn_stats_init() && 
-                        matches!(current_network(), Some(NetworkType::Testnet))
-                    }>
+                    // Initialize Burn Stats button (only show if needed)
+                    <Show when=move || needs_burn_stats_init()>
                         <button
                             class="init-burn-stats-btn"
                             on:click=move |_| set_show_init_dialog.set(true)
@@ -615,11 +609,8 @@ pub fn MainPage(
             // Global log viewer - always visible at the bottom
             <LogView/>
             
-            // Welcome Info Dialog (shown after login/registration if burn stats not initialized, only in testnet)
-            <Show when=move || {
-                show_welcome_info.get() && 
-                matches!(current_network(), Some(NetworkType::Testnet))
-            }>
+            // Welcome Info Dialog (shown after login/registration if burn stats not initialized)
+            <Show when=move || show_welcome_info.get()>
                 <div class="modal-overlay" on:click=move |_| set_show_welcome_info.set(false)>
                     <div class="modal-content welcome-info-dialog" on:click=|e| e.stop_propagation()>
                         <div class="modal-header">
@@ -657,11 +648,8 @@ pub fn MainPage(
                 </div>
             </Show>
             
-            // Initialize Burn Stats Dialog (only in testnet)
-            <Show when=move || {
-                show_init_dialog.get() && 
-                matches!(current_network(), Some(NetworkType::Testnet))
-            }>
+            // Initialize Burn Stats Dialog
+            <Show when=move || show_init_dialog.get()>
                 <div class="modal-overlay" on:click=move |_| {
                     if !init_loading.get() {
                         set_show_init_dialog.set(false);
