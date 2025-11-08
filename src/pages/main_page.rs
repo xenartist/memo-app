@@ -72,6 +72,18 @@ pub fn MainPage(
     // Force refresh signal to trigger UI updates
     let (force_refresh, set_force_refresh) = create_signal(0u32);
     
+    // Transfer dialog states
+    let (show_transfer_dialog, set_show_transfer_dialog) = create_signal(false);
+    let (transfer_type, set_transfer_type) = create_signal("MEMO".to_string());
+    let (transfer_address, set_transfer_address) = create_signal(String::new());
+    let (transfer_amount, set_transfer_amount) = create_signal(String::new());
+    let (transfer_loading, set_transfer_loading) = create_signal(false);
+    let (transfer_message, set_transfer_message) = create_signal(String::new());
+    let (transfer_success, set_transfer_success) = create_signal(false);
+    let (transfer_tx_hash, set_transfer_tx_hash) = create_signal(String::new());
+    let (show_confirm_dialog, set_show_confirm_dialog) = create_signal(false);
+    let (confirm_transfer_data, set_confirm_transfer_data) = create_signal(Option::<(String, String, String)>::None);
+    
     // Now using global constant - no need to define locally
     
     // get wallet address from session
@@ -424,21 +436,27 @@ pub fn MainPage(
                 </div>
                 */
                 
-                // Right side - wallet info
+                // Right side - wallet info (now clickable)
                 <div class="wallet-address">
-                    <span class="token-balance">{move || format!("{:.2} MEMO", token_balance())}</span>
-                    <span class="balance">{move || format!("{:.4} XNT", sol_balance())}</span>
-                    <span class="address-label">"Wallet: "</span>
-                    <span 
-                        class="address-value" 
-                        title={move || wallet_address()}
-                        on:mousedown=|e| e.prevent_default()
+                    <button
+                        class="wallet-info-button"
+                        on:click=move |_| set_show_transfer_dialog.set(true)
+                        title="Click to transfer tokens"
                     >
-                        {move || {
-                            let addr = wallet_address();
-                            format!("{}...{}", &addr[..4], &addr[addr.len()-4..])
-                        }}
-                    </span>
+                        <span class="token-balance">{move || format!("{:.2} MEMO", token_balance())}</span>
+                        <span class="balance">{move || format!("{:.4} XNT", sol_balance())}</span>
+                        <span class="address-label">"Wallet: "</span>
+                        <span 
+                            class="address-value" 
+                            title={move || wallet_address()}
+                            on:mousedown=|e| e.prevent_default()
+                        >
+                            {move || {
+                                let addr = wallet_address();
+                                format!("{}...{}", &addr[..4], &addr[addr.len()-4..])
+                            }}
+                        </span>
+                    </button>
                     <div class="copy-container">
                         <button
                             class="copy-button"
@@ -712,6 +730,374 @@ pub fn MainPage(
                                 </button>
                             </div>
                         </Show>
+                    </div>
+                </div>
+            </Show>
+            
+            // Transfer Dialog
+            <Show when=move || show_transfer_dialog.get()>
+                <div class="modal-overlay" on:click=move |_| {
+                    if !transfer_loading.get() && !transfer_success.get() {
+                        set_show_transfer_dialog.set(false);
+                        set_transfer_address.set(String::new());
+                        set_transfer_amount.set(String::new());
+                        set_transfer_message.set(String::new());
+                        set_transfer_success.set(false);
+                        set_transfer_tx_hash.set(String::new());
+                    }
+                }>
+                    <div class="modal-content transfer-dialog" on:click=|e| e.stop_propagation()>
+                        <div class="modal-header">
+                            <h3>
+                                <i class="fas fa-paper-plane"></i>
+                                "Transfer Tokens"
+                            </h3>
+                            <Show when=move || !transfer_loading.get()>
+                                <button 
+                                    class="modal-close"
+                                    on:click=move |_| {
+                                        set_show_transfer_dialog.set(false);
+                                        set_transfer_address.set(String::new());
+                                        set_transfer_amount.set(String::new());
+                                        set_transfer_message.set(String::new());
+                                        set_transfer_success.set(false);
+                                        set_transfer_tx_hash.set(String::new());
+                                    }
+                                >
+                                    "×"
+                                </button>
+                            </Show>
+                        </div>
+                        
+                        <div class="modal-body">
+                            <Show 
+                                when=move || !transfer_loading.get() && !transfer_success.get() && transfer_message.get().is_empty()
+                                fallback=move || {
+                                    if transfer_success.get() {
+                                        view! {
+                                            <div class="transfer-success">
+                                                <div class="success-icon">
+                                                    <i class="fas fa-check"></i>
+                                                </div>
+                                                <p class="success-message">"Transfer Successful!"</p>
+                                                <div class="tx-info">
+                                                    <span class="tx-label">"Transaction Signature:"</span>
+                                                    <div class="tx-hash">{transfer_tx_hash}</div>
+                                                </div>
+                                            </div>
+                                        }.into_view()
+                                    } else if transfer_loading.get() {
+                                        view! {
+                                            <div class="transfer-status">
+                                                <div class="loading-spinner"></div>
+                                                <p class="transfer-message">{transfer_message}</p>
+                                            </div>
+                                        }.into_view()
+                                    } else {
+                                        view! {
+                                            <div class="transfer-status">
+                                                <p class="transfer-message">{transfer_message}</p>
+                                            </div>
+                                        }.into_view()
+                                    }
+                                }
+                            >
+                                <div class="transfer-form">
+                                    <div class="form-group">
+                                        <label>
+                                            <i class="fas fa-coins"></i>
+                                            "Token Type:"
+                                        </label>
+                                        <select 
+                                            class="form-control"
+                                            on:change=move |ev| {
+                                                let value = event_target_value(&ev);
+                                                set_transfer_type.set(value);
+                                            }
+                                        >
+                                            <option value="MEMO" selected={move || transfer_type.get() == "MEMO"}>"MEMO"</option>
+                                            <option value="XNT" selected={move || transfer_type.get() == "XNT"}>"XNT"</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label>
+                                            <i class="fas fa-wallet"></i>
+                                            "Recipient Address:"
+                                        </label>
+                                        <input 
+                                            type="text"
+                                            class="form-control"
+                                            placeholder="Enter recipient address"
+                                            prop:value=move || transfer_address.get()
+                                            on:input=move |ev| {
+                                                set_transfer_address.set(event_target_value(&ev));
+                                            }
+                                        />
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label>
+                                            <i class="fas fa-money-bill-wave"></i>
+                                            {move || format!("Amount ({}):", transfer_type.get())}
+                                        </label>
+                                        <input 
+                                            type="text"
+                                            inputmode="decimal"
+                                            class="form-control"
+                                            placeholder="Enter amount (e.g., 0.1)"
+                                            prop:value=move || transfer_amount.get()
+                                            on:input=move |ev| {
+                                                let value = event_target_value(&ev);
+                                                // Allow numbers, one decimal point, and leading zeros
+                                                // Remove any invalid characters except digits and one decimal point
+                                                let filtered: String = value.chars().filter(|c| c.is_ascii_digit() || *c == '.').collect();
+                                                
+                                                // Ensure only one decimal point
+                                                let parts: Vec<&str> = filtered.split('.').collect();
+                                                let clean_value = if parts.len() <= 2 {
+                                                    filtered
+                                                } else {
+                                                    // Keep only first decimal point
+                                                    format!("{}.{}", parts[0], parts[1..].join(""))
+                                                };
+                                                
+                                                set_transfer_amount.set(clean_value);
+                                            }
+                                        />
+                                        <div class="balance-info">
+                                            <i class="fas fa-info-circle"></i>
+                                            {move || {
+                                                if transfer_type.get() == "MEMO" {
+                                                    format!("Available: {:.6} MEMO", token_balance())
+                                                } else {
+                                                    format!("Available: {:.6} XNT", sol_balance())
+                                                }
+                                            }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </Show>
+                        </div>
+                        
+                        <Show when=move || transfer_success.get()>
+                            <div class="modal-footer">
+                                <button 
+                                    class="btn-primary"
+                                    on:click=move |_| {
+                                        set_show_transfer_dialog.set(false);
+                                        set_transfer_address.set(String::new());
+                                        set_transfer_amount.set(String::new());
+                                        set_transfer_message.set(String::new());
+                                        set_transfer_success.set(false);
+                                        set_transfer_tx_hash.set(String::new());
+                                    }
+                                >
+                                    <i class="fas fa-check"></i>
+                                    "Close"
+                                </button>
+                            </div>
+                        </Show>
+                        
+                        <Show when=move || !transfer_loading.get() && !transfer_success.get() && transfer_message.get().is_empty()>
+                            <div class="modal-footer">
+                                <button 
+                                    class="btn-secondary"
+                                    on:click=move |_| {
+                                        set_show_transfer_dialog.set(false);
+                                        set_transfer_address.set(String::new());
+                                        set_transfer_amount.set(String::new());
+                                        set_transfer_message.set(String::new());
+                                    }
+                                >
+                                    <i class="fas fa-times"></i>
+                                    "Cancel"
+                                </button>
+                                <button 
+                                    class="btn-primary transfer-btn"
+                                    on:click=move |_| {
+                                        let address = transfer_address.get();
+                                        let amount_str = transfer_amount.get();
+                                        let token_type = transfer_type.get();
+                                        
+                                        // Validate inputs
+                                        if address.is_empty() {
+                                            set_transfer_message.set("Please enter a recipient address".to_string());
+                                            set_timeout(move || {
+                                                set_transfer_message.set(String::new());
+                                            }, Duration::from_millis(3000));
+                                            return;
+                                        }
+                                        
+                                        if amount_str.is_empty() {
+                                            set_transfer_message.set("Please enter an amount".to_string());
+                                            set_timeout(move || {
+                                                set_transfer_message.set(String::new());
+                                            }, Duration::from_millis(3000));
+                                            return;
+                                        }
+                                        
+                                        let amount: f64 = match amount_str.parse() {
+                                            Ok(a) => a,
+                                            Err(_) => {
+                                                set_transfer_message.set("Invalid amount".to_string());
+                                                set_timeout(move || {
+                                                    set_transfer_message.set(String::new());
+                                                }, Duration::from_millis(3000));
+                                                return;
+                                            }
+                                        };
+                                        
+                                        if amount <= 0.0 {
+                                            set_transfer_message.set("Amount must be greater than 0".to_string());
+                                            set_timeout(move || {
+                                                set_transfer_message.set(String::new());
+                                            }, Duration::from_millis(3000));
+                                            return;
+                                        }
+                                        
+                                        // Check balance
+                                        let current_balance = if token_type == "MEMO" {
+                                            token_balance()
+                                        } else {
+                                            sol_balance()
+                                        };
+                                        
+                                        if amount > current_balance {
+                                            set_transfer_message.set("Insufficient balance".to_string());
+                                            set_timeout(move || {
+                                                set_transfer_message.set(String::new());
+                                            }, Duration::from_millis(3000));
+                                            return;
+                                        }
+                                        
+                                        // Show confirmation dialog
+                                        set_confirm_transfer_data.set(Some((token_type.clone(), address.clone(), amount_str.clone())));
+                                        set_show_confirm_dialog.set(true);
+                                    }
+                                >
+                                    <i class="fas fa-paper-plane"></i>
+                                    "Transfer"
+                                </button>
+                            </div>
+                        </Show>
+                    </div>
+                </div>
+            </Show>
+            
+            // Transfer Confirmation Dialog
+            <Show when=move || show_confirm_dialog.get()>
+                <div class="modal-overlay" on:click=move |_| set_show_confirm_dialog.set(false)>
+                    <div class="modal-content confirm-dialog" on:click=|e| e.stop_propagation()>
+                        <div class="modal-header">
+                            <h3>
+                                <i class="fas fa-exclamation-triangle"></i>
+                                "Confirm Transfer"
+                            </h3>
+                            <button 
+                                class="modal-close"
+                                on:click=move |_| set_show_confirm_dialog.set(false)
+                            >
+                                "×"
+                            </button>
+                        </div>
+                        
+                        <div class="modal-body">
+                            {move || {
+                                if let Some((token_type, address, amount)) = confirm_transfer_data.get() {
+                                    view! {
+                                        <div class="confirm-details">
+                                            <p>
+                                                <i class="fas fa-coins"></i>
+                                                <strong>"Token Type: "</strong>
+                                                <span>{token_type.clone()}</span>
+                                            </p>
+                                            <p>
+                                                <i class="fas fa-wallet"></i>
+                                                <strong>"Recipient: "</strong>
+                                                <span>{format!("{}...{}", &address[..8], &address[address.len()-8..])}</span>
+                                            </p>
+                                            <p>
+                                                <i class="fas fa-money-bill-wave"></i>
+                                                <strong>"Amount: "</strong>
+                                                <span>{format!("{} {}", amount, token_type)}</span>
+                                            </p>
+                                            <p class="warning-text">
+                                                <i class="fas fa-exclamation-circle"></i>
+                                                "Please confirm this transfer. This action cannot be undone."
+                                            </p>
+                                        </div>
+                                    }.into_view()
+                                } else {
+                                    view! { <div></div> }.into_view()
+                                }
+                            }}
+                        </div>
+                        
+                        <div class="modal-footer">
+                            <button 
+                                class="btn-secondary"
+                                on:click=move |_| set_show_confirm_dialog.set(false)
+                            >
+                                <i class="fas fa-times"></i>
+                                "Cancel"
+                            </button>
+                            <button 
+                                class="btn-primary confirm-transfer-btn"
+                                on:click=move |_| {
+                                    set_show_confirm_dialog.set(false);
+                                    
+                                    if let Some((token_type, address, amount_str)) = confirm_transfer_data.get() {
+                                        set_transfer_loading.set(true);
+                                        set_transfer_message.set("Processing transfer...".to_string());
+                                        
+                                        let session_clone = session;
+                                        spawn_local(async move {
+                                            let amount: f64 = amount_str.parse().unwrap_or(0.0);
+                                            
+                                            let result = if token_type == "MEMO" {
+                                                // Transfer MEMO tokens (in lamports with 6 decimals)
+                                                let amount_lamports = (amount * 1_000_000.0) as u64;
+                                                let mut session_update = session_clone.get_untracked();
+                                                session_update.transfer_token(&address, amount_lamports).await
+                                            } else {
+                                                // Transfer XNT (in lamports with 9 decimals)
+                                                let amount_lamports = (amount * 1_000_000_000.0) as u64;
+                                                let mut session_update = session_clone.get_untracked();
+                                                session_update.transfer_native(&address, amount_lamports).await
+                                            };
+                                            
+                                            match result {
+                                                Ok(tx_hash) => {
+                                                    log::info!("Transfer successful: {}", tx_hash);
+                                                    add_log_entry("INFO", &format!("Transfer successful: {}", tx_hash));
+                                                    
+                                                    // Update session to trigger balance refresh
+                                                    session_clone.update(|s| {
+                                                        s.mark_balance_update_needed();
+                                                    });
+                                                    
+                                                    // Show success state with transaction hash (don't auto-close)
+                                                    set_transfer_success.set(true);
+                                                    set_transfer_tx_hash.set(tx_hash);
+                                                    set_transfer_loading.set(false);
+                                                    set_transfer_message.set(String::new());
+                                                },
+                                                Err(e) => {
+                                                    log::error!("Transfer failed: {}", e);
+                                                    add_log_entry("ERROR", &format!("Transfer failed: {}", e));
+                                                    set_transfer_message.set(format!("Transfer failed: {}", e));
+                                                    set_transfer_loading.set(false);
+                                                }
+                                            }
+                                        });
+                                    }
+                                }
+                            >
+                                <i class="fas fa-check"></i>
+                                "Confirm"
+                            </button>
+                        </div>
                     </div>
                 </div>
             </Show>

@@ -1333,6 +1333,386 @@
     outline-offset: 2px;
 }
 
+/* Wallet Info Button - clickable wallet display */
+.wallet-info-button {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: transparent;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.wallet-info-button:hover {
+    background: #f5f5f5;
+    border-color: #007bff;
+    transform: translateY(-1px);
+}
+
+.wallet-info-button:active {
+    transform: translateY(0);
+}
+
+.wallet-info-button .token-balance,
+.wallet-info-button .balance {
+    font-weight: 500;
+    color: #1a1a1a;
+}
+
+.wallet-info-button .address-label {
+    color: #666;
+    margin-right: 8px;
+}
+
+.wallet-info-button .address-value {
+    color: #1a1a1a;
+    font-weight: 500;
+}
+
+/* Transfer Dialog Styles */
+.transfer-dialog {
+    max-width: 500px;
+    width: 90%;
+}
+
+.transfer-dialog .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.transfer-dialog .modal-header h3 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: #1a1a1a;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.transfer-dialog .modal-header h3 i {
+    color: #007bff;
+}
+
+.transfer-dialog .modal-body {
+    padding: 24px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.transfer-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+}
+
+.transfer-form .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+}
+
+.transfer-form label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.transfer-form label i {
+    color: #007bff;
+    font-size: 16px;
+    width: 20px;
+    text-align: center;
+}
+
+.transfer-form .form-control {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: border-color 0.2s ease;
+    box-sizing: border-box;
+}
+
+.transfer-form .form-control:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+/* Removed number input specific styles since we now use text input */
+
+.balance-info {
+    font-size: 12px;
+    color: #666;
+    margin-top: 4px;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.balance-info i {
+    color: #17a2b8;
+    font-size: 13px;
+}
+
+.transfer-status {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 20px;
+    text-align: center;
+}
+
+.transfer-message {
+    font-size: 14px;
+    color: #333;
+    white-space: pre-line;
+    word-break: break-word;
+}
+
+.transfer-success {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px;
+    text-align: left;
+}
+
+.transfer-success .success-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+    margin: 0 auto;
+    background: #d4edda;
+    border-radius: 50%;
+    color: #28a745;
+    font-size: 32px;
+}
+
+.transfer-success .success-message {
+    font-size: 16px;
+    font-weight: 600;
+    color: #28a745;
+    text-align: center;
+}
+
+.transfer-success .tx-info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+}
+
+.transfer-success .tx-label {
+    font-size: 12px;
+    color: #6c757d;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.transfer-success .tx-hash {
+    font-family: monospace;
+    font-size: 13px;
+    color: #212529;
+    word-break: break-all;
+    background: #fff;
+    padding: 8px 12px;
+    border-radius: 4px;
+    border: 1px solid #ced4da;
+}
+
+.transfer-dialog .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.transfer-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Confirm Dialog Styles */
+.confirm-dialog {
+    max-width: 450px;
+    width: 90%;
+}
+
+.confirm-dialog .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #fff3cd;
+}
+
+.confirm-dialog .modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #856404;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.confirm-dialog .modal-header h3 i {
+    color: #ffc107;
+}
+
+.confirm-dialog .modal-body {
+    padding: 24px;
+}
+
+.confirm-details {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    text-align: left;
+}
+
+.confirm-details p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.6;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.confirm-details p i {
+    color: #007bff;
+    font-size: 16px;
+    width: 20px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.confirm-details strong {
+    color: #333;
+    font-weight: 600;
+    display: inline-block;
+    min-width: 100px;
+}
+
+.confirm-details span {
+    color: #495057;
+    word-break: break-word;
+}
+
+.confirm-details .warning-text {
+    margin-top: 8px;
+    padding: 12px 12px 12px 10px;
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 6px;
+    color: #856404;
+    font-weight: 500;
+    text-align: left;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.confirm-details .warning-text i {
+    color: #ffc107;
+    font-size: 18px;
+    margin-top: 2px;
+}
+
+.confirm-dialog .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.confirm-transfer-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #28a745;
+}
+
+.confirm-transfer-btn:hover {
+    background: #218838;
+}
+
+/* Mobile responsiveness for transfer dialogs */
+@media (max-width: 768px) {
+    .transfer-dialog,
+    .confirm-dialog {
+        max-width: 100%;
+        width: 95%;
+        margin: 10px;
+    }
+    
+    .transfer-dialog .modal-header,
+    .transfer-dialog .modal-body,
+    .confirm-dialog .modal-header,
+    .confirm-dialog .modal-body {
+        padding: 16px;
+    }
+    
+    .transfer-form {
+        gap: 16px;
+    }
+    
+    .transfer-form .form-control {
+        padding: 10px 12px;
+        font-size: 14px;
+    }
+    
+    .wallet-info-button {
+        padding: 6px 12px;
+        gap: 8px;
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 480px) {
+    .transfer-dialog,
+    .confirm-dialog {
+        width: 100%;
+        margin: 0;
+        border-radius: 0;
+    }
+    
+    .transfer-dialog .modal-header h3,
+    .confirm-dialog .modal-header h3 {
+        font-size: 18px;
+    }
+}
+
 /* Print styles */
 @media print {
     .sidebar,

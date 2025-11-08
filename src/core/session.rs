@@ -1294,6 +1294,84 @@ impl Session {
     pub fn set_user_burn_stats(&mut self, stats: Option<UserGlobalBurnStats>) {
         self.user_burn_stats = stats;
     }
+
+    /// Transfer native tokens (XNT/SOL) to another address
+    /// 
+    /// # Parameters
+    /// * `to_address` - Recipient's address
+    /// * `amount_lamports` - Amount to transfer in lamports
+    /// 
+    /// # Returns
+    /// Transaction signature on success
+    pub async fn transfer_native(
+        &mut self,
+        to_address: &str,
+        amount_lamports: u64,
+    ) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let rpc = RpcConnection::new();
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+        
+        log::info!("Building native transfer transaction...");
+        let mut transaction = rpc.build_native_transfer_transaction(&pubkey, to_address, amount_lamports).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
+        
+        log::info!("Signing transaction in Session...");
+        self.sign_transaction(&mut transaction).await?;
+        
+        log::info!("Sending signed transaction...");
+        let tx_hash = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Native transfer successful: {}", tx_hash);
+        self.balance_update_needed = true;
+        
+        Ok(tx_hash)
+    }
+
+    /// Transfer SPL tokens (MEMO) to another address
+    /// 
+    /// # Parameters
+    /// * `to_address` - Recipient's address
+    /// * `amount` - Amount to transfer in token units (with decimals)
+    /// 
+    /// # Returns
+    /// Transaction signature on success
+    pub async fn transfer_token(
+        &mut self,
+        to_address: &str,
+        amount: u64,
+    ) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let rpc = RpcConnection::new();
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+        
+        log::info!("Building token transfer transaction...");
+        let mut transaction = rpc.build_token_transfer_transaction(&pubkey, to_address, amount).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to build transaction: {}", e)))?;
+        
+        log::info!("Signing transaction in Session...");
+        self.sign_transaction(&mut transaction).await?;
+        
+        log::info!("Sending signed transaction...");
+        let tx_hash = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Token transfer successful: {}", tx_hash);
+        self.balance_update_needed = true;
+        
+        Ok(tx_hash)
+    }
 }
 
 // implement zeroize for Session to ensure sensitive data is cleared
