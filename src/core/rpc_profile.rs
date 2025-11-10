@@ -482,16 +482,10 @@ impl RpcConnection {
         };
         
         // Create update_profile instruction with proper parameter serialization
+        // Note: Contract now only takes burn_amount as parameter
+        // Profile data (username, image, about_me) is in the memo instruction
         let mut instruction_data = ProfileConfig::get_update_profile_discriminator().to_vec();
         instruction_data.extend_from_slice(&burn_amount_units.to_le_bytes());
-        
-        // Serialize Option<String> parameters (using Borsh format)
-        instruction_data.extend_from_slice(&username.try_to_vec()
-            .map_err(|e| RpcError::Other(format!("Failed to serialize username: {}", e)))?);
-        instruction_data.extend_from_slice(&image.try_to_vec()
-            .map_err(|e| RpcError::Other(format!("Failed to serialize image: {}", e)))?);
-        instruction_data.extend_from_slice(&about_me.try_to_vec()
-            .map_err(|e| RpcError::Other(format!("Failed to serialize about_me: {}", e)))?);
         
         let profile_instruction = solana_sdk::instruction::Instruction::new_with_bytes(
             program_id,
