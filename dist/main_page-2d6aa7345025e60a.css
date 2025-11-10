@@ -188,6 +188,65 @@
     align-items: center;
 }
 
+.profile-display-header {
+    display: grid;
+    grid-template-columns: 28px auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.profile-avatar-small {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.profile-avatar-small img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.profile-avatar-small.placeholder {
+    background: rgba(99, 102, 241, 0.15);
+    color: #6366f1;
+}
+
+.profile-avatar-small.placeholder i {
+    font-size: 20px;
+}
+
+.profile-username {
+    font-weight: 500;
+    color: #333;
+    font-size: 14px;
+    align-self: center;
+}
+
+.profile-status {
+    font-weight: 500;
+    color: #333;
+    font-size: 14px;
+    padding: 6px 12px;
+    background: rgba(99, 102, 241, 0.1);
+    border-radius: 8px;
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.profile-status::before {
+    content: "👤";
+    font-size: 16px;
+}
+
 .username {
     font-weight: 500;
     color: #333;
@@ -198,7 +257,7 @@
 .wallet-address {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
 }
 
 .token-balance, 
