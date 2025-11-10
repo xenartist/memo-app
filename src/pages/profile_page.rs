@@ -273,7 +273,10 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                         Ok(Some(updated_profile)) => {
                             profile_clone.set(Some(updated_profile.clone()));
                             // Update global session with the new profile
-                            session_clone.update(|s| s.set_user_profile(Some(updated_profile)));
+                            session_clone.update(|s| {
+                                s.set_user_profile(Some(updated_profile));
+                                s.request_balance_update(); // Refresh balance after burning tokens
+                            });
                             success_message_clone.set(Some("Profile created and loaded successfully!".to_string()));
                             waiting_clone.set(false);
                             
@@ -303,7 +306,10 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                 Ok(Some(retry_profile)) => {
                                     profile_clone.set(Some(retry_profile.clone()));
                                     // Update global session with the new profile
-                                    session_clone.update(|s| s.set_user_profile(Some(retry_profile)));
+                                    session_clone.update(|s| {
+                                        s.set_user_profile(Some(retry_profile));
+                                        s.request_balance_update(); // Refresh balance after burning tokens
+                                    });
                                     success_message_clone.set(Some("Profile created and loaded successfully!".to_string()));
                                 },
                                 _ => {
@@ -411,7 +417,10 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                         Ok(Some(updated_profile)) => {
                             profile_clone.set(Some(updated_profile.clone()));
                             // Update global session with the new profile
-                            session_clone.update(|s| s.set_user_profile(Some(updated_profile)));
+                            session_clone.update(|s| {
+                                s.set_user_profile(Some(updated_profile));
+                                s.request_balance_update(); // Refresh balance after burning tokens
+                            });
                             success_message_clone.set(Some("Profile updated and loaded successfully!".to_string()));
                             waiting_clone.set(false);
                             
@@ -441,7 +450,10 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                 Ok(Some(retry_profile)) => {
                                     profile_clone.set(Some(retry_profile.clone()));
                                     // Update global session with the new profile
-                                    session_clone.update(|s| s.set_user_profile(Some(retry_profile)));
+                                    session_clone.update(|s| {
+                                        s.set_user_profile(Some(retry_profile));
+                                        s.request_balance_update(); // Refresh balance after burning tokens
+                                    });
                                     success_message_clone.set(Some("Profile updated and loaded successfully!".to_string()));
                                 },
                                 _ => {
