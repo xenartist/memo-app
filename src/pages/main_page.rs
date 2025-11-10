@@ -9,6 +9,7 @@ use crate::pages::chat_page::ChatPage;
 use crate::pages::project_page::ProjectPage;
 use crate::pages::faucet_page::FaucetPage;
 use crate::pages::log_view::{LogView, add_log_entry};
+use crate::pages::pixel_view::LazyPixelView;
 
 use wasm_bindgen::prelude::*;
 use web_sys::{window, Navigator, Clipboard};
@@ -35,8 +36,8 @@ fn is_menu_available(menu_item: &MenuItem, network: Option<NetworkType>) -> bool
             true
         }
         Some(NetworkType::ProdStaging) | Some(NetworkType::Mainnet) => {
-            // Production and Staging: Only Mint page available
-            matches!(menu_item, MenuItem::Mint | MenuItem::Settings)
+            // Production and Staging: Mint, Profile, and Settings available
+            matches!(menu_item, MenuItem::Mint | MenuItem::Profile | MenuItem::Settings)
         }
         None => {
             // If network not set (shouldn't happen), default to restricted mode
@@ -110,7 +111,7 @@ pub fn MainPage(
         session.with(|s| {
             match s.get_user_profile() {
                 Some(profile) => {
-                    format!("Profile: {}", profile.username)
+                    profile.username.clone()
                 },
                 None => "No Profile".to_string()
             }
@@ -429,15 +430,51 @@ pub fn MainPage(
                     </Show>
                 </div>
                 
-                // Temporarily commented out profile info for release
-                /*
-                <div class="user-info">
-                    <span class="profile-status">{profile_status}</span>
-                </div>
-                */
-                
-                // Right side - wallet info (now clickable)
+                // Right side - profile avatar and wallet info
                 <div class="wallet-address">
+                    // Profile avatar
+                    {move || {
+                        session.with(|s| {
+                            match s.get_user_profile() {
+                                Some(profile) => {
+                                    // Show avatar only
+                                    if !profile.image.is_empty() {
+                                        if profile.image.starts_with("c:") || profile.image.starts_with("n:") {
+                                            view! {
+                                                <div class="profile-avatar-small" title={profile.username.clone()}>
+                                                    <LazyPixelView
+                                                        art={profile.image.clone()}
+                                                        size=28
+                                                    />
+                                                </div>
+                                            }.into_view()
+                                        } else {
+                                            view! {
+                                                <div class="profile-avatar-small" title={profile.username.clone()}>
+                                                    <img src={profile.image.clone()} alt="Profile" />
+                                                </div>
+                                            }.into_view()
+                                        }
+                                    } else {
+                                        view! {
+                                            <div class="profile-avatar-small placeholder" title={profile.username.clone()}>
+                                                <i class="fas fa-user-circle"></i>
+                                            </div>
+                                        }.into_view()
+                                    }
+                                },
+                                None => {
+                                    view! {
+                                        <div class="profile-avatar-small placeholder" title="No Profile">
+                                            <i class="fas fa-user-circle"></i>
+                                        </div>
+                                    }.into_view()
+                                }
+                            }
+                        })
+                    }}
+                    
+                    // Wallet info button
                     <button
                         class="wallet-info-button"
                         on:click=move |_| set_show_transfer_dialog.set(true)
