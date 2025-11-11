@@ -72,6 +72,28 @@
     border: 1px solid #bee5eb;
 }
 
+.alert-warning {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeaa7;
+}
+
+/* Burn stats warning with vertical layout */
+.burn-stats-warning {
+    flex-direction: column;
+    text-align: center;
+    padding: 20px;
+}
+
+.burn-stats-warning .warning-icon {
+    font-size: 2rem;
+    margin-bottom: 12px;
+}
+
+.burn-stats-warning .warning-content {
+    line-height: 1.6;
+}
+
 /* ensure elements in container are correctly arranged */
 .container {
     flex: 1;

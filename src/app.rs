@@ -45,14 +45,26 @@ pub fn App() -> impl IntoView {
     // Lock screen state
     let (is_screen_locked, set_is_screen_locked) = create_signal(false);
 
-    // Logout handler - clears session and returns to initial screen
+    // Logout handler - clears session and returns to appropriate screen
     let handle_logout = move || {
         log::info!("Logging out...");
         // Clear session data
         session.update(|s| s.logout());
-        // Return to initial screen (allows choosing between internal wallet and Backpack)
+        // Hide main page
         set_show_main_page.set(false);
-        set_current_step.set(CreateWalletStep::Initial);
+        
+        // Check if internal wallet exists to determine which screen to show
+        spawn_local(async move {
+            if Wallet::exists().await {
+                // Internal wallet exists - go to login screen
+                log::info!("Internal wallet exists, returning to login screen");
+                set_current_step.set(CreateWalletStep::Login);
+            } else {
+                // No wallet exists - go to initial screen
+                log::info!("No wallet exists, returning to initial screen");
+                set_current_step.set(CreateWalletStep::Initial);
+            }
+        });
     };
 
     // Lock screen handler

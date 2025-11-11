@@ -51,6 +51,11 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
         username_changed.get() || about_me_changed.get() || pixel_art_changed.get()
     });
     
+    // Check if user has burn stats initialized
+    let has_burn_stats = create_memo(move |_| {
+        session.with(|s| s.has_burn_stats_initialized())
+    });
+    
     // Load profile on page load
     create_effect(move |_| {
         let current_profile = session.with(|s| s.get_user_profile());
@@ -263,9 +268,15 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                     
                     // fetch user profile from blockchain, not from cache
                     log::info!("Fetching updated user profile from blockchain...");
-                    match session_clone.with_untracked(|s| s.clone()).fetch_and_cache_user_profile().await {
+                    let mut temp_session = session_clone.with_untracked(|s| s.clone());
+                    match temp_session.fetch_and_cache_user_profile().await {
                         Ok(Some(updated_profile)) => {
-                            profile_clone.set(Some(updated_profile));
+                            profile_clone.set(Some(updated_profile.clone()));
+                            // Update global session with the new profile
+                            session_clone.update(|s| {
+                                s.set_user_profile(Some(updated_profile));
+                                s.mark_balance_update_needed(); // Refresh balance after burning tokens
+                            });
                             success_message_clone.set(Some("Profile created and loaded successfully!".to_string()));
                             waiting_clone.set(false);
                             
@@ -290,9 +301,15 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                             }
                             
                             // if still not found, wait 5 seconds and retry
-                            match session_clone.with_untracked(|s| s.clone()).fetch_and_cache_user_profile().await {
+                            let mut temp_session_retry = session_clone.with_untracked(|s| s.clone());
+                            match temp_session_retry.fetch_and_cache_user_profile().await {
                                 Ok(Some(retry_profile)) => {
-                                    profile_clone.set(Some(retry_profile));
+                                    profile_clone.set(Some(retry_profile.clone()));
+                                    // Update global session with the new profile
+                                    session_clone.update(|s| {
+                                        s.set_user_profile(Some(retry_profile));
+                                        s.mark_balance_update_needed(); // Refresh balance after burning tokens
+                                    });
                                     success_message_clone.set(Some("Profile created and loaded successfully!".to_string()));
                                 },
                                 _ => {
@@ -395,9 +412,15 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                     
                     // re-get user profile from blockchain, not from cache
                     log::info!("Fetching updated user profile...");
-                    match session_clone.with_untracked(|s| s.clone()).fetch_and_cache_user_profile().await {
+                    let mut temp_session = session_clone.with_untracked(|s| s.clone());
+                    match temp_session.fetch_and_cache_user_profile().await {
                         Ok(Some(updated_profile)) => {
-                            profile_clone.set(Some(updated_profile));
+                            profile_clone.set(Some(updated_profile.clone()));
+                            // Update global session with the new profile
+                            session_clone.update(|s| {
+                                s.set_user_profile(Some(updated_profile));
+                                s.mark_balance_update_needed(); // Refresh balance after burning tokens
+                            });
                             success_message_clone.set(Some("Profile updated and loaded successfully!".to_string()));
                             waiting_clone.set(false);
                             
@@ -422,9 +445,15 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                             }
                             
                             // if still not found, wait 5 seconds and retry
-                            match session_clone.with_untracked(|s| s.clone()).fetch_and_cache_user_profile().await {
+                            let mut temp_session_retry = session_clone.with_untracked(|s| s.clone());
+                            match temp_session_retry.fetch_and_cache_user_profile().await {
                                 Ok(Some(retry_profile)) => {
-                                    profile_clone.set(Some(retry_profile));
+                                    profile_clone.set(Some(retry_profile.clone()));
+                                    // Update global session with the new profile
+                                    session_clone.update(|s| {
+                                        s.set_user_profile(Some(retry_profile));
+                                        s.mark_balance_update_needed(); // Refresh balance after burning tokens
+                                    });
                                     success_message_clone.set(Some("Profile updated and loaded successfully!".to_string()));
                                 },
                                 _ => {
@@ -704,13 +733,41 @@ pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {
                                 <i class="fas fa-user-plus" style="font-size: 3rem; color: #667eea; margin-bottom: 20px;"></i>
                                 <h2>"No Profile Found"</h2>
                                 <p>"You don't have a profile yet. Create one to get started!"</p>
+                                
+                                // Show warning if burn stats not initialized
+                                {move || if !has_burn_stats.get() {
+                                    view! {
+                                        <div class="alert alert-warning burn-stats-warning" style="margin: 20px 0;">
+                                            <div class="warning-icon">
+                                                <i class="fas fa-exclamation-triangle"></i>
+                                            </div>
+                                            <div class="warning-content">
+                                                <strong>"Important: "</strong>
+                                                "Before creating a profile, you need to initialize your burn stats. "
+                                                "Please go to the main page and click the \"Initialize Burn Stats\" button first."
+                                            </div>
+                                        </div>
+                                    }.into_view()
+                                } else {
+                                    view! { <span></span> }.into_view()
+                                }}
+                                
                                 <button 
                                     class="btn btn-primary"
                                     on:click=move |_| show_create_form.set(true)
-                                    disabled=move || loading.get()
+                                    disabled=move || loading.get() || !has_burn_stats.get()
+                                    title=move || if !has_burn_stats.get() { 
+                                        "Please initialize burn stats first" 
+                                    } else { 
+                                        "Create your profile" 
+                                    }
                                 >
                                     <i class="fas fa-plus"></i>
-                                    "Create Profile"
+                                    {move || if !has_burn_stats.get() {
+                                        "Initialize Burn Stats First"
+                                    } else {
+                                        "Create Profile"
+                                    }}
                                 </button>
                             </div>
                         </div>
