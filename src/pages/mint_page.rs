@@ -5,6 +5,7 @@ use crate::core::rpc_mint::{MintConfig, SupplyTier};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
+use web_sys::window;
 
 // Mint mode enumeration
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -258,6 +259,36 @@ pub fn SupplyProgressBar() -> impl IntoView {
 }
 
 #[component]
+pub fn SwapBridgeLink() -> impl IntoView {
+    let handle_click = move |_| {
+        if let Some(window) = window() {
+            let bridge_url = "https://app-dev.bridge.x1.xyz/";
+            let _ = window.open_with_url_and_target(bridge_url, "_blank");
+        }
+    };
+
+    view! {
+        <div class="swap-bridge-container">
+            <button 
+                class="swap-bridge-card"
+                on:click=handle_click
+            >
+                <div class="swap-bridge-icon">
+                    <i class="fas fa-exchange-alt"></i>
+                </div>
+                <div class="swap-bridge-content">
+                    <h4 class="swap-bridge-title">"Official X1 Swap Bridge"</h4>
+                    <p class="swap-bridge-description">"Atomic cross-chain swap of USDC → XNT"</p>
+                </div>
+                <div class="swap-bridge-arrow">
+                    <i class="fas fa-external-link-alt"></i>
+                </div>
+            </button>
+        </div>
+    }
+}
+
+#[component]
 pub fn MintPage(
     session: RwSignal<Session>
 ) -> impl IntoView {
@@ -469,6 +500,9 @@ pub fn MintPage(
     view! {
         <div class="mint-page">
             // Remove the mint-page-header section entirely
+            
+            // Add the Swap Bridge link
+            <SwapBridgeLink />
             
             // Add the supply progress bar here
             <SupplyProgressBar />
