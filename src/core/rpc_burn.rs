@@ -16,6 +16,7 @@ use std::str::FromStr;
 use log;
 use bincode;
 use sha2::{Sha256, Digest};
+use bs58;
 
 /// Borsh serialization version constants
 pub const BURN_MEMO_VERSION: u8 = 1;
@@ -464,4 +465,154 @@ impl RpcConnection {
         
         Ok(burners)
     }
+    
+    /// Get the latest burn transaction signatures for the burn program
+    /// 
+    /// # Parameters
+    /// * `limit` - Maximum number of signatures to return (default: 1)
+    /// 
+    /// # Returns
+    /// Result containing a vector of signature strings
+    pub async fn get_latest_burn_signatures(&self, limit: usize) -> Result<Vec<String>, RpcError> {
+        let program_id = BurnConfig::get_program_id()?;
+        
+        log::info!("Fetching latest {} burn signatures for program: {}", limit, program_id);
+        
+        let options = serde_json::json!({
+            "limit": limit,
+        });
+        
+        let result = self.get_signatures_for_address(&program_id.to_string(), Some(options)).await?;
+        let result: serde_json::Value = serde_json::from_str(&result)
+            .map_err(|e| RpcError::Other(format!("Failed to parse signatures: {}", e)))?;
+        
+        let mut signatures = Vec::new();
+        if let Some(sigs) = result.as_array() {
+            for sig in sigs {
+                if let Some(signature) = sig["signature"].as_str() {
+                    signatures.push(signature.to_string());
+                }
+            }
+        }
+        
+        Ok(signatures)
+    }
+    
+    /// Get and parse the latest burn transaction from mainnet
+    /// Returns the latest burn of any type (profile, chat, project, etc.)
+    /// Always queries mainnet burn contract regardless of selected network
+    pub async fn get_latest_burn() -> Result<Option<LatestBurn>, RpcError> {
+        // ALWAYS use mainnet burn program ID for login page display
+        // Mainnet burn program ID: memo-burn contract on X1 mainnet
+        let burn_program_id = "2sb3gz5Cmr2g1ia5si2rmCZqPACxgaZXEmiS5k6Htcvh";
+        
+        log::info!("Fetching latest profile burn from mainnet burn contract: {}", burn_program_id);
+        
+        // Create RPC connection to mainnet
+        let mainnet_rpc = "https://rpc.mainnet.x1.xyz";
+        let rpc = RpcConnection::with_endpoint(mainnet_rpc);
+        
+        // Get latest burn signatures with memo data included
+        let options = serde_json::json!({
+            "limit": 20,  // Check more transactions to find a profile burn
+            "commitment": "confirmed",
+        });
+        
+        let result = rpc.get_signatures_for_address(burn_program_id, Some(options)).await?;
+        let signatures: serde_json::Value = serde_json::from_str(&result)
+            .map_err(|e| RpcError::Other(format!("Failed to parse signatures: {}", e)))?;
+        
+        let sig_array = signatures.as_array()
+            .ok_or_else(|| RpcError::Other("Invalid signatures response format".to_string()))?;
+        
+        log::info!("Found {} signatures to check", sig_array.len());
+        
+        // Process each signature - memo data is already included in the response!
+        for sig_info in sig_array {
+            let signature = sig_info["signature"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+            
+            if signature.is_empty() {
+                continue;
+            }
+            
+            // Extract memo field directly from signature info (no need for getTransaction!)
+            if let Some(memo_str) = sig_info["memo"].as_str() {
+                // The memo field format is "[length] base64_data"
+                // Extract the base64 part after the length prefix
+                let memo_data = if let Some(space_pos) = memo_str.find(' ') {
+                    &memo_str[space_pos + 1..]
+                } else {
+                    memo_str
+                };
+                
+                // Convert string to bytes for parsing
+                let memo_bytes = memo_data.as_bytes();
+                
+                // Parse memo data as any type of burn
+                if let Some(burn_info) = parse_burn_memo(memo_bytes) {
+                    log::info!("Found {} burn by {}", burn_info.burn_type, burn_info.user_pubkey);
+                    return Ok(Some(LatestBurn {
+                        signature,
+                        burn_type: burn_info.burn_type,
+                        username: burn_info.username,
+                        image: burn_info.image,
+                        description: burn_info.description,
+                        burn_amount: burn_info.burn_amount,
+                        user_pubkey: burn_info.user_pubkey,
+                    }));
+                }
+            }
+        }
+        
+        log::info!("No profile burn found in recent transactions");
+        Ok(None)
+    }
+}
+
+/// Parse Base64+Borsh-formatted memo data to extract burn information (any type)
+fn parse_burn_memo(memo_data: &[u8]) -> Option<LatestBurn> {
+    // Convert bytes to UTF-8 string (should be Base64)
+    let memo_str = std::str::from_utf8(memo_data).ok()?;
+    
+    // Decode Base64 to get original Borsh binary data
+    let borsh_bytes = base64::decode(memo_str).ok()?;
+    
+    // Deserialize Borsh binary data to BurnMemo first
+    let burn_memo = BurnMemo::try_from_slice(&borsh_bytes).ok()?;
+    let burn_amount = burn_memo.burn_amount / 1_000_000; // Convert to tokens
+    
+    // Try to parse as ProfileCreationData
+    if let Ok(profile_data) = crate::core::rpc_profile::ProfileCreationData::try_from_slice(&burn_memo.payload) {
+        if profile_data.category == "profile" && 
+           (profile_data.operation == "create_profile" || profile_data.operation == "update_profile") {
+            return Some(LatestBurn {
+                signature: String::new(),
+                burn_type: "profile".to_string(),
+                username: Some(profile_data.username),
+                image: Some(profile_data.image),
+                description: profile_data.about_me,
+                burn_amount,
+                user_pubkey: profile_data.user_pubkey,
+            });
+        }
+    }
+    
+    // Could add parsing for other types here (chat, project, etc.)
+    // For now, return None if not a recognized type
+    None
+}
+
+/// Latest burn transaction information (any type: profile, chat, project, etc.)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LatestBurn {
+    pub signature: String,
+    pub burn_type: String, // "profile", "chat", "project", etc.
+    pub username: Option<String>,
+    pub image: Option<String>,
+    pub description: Option<String>,
+    pub burn_amount: u64, // in tokens
+    pub user_pubkey: String,
 }
