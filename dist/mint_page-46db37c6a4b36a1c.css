@@ -785,6 +785,139 @@
     font-size: 0.9rem;
 }
 
+/* Token Holders Leaderboard */
+.token-holders-leaderboard {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+}
+
+.leaderboard-header {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.leaderboard-header h3 {
+    color: #333;
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.leaderboard-header h3 i {
+    color: #f39c12;
+}
+
+.leaderboard-header p {
+    color: #666;
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.leaderboard-loading,
+.leaderboard-error,
+.leaderboard-empty {
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+}
+
+.leaderboard-error {
+    color: #dc3545;
+    background: #f8d7da;
+    border-radius: 6px;
+}
+
+.leaderboard-empty {
+    background: #f8f9fa;
+    border-radius: 6px;
+}
+
+.leaderboard-table {
+    width: 100%;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #dee2e6;
+}
+
+.leaderboard-table-header {
+    display: grid;
+    grid-template-columns: 80px 1fr 150px;
+    background: linear-gradient(135deg, #2c3e50, #34495e);
+    color: white;
+    padding: 1rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.leaderboard-table-body {
+    background: white;
+}
+
+.leaderboard-row {
+    display: grid;
+    grid-template-columns: 80px 1fr 150px;
+    padding: 0.875rem 1rem;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background-color 0.2s ease;
+}
+
+.leaderboard-row:hover {
+    background: #f8f9fa;
+}
+
+.leaderboard-row:last-child {
+    border-bottom: none;
+}
+
+.leaderboard-row.top-three {
+    background: linear-gradient(135deg, #fff9e6, #ffffff);
+    font-weight: 500;
+}
+
+.leaderboard-row.top-three:hover {
+    background: linear-gradient(135deg, #fff4d6, #f8f9fa);
+}
+
+.rank-col {
+    display: flex;
+    align-items: center;
+    font-weight: 600;
+    color: #333;
+}
+
+.address-col {
+    display: flex;
+    align-items: center;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    color: #666;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.balance-col {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    font-weight: 600;
+    color: #28a745;
+}
+
+.token-symbol {
+    font-size: 0.85rem;
+    color: #666;
+    margin-left: 4px;
+    font-weight: normal;
+}
+
 /* Responsive adjustments for mint mode */
 @media (max-width: 768px) {
     .mint-mode-options {
@@ -846,5 +979,30 @@
     .auto-mint-info {
         font-size: 0.7rem;
         margin-top: 0;
+    }
+    
+    /* Leaderboard mobile styles */
+    .token-holders-leaderboard {
+        margin: 1.5rem 0;
+        padding: 1rem;
+    }
+    
+    .leaderboard-table-header,
+    .leaderboard-row {
+        grid-template-columns: 60px 1fr 110px;
+        padding: 0.75rem;
+        font-size: 0.85rem;
+    }
+    
+    .rank-col {
+        font-size: 0.85rem;
+    }
+    
+    .address-col {
+        font-size: 0.8rem;
+    }
+    
+    .balance-col {
+        font-size: 0.85rem;
     }
 }
