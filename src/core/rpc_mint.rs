@@ -403,4 +403,76 @@ impl RpcConnection {
         let tier = MintConfig::get_current_supply_tier(supply);
         Ok((supply, tier))
     }
+
+    /// Get token holders using getProgramAccounts
+    /// Returns token accounts sorted by balance (descending)
+    /// Note: For Token-2022 with extensions, account size varies
+    /// 
+    /// # Parameters
+    /// * `limit` - Maximum number of top holders to return (e.g., 100)
+    /// 
+    /// # Returns
+    /// Vector of (owner_address, balance) tuples, sorted by balance descending
+    pub async fn get_token_holders(&self, limit: usize) -> Result<Vec<(String, f64)>, RpcError> {
+        let token_mint = MintConfig::get_token_mint()?.to_string();
+        let token_program_id = MintConfig::get_token_2022_program_id()?.to_string();
+        
+        log::info!("Fetching token holders for Token-2022 mint: {}", token_mint);
+        
+        // For Token-2022 with extensions, we use memcmp to filter by mint
+        // and don't use dataSize filter since extensions make account size variable
+        let params = serde_json::json!([
+            token_program_id,
+            {
+                "encoding": "jsonParsed",
+                "filters": [
+                    {
+                        "memcmp": {
+                            "offset": 0,  // mint pubkey is at offset 0
+                            "bytes": token_mint
+                        }
+                    }
+                ]
+            }
+        ]);
+        
+        let result: serde_json::Value = self.send_request("getProgramAccounts", params).await?;
+        
+        // Parse the response
+        let mut holders: Vec<(String, f64)> = Vec::new();
+        
+        if let Some(accounts) = result.as_array() {
+            for account in accounts {
+                if let Some(info) = account.get("account")
+                    .and_then(|a| a.get("data"))
+                    .and_then(|d| d.get("parsed"))
+                    .and_then(|p| p.get("info"))
+                {
+                    // Get owner address
+                    if let Some(owner) = info.get("owner").and_then(|o| o.as_str()) {
+                        // Get token amount
+                        if let Some(amount) = info
+                            .get("tokenAmount")
+                            .and_then(|t| t.get("uiAmount"))
+                            .and_then(|a| a.as_f64())
+                        {
+                            if amount > 0.0 {
+                                holders.push((owner.to_string(), amount));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Sort by balance (descending)
+        holders.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        
+        // Limit to top N
+        holders.truncate(limit);
+        
+        log::info!("Found {} token holders (limited to top {})", holders.len(), limit);
+        
+        Ok(holders)
+    }
 }

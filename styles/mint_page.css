@@ -785,9 +785,83 @@
     font-size: 0.9rem;
 }
 
+/* Leaderboard Section with Tabs */
+.leaderboard-section {
+    margin: 2rem 0;
+}
+
+.leaderboard-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.tab-button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0.75rem 1.5rem;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    font-size: 1rem;
+    font-weight: 500;
+    color: #666;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-bottom: -2px;
+}
+
+.tab-button:hover {
+    color: #28a745;
+    background: #f8f9fa;
+}
+
+.tab-button.active {
+    color: #28a745;
+    border-bottom-color: #28a745;
+}
+
+/* Burners tab specific styling (red theme) */
+.tab-button:last-child:hover {
+    color: #dc3545;
+}
+
+.tab-button:last-child.active {
+    color: #dc3545;
+    border-bottom-color: #dc3545;
+}
+
+.tab-button i {
+    font-size: 1.1rem;
+}
+
+.leaderboard-tab-content {
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 /* Token Holders Leaderboard */
 .token-holders-leaderboard {
-    margin: 2rem 0;
+    padding: 1.5rem;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+}
+
+/* Token Burners Leaderboard */
+.token-burners-leaderboard {
     padding: 1.5rem;
     background: white;
     border-radius: 8px;
@@ -812,6 +886,11 @@
 
 .leaderboard-header h3 i {
     color: #f39c12;
+}
+
+/* Burner leaderboard fire icon in red */
+.token-burners-leaderboard .leaderboard-header h3 i {
+    color: #dc3545;
 }
 
 .leaderboard-header p {
@@ -854,6 +933,12 @@
     padding: 1rem;
     font-weight: 600;
     font-size: 0.9rem;
+}
+
+/* Burner leaderboard has 4 columns */
+.token-burners-leaderboard .leaderboard-table-header,
+.token-burners-leaderboard .leaderboard-row {
+    grid-template-columns: 80px 1fr 150px 120px;
 }
 
 .leaderboard-table-body {
@@ -909,6 +994,22 @@
     justify-content: flex-end;
     font-weight: 600;
     color: #28a745;
+}
+
+.burned-col {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    font-weight: 600;
+    color: #dc3545;
+}
+
+.count-col {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    color: #666;
 }
 
 .token-symbol {
@@ -982,9 +1083,18 @@
     }
     
     /* Leaderboard mobile styles */
-    .token-holders-leaderboard {
-        margin: 1.5rem 0;
+    .token-holders-leaderboard,
+    .token-burners-leaderboard {
         padding: 1rem;
+    }
+    
+    .leaderboard-tabs {
+        gap: 0.25rem;
+    }
+    
+    .tab-button {
+        padding: 0.6rem 1rem;
+        font-size: 0.9rem;
     }
     
     .leaderboard-table-header,
@@ -992,6 +1102,14 @@
         grid-template-columns: 60px 1fr 110px;
         padding: 0.75rem;
         font-size: 0.85rem;
+    }
+    
+    /* Burner leaderboard 4 columns on mobile */
+    .token-burners-leaderboard .leaderboard-table-header,
+    .token-burners-leaderboard .leaderboard-row {
+        grid-template-columns: 50px 1fr 90px 80px;
+        padding: 0.6rem;
+        font-size: 0.8rem;
     }
     
     .rank-col {
@@ -1002,7 +1120,12 @@
         font-size: 0.8rem;
     }
     
-    .balance-col {
+    .balance-col,
+    .burned-col {
         font-size: 0.85rem;
+    }
+    
+    .count-col {
+        font-size: 0.8rem;
     }
 }
