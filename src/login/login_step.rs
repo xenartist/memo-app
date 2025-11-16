@@ -3,6 +3,9 @@ use crate::core::wallet::Wallet;
 use crate::core::encrypt;
 use crate::core::session::Session;
 use crate::core::{NetworkType, initialize_network};
+use crate::core::rpc_base::RpcConnection;
+use crate::core::rpc_burn::LatestBurn;
+use crate::pages::pixel_view::LazyPixelView;
 use crate::CreateWalletStep;
 use wasm_bindgen::JsCast;
 
@@ -23,6 +26,25 @@ pub fn LoginStep(
     let (password, set_password) = create_signal(String::new());
     let (error_message, set_error_message) = create_signal(String::new());
     let (reset_state, set_reset_state) = create_signal(ResetState::None);
+    let (latest_burn, set_latest_burn) = create_signal(Option::<LatestBurn>::None);
+    
+    // Fetch latest burn on component mount
+    create_effect(move |_| {
+        spawn_local(async move {
+            match RpcConnection::get_latest_burn().await {
+                Ok(Some(burn)) => {
+                    log::info!("Loaded latest {} burn by {}", burn.burn_type, burn.user_pubkey);
+                    set_latest_burn.set(Some(burn));
+                }
+                Ok(None) => {
+                    log::info!("No recent burns found");
+                }
+                Err(e) => {
+                    log::warn!("Failed to fetch latest burn: {}", e);
+                }
+            }
+        });
+    });
 
     let on_submit = move |ev: web_sys::SubmitEvent| {
         ev.prevent_default();
@@ -102,6 +124,58 @@ pub fn LoginStep(
     };
 
     view! {
+        <>
+        // Latest burn card (outside login container)
+        {move || {
+            if let Some(burn) = latest_burn.get() {
+                view! {
+                    <div class="latest-burn-card-external">
+                        <div class="latest-burn-content-external">
+                            {if let Some(ref image) = burn.image {
+                                view! {
+                                    <div class="burn-avatar">
+                                        <LazyPixelView
+                                            art={image.clone()}
+                                            size=64
+                                        />
+                                    </div>
+                                }.into_view()
+                            } else {
+                                view! { <></> }.into_view()
+                            }}
+                            <div class="burn-info">
+                                <div class="burn-header-line">
+                                    <span class="burn-label">"Latest Burn"</span>
+                                </div>
+                                {if let Some(ref username) = burn.username {
+                                    view! {
+                                        <div class="burn-username">{username.clone()}</div>
+                                    }.into_view()
+                                } else {
+                                    view! { <></> }.into_view()
+                                }}
+                                {if let Some(ref desc) = burn.description {
+                                    view! {
+                                        <div class="burn-description">{desc.clone()}</div>
+                                    }.into_view()
+                                } else {
+                                    view! { <></> }.into_view()
+                                }}
+                            </div>
+                            <div class="burn-amount-corner">
+                                <i class="fas fa-fire-alt"></i>
+                                " "
+                                {format!("{}", burn.burn_amount)}
+                                " MEMO"
+                            </div>
+                        </div>
+                    </div>
+                }.into_view()
+            } else {
+                view! { <></> }.into_view()
+            }
+        }}
+        
         <div class="login-container">
             // MEMO Token Logo
             <div class="logo-container">
@@ -293,5 +367,6 @@ pub fn LoginStep(
                 }}
             </div>
         </div>
+        </>
     }
 } 
