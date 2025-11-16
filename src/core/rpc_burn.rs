@@ -384,4 +384,84 @@ impl RpcConnection {
         
         Ok(final_transaction)
     }
+
+    /// Get top token burners using getProgramAccounts
+    /// Returns users sorted by total burned amount (descending)
+    /// 
+    /// # Parameters
+    /// * `limit` - Maximum number of top burners to return (e.g., 100)
+    /// 
+    /// # Returns
+    /// Vector of (user_address, total_burned_tokens, burn_count) tuples, sorted by total_burned descending
+    pub async fn get_top_burners(&self, limit: usize) -> Result<Vec<(String, f64, u64)>, RpcError> {
+        let program_id = BurnConfig::get_program_id()?.to_string();
+        
+        log::info!("Fetching top burners from memo-burn program: {}", program_id);
+        
+        // UserGlobalBurnStats account size: 8 (discriminator) + 32 (user) + 8 (total_burned) + 8 (burn_count) + 8 (last_burn_time) + 1 (bump) = 65 bytes
+        let params = serde_json::json!([
+            program_id,
+            {
+                "encoding": "base64",
+                "filters": [
+                    {
+                        "dataSize": 65  // UserGlobalBurnStats account size
+                    }
+                ]
+            }
+        ]);
+        
+        let result: serde_json::Value = self.send_request("getProgramAccounts", params).await?;
+        
+        // Parse the response
+        let mut burners: Vec<(String, f64, u64)> = Vec::new();
+        
+        if let Some(accounts) = result.as_array() {
+            for account in accounts {
+                if let Some(data_array) = account.get("account")
+                    .and_then(|a| a.get("data"))
+                    .and_then(|d| d.as_array())
+                {
+                    if let Some(data_str) = data_array.get(0).and_then(|d| d.as_str()) {
+                        if let Ok(data) = base64::decode(data_str) {
+                            // Parse account data
+                            // Layout: [discriminator:8][user:32][total_burned:8][burn_count:8][last_burn_time:8][bump:1]
+                            if data.len() >= 65 {
+                                let mut offset = 8; // Skip discriminator
+                                
+                                // Parse user pubkey (32 bytes)
+                                let user_bytes = &data[offset..offset + 32];
+                                let user = Pubkey::new_from_array(user_bytes.try_into().unwrap());
+                                offset += 32;
+                                
+                                // Parse total_burned (8 bytes)
+                                let total_burned = u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap());
+                                offset += 8;
+                                
+                                // Parse burn_count (8 bytes)
+                                let burn_count = u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap());
+                                
+                                // Convert to tokens (divide by 1,000,000)
+                                let total_burned_tokens = total_burned as f64 / 1_000_000.0;
+                                
+                                if total_burned > 0 {
+                                    burners.push((user.to_string(), total_burned_tokens, burn_count));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Sort by total burned (descending)
+        burners.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        
+        // Limit to top N
+        burners.truncate(limit);
+        
+        log::info!("Found {} burners (limited to top {})", burners.len(), limit);
+        
+        Ok(burners)
+    }
 }
