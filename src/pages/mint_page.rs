@@ -13,6 +13,13 @@ pub enum MintMode {
     Auto,
 }
 
+// Leaderboard tab enumeration
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LeaderboardTab {
+    Holders,
+    Burners,
+}
+
 // Generate random JSON memo between 69-800 bytes
 fn generate_random_memo() -> String {
     // Create simplified base JSON structure (no sensitive info)
@@ -309,29 +316,8 @@ pub fn TokenHoldersLeaderboard() -> impl IntoView {
             
             let rpc = RpcConnection::new();
             
-            // Get token mint and program ID
-            let token_mint = match MintConfig::get_token_mint() {
-                Ok(mint) => mint.to_string(),
-                Err(e) => {
-                    set_error.set(Some(format!("Failed to get token mint: {}", e)));
-                    set_loading.set(false);
-                    return;
-                }
-            };
-            
-            let token_program_id = match MintConfig::get_token_2022_program_id() {
-                Ok(program_id) => program_id.to_string(),
-                Err(e) => {
-                    set_error.set(Some(format!("Failed to get token program ID: {}", e)));
-                    set_loading.set(false);
-                    return;
-                }
-            };
-            
-            match rpc.get_token_holders(&token_mint, &token_program_id).await {
-                Ok(mut all_holders) => {
-                    // Only keep top 100
-                    all_holders.truncate(MAX_DISPLAY);
+            match rpc.get_token_holders(MAX_DISPLAY).await {
+                Ok(all_holders) => {
                     set_holders.set(all_holders);
                     set_loading.set(false);
                     set_is_loaded.set(true);
@@ -453,6 +439,168 @@ pub fn TokenHoldersLeaderboard() -> impl IntoView {
                                             <div class="balance-col">
                                                 {format_number(*balance)}
                                                 <span class="token-symbol">" MEMO"</span>
+                                            </div>
+                                        </div>
+                                    }
+                                }).collect::<Vec<_>>()}
+                            </div>
+                        </div>
+                    }.into_view()
+                }
+            }}
+        </div>
+    }
+}
+
+#[component]
+pub fn BurnerLeaderboard() -> impl IntoView {
+    let (burners, set_burners) = create_signal::<Vec<(String, f64, u64)>>(Vec::new());
+    let (loading, set_loading) = create_signal(true);
+    let (error, set_error) = create_signal::<Option<String>>(None);
+    let (is_loaded, set_is_loaded) = create_signal(false);
+    
+    const MAX_DISPLAY: usize = 100;
+    
+    // Fetch burners data (only once when component mounts)
+    let fetch_burners = move || {
+        // Only fetch if not already loaded
+        if is_loaded.get() {
+            return;
+        }
+        
+        spawn_local(async move {
+            set_loading.set(true);
+            set_error.set(None);
+            
+            let rpc = RpcConnection::new();
+            
+            match rpc.get_top_burners(MAX_DISPLAY).await {
+                Ok(all_burners) => {
+                    set_burners.set(all_burners);
+                    set_loading.set(false);
+                    set_is_loaded.set(true);
+                    log::info!("Token burners leaderboard loaded successfully");
+                },
+                Err(e) => {
+                    log::error!("Failed to fetch token burners: {}", e);
+                    set_error.set(Some(format!("Failed to load burner leaderboard: {}", e)));
+                    set_loading.set(false);
+                }
+            }
+        });
+    };
+
+    // Fetch data on component mount
+    create_effect(move |_| {
+        fetch_burners();
+    });
+    
+    // Format number with thousand separators
+    let format_number = |num: f64| -> String {
+        let int_part = num as u64;
+        let dec_part = ((num - int_part as f64) * 100.0) as u64;
+        
+        let mut result = String::new();
+        let int_str = int_part.to_string();
+        let chars: Vec<char> = int_str.chars().collect();
+        
+        for (i, ch) in chars.iter().enumerate() {
+            if i > 0 && (chars.len() - i) % 3 == 0 {
+                result.push(',');
+            }
+            result.push(*ch);
+        }
+        
+        if dec_part > 0 {
+            result.push_str(&format!(".{:02}", dec_part));
+        }
+        
+        result
+    };
+    
+    // Shorten address (first 6 and last 4 characters)
+    let shorten_address = |addr: &str| -> String {
+        if addr.len() > 12 {
+            format!("{}...{}", &addr[..6], &addr[addr.len()-4..])
+        } else {
+            addr.to_string()
+        }
+    };
+
+    view! {
+        <div class="token-burners-leaderboard">
+            <div class="leaderboard-header">
+                <h3>
+                    <i class="fas fa-fire"></i>
+                    "MEMO Token Burners - Top 100"
+                </h3>
+                <p>"Ranked by total burned tokens"</p>
+            </div>
+            
+            {move || {
+                if loading.get() {
+                    view! {
+                        <div class="leaderboard-loading">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            " Loading leaderboard..."
+                        </div>
+                    }.into_view()
+                } else if let Some(err) = error.get() {
+                    view! {
+                        <div class="leaderboard-error">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            " " {err}
+                        </div>
+                    }.into_view()
+                } else if burners.get().is_empty() {
+                    view! {
+                        <div class="leaderboard-empty">
+                            <i class="fas fa-inbox"></i>
+                            " No burners found"
+                        </div>
+                    }.into_view()
+                } else {
+                    let all_burners = burners.get();
+                    
+                    view! {
+                        <div class="leaderboard-table">
+                            <div class="leaderboard-table-header">
+                                <div class="rank-col">"Rank"</div>
+                                <div class="address-col">"Address"</div>
+                                <div class="burned-col">"Total Burned"</div>
+                                <div class="count-col">"Burn Count"</div>
+                            </div>
+                            <div class="leaderboard-table-body">
+                                {all_burners.iter().enumerate().map(|(idx, (addr, total_burned, burn_count))| {
+                                    let rank = idx + 1;
+                                    let medal = if rank == 1 {
+                                        "🥇"
+                                    } else if rank == 2 {
+                                        "🥈"
+                                    } else if rank == 3 {
+                                        "🥉"
+                                    } else {
+                                        ""
+                                    };
+                                    
+                                    view! {
+                                        <div class="leaderboard-row" class:top-three=rank <= 3>
+                                            <div class="rank-col">
+                                                {if !medal.is_empty() {
+                                                    format!("{} #{}", medal, rank)
+                                                } else {
+                                                    format!("#{}", rank)
+                                                }}
+                                            </div>
+                                            <div class="address-col" title=addr.clone()>
+                                                {shorten_address(addr)}
+                                            </div>
+                                            <div class="burned-col">
+                                                {format_number(*total_burned)}
+                                                <span class="token-symbol">" MEMO"</span>
+                                            </div>
+                                            <div class="count-col">
+                                                {format!("{}", burn_count)}
                                             </div>
                                         </div>
                                     }
@@ -980,8 +1128,47 @@ pub fn MintPage(
                 </div>
             </div>
             
-            // Token Holders Leaderboard
-            <TokenHoldersLeaderboard />
+            // Leaderboard with tabs
+            <LeaderboardWithTabs />
+        </div>
+    }
+}
+
+#[component]
+pub fn LeaderboardWithTabs() -> impl IntoView {
+    let (active_tab, set_active_tab) = create_signal(LeaderboardTab::Holders);
+
+    view! {
+        <div class="leaderboard-section">
+            // Tab buttons
+            <div class="leaderboard-tabs">
+                <button
+                    class="tab-button"
+                    class:active=move || active_tab.get() == LeaderboardTab::Holders
+                    on:click=move |_| set_active_tab.set(LeaderboardTab::Holders)
+                >
+                    <i class="fas fa-wallet"></i>
+                    " Holders"
+                </button>
+                <button
+                    class="tab-button"
+                    class:active=move || active_tab.get() == LeaderboardTab::Burners
+                    on:click=move |_| set_active_tab.set(LeaderboardTab::Burners)
+                >
+                    <i class="fas fa-fire"></i>
+                    " Burners"
+                </button>
+            </div>
+            
+            // Tab content
+            <div class="leaderboard-tab-content">
+                {move || {
+                    match active_tab.get() {
+                        LeaderboardTab::Holders => view! { <TokenHoldersLeaderboard /> }.into_view(),
+                        LeaderboardTab::Burners => view! { <BurnerLeaderboard /> }.into_view(),
+                    }
+                }}
+            </div>
         </div>
     }
 }
