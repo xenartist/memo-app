@@ -538,6 +538,126 @@ input:disabled {
   color: #333;
 }
 
+/* Network select dropdown */
+.network-select {
+  width: 100%;
+  padding: 14px 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  background: white;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: #333;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 20px;
+  padding-right: 40px;
+}
+
+.network-select:hover {
+  border-color: #666;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.network-select:focus {
+  outline: none;
+  border-color: #4CAF50;
+  box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+}
+
+/* Dynamic border color based on network selection */
+.network-select.network-testnet {
+  border-color: #F44336;
+}
+
+.network-select.network-testnet:focus {
+  border-color: #F44336;
+  box-shadow: 0 0 0 3px rgba(244, 67, 54, 0.1);
+}
+
+.network-select.network-staging {
+  border-color: #FF9800;
+}
+
+.network-select.network-staging:focus {
+  border-color: #FF9800;
+  box-shadow: 0 0 0 3px rgba(255, 152, 0, 0.1);
+}
+
+.network-select.network-mainnet {
+  border-color: #4CAF50;
+}
+
+.network-select.network-mainnet:focus {
+  border-color: #4CAF50;
+  box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+}
+
+/* Network description box */
+.network-description-box {
+  margin-top: 12px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.network-description {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: #666;
+  line-height: 1.8;
+  flex-wrap: wrap;
+  padding: 20px 20px;
+}
+
+.network-desc-testnet {
+  background: #fff0f0;
+  border-left: 4px solid #F44336;
+}
+
+.network-desc-staging {
+  background: #fff8f0;
+  border-left: 4px solid #FF9800;
+}
+
+.network-desc-mainnet {
+  background: #f0f8f0;
+  border-left: 4px solid #4CAF50;
+}
+
+.network-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: bold;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.network-badge-testnet {
+  background: #F44336;
+  color: white;
+}
+
+.network-badge-staging {
+  background: #FF9800;
+  color: white;
+}
+
+.network-badge-mainnet {
+  background: #4CAF50;
+  color: white;
+}
+
+/* Legacy styles for backward compatibility */
 .network-options {
   display: flex;
   flex-direction: column;
@@ -590,36 +710,6 @@ input:disabled {
   font-size: 18px;
   font-weight: 600;
   color: #333;
-}
-
-.network-description {
-  font-size: 13px;
-  color: #666;
-  line-height: 1.4;
-}
-
-.network-badge {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: bold;
-  text-transform: uppercase;
-}
-
-.network-badge-testnet {
-  background: #F44336;
-  color: white;
-}
-
-.network-badge-staging {
-  background: #FF9800;
-  color: white;
-}
-
-.network-badge-mainnet {
-  background: #4CAF50;
-  color: white;
 }
 
 /* Disabled network option */
