@@ -2,7 +2,6 @@ use leptos::*;
 use crate::core::session::Session;
 use crate::core::rpc_base::RpcConnection;
 use crate::core::rpc_mint::{MintConfig, SupplyTier};
-use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
 use web_sys::window;
@@ -284,6 +283,185 @@ pub fn SwapBridgeLink() -> impl IntoView {
                     <i class="fas fa-external-link-alt"></i>
                 </div>
             </button>
+        </div>
+    }
+}
+
+#[component]
+pub fn TokenHoldersLeaderboard() -> impl IntoView {
+    let (holders, set_holders) = create_signal::<Vec<(String, f64)>>(Vec::new());
+    let (loading, set_loading) = create_signal(true);
+    let (error, set_error) = create_signal::<Option<String>>(None);
+    let (is_loaded, set_is_loaded) = create_signal(false);
+    
+    const MAX_DISPLAY: usize = 100;
+    
+    // Fetch holders data (only once when component mounts)
+    let fetch_holders = move || {
+        // Only fetch if not already loaded
+        if is_loaded.get() {
+            return;
+        }
+        
+        spawn_local(async move {
+            set_loading.set(true);
+            set_error.set(None);
+            
+            let rpc = RpcConnection::new();
+            
+            // Get token mint and program ID
+            let token_mint = match MintConfig::get_token_mint() {
+                Ok(mint) => mint.to_string(),
+                Err(e) => {
+                    set_error.set(Some(format!("Failed to get token mint: {}", e)));
+                    set_loading.set(false);
+                    return;
+                }
+            };
+            
+            let token_program_id = match MintConfig::get_token_2022_program_id() {
+                Ok(program_id) => program_id.to_string(),
+                Err(e) => {
+                    set_error.set(Some(format!("Failed to get token program ID: {}", e)));
+                    set_loading.set(false);
+                    return;
+                }
+            };
+            
+            match rpc.get_token_holders(&token_mint, &token_program_id).await {
+                Ok(mut all_holders) => {
+                    // Only keep top 100
+                    all_holders.truncate(MAX_DISPLAY);
+                    set_holders.set(all_holders);
+                    set_loading.set(false);
+                    set_is_loaded.set(true);
+                    log::info!("Token holders leaderboard loaded successfully");
+                },
+                Err(e) => {
+                    log::error!("Failed to fetch token holders: {}", e);
+                    set_error.set(Some(format!("Failed to load leaderboard: {}", e)));
+                    set_loading.set(false);
+                }
+            }
+        });
+    };
+
+    // Fetch data on component mount
+    create_effect(move |_| {
+        fetch_holders();
+    });
+    
+    // Format number with thousand separators
+    let format_number = |num: f64| -> String {
+        let int_part = num as u64;
+        let dec_part = ((num - int_part as f64) * 100.0) as u64;
+        
+        let mut result = String::new();
+        let int_str = int_part.to_string();
+        let chars: Vec<char> = int_str.chars().collect();
+        
+        for (i, ch) in chars.iter().enumerate() {
+            if i > 0 && (chars.len() - i) % 3 == 0 {
+                result.push(',');
+            }
+            result.push(*ch);
+        }
+        
+        if dec_part > 0 {
+            result.push_str(&format!(".{:02}", dec_part));
+        }
+        
+        result
+    };
+    
+    // Shorten address (first 4 and last 4 characters)
+    let shorten_address = |addr: &str| -> String {
+        if addr.len() > 12 {
+            format!("{}...{}", &addr[..6], &addr[addr.len()-4..])
+        } else {
+            addr.to_string()
+        }
+    };
+
+    view! {
+        <div class="token-holders-leaderboard">
+            <div class="leaderboard-header">
+                <h3>
+                    <i class="fas fa-trophy"></i>
+                    "MEMO Token Holders - Top 100"
+                </h3>
+                <p>"Ranked by token balance"</p>
+            </div>
+            
+            {move || {
+                if loading.get() {
+                    view! {
+                        <div class="leaderboard-loading">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            " Loading leaderboard..."
+                        </div>
+                    }.into_view()
+                } else if let Some(err) = error.get() {
+                    view! {
+                        <div class="leaderboard-error">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            " " {err}
+                        </div>
+                    }.into_view()
+                } else if holders.get().is_empty() {
+                    view! {
+                        <div class="leaderboard-empty">
+                            <i class="fas fa-inbox"></i>
+                            " No token holders found"
+                        </div>
+                    }.into_view()
+                } else {
+                    let all_holders = holders.get();
+                    
+                    view! {
+                        <div class="leaderboard-table">
+                            <div class="leaderboard-table-header">
+                                <div class="rank-col">"Rank"</div>
+                                <div class="address-col">"Address"</div>
+                                <div class="balance-col">"Balance"</div>
+                            </div>
+                            <div class="leaderboard-table-body">
+                                {all_holders.iter().enumerate().map(|(idx, (addr, balance))| {
+                                    let rank = idx + 1;
+                                    let medal = if rank == 1 {
+                                        "🥇"
+                                    } else if rank == 2 {
+                                        "🥈"
+                                    } else if rank == 3 {
+                                        "🥉"
+                                    } else {
+                                        ""
+                                    };
+                                    
+                                    view! {
+                                        <div class="leaderboard-row" class:top-three=rank <= 3>
+                                            <div class="rank-col">
+                                                {if !medal.is_empty() {
+                                                    format!("{} #{}", medal, rank)
+                                                } else {
+                                                    format!("#{}", rank)
+                                                }}
+                                            </div>
+                                            <div class="address-col" title=addr.clone()>
+                                                {shorten_address(addr)}
+                                            </div>
+                                            <div class="balance-col">
+                                                {format_number(*balance)}
+                                                <span class="token-symbol">" MEMO"</span>
+                                            </div>
+                                        </div>
+                                    }
+                                }).collect::<Vec<_>>()}
+                            </div>
+                        </div>
+                    }.into_view()
+                }
+            }}
         </div>
     }
 }
@@ -801,6 +979,9 @@ pub fn MintPage(
                     }}
                 </div>
             </div>
+            
+            // Token Holders Leaderboard
+            <TokenHoldersLeaderboard />
         </div>
     }
 }
