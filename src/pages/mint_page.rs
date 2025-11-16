@@ -309,29 +309,8 @@ pub fn TokenHoldersLeaderboard() -> impl IntoView {
             
             let rpc = RpcConnection::new();
             
-            // Get token mint and program ID
-            let token_mint = match MintConfig::get_token_mint() {
-                Ok(mint) => mint.to_string(),
-                Err(e) => {
-                    set_error.set(Some(format!("Failed to get token mint: {}", e)));
-                    set_loading.set(false);
-                    return;
-                }
-            };
-            
-            let token_program_id = match MintConfig::get_token_2022_program_id() {
-                Ok(program_id) => program_id.to_string(),
-                Err(e) => {
-                    set_error.set(Some(format!("Failed to get token program ID: {}", e)));
-                    set_loading.set(false);
-                    return;
-                }
-            };
-            
-            match rpc.get_token_holders(&token_mint, &token_program_id).await {
-                Ok(mut all_holders) => {
-                    // Only keep top 100
-                    all_holders.truncate(MAX_DISPLAY);
+            match rpc.get_token_holders(MAX_DISPLAY).await {
+                Ok(all_holders) => {
                     set_holders.set(all_holders);
                     set_loading.set(false);
                     set_is_loaded.set(true);
