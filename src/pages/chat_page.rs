@@ -146,7 +146,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                 let sorted_leaderboard = sort_leaderboard(leaderboard);
                 
                 add_log_entry("INFO", &format!("Loaded {} groups in burn leaderboard, {} total groups", 
-                             sorted_leaderboard.current_size, global_stats.total_groups));
+                             sorted_leaderboard.entries.len(), global_stats.total_groups));
                 
                 // parallel get all group infos in leaderboard
                 let mut group_info_futures = vec![];
@@ -302,7 +302,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                     let sorted_leaderboard = sort_leaderboard(leaderboard);
                     
                     add_log_entry("INFO", &format!("Refreshed {} groups in burn leaderboard, {} total groups", 
-                                 sorted_leaderboard.current_size, global_stats.total_groups));
+                                 sorted_leaderboard.entries.len(), global_stats.total_groups));
                     
                     // parallel get all group infos in leaderboard
                     let mut group_info_futures = vec![];
