@@ -36,8 +36,8 @@ fn is_menu_available(menu_item: &MenuItem, network: Option<NetworkType>) -> bool
             true
         }
         Some(NetworkType::ProdStaging) | Some(NetworkType::Mainnet) => {
-            // Production and Staging: Mint, Profile, and Settings available
-            matches!(menu_item, MenuItem::Mint | MenuItem::Profile | MenuItem::Settings)
+            // Production and Staging: Mint, Chat, Profile, and Settings available
+            matches!(menu_item, MenuItem::Mint | MenuItem::Chat | MenuItem::Profile | MenuItem::Settings)
         }
         None => {
             // If network not set (shouldn't happen), default to restricted mode
@@ -537,7 +537,7 @@ pub fn MainPage(
                         </div>
                     </Show>
                     
-                    // Chat - only in testnet
+                    // Chat - available in testnet, staging, and mainnet
                     <Show when=move || is_menu_available(&MenuItem::Chat, current_network())>
                         <div 
                             class="menu-item"
@@ -631,7 +631,7 @@ pub fn MainPage(
                         </div>
                     </Show>
                     
-                    // Chat - only in testnet
+                    // Chat - available in testnet, staging, and mainnet
                     <Show when=move || is_menu_available(&MenuItem::Chat, current_network())>
                         <div style=move || if current_menu.get() == MenuItem::Chat { "display: block;" } else { "display: none;" }>
                             <ChatPage session=session/>
