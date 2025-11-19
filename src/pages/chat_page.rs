@@ -2007,6 +2007,39 @@ fn MessageItem(
         }
     };
     
+    // Get avatar image data for display
+    let get_avatar_view = move |sender: &str| -> leptos::View {
+        let cache = user_display_cache.get();
+        
+        if let Some(display_info) = cache.get(sender) {
+            if !display_info.image.is_empty() {
+                // Has avatar, display it
+                view! {
+                    <div class="user-avatar-small">
+                        <LazyPixelView 
+                            art=display_info.image.clone()
+                            size=32
+                        />
+                    </div>
+                }.into_view()
+            } else {
+                // No avatar, show default icon
+                view! {
+                    <div class="user-avatar-small avatar-default">
+                        <i class="fas fa-user"></i>
+                    </div>
+                }.into_view()
+            }
+        } else {
+            // No profile, show default icon
+            view! {
+                <div class="user-avatar-small avatar-default">
+                    <i class="fas fa-user"></i>
+                </div>
+            }.into_view()
+        }
+    };
+    
     view! {
         <div 
             class="message-item" 
@@ -2015,6 +2048,7 @@ fn MessageItem(
             class:message-burn=move || message_type_for_class == "burn"
         >
             <div class="message-header">
+                {get_avatar_view(&sender)}
                 <span class="sender" title=format!("Full address: {}", sender)>
                     {get_display_name(&sender)}
                 </span>

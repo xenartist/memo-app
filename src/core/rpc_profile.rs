@@ -790,50 +790,65 @@ impl RpcConnection {
         Ok(results)
     }
 
-    /// get user display info (pubkey + username) for chat display
+    /// get user display info (pubkey + username + image) for chat display
     pub async fn get_user_display_info(&self, user_pubkey: &str) -> Result<UserDisplayInfo, RpcError> {
-        let username = self.get_username_by_pubkey(user_pubkey).await?;
-        
-        // Save the has_profile info before consuming username
-        let has_profile = username.is_some();
-        
-        Ok(UserDisplayInfo {
-            pubkey: user_pubkey.to_string(),
-            username: username.unwrap_or_else(|| {
-                // If no username found, show shortened pubkey as fallback
-                if user_pubkey.len() > 8 {
-                    format!("{}...{}", &user_pubkey[..4], &user_pubkey[user_pubkey.len()-4..])
-                } else {
-                    user_pubkey.to_string()
-                }
-            }),
-            has_profile,
-        })
+        // Try to get full profile
+        match self.get_profile(user_pubkey).await {
+            Ok(Some(profile)) => {
+                Ok(UserDisplayInfo {
+                    pubkey: user_pubkey.to_string(),
+                    username: profile.username,
+                    has_profile: true,
+                    image: profile.image,
+                })
+            },
+            _ => {
+                // No profile found, use default values
+                Ok(UserDisplayInfo {
+                    pubkey: user_pubkey.to_string(),
+                    username: if user_pubkey.len() > 8 {
+                        format!("{}...{}", &user_pubkey[..4], &user_pubkey[user_pubkey.len()-4..])
+                    } else {
+                        user_pubkey.to_string()
+                    },
+                    has_profile: false,
+                    image: String::new(), // Empty string for no avatar
+                })
+            }
+        }
     }
 
     /// batch get user display info for chat
     pub async fn get_user_display_info_batch(&self, user_pubkeys: &[&str]) -> Result<Vec<UserDisplayInfo>, RpcError> {
         log::info!("Batch fetching display info for {} users", user_pubkeys.len());
         
-        let usernames = self.get_usernames_batch(user_pubkeys).await?;
-        
         let mut results = Vec::new();
-        for (pubkey, username) in usernames {
-            // Save the has_profile info before consuming username
-            let has_profile = username.is_some();
-            
-            results.push(UserDisplayInfo {
-                pubkey: pubkey.clone(),
-                username: username.unwrap_or_else(|| {
-                    // If no username found, show shortened pubkey as fallback
-                    if pubkey.len() > 8 {
-                        format!("{}...{}", &pubkey[..4], &pubkey[pubkey.len()-4..])
-                    } else {
-                        pubkey.clone()
-                    }
-                }),
-                has_profile,
-            });
+        
+        for pubkey in user_pubkeys {
+            // Try to get full profile
+            match self.get_profile(pubkey).await {
+                Ok(Some(profile)) => {
+                    results.push(UserDisplayInfo {
+                        pubkey: pubkey.to_string(),
+                        username: profile.username,
+                        has_profile: true,
+                        image: profile.image,
+                    });
+                },
+                _ => {
+                    // No profile found, use default values
+                    results.push(UserDisplayInfo {
+                        pubkey: pubkey.to_string(),
+                        username: if pubkey.len() > 8 {
+                            format!("{}...{}", &pubkey[..4], &pubkey[pubkey.len()-4..])
+                        } else {
+                            pubkey.to_string()
+                        },
+                        has_profile: false,
+                        image: String::new(), // Empty string for no avatar
+                    });
+                }
+            }
         }
         
         Ok(results)
@@ -846,6 +861,7 @@ pub struct UserDisplayInfo {
     pub pubkey: String,
     pub username: String,
     pub has_profile: bool,
+    pub image: String, // Profile image (hex string)
 }
 
 /// exported helper function for session use
