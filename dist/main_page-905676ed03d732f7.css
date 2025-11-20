@@ -260,6 +260,38 @@
     gap: 10px;
 }
 
+/* Profile avatar in header */
+.profile-avatar-small {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+    border: 2px solid #e0e0e0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.profile-avatar-small:hover {
+    border-color: #2196f3;
+    transform: scale(1.05);
+}
+
+.profile-avatar-small canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}
+
+.profile-avatar-small.avatar-default {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    font-size: 14px;
+}
+
 .token-balance, 
 .balance {
     font-weight: 500;
