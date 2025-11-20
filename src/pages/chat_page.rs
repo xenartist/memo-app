@@ -84,6 +84,10 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     // Create Chat Group Dialog states
     let (show_create_dialog, set_show_create_dialog) = create_signal(false);
     
+    // Add countdown state for waiting blockchain update
+    let countdown_seconds = create_rw_signal(0i32);
+    let is_waiting_for_blockchain = create_rw_signal(false);
+    
     // Add user display cache state
     let (user_display_cache, set_user_display_cache) = create_signal::<HashMap<String, UserDisplayInfo>>(HashMap::new());
 
@@ -146,7 +150,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                 let sorted_leaderboard = sort_leaderboard(leaderboard);
                 
                 add_log_entry("INFO", &format!("Loaded {} groups in burn leaderboard, {} total groups", 
-                             sorted_leaderboard.current_size, global_stats.total_groups));
+                             sorted_leaderboard.entries.len(), global_stats.total_groups));
                 
                 // parallel get all group infos in leaderboard
                 let mut group_info_futures = vec![];
@@ -302,7 +306,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                     let sorted_leaderboard = sort_leaderboard(leaderboard);
                     
                     add_log_entry("INFO", &format!("Refreshed {} groups in burn leaderboard, {} total groups", 
-                                 sorted_leaderboard.current_size, global_stats.total_groups));
+                                 sorted_leaderboard.entries.len(), global_stats.total_groups));
                     
                     // parallel get all group infos in leaderboard
                     let mut group_info_futures = vec![];
@@ -739,13 +743,29 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         add_log_entry("INFO", &format!("Chat group created successfully! ID: {}, Signature: {}", group_id, signature));
         set_show_create_dialog.set(false);
         
-        // Wait 30 seconds before refreshing to allow blockchain to update
+        // Start countdown
+        is_waiting_for_blockchain.set(true);
+        countdown_seconds.set(20);
+        
+        // Wait 20 seconds for blockchain state to update, then refresh groups
+        let countdown_clone = countdown_seconds.clone();
+        let waiting_clone = is_waiting_for_blockchain.clone();
+        
         spawn_local(async move {
-            add_log_entry("INFO", "Waiting 30 seconds for blockchain to update...");
-            TimeoutFuture::new(30_000).await; // Wait 30 seconds
+            // Countdown from 20 to 0
+            for remaining in (0..=20).rev() {
+                countdown_clone.set(remaining);
+                if remaining > 0 {
+                    TimeoutFuture::new(1_000).await; // Wait 1 second
+                }
+            }
             
             add_log_entry("INFO", "Refreshing group list after group creation...");
             refresh_groups_data(web_sys::MouseEvent::new("click").unwrap());
+            
+            // Reset waiting state
+            countdown_clone.set(0);
+            waiting_clone.set(false);
         });
     };
 
@@ -1568,6 +1588,24 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                         </div>
                     </Show>
 
+                    // Display countdown message while waiting for blockchain update
+                    {move || if is_waiting_for_blockchain.get() && countdown_seconds.get() > 0 {
+                        view! {
+                            <div class="alert alert-info">
+                                <div class="countdown-display">
+                                    <i class="fas fa-clock"></i>
+                                    <span class="countdown-message">
+                                        "Group created successfully! Waiting for blockchain confirmation... ("
+                                        {move || countdown_seconds.get()}
+                                        " seconds remaining)"
+                                    </span>
+                                </div>
+                            </div>
+                        }
+                    } else {
+                        view! { <div></div> }
+                    }}
+
                     <Show
                         when=move || !loading.get() && leaderboard_data.get().is_some()
                         fallback=move || view! {
@@ -1969,6 +2007,39 @@ fn MessageItem(
         }
     };
     
+    // Get avatar image data for display
+    let get_avatar_view = move |sender: &str| -> leptos::View {
+        let cache = user_display_cache.get();
+        
+        if let Some(display_info) = cache.get(sender) {
+            if !display_info.image.is_empty() {
+                // Has avatar, display it
+                view! {
+                    <div class="user-avatar-small">
+                        <LazyPixelView 
+                            art=display_info.image.clone()
+                            size=32
+                        />
+                    </div>
+                }.into_view()
+            } else {
+                // No avatar, show default icon
+                view! {
+                    <div class="user-avatar-small avatar-default">
+                        <i class="fas fa-user"></i>
+                    </div>
+                }.into_view()
+            }
+        } else {
+            // No profile, show default icon
+            view! {
+                <div class="user-avatar-small avatar-default">
+                    <i class="fas fa-user"></i>
+                </div>
+            }.into_view()
+        }
+    };
+    
     view! {
         <div 
             class="message-item" 
@@ -1977,6 +2048,7 @@ fn MessageItem(
             class:message-burn=move || message_type_for_class == "burn"
         >
             <div class="message-header">
+                {get_avatar_view(&sender)}
                 <span class="sender" title=format!("Full address: {}", sender)>
                     {get_display_name(&sender)}
                 </span>

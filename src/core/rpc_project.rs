@@ -611,7 +611,6 @@ pub struct ProjectLeaderboardEntry {
 /// Project burn leaderboard response
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProjectBurnLeaderboardResponse {
-    pub current_size: u8,
     pub entries: Vec<ProjectLeaderboardEntry>,
     pub total_burned_tokens: u64, // total burned amount of all leaderboard entries
 }
@@ -1470,11 +1469,7 @@ impl RpcConnection {
         
         let mut offset = 8; // Skip discriminator
         
-        // Read current_size (u8)
-        let current_size = data[offset];
-        offset += 1;
-        
-        // Read entries vector length (u32)
+        // Read entries vector length (u32) - directly after discriminator
         if data.len() < offset + 4 {
             return Err(RpcError::Other("Data too short for entries vector length".to_string()));
         }
@@ -1488,7 +1483,7 @@ impl RpcConnection {
         let mut total_burned_tokens: u64 = 0;
         
         // Read each entry (project_id: u64, burned_amount: u64)
-        for i in 0..std::cmp::min(entries_len, current_size as usize) {
+        for i in 0..entries_len {
             if data.len() < offset + 16 {
                 log::warn!("Data too short for entry {}, stopping parse", i);
                 break;
@@ -1519,7 +1514,6 @@ impl RpcConnection {
                   entries.len(), total_burned_tokens as f64 / 1_000_000.0);
         
         Ok(ProjectBurnLeaderboardResponse {
-            current_size,
             entries,
             total_burned_tokens,
         })

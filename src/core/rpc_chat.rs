@@ -550,7 +550,7 @@ pub struct LocalChatMessage {
 
 impl LocalChatMessage {
     /// Create a new local message for immediate UI display
-    pub fn new_local(sender: String, message: String, group_id: u64) -> Self {
+    pub fn new_local(sender: String, message: String, _group_id: u64) -> Self {
         Self {
             message: ChatMessage {
                 signature: format!("local_{}", js_sys::Date::now() as u64), // temporary local signature
@@ -568,7 +568,7 @@ impl LocalChatMessage {
     }
     
     /// Create a new local burn message for immediate UI display
-    pub fn new_local_burn(sender: String, message: String, burn_amount: u64, group_id: u64) -> Self {
+    pub fn new_local_burn(sender: String, message: String, burn_amount: u64, _group_id: u64) -> Self {
         Self {
             message: ChatMessage {
                 signature: format!("local_burn_{}", js_sys::Date::now() as u64), // temporary local signature
@@ -1880,14 +1880,7 @@ impl RpcConnection {
         
         let mut offset = 8; // skip discriminator
         
-        // read current_size (u8)
-        if data.len() < offset + 1 {
-            return Err(RpcError::Other("Data too short for current_size".to_string()));
-        }
-        let current_size = data[offset];
-        offset += 1;
-        
-        // read entries Vec length (u32)
+        // read entries Vec length (u32) - directly after discriminator
         if data.len() < offset + 4 {
             return Err(RpcError::Other("Data too short for entries length".to_string()));
         }
@@ -1933,7 +1926,6 @@ impl RpcConnection {
                   entries.len(), total_burned_tokens as f64 / 1_000_000.0);
         
         Ok(BurnLeaderboardResponse {
-            current_size,
             entries,
             total_burned_tokens,
         })
@@ -2060,7 +2052,6 @@ pub struct LeaderboardEntry {
 /// burn leaderboard response
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BurnLeaderboardResponse {
-    pub current_size: u8,
     pub entries: Vec<LeaderboardEntry>,
     pub total_burned_tokens: u64, // total burned amount of all leaderboard entries
 }

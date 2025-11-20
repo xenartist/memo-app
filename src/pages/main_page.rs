@@ -36,8 +36,8 @@ fn is_menu_available(menu_item: &MenuItem, network: Option<NetworkType>) -> bool
             true
         }
         Some(NetworkType::ProdStaging) | Some(NetworkType::Mainnet) => {
-            // Production and Staging: Mint, Profile, and Settings available
-            matches!(menu_item, MenuItem::Mint | MenuItem::Profile | MenuItem::Settings)
+            // Production and Staging: Mint, Chat, Profile, and Settings available
+            matches!(menu_item, MenuItem::Mint | MenuItem::Chat | MenuItem::Profile | MenuItem::Settings)
         }
         None => {
             // If network not set (shouldn't happen), default to restricted mode
@@ -439,34 +439,26 @@ pub fn MainPage(
                                 Some(profile) => {
                                     // Show avatar only
                                     if !profile.image.is_empty() {
-                                        if profile.image.starts_with("c:") || profile.image.starts_with("n:") {
-                                            view! {
-                                                <div class="profile-avatar-small" title={profile.username.clone()}>
-                                                    <LazyPixelView
-                                                        art={profile.image.clone()}
-                                                        size=28
-                                                    />
-                                                </div>
-                                            }.into_view()
-                                        } else {
-                                            view! {
-                                                <div class="profile-avatar-small" title={profile.username.clone()}>
-                                                    <img src={profile.image.clone()} alt="Profile" />
-                                                </div>
-                                            }.into_view()
-                                        }
+                                        view! {
+                                            <div class="profile-avatar-small" title={profile.username.clone()}>
+                                                <LazyPixelView
+                                                    art={profile.image.clone()}
+                                                    size=32
+                                                />
+                                            </div>
+                                        }.into_view()
                                     } else {
                                         view! {
-                                            <div class="profile-avatar-small placeholder" title={profile.username.clone()}>
-                                                <i class="fas fa-user-circle"></i>
+                                            <div class="profile-avatar-small avatar-default" title={profile.username.clone()}>
+                                                <i class="fas fa-user"></i>
                                             </div>
                                         }.into_view()
                                     }
                                 },
                                 None => {
                                     view! {
-                                        <div class="profile-avatar-small placeholder" title="No Profile">
-                                            <i class="fas fa-user-circle"></i>
+                                        <div class="profile-avatar-small avatar-default" title="No Profile">
+                                            <i class="fas fa-user"></i>
                                         </div>
                                     }.into_view()
                                 }
@@ -537,7 +529,7 @@ pub fn MainPage(
                         </div>
                     </Show>
                     
-                    // Chat - only in testnet
+                    // Chat - available in testnet, staging, and mainnet
                     <Show when=move || is_menu_available(&MenuItem::Chat, current_network())>
                         <div 
                             class="menu-item"
@@ -631,7 +623,7 @@ pub fn MainPage(
                         </div>
                     </Show>
                     
-                    // Chat - only in testnet
+                    // Chat - available in testnet, staging, and mainnet
                     <Show when=move || is_menu_available(&MenuItem::Chat, current_network())>
                         <div style=move || if current_menu.get() == MenuItem::Chat { "display: block;" } else { "display: none;" }>
                             <ChatPage session=session/>
