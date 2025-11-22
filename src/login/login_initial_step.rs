@@ -18,6 +18,8 @@ pub fn InitialStep(
             match RpcConnection::get_latest_burn().await {
                 Ok(Some(burn)) => {
                     log::info!("Loaded latest {} burn by {}", burn.burn_type, burn.user_pubkey);
+                    // Note: For chat burns without profile info, we can't fetch profile at login stage
+                    // because network config is not yet initialized. Profile will show after login.
                     set_latest_burn.set(Some(burn));
                 }
                 Ok(None) => {
@@ -59,7 +61,16 @@ pub fn InitialStep(
                                         <div class="burn-username">{username.clone()}</div>
                                     }.into_view()
                                 } else {
-                                    view! { <></> }.into_view()
+                                    // Show shortened address if no username (e.g., for chat burns)
+                                    let addr = burn.user_pubkey.clone();
+                                    let short_addr = if addr.len() > 12 {
+                                        format!("{}...{}", &addr[..6], &addr[addr.len()-4..])
+                                    } else {
+                                        addr
+                                    };
+                                    view! {
+                                        <div class="burn-username">{short_addr}</div>
+                                    }.into_view()
                                 }}
                                 {if let Some(ref desc) = burn.description {
                                     view! {

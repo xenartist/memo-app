@@ -2,9 +2,12 @@ use leptos::*;
 use crate::core::session::Session;
 use crate::core::rpc_base::RpcConnection;
 use crate::core::rpc_mint::{MintConfig, SupplyTier};
+use crate::core::rpc_profile::UserDisplayInfo;
+use crate::pages::pixel_view::LazyPixelView;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
 use web_sys::window;
+use std::collections::HashMap;
 
 // Mint mode enumeration
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -458,8 +461,10 @@ pub fn BurnerLeaderboard() -> impl IntoView {
     let (loading, set_loading) = create_signal(true);
     let (error, set_error) = create_signal::<Option<String>>(None);
     let (is_loaded, set_is_loaded) = create_signal(false);
+    let (user_display_cache, set_user_display_cache) = create_signal::<HashMap<String, UserDisplayInfo>>(HashMap::new());
     
     const MAX_DISPLAY: usize = 100;
+    const TOP_N_DISPLAY_INFO: usize = 10; // Get profile info for top 10
     
     // Fetch burners data (only once when component mounts)
     let fetch_burners = move || {
@@ -476,10 +481,35 @@ pub fn BurnerLeaderboard() -> impl IntoView {
             
             match rpc.get_top_burners(MAX_DISPLAY).await {
                 Ok(all_burners) => {
-                    set_burners.set(all_burners);
+                    set_burners.set(all_burners.clone());
                     set_loading.set(false);
                     set_is_loaded.set(true);
                     log::info!("Token burners leaderboard loaded successfully");
+                    
+                    // Fetch profile info for top 10 burners
+                    if !all_burners.is_empty() {
+                        let top_addresses: Vec<&str> = all_burners
+                            .iter()
+                            .take(TOP_N_DISPLAY_INFO)
+                            .map(|(addr, _, _)| addr.as_str())
+                            .collect();
+                        
+                        log::info!("Fetching profile info for top {} burners", top_addresses.len());
+                        
+                        match rpc.get_user_display_info_batch(&top_addresses).await {
+                            Ok(display_infos) => {
+                                let mut cache = HashMap::new();
+                                for display_info in display_infos {
+                                    cache.insert(display_info.pubkey.clone(), display_info);
+                                }
+                                set_user_display_cache.set(cache);
+                                log::info!("Loaded display info for {} top burners", top_addresses.len());
+                            }
+                            Err(e) => {
+                                log::warn!("Failed to load user display info: {}", e);
+                            }
+                        }
+                    }
                 },
                 Err(e) => {
                     log::error!("Failed to fetch token burners: {}", e);
@@ -562,11 +592,14 @@ pub fn BurnerLeaderboard() -> impl IntoView {
                 } else {
                     let all_burners = burners.get();
                     
+                    let cache = user_display_cache.get();
+                    
                     view! {
                         <div class="leaderboard-table">
                             <div class="leaderboard-table-header">
                                 <div class="rank-col">"Rank"</div>
-                                <div class="address-col">"Address"</div>
+                                <div class="avatar-col">"Avatar"</div>
+                                <div class="user-col">"User"</div>
                                 <div class="burned-col">"Total Burned"</div>
                                 <div class="count-col">"Burn Count"</div>
                             </div>
@@ -583,6 +616,10 @@ pub fn BurnerLeaderboard() -> impl IntoView {
                                         ""
                                     };
                                     
+                                    let display_info = cache.get(addr);
+                                    let addr_clone = addr.clone();
+                                    let addr_for_title = addr.clone();
+                                    
                                     view! {
                                         <div class="leaderboard-row" class:top-three=rank <= 3>
                                             <div class="rank-col">
@@ -592,8 +629,42 @@ pub fn BurnerLeaderboard() -> impl IntoView {
                                                     format!("#{}", rank)
                                                 }}
                                             </div>
-                                            <div class="address-col" title=addr.clone()>
-                                                {shorten_address(addr)}
+                                            <div class="avatar-col">
+                                                {if let Some(info) = display_info {
+                                                    if !info.image.is_empty() {
+                                                        view! {
+                                                            <div class="user-avatar-small">
+                                                                <LazyPixelView 
+                                                                    art=info.image.clone()
+                                                                    size=32
+                                                                />
+                                                            </div>
+                                                        }.into_view()
+                                                    } else {
+                                                        view! {
+                                                            <div class="user-avatar-small avatar-default">
+                                                                <i class="fas fa-user"></i>
+                                                            </div>
+                                                        }.into_view()
+                                                    }
+                                                } else {
+                                                    view! {
+                                                        <div class="user-avatar-small avatar-default">
+                                                            <i class="fas fa-user"></i>
+                                                        </div>
+                                                    }.into_view()
+                                                }}
+                                            </div>
+                                            <div class="user-col" title=addr_for_title>
+                                                {if let Some(info) = display_info {
+                                                    if info.has_profile {
+                                                        format!("{} ({})", info.username, shorten_address(&addr_clone))
+                                                    } else {
+                                                        shorten_address(&addr_clone)
+                                                    }
+                                                } else {
+                                                    shorten_address(&addr_clone)
+                                                }}
                                             </div>
                                             <div class="burned-col">
                                                 {format_number(*total_burned)}
@@ -1136,7 +1207,7 @@ pub fn MintPage(
 
 #[component]
 pub fn LeaderboardWithTabs() -> impl IntoView {
-    let (active_tab, set_active_tab) = create_signal(LeaderboardTab::Holders);
+    let (active_tab, set_active_tab) = create_signal(LeaderboardTab::Burners);
 
     view! {
         <div class="leaderboard-section">

@@ -935,10 +935,10 @@
     font-size: 0.9rem;
 }
 
-/* Burner leaderboard has 4 columns */
+/* Burner leaderboard has 5 columns (with avatar and user) */
 .token-burners-leaderboard .leaderboard-table-header,
 .token-burners-leaderboard .leaderboard-row {
-    grid-template-columns: 80px 1fr 150px 120px;
+    grid-template-columns: 70px 50px minmax(150px, 1fr) 140px 100px;
 }
 
 .leaderboard-table-body {
@@ -1012,11 +1012,54 @@
     color: #666;
 }
 
+.avatar-col {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.user-col {
+    display: flex;
+    align-items: center;
+    font-size: 0.9rem;
+    color: #333;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-right: 8px;
+}
+
 .token-symbol {
     font-size: 0.85rem;
     color: #666;
     margin-left: 4px;
     font-weight: normal;
+}
+
+/* User avatar styles for burner leaderboard */
+.user-avatar-small {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: #f0f0f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+}
+
+.user-avatar-small canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}
+
+.user-avatar-small.avatar-default {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    font-size: 14px;
 }
 
 /* Responsive adjustments for mint mode */
@@ -1104,12 +1147,21 @@
         font-size: 0.85rem;
     }
     
-    /* Burner leaderboard 4 columns on mobile */
+    /* Burner leaderboard 5 columns on mobile */
     .token-burners-leaderboard .leaderboard-table-header,
     .token-burners-leaderboard .leaderboard-row {
-        grid-template-columns: 50px 1fr 90px 80px;
-        padding: 0.6rem;
-        font-size: 0.8rem;
+        grid-template-columns: 45px 40px minmax(100px, 1fr) 85px 70px;
+        padding: 0.5rem;
+        font-size: 0.75rem;
+    }
+    
+    .avatar-col {
+        padding: 0;
+    }
+    
+    .user-col {
+        font-size: 0.75rem;
+        padding-right: 4px;
     }
     
     .rank-col {
