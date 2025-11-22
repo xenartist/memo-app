@@ -32,10 +32,29 @@ pub fn LoginStep(
     create_effect(move |_| {
         spawn_local(async move {
             match RpcConnection::get_latest_burn().await {
-                Ok(Some(burn)) => {
+                Ok(Some(mut burn)) => {
                     log::info!("Loaded latest {} burn by {}", burn.burn_type, burn.user_pubkey);
-                    // Note: For chat burns without profile info, we can't fetch profile at login stage
-                    // because network config is not yet initialized. Profile will show after login.
+                    
+                    // For chat burns without profile info, fetch the user's profile from mainnet
+                    if (burn.burn_type == "chat_burn" || burn.burn_type == "chat_create") && burn.username.is_none() && !burn.user_pubkey.is_empty() {
+                        let mainnet_rpc = "https://rpc.mainnet.x1.xyz";
+                        let rpc = RpcConnection::with_endpoint(mainnet_rpc);
+                        
+                        match rpc.get_profile_mainnet(&burn.user_pubkey).await {
+                            Ok(Some(profile)) => {
+                                burn.username = Some(profile.username);
+                                burn.image = Some(profile.image);
+                                log::info!("Fetched profile for chat burn user");
+                            }
+                            Ok(None) => {
+                                log::info!("No profile found for chat burn user");
+                            }
+                            Err(e) => {
+                                log::warn!("Failed to fetch profile for chat burn user: {}", e);
+                            }
+                        }
+                    }
+                    
                     set_latest_burn.set(Some(burn));
                 }
                 Ok(None) => {
