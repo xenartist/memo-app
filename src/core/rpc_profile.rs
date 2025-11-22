@@ -602,6 +602,38 @@ impl RpcConnection {
         Ok(transaction)
     }
 
+    /// get user profile using hardcoded mainnet program ID (for use during login)
+    /// This bypasses network config requirements
+    pub async fn get_profile_mainnet(&self, user_pubkey: &str) -> Result<Option<UserProfile>, RpcError> {
+        log::info!("Fetching profile for user from mainnet: {}", user_pubkey);
+        
+        // Get mainnet profile program ID from network config
+        let mainnet_config = super::network_config::NetworkConfig::for_network(super::network_config::NetworkType::Mainnet);
+        let profile_program_id = mainnet_config.program_ids.profile_program_id;
+        
+        let pubkey = Pubkey::from_str(user_pubkey)
+            .map_err(|e| RpcError::InvalidAddress(format!("Invalid pubkey: {}", e)))?;
+        
+        let program_id = Pubkey::from_str(profile_program_id)
+            .map_err(|e| RpcError::InvalidAddress(format!("Invalid program ID: {}", e)))?;
+        
+        // calculate profile PDA using mainnet program ID
+        let (profile_pda, _) = Pubkey::find_program_address(
+            &[ProfileConfig::PROFILE_SEED, pubkey.as_ref()],
+            &program_id
+        );
+        
+        // get account info
+        let account_info = self.get_account_info(&profile_pda.to_string(), Some("base64")).await?;
+        
+        // parse account data
+        match self.parse_profile_account(&account_info) {
+            Ok(profile) => Ok(Some(profile)),
+            Err(RpcError::Other(msg)) if msg.contains("null") => Ok(None), // account not found
+            Err(e) => Err(e),
+        }
+    }
+
     /// get user profile
     pub async fn get_profile(&self, user_pubkey: &str) -> Result<Option<UserProfile>, RpcError> {
         log::info!("Fetching profile for user: {}", user_pubkey);

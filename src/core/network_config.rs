@@ -87,7 +87,7 @@ impl NetworkConfig {
     };
 
     /// Get network configuration for specific network type
-    fn for_network(network: NetworkType) -> &'static NetworkConfig {
+    pub fn for_network(network: NetworkType) -> &'static NetworkConfig {
         match network {
             NetworkType::Testnet => &Self::TESTNET,
             NetworkType::ProdStaging => &Self::PROD_STAGING,
