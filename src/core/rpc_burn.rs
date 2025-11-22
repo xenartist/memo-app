@@ -600,7 +600,51 @@ fn parse_burn_memo(memo_data: &[u8]) -> Option<LatestBurn> {
         }
     }
     
-    // Could add parsing for other types here (chat, project, etc.)
+    // Try to parse as ChatGroupBurnData (burn_for_group operation)
+    if let Ok(chat_burn_data) = crate::core::rpc_chat::ChatGroupBurnData::try_from_slice(&burn_memo.payload) {
+        if chat_burn_data.category == "chat" && chat_burn_data.operation == "burn_for_group" {
+            // Use the burn message as description, or show group ID if message is empty
+            let description = if !chat_burn_data.message.is_empty() {
+                Some(chat_burn_data.message)
+            } else {
+                Some(format!("Burned for chat group #{}", chat_burn_data.group_id))
+            };
+            
+            return Some(LatestBurn {
+                signature: String::new(),
+                burn_type: "chat_burn".to_string(),
+                username: None, // Will be fetched by UI layer if needed
+                image: None,    // Will be fetched by UI layer if needed
+                description,
+                burn_amount,
+                user_pubkey: chat_burn_data.burner,
+            });
+        }
+    }
+    
+    // Try to parse as ChatGroupCreationData (create_group operation)
+    if let Ok(group_creation) = crate::core::rpc_chat::ChatGroupCreationData::try_from_slice(&burn_memo.payload) {
+        if group_creation.category == "chat" && group_creation.operation == "create_group" {
+            // Show group name and description
+            let description = if !group_creation.description.is_empty() {
+                Some(format!("Created chat group: {} - {}", group_creation.name, group_creation.description))
+            } else {
+                Some(format!("Created chat group: {}", group_creation.name))
+            };
+            
+            return Some(LatestBurn {
+                signature: String::new(),
+                burn_type: "chat_create".to_string(),
+                username: None, // Creator info not in memo, would need to fetch from transaction
+                image: Some(group_creation.image), // Use group image
+                description,
+                burn_amount,
+                user_pubkey: String::new(), // Creator pubkey not in ChatGroupCreationData
+            });
+        }
+    }
+    
+    // Could add parsing for other types here (project, etc.)
     // For now, return None if not a recognized type
     None
 }
