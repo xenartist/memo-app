@@ -1,7 +1,6 @@
 use super::rpc_base::{RpcConnection, RpcError};
 use super::rpc_mint::MintConfig;
 use solana_sdk::{
-    instruction::{AccountMeta, Instruction},
     message::Message,
     pubkey::Pubkey,
     transaction::Transaction,

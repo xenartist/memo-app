@@ -804,7 +804,7 @@ pub fn MintForm(
                                         }}
                                     </span>
                                     {if total > 0 {
-                                        let percentage = if total > 0 { (current as f32 / total as f32 * 100.0) } else { 0.0 };
+                                        let percentage = if total > 0 { current as f32 / total as f32 * 100.0 } else { 0.0 };
                                         view! {
                                             <div class="progress-bar">
                                                 <div class="progress-fill" style=format!("width: {}%", percentage)></div>

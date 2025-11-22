@@ -758,7 +758,7 @@ impl RpcConnection {
         }
         
         let option_flag = data[offset];
-        let mut new_offset = offset + 1;
+        let new_offset = offset + 1;
         
         if option_flag == 0 {
             // None case

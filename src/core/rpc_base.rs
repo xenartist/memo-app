@@ -203,7 +203,7 @@ impl RpcConnection {
             log::debug!("RPC request body: {}", request_body);
         }
 
-        let mut opts = RequestInit::new();
+        let opts = RequestInit::new();
         opts.set_method("POST");
         opts.set_mode(RequestMode::Cors);
         opts.set_body(&JsValue::from_str(&request_body));

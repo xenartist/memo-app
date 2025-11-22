@@ -148,7 +148,7 @@ pub fn PixelView(
             height=display_size
             class="pixel-grid"
             class:editable=editable
-            class:disabled=(!editable)
+            class:disabled=!editable
             style=format!(
                 "width: {}px; height: {}px; display: block;",
                 display_size, display_size

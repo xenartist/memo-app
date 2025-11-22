@@ -1,10 +1,9 @@
 use leptos::*;
-use leptos::html::Input;
 use crate::core::session::Session;
-use crate::core::rpc_project::{ProjectBurnLeaderboardResponse, ProjectInfo, ProjectCreationData, BurnMemo, BURN_MEMO_VERSION, PROJECT_CREATION_DATA_VERSION, ProjectConfig};
+use crate::core::rpc_project::ProjectCreationData;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
-use web_sys::{HtmlInputElement, HtmlTextAreaElement, File, FileReader, Event, ProgressEvent, window};
+use web_sys::{HtmlInputElement, FileReader, Event, ProgressEvent, window};
 use wasm_bindgen::{closure::Closure, JsCast};
 use js_sys::Uint8Array;
 use std::rc::Rc;

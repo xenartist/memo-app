@@ -16,7 +16,6 @@ use std::str::FromStr;
 use log;
 use bincode;
 use sha2::{Sha256, Digest};
-use bs58;
 
 /// Borsh serialization version constants
 pub const BURN_MEMO_VERSION: u8 = 1;

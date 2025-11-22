@@ -11,10 +11,8 @@ use crate::pages::faucet_page::FaucetPage;
 use crate::pages::log_view::{LogView, add_log_entry};
 use crate::pages::pixel_view::LazyPixelView;
 
-use wasm_bindgen::prelude::*;
-use web_sys::{window, Navigator, Clipboard};
+use web_sys::window;
 use std::time::Duration;
-use serde_json;
 use gloo_timers::future::TimeoutFuture;
 
 // menu item enum

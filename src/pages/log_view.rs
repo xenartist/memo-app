@@ -1,6 +1,5 @@
 use leptos::*;
 use serde::{Serialize, Deserialize};
-use wasm_bindgen::prelude::*;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LogEntry {

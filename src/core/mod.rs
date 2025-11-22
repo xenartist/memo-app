@@ -14,4 +14,4 @@ pub mod rpc_transfer;
 pub mod settings;
 
 // Re-export commonly used network types
-pub use network_config::{NetworkType, get_network, initialize_network, clear_network};
+pub use network_config::{NetworkType, initialize_network};
