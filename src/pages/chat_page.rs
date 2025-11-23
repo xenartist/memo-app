@@ -2154,8 +2154,7 @@ fn MessageItem(
                                                         </button>
                                                     </span>
                                                 }.into_view()
-                                            },
-                                            _ => view! { <div></div> }.into_view(),
+                                            }
                                         }
                                     }
                                 </div>
