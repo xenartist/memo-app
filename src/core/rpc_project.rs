@@ -20,6 +20,12 @@ use base64;
 use bincode;
 use spl_associated_token_account;
 
+/// Project creation data version
+pub const PROJECT_CREATION_DATA_VERSION: u8 = 1;
+
+/// Project update data version
+pub const PROJECT_UPDATE_DATA_VERSION: u8 = 1;
+
 /// Memo-Project contract configuration and constants
 pub struct ProjectConfig;
 

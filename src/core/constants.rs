@@ -30,13 +30,8 @@ pub const MIN_MEMO_LENGTH: usize = 69;
 /// Maximum memo length (from contract constraint: 800 bytes)
 pub const MAX_MEMO_LENGTH: usize = 800;
 
-/// Calculate maximum payload length for a given max memo length
-pub const fn max_payload_length(max_memo: usize) -> usize {
-    max_memo - BORSH_FIXED_OVERHEAD
-}
-
 /// Default maximum payload length (800 - 13 = 787 bytes)
-pub const MAX_PAYLOAD_LENGTH: usize = max_payload_length(MAX_MEMO_LENGTH);
+pub const MAX_PAYLOAD_LENGTH: usize = MAX_MEMO_LENGTH - BORSH_FIXED_OVERHEAD;
 
 // ============================================================================
 // Compute Unit Configuration
@@ -47,7 +42,7 @@ pub const MAX_PAYLOAD_LENGTH: usize = max_payload_length(MAX_MEMO_LENGTH);
 pub const COMPUTE_UNIT_BUFFER: f64 = 1.0;
 
 /// Minimum compute units to allocate for any transaction
-pub const MIN_COMPUTE_UNITS: u64 = 300_000;
+pub const MIN_COMPUTE_UNITS: u64 = 200_000;
 
 // ============================================================================
 // Version Constants
@@ -55,13 +50,4 @@ pub const MIN_COMPUTE_UNITS: u64 = 300_000;
 
 /// Common burn memo version used across all burn operations
 pub const BURN_MEMO_VERSION: u8 = 1;
-
-/// Chat group creation data version
-pub const CHAT_GROUP_CREATION_DATA_VERSION: u8 = 1;
-
-/// Project creation data version
-pub const PROJECT_CREATION_DATA_VERSION: u8 = 1;
-
-/// Project update data version
-pub const PROJECT_UPDATE_DATA_VERSION: u8 = 1;
 

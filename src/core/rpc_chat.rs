@@ -21,6 +21,9 @@ use base64;
 use bincode;
 use spl_associated_token_account;
 
+/// Chat group creation data version
+pub const CHAT_GROUP_CREATION_DATA_VERSION: u8 = 1;
+
 /// Memo-Chat contract configuration and constants
 pub struct ChatConfig;
 
