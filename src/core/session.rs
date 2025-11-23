@@ -739,7 +739,7 @@ impl Session {
         let rpc = RpcConnection::new();
         
         // Get token balance using dynamic token mint
-        let token_mint = MintConfig::get_token_mint()
+        let token_mint = crate::core::rpc_base::get_token_mint()
             .map_err(|e| SessionError::InvalidData(format!("Failed to get token mint: {}", e)))?;
         match rpc.get_token_balance(&pubkey, &token_mint.to_string()).await {
             Ok(token_result) => {

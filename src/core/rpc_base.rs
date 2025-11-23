@@ -9,10 +9,12 @@ use js_sys::{Date, Math};
 use solana_sdk::transaction::Transaction;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::compute_budget::ComputeBudgetInstruction;
+use solana_sdk::pubkey::Pubkey;
 use base64;
 use bincode;
-use super::network_config::try_get_network_config;
+use super::network_config::{try_get_network_config, get_program_ids};
 use super::settings::load_current_network_settings;
+use super::constants::*;
 
 // error type
 #[derive(Debug, Deserialize)]
@@ -573,4 +575,48 @@ impl Default for RpcConnection {
     fn default() -> Self {
         Self::new()
     }
-} 
+}
+
+// ============================================================================
+// Shared Helper Functions
+// ============================================================================
+// These functions are commonly used across multiple RPC modules
+
+/// Get the token mint address from network configuration
+pub fn get_token_mint() -> Result<Pubkey, RpcError> {
+    let program_ids = get_program_ids();
+    Pubkey::from_str(program_ids.token_mint)
+        .map_err(|e| RpcError::InvalidAddress(format!("Invalid token mint: {}", e)))
+}
+
+/// Get the Token 2022 program ID from network configuration
+pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
+    let program_ids = get_program_ids();
+    Pubkey::from_str(program_ids.token_2022_program_id)
+        .map_err(|e| RpcError::InvalidAddress(format!("Invalid Token 2022 program ID: {}", e)))
+}
+
+/// Validate memo string length (for &str input)
+pub fn validate_memo_length_str(memo: &str) -> Result<(), RpcError> {
+    let len = memo.len();
+    if len < MIN_MEMO_LENGTH {
+        return Err(RpcError::Other(format!("Memo too short: {} bytes (min: {})", len, MIN_MEMO_LENGTH)));
+    }
+    if len > MAX_MEMO_LENGTH {
+        return Err(RpcError::Other(format!("Memo too long: {} bytes (max: {})", len, MAX_MEMO_LENGTH)));
+    }
+    Ok(())
+}
+
+/// Validate memo data length (for &[u8] input)
+pub fn validate_memo_length_bytes(memo_data: &[u8]) -> Result<(), RpcError> {
+    let len = memo_data.len();
+    if len < MIN_MEMO_LENGTH {
+        return Err(RpcError::Other(format!("Memo data too short: {} bytes (min: {})", len, MIN_MEMO_LENGTH)));
+    }
+    if len > MAX_MEMO_LENGTH {
+        return Err(RpcError::Other(format!("Memo data too long: {} bytes (max: {})", len, MAX_MEMO_LENGTH)));
+    }
+    Ok(())
+}
+ 

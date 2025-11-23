@@ -1,5 +1,9 @@
-use super::rpc_base::{RpcConnection, RpcError};
+use super::rpc_base::{
+    RpcConnection, RpcError,
+    get_token_mint, get_token_2022_program_id, validate_memo_length_str
+};
 use super::network_config::get_program_ids;
+use super::constants::*;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use solana_sdk::{
@@ -33,12 +37,8 @@ impl MintConfig {
     // PDA Seeds
     pub const MINT_AUTHORITY_SEED: &'static [u8] = b"mint_authority";
     
-    // Memo validation limits (from contract: 69-800 bytes)
-    pub const MIN_MEMO_LENGTH: usize = 69;
-    pub const MAX_MEMO_LENGTH: usize = 800;
-    
-    // Compute budget configuration
-    pub const COMPUTE_UNIT_BUFFER: f64 = 1.0; // No buffer - using exact simulation value
+    // Note: Memo validation limits and compute unit config are now directly 
+    // used from the constants module to avoid duplication
 }
 
 // Helper functions
@@ -49,17 +49,8 @@ impl MintConfig {
             .map_err(|e| RpcError::Other(format!("Invalid mint program ID: {}", e)))
     }
     
-    pub fn get_token_mint() -> Result<Pubkey, RpcError> {
-        let program_ids = get_program_ids();
-        Pubkey::from_str(program_ids.token_mint)
-            .map_err(|e| RpcError::Other(format!("Invalid token mint address: {}", e)))
-    }
-    
-    pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
-        let program_ids = get_program_ids();
-        Pubkey::from_str(program_ids.token_2022_program_id)
-            .map_err(|e| RpcError::Other(format!("Invalid Token 2022 program ID: {}", e)))
-    }
+    // Note: get_token_mint(), get_token_2022_program_id(), and validate_memo_length()
+    // are now provided by rpc_base module to avoid duplication
     
     pub fn get_mint_authority_pda() -> Result<(Pubkey, u8), RpcError> {
         let program_id = Self::get_mint_program_id()?;
@@ -67,25 +58,6 @@ impl MintConfig {
             &[Self::MINT_AUTHORITY_SEED],
             &program_id
         ))
-    }
-    
-    pub fn validate_memo_length(memo: &str) -> Result<(), RpcError> {
-        let memo_length = memo.len();
-        if memo_length < Self::MIN_MEMO_LENGTH {
-            return Err(RpcError::InvalidParameter(format!(
-                "Memo length must be at least {} bytes, got {} bytes", 
-                Self::MIN_MEMO_LENGTH,
-                memo_length
-            )));
-        }
-        if memo_length > Self::MAX_MEMO_LENGTH {
-            return Err(RpcError::InvalidParameter(format!(
-                "Memo length cannot exceed {} bytes, got {} bytes", 
-                Self::MAX_MEMO_LENGTH,
-                memo_length
-            )));
-        }
-        Ok(())
     }
     
     pub fn get_process_mint_discriminator() -> [u8; 8] {
@@ -207,14 +179,14 @@ impl RpcConnection {
         memo: &str,
     ) -> Result<Transaction, RpcError> {
         // Validate memo length
-        MintConfig::validate_memo_length(memo)?;
+        validate_memo_length_str(memo)?;
         
         log::info!("Building mint transaction for user: {} with memo length: {} bytes", user_pubkey, memo.len());
         
         // Get configuration values
         let mint_program_id = MintConfig::get_mint_program_id()?;
-        let mint = MintConfig::get_token_mint()?;
-        let token_2022_program_id = MintConfig::get_token_2022_program_id()?;
+        let mint = get_token_mint()?;
+        let token_2022_program_id = get_token_2022_program_id()?;
         
         // Calculate mint authority PDA
         let (mint_authority_pda, _) = MintConfig::get_mint_authority_pda()?;
@@ -333,7 +305,7 @@ impl RpcConnection {
         // Add compute budget instructions (limit + optional price) using unified method
         let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
             simulated_cu,
-            MintConfig::COMPUTE_UNIT_BUFFER
+            COMPUTE_UNIT_BUFFER
         );
         final_instructions.extend(compute_budget_ixs);
         
@@ -356,7 +328,7 @@ impl RpcConnection {
     /// # Returns
     /// The current supply as u64 (in lamports)
     pub async fn get_token_supply(&self) -> Result<u64, RpcError> {
-        let mint = MintConfig::get_token_mint()?;
+        let mint = get_token_mint()?;
         
         let params = serde_json::json!([
             mint.to_string(),
@@ -414,8 +386,8 @@ impl RpcConnection {
     /// # Returns
     /// Vector of (owner_address, balance) tuples, sorted by balance descending
     pub async fn get_token_holders(&self, limit: usize) -> Result<Vec<(String, f64)>, RpcError> {
-        let token_mint = MintConfig::get_token_mint()?.to_string();
-        let token_program_id = MintConfig::get_token_2022_program_id()?.to_string();
+        let token_mint = get_token_mint()?.to_string();
+        let token_program_id = get_token_2022_program_id()?.to_string();
         
         log::info!("Fetching token holders for Token-2022 mint: {}", token_mint);
         

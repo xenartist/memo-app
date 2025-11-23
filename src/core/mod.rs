@@ -5,6 +5,7 @@ pub mod session;
 pub mod backpack;
 pub mod rpc_base;
 pub mod pixel;
+pub mod constants;
 pub mod rpc_mint;
 pub mod rpc_chat;
 pub mod rpc_project;

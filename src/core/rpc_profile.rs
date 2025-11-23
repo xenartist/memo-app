@@ -1,5 +1,9 @@
-use super::rpc_base::{RpcConnection, RpcError};
+use super::rpc_base::{
+    RpcConnection, RpcError,
+    get_token_2022_program_id
+};
 use super::network_config::get_program_ids;
+use super::constants::*;
 use serde::{Serialize, Deserialize};
 use borsh::{BorshSerialize, BorshDeserialize};
 use std::str::FromStr;
@@ -216,8 +220,7 @@ impl ProfileConfig {
     /// PDA Seeds for profile contract
     pub const PROFILE_SEED: &'static [u8] = b"profile";
     
-    /// Compute budget configuration
-    pub const COMPUTE_UNIT_BUFFER: f64 = 1.0; // 0% buffer - exact simulation
+    // Note: Compute unit configuration is now directly used from the constants module
     
     /// get program ID
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
@@ -233,12 +236,7 @@ impl ProfileConfig {
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-burn program ID: {}", e)))
     }
     
-    /// get Token 2022 program ID
-    pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
-        let program_ids = get_program_ids();
-        Pubkey::from_str(program_ids.token_2022_program_id)
-            .map_err(|e| RpcError::InvalidAddress(format!("Invalid token 2022 program ID: {}", e)))
-    }
+    // Note: get_token_2022_program_id() is now provided by rpc_base module
     
     /// get memo token mint
     pub fn get_memo_token_mint() -> Result<Pubkey, RpcError> {
@@ -305,7 +303,7 @@ impl RpcConnection {
         
         let program_id = ProfileConfig::get_program_id()?;
         let memo_burn_program_id = ProfileConfig::get_memo_burn_program_id()?;
-        let token_2022_program_id = ProfileConfig::get_token_2022_program_id()?;
+        let token_2022_program_id = get_token_2022_program_id()?;
         let memo_token_mint = ProfileConfig::get_memo_token_mint()?;
         
         let (profile_pda, _) = ProfileConfig::get_profile_pda(user_pubkey)?;
@@ -420,7 +418,7 @@ impl RpcConnection {
         // Add compute budget instructions using unified method
         let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
             simulated_cu,
-            ProfileConfig::COMPUTE_UNIT_BUFFER
+            COMPUTE_UNIT_BUFFER
         );
         final_instructions.extend(compute_budget_ixs);
         
@@ -444,7 +442,7 @@ impl RpcConnection {
         
         let program_id = ProfileConfig::get_program_id()?;
         let memo_burn_program_id = ProfileConfig::get_memo_burn_program_id()?;
-        let token_2022_program_id = ProfileConfig::get_token_2022_program_id()?;
+        let token_2022_program_id = get_token_2022_program_id()?;
         let memo_token_mint = ProfileConfig::get_memo_token_mint()?;
         
         let (profile_pda, _) = ProfileConfig::get_profile_pda(user_pubkey)?;
@@ -555,7 +553,7 @@ impl RpcConnection {
         // Add compute budget instructions using unified method
         let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
             simulated_cu,
-            ProfileConfig::COMPUTE_UNIT_BUFFER
+            COMPUTE_UNIT_BUFFER
         );
         final_instructions.extend(compute_budget_ixs);
         
