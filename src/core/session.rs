@@ -1,7 +1,6 @@
 use serde::{Serialize, Deserialize};
 use crate::core::encrypt;
 use crate::core::rpc_base::RpcConnection;
-use crate::core::rpc_mint::MintConfig;
 use crate::core::rpc_profile::{UserProfile, parse_user_profile_new};
 use crate::core::rpc_project::{ProjectInfo, ProjectStatistics, ProjectBurnLeaderboardResponse};
 use crate::core::rpc_burn::{UserGlobalBurnStats};

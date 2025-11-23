@@ -1,5 +1,4 @@
 use super::rpc_base::{RpcConnection, RpcError, get_token_mint};
-use super::rpc_mint::MintConfig;
 use solana_sdk::{
     message::Message,
     pubkey::Pubkey,

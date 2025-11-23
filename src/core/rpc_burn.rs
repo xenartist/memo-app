@@ -1,6 +1,5 @@
 use crate::core::rpc_base::{
-    RpcConnection, RpcError, 
-    get_token_mint, get_token_2022_program_id, validate_memo_length_str
+    RpcConnection, RpcError
 };
 use crate::core::network_config::get_program_ids;
 use crate::core::constants::*;
@@ -9,10 +8,7 @@ use solana_sdk::{
     instruction::{Instruction, AccountMeta},
     message::Message,
     transaction::Transaction,
-    compute_budget::ComputeBudgetInstruction,
 };
-use spl_associated_token_account;
-use spl_memo;
 use borsh::{BorshSerialize, BorshDeserialize};
 use serde::{Serialize, Deserialize};
 use base64;
