@@ -152,11 +152,6 @@ impl Session {
         self.network
     }
     
-    /// Check if session has network set
-    pub fn has_network(&self) -> bool {
-        self.network.is_some()
-    }
-    
     /// Logout and clear session
     pub fn logout(&mut self) {
         // Check if Backpack wallet BEFORE clearing wallet_type
@@ -291,22 +286,12 @@ impl Session {
         }
     }
 
-    // check if operation needs additional password confirmation
-    pub fn needs_confirmation(&self, amount: u64) -> bool {
-        amount >= self.config.confirm_threshold
-    }
-
     // verify password (for operations that need confirmation)
     pub fn verify_password(&self, password: &str, original_encrypted_seed: &str) -> Result<bool, SessionError> {
         // try to decrypt original encrypted seed
         encrypt::decrypt(original_encrypted_seed, password)
             .map(|_| true)
             .map_err(|_| SessionError::InvalidPassword)
-    }
-
-    // refresh session time
-    pub fn refresh(&mut self) {
-        self.start_time = Date::now();
     }
 
     // clear session data
@@ -321,11 +306,6 @@ impl Session {
         self.balance_update_needed = false;
         self.ui_locked = false;
         self.user_burn_stats = None;
-    }
-
-    // update config
-    pub fn update_config(&mut self, config: SessionConfig) {
-        self.config = config;
     }
 
     // get public key
@@ -792,26 +772,6 @@ impl Session {
     // get expiration time setting
     pub fn get_timeout_minutes(&self) -> Option<u32> {
         self.config.timeout_minutes
-    }
-
-    // set expiration time (None = never expire)
-    pub fn set_timeout(&mut self, timeout_minutes: Option<u32>) {
-        self.config.timeout_minutes = timeout_minutes;
-        // reset start time
-        self.start_time = Date::now();
-    }
-
-    // get session remaining time
-    pub fn get_remaining_time(&self) -> Option<f64> {
-        match self.config.timeout_minutes {
-            None => None, // never expire
-            Some(timeout_minutes) => {
-                let current_time = Date::now();
-                let elapsed_minutes = (current_time - self.start_time) / (60.0 * 1000.0);
-                let remaining = timeout_minutes as f64 - elapsed_minutes;
-                Some(remaining.max(0.0))
-            }
-        }
     }
 
     /// Send chat message to group - internal handle all key operations
