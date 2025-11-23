@@ -1313,18 +1313,3 @@ impl Drop for Session {
     }
 }
 
-// Legacy parse function for compatibility (now uses new profile system)
-pub fn parse_user_profile(account_data: &str) -> Result<UserProfile, SessionError> {
-    log::info!("Starting to parse user profile from account data using new format");
-    
-    match parse_user_profile_new(account_data) {
-        Ok(profile) => {
-            log::info!("Successfully parsed new format user profile");
-            Ok(profile)
-        },
-        Err(e) => {
-            log::error!("Failed to parse new format user profile: {}", e);
-            Err(SessionError::ProfileError(format!("Parse error: {}", e)))
-        }
-    }
-} 

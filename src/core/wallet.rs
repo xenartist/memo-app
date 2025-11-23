@@ -217,7 +217,7 @@ mod tests {
 
         // Test invalid mnemonic
         let result = generate_seed_from_mnemonic("invalid mnemonic", None);
-        assert!(matches!(result, Err(WalletError::SeedGeneration(_))));
+        assert!(matches!(result, Err(WalletError::SeedGeneration)));
     }
 
     #[test]
@@ -235,7 +235,7 @@ mod tests {
         // Test with invalid derivation path
         let invalid_path = "m/44'/0'/0'/0/";
         let result = derive_keypair_from_seed(&seed, invalid_path);
-        assert!(matches!(result, Err(WalletError::KeypairGeneration(_))));
+        assert!(matches!(result, Err(WalletError::KeypairGeneration)));
 
         // Test with different seeds produce different keypairs
         let seed2 = [2u8; 64];

@@ -310,6 +310,7 @@ impl RpcConnection {
     /// 
     /// # Returns
     /// Result containing a vector of signature strings
+    #[allow(dead_code)]
     pub async fn get_latest_burn_signatures(&self, limit: usize) -> Result<Vec<String>, RpcError> {
         let program_id = BurnConfig::get_program_id()?;
         

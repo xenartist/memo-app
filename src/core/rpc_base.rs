@@ -44,7 +44,10 @@ impl fmt::Display for RpcError {
 // define the rpc response error structure
 #[derive(Deserialize, Debug)]
 struct RpcResponseError {
+    // Note: Fields are used by serde for deserialization but not directly accessed
+    #[allow(dead_code)]
     code: i64,
+    #[allow(dead_code)]
     message: String,
 }
 
@@ -62,9 +65,14 @@ struct RpcRequest<T> {
 
 #[derive(Deserialize)]
 struct RpcResponse<T> {
+    // Note: Fields are used by serde for deserialization but not directly accessed
+    #[allow(dead_code)]
     jsonrpc: String,
+    #[allow(dead_code)]
     id: u64,
+    #[allow(dead_code)]
     result: T,
+    #[allow(dead_code)]
     #[serde(default)]
     error: Option<RpcResponseError>,
 }
@@ -113,16 +121,6 @@ impl RpcConnection {
             let index = (random_value * endpoints.len() as f64) as usize;
             endpoints[index.min(endpoints.len() - 1)].to_string()
         }
-    }
-
-    /// create a new connection instance, using the randomly selected endpoint (for retry etc.)
-    pub fn new_with_random_endpoint() -> Self {
-        Self::new()
-    }
-
-    /// get the current used endpoint
-    pub fn get_endpoint(&self) -> &str {
-        &self.endpoint
     }
 
     pub fn with_endpoint(endpoint: &str) -> Self {
@@ -333,15 +331,6 @@ impl RpcConnection {
         Ok(result.to_string())
     }
 
-    pub async fn send_transaction(&self, serialized_tx: &str) -> Result<String, RpcError> {
-        self.send_request("sendTransaction", vec![serialized_tx]).await
-    }
-
-    pub async fn get_transaction_status(&self, signature: &str) -> Result<String, RpcError> {
-        let result: serde_json::Value = self.send_request("getSignatureStatuses", vec![vec![signature]]).await?;
-        Ok(result.to_string())
-    }
-
     pub async fn get_version(&self) -> Result<String, RpcError> {
         let result: serde_json::Value = self.send_request("getVersion", Vec::<String>::new()).await?;
         Ok(result.to_string())
@@ -494,21 +483,6 @@ impl RpcConnection {
         }
         
         instructions
-    }
-
-    /// interface: get transaction details by signature
-    /// return full transaction information, including meta, transaction, etc.
-    pub async fn get_transaction_details(&self, signature: &str) -> Result<String, RpcError> {
-        let params = serde_json::json!([
-            signature,
-            {
-                "encoding": "json",
-                "maxSupportedTransactionVersion": 0
-            }
-        ]);
-        
-        let result: serde_json::Value = self.send_request("getTransaction", params).await?;
-        Ok(result.to_string())
     }
 
     /// interface: get signatures for address
