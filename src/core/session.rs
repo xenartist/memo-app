@@ -215,7 +215,7 @@ impl Session {
         let (_, pubkey) = crate::core::wallet::derive_keypair_from_seed(
             &seed,
             crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::Encryption("Failed to derive keypair".to_string()))?;
+        ).map_err(|_| SessionError::Encryption("Failed to derive keypair".to_string()))?;
 
         // save session info (Internal wallet)
         self.wallet_type = WalletType::Internal;
@@ -390,7 +390,7 @@ impl Session {
         let (_, pubkey) = crate::core::wallet::derive_keypair_from_seed(
             &seed,
             crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::Encryption("Failed to derive keypair".to_string()))?;
+        ).map_err(|_| SessionError::Encryption("Failed to derive keypair".to_string()))?;
 
         // save session info
         self.session_key = Some(session_key);
@@ -567,7 +567,7 @@ impl Session {
         let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
             &seed_array,
             crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::Encryption("Failed to derive keypair".to_string()))?;
+        ).map_err(|_| SessionError::Encryption("Failed to derive keypair".to_string()))?;
 
         Ok(keypair.to_bytes().to_vec())
     }

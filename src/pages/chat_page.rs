@@ -715,7 +715,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     };
 
     // Helper function to extract fallback error messages
-    let extract_fallback_error_message = |error_str: &str| -> String {
+    let _extract_fallback_error_message = |error_str: &str| -> String {
         if error_str.contains("MemoTooFrequent") || error_str.contains("6009") {
             "Message sent too frequently. Please wait before sending another message.".to_string()
         } else if error_str.contains("timeout") {
@@ -1063,7 +1063,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
             let per_page = groups_per_page.get();
             let page = current_page.get();
             let start_idx = (page - 1) * per_page;
-            let end_idx = start_idx + per_page;
+            let _end_idx = start_idx + per_page;
             
             let total_groups = leaderboard.entries.len();
             let total_pages = (total_groups + per_page - 1) / per_page; // round up
@@ -1212,7 +1212,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     });
 
     // handle group info loaded callback
-    let handle_group_info_loaded = move |group_id: u64, group_info: ChatGroupInfo| {
+    let _handle_group_info_loaded = move |group_id: u64, group_info: ChatGroupInfo| {
         set_leaderboard_group_infos.update(|infos| {
             infos.insert(group_id, group_info);
         });

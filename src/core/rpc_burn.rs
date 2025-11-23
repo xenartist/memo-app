@@ -124,7 +124,7 @@ impl RpcConnection {
             
             // Parse user pubkey (32 bytes)
             let user_bytes = &data[offset..offset + 32];
-            let user = Pubkey::new_from_array(user_bytes.try_into().unwrap());
+            let _user = Pubkey::new_from_array(user_bytes.try_into().unwrap());
             offset += 32;
             
             // Parse total_burned (8 bytes)
@@ -140,7 +140,7 @@ impl RpcConnection {
             offset += 8;
             
             // Parse bump (1 byte)
-            let bump = data[offset];
+            let _bump = data[offset];
             
             let stats = UserGlobalBurnStats {
                 total_burned,

@@ -246,7 +246,7 @@ impl Pixel {
                     format!("n:{}x{}:{}", self.width, self.height, normal_string)
                 }
             }
-            Err(e) => {
+            Err(_e) => {
                 format!("n:{}x{}:{}", self.width, self.height, normal_string)
             }
         }

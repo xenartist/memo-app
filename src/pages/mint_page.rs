@@ -219,7 +219,7 @@ pub fn SupplyProgressBar() -> impl IntoView {
                                     style:width=format!("{}%", progress)
                                 ></div>
                                 <div class="supply-progress-markers">
-                                    {tiers.iter().take(5).enumerate().map(|(i, tier)| {
+                                    {tiers.iter().take(5).enumerate().map(|(_, tier)| {
                                         let marker_position = MintConfig::calculate_visual_marker_position(tier.max);
                                         view! {
                                             <div 
@@ -696,7 +696,7 @@ pub fn MintPage(
     // Mint mode and settings
     let (mint_mode, set_mint_mode) = create_signal(MintMode::Manual);
     let (auto_mint_count, set_auto_mint_count) = create_signal(0u32); // 0 = infinite
-    let (auto_mint_current, set_auto_mint_current) = create_signal(0u32);
+    let (_auto_mint_current, set_auto_mint_current) = create_signal(0u32);
     let (auto_mint_running, set_auto_mint_running) = create_signal(false);
     
     // --- Manual signal to control immediate UI state on submit ---
@@ -886,7 +886,7 @@ pub fn MintPage(
 
     // --- Effect for action result handling ---
     create_effect(move |_| {
-        if let Some(result) = start_minting.value().get() {
+        if let Some(_result) = start_minting.value().get() {
             set_is_submitting.set(false); // reset manual state
             if mint_mode.get() == MintMode::Manual {
                 set_minting_status.set(String::new()); // clear status for manual mode
