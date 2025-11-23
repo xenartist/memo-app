@@ -1046,25 +1046,6 @@ fn CreateProjectForm(
     }
 }
 
-/// Format timestamp to human readable format
-fn format_timestamp(timestamp: i64) -> String {
-    if timestamp == 0 {
-        return "-".to_string();
-    }
-    
-    // Convert to JavaScript Date and format
-    let js_date = js_sys::Date::new(&wasm_bindgen::JsValue::from(timestamp as f64 * 1000.0));
-    let options = js_sys::Object::new();
-    js_sys::Reflect::set(&options, &"year".into(), &"numeric".into()).unwrap();
-    js_sys::Reflect::set(&options, &"month".into(), &"short".into()).unwrap();
-    js_sys::Reflect::set(&options, &"day".into(), &"numeric".into()).unwrap();
-    js_sys::Reflect::set(&options, &"hour".into(), &"2-digit".into()).unwrap();
-    js_sys::Reflect::set(&options, &"minute".into(), &"2-digit".into()).unwrap();
-    
-    let formatted = js_date.to_locale_string("en-US", &options);
-    formatted.as_string().unwrap_or_else(|| "Invalid Date".to_string())
-}
-
 /// Format number with comma separators
 fn format_number_with_commas(num: u64) -> String {
     let num_str = num.to_string();

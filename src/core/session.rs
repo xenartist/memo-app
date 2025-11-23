@@ -1247,40 +1247,6 @@ impl Session {
         Ok(tx_hash)
     }
 
-    // burn tokens using memo-burn contract
-    pub async fn burn_tokens(&mut self, amount: u64, message: &str) -> Result<String, SessionError> {
-        if self.is_expired() {
-            return Err(SessionError::Expired);
-        }
-
-        // Check if burn stats are initialized, if not, initialize them first
-        if self.user_burn_stats.is_none() {
-            log::info!("Burn stats not initialized, initializing first...");
-            self.initialize_user_burn_stats().await?;
-        }
-
-        let rpc = RpcConnection::new();
-        let pubkey_str = self.get_public_key()?;
-        let pubkey = Pubkey::from_str(&pubkey_str)
-            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
-        
-        // Step 1: Build unsigned transaction
-        let mut transaction = rpc.build_burn_transaction(&pubkey, amount, message).await
-            .map_err(|e| SessionError::InvalidData(format!("Failed to build burn transaction: {}", e)))?;
-        
-        // Step 2: Sign in Session
-        self.sign_transaction(&mut transaction).await?;
-        
-        // Step 3: Send signed transaction
-        let tx_hash = rpc.send_signed_transaction(&transaction).await
-            .map_err(|e| SessionError::InvalidData(format!("Failed to send burn transaction: {}", e)))?;
-        
-        log::info!("Burn transaction sent: {}", tx_hash);
-        self.balance_update_needed = true;
-        let _ = self.fetch_and_cache_user_burn_stats().await;
-        Ok(tx_hash)
-    }
-
     // check if user has burn stats initialized
     pub fn has_burn_stats_initialized(&self) -> bool {
         self.user_burn_stats.is_some()

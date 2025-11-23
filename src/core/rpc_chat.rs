@@ -38,6 +38,9 @@ impl ChatConfig {
     /// Minimum burn amount required to create a chat group (42,069 tokens = 42,069,000,000 lamports)
     pub const MIN_BURN_AMOUNT: u64 = 42_069_000_000;
     
+    /// Minimum burn amount for burning to a group (1 token = 1,000,000 lamports)
+    pub const MIN_GROUP_BURN_AMOUNT: u64 = 1_000_000;
+    
     // Note: Memo validation limits, payload length, and compute unit config
     // are now directly used from the constants module to avoid duplication
     
@@ -893,8 +896,11 @@ impl RpcConnection {
         message: &str,
     ) -> Result<Transaction, RpcError> {
         // Basic parameter validation
-        if amount < 1_000_000 {
-            return Err(RpcError::InvalidParameter("Burn amount must be at least 1 MEMO token".to_string()));
+        if amount < ChatConfig::MIN_GROUP_BURN_AMOUNT {
+            return Err(RpcError::InvalidParameter(format!(
+                "Burn amount must be at least {} MEMO token(s)", 
+                ChatConfig::MIN_GROUP_BURN_AMOUNT / 1_000_000
+            )));
         }
         if amount % 1_000_000 != 0 {
             return Err(RpcError::InvalidParameter("Burn amount must be a whole number of tokens".to_string()));
