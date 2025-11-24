@@ -1,10 +1,9 @@
 use leptos::*;
-use leptos::html::Input;
 use crate::core::session::Session;
-use crate::core::rpc_project::{ProjectBurnLeaderboardResponse, ProjectInfo, ProjectCreationData, BurnMemo, BURN_MEMO_VERSION, PROJECT_CREATION_DATA_VERSION, ProjectConfig};
+use crate::core::rpc_project::ProjectCreationData;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
-use web_sys::{HtmlInputElement, HtmlTextAreaElement, File, FileReader, Event, ProgressEvent, window};
+use web_sys::{HtmlInputElement, FileReader, Event, ProgressEvent, window};
 use wasm_bindgen::{closure::Closure, JsCast};
 use js_sys::Uint8Array;
 use std::rc::Rc;
@@ -1045,25 +1044,6 @@ fn CreateProjectForm(
             </form>
         </div>
     }
-}
-
-/// Format timestamp to human readable format
-fn format_timestamp(timestamp: i64) -> String {
-    if timestamp == 0 {
-        return "-".to_string();
-    }
-    
-    // Convert to JavaScript Date and format
-    let js_date = js_sys::Date::new(&wasm_bindgen::JsValue::from(timestamp as f64 * 1000.0));
-    let options = js_sys::Object::new();
-    js_sys::Reflect::set(&options, &"year".into(), &"numeric".into()).unwrap();
-    js_sys::Reflect::set(&options, &"month".into(), &"short".into()).unwrap();
-    js_sys::Reflect::set(&options, &"day".into(), &"numeric".into()).unwrap();
-    js_sys::Reflect::set(&options, &"hour".into(), &"2-digit".into()).unwrap();
-    js_sys::Reflect::set(&options, &"minute".into(), &"2-digit".into()).unwrap();
-    
-    let formatted = js_date.to_locale_string("en-US", &options);
-    formatted.as_string().unwrap_or_else(|| "Invalid Date".to_string())
 }
 
 /// Format number with comma separators

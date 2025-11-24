@@ -3,7 +3,6 @@ use flate2::write::DeflateEncoder;
 use flate2::read::DeflateDecoder;
 use base64::{encode, decode};
 use std::io::prelude::*;
-use rand::Rng;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Pixel {
@@ -120,7 +119,7 @@ impl Pixel {
         }
 
         if bit_count > 0 {
-            current_bits <<= (6 - bit_count);
+            current_bits <<= 6 - bit_count;
             result.push(Self::map_to_safe_char(current_bits));
         }
 
@@ -247,7 +246,7 @@ impl Pixel {
                     format!("n:{}x{}:{}", self.width, self.height, normal_string)
                 }
             }
-            Err(e) => {
+            Err(_e) => {
                 format!("n:{}x{}:{}", self.width, self.height, normal_string)
             }
         }
@@ -417,6 +416,7 @@ impl Default for Pixel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::Rng;
 
     #[test]
     fn test_safe_string_conversion() {

@@ -5,20 +5,16 @@ use web_sys::window;
 
 #[derive(Debug, Clone)]
 pub enum BackpackError {
-    NotInstalled,
     ConnectionFailed(String),
     SigningFailed(String),
-    NotConnected,
     JavaScriptError(String),
 }
 
 impl std::fmt::Display for BackpackError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            BackpackError::NotInstalled => write!(f, "Backpack wallet is not installed"),
             BackpackError::ConnectionFailed(msg) => write!(f, "Connection failed: {}", msg),
             BackpackError::SigningFailed(msg) => write!(f, "Signing failed: {}", msg),
-            BackpackError::NotConnected => write!(f, "Backpack wallet is not connected"),
             BackpackError::JavaScriptError(msg) => write!(f, "JavaScript error: {}", msg),
         }
     }
@@ -102,50 +98,6 @@ impl BackpackWallet {
         }
         
         Ok(())
-    }
-
-    /// Get the current connected public key
-    pub fn get_public_key() -> Result<Option<String>, BackpackError> {
-        let window = window().ok_or(BackpackError::JavaScriptError("No window object".to_string()))?;
-        
-        let wallet_obj = js_sys::Reflect::get(&window, &JsValue::from_str("BackpackWallet"))
-            .map_err(|e| BackpackError::JavaScriptError(format!("Failed to get BackpackWallet: {:?}", e)))?;
-        
-        let get_pubkey_func = js_sys::Reflect::get(&wallet_obj, &JsValue::from_str("getPublicKey"))
-            .map_err(|e| BackpackError::JavaScriptError(format!("Failed to get getPublicKey function: {:?}", e)))?;
-        
-        if !get_pubkey_func.is_function() {
-            return Ok(None);
-        }
-        
-        let func = js_sys::Function::from(get_pubkey_func);
-        let result = func.call0(&JsValue::NULL)
-            .map_err(|e| BackpackError::JavaScriptError(format!("{:?}", e)))?;
-        
-        Ok(result.as_string())
-    }
-
-    /// Check if Backpack wallet is currently connected
-    pub fn is_connected() -> bool {
-        window()
-            .and_then(|win| {
-                js_sys::Reflect::get(&win, &JsValue::from_str("BackpackWallet"))
-                    .ok()
-                    .and_then(|wallet_obj| {
-                        js_sys::Reflect::get(&wallet_obj, &JsValue::from_str("isConnected"))
-                            .ok()
-                            .and_then(|func| {
-                                if func.is_function() {
-                                    let func = js_sys::Function::from(func);
-                                    func.call0(&JsValue::NULL).ok()
-                                        .and_then(|result| result.as_bool())
-                                } else {
-                                    None
-                                }
-                            })
-                    })
-            })
-            .unwrap_or(false)
     }
 
     /// Sign a transaction with Backpack wallet

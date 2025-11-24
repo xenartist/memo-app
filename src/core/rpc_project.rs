@@ -1,5 +1,9 @@
-use super::rpc_base::{RpcConnection, RpcError};
+use super::rpc_base::{
+    RpcConnection, RpcError,
+    get_token_2022_program_id, validate_memo_length_bytes
+};
 use super::network_config::get_program_ids;
+use super::constants::*;
 use serde::{Serialize, Deserialize};
 use borsh::{BorshSerialize, BorshDeserialize};
 use std::str::FromStr;
@@ -16,16 +20,11 @@ use base64;
 use bincode;
 use spl_associated_token_account;
 
-/// Borsh serialization version constants for project operations
-pub const BURN_MEMO_VERSION: u8 = 1;
+/// Project creation data version
 pub const PROJECT_CREATION_DATA_VERSION: u8 = 1;
-pub const PROJECT_UPDATE_DATA_VERSION: u8 = 1;
 
-/// Borsh length constants (same as memo-chat)
-const BORSH_U8_SIZE: usize = 1;         // version (u8)
-const BORSH_U64_SIZE: usize = 8;        // burn_amount (u64)
-const BORSH_VEC_LENGTH_SIZE: usize = 4; // user_data.len() (u32)
-const BORSH_FIXED_OVERHEAD: usize = BORSH_U8_SIZE + BORSH_U64_SIZE + BORSH_VEC_LENGTH_SIZE;
+/// Project update data version
+pub const PROJECT_UPDATE_DATA_VERSION: u8 = 1;
 
 /// Memo-Project contract configuration and constants
 pub struct ProjectConfig;
@@ -47,15 +46,8 @@ impl ProjectConfig {
     /// Minimum burn amount for burning to project (420 tokens = 420,000,000 lamports)
     pub const MIN_PROJECT_BURN_AMOUNT: u64 = 420_000_000;
     
-    /// Memo validation limits (from contract: 69-800 bytes)
-    pub const MIN_MEMO_LENGTH: usize = 69;
-    pub const MAX_MEMO_LENGTH: usize = 800;
-    
-    /// Maximum payload length = memo maximum length - borsh fixed overhead
-    pub const MAX_PAYLOAD_LENGTH: usize = Self::MAX_MEMO_LENGTH - BORSH_FIXED_OVERHEAD; // 800 - 13 = 787
-    
-    /// Compute budget configuration
-    pub const COMPUTE_UNIT_BUFFER: f64 = 1.0; // 0% buffer - exact simulation
+    // Note: Memo validation limits, payload length, and compute unit config
+    // are now directly used from the constants module to avoid duplication
     
     /// Helper functions
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
@@ -71,12 +63,8 @@ impl ProjectConfig {
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-burn program ID: {}", e)))
     }
     
-    /// Get Token 2022 program ID
-    pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
-        let program_ids = get_program_ids();
-        Pubkey::from_str(program_ids.token_2022_program_id)
-            .map_err(|e| RpcError::InvalidAddress(format!("Invalid Token 2022 program ID: {}", e)))
-    }
+    // Note: get_token_2022_program_id() and validate_memo_length() 
+    // are now provided by rpc_base module to avoid duplication
     
     /// Get memo token mint
     pub fn get_memo_token_mint() -> Result<Pubkey, RpcError> {
@@ -142,23 +130,7 @@ impl ProjectConfig {
         discriminator
     }
     
-    /// Validate memo length for binary data
-    pub fn validate_memo_length(memo_data: &[u8]) -> Result<(), RpcError> {
-        let memo_len = memo_data.len();
-        if memo_len < Self::MIN_MEMO_LENGTH {
-            return Err(RpcError::InvalidParameter(format!(
-                "Memo too short: {} bytes (minimum: {})", 
-                memo_len, Self::MIN_MEMO_LENGTH
-            )));
-        }
-        if memo_len > Self::MAX_MEMO_LENGTH {
-            return Err(RpcError::InvalidParameter(format!(
-                "Memo too long: {} bytes (maximum: {})", 
-                memo_len, Self::MAX_MEMO_LENGTH
-            )));
-        }
-        Ok(())
-    }
+    // Note: validate_memo_length() is now provided by rpc_base module
     
     /// Calculate user global burn stats PDA (from memo-burn program)
     pub fn get_user_global_burn_stats_pda(user_pubkey: &Pubkey) -> Result<(Pubkey, u8), RpcError> {
@@ -341,7 +313,7 @@ impl ProjectCreationData {
     /// Check if the final memo size is within valid limits (69-800 bytes)
     pub fn is_valid_memo_size(&self, burn_amount: u64) -> Result<bool, String> {
         let final_size = self.calculate_final_memo_size(burn_amount)?;
-        Ok(final_size >= ProjectConfig::MIN_MEMO_LENGTH && final_size <= ProjectConfig::MAX_MEMO_LENGTH)
+        Ok(final_size >= MIN_MEMO_LENGTH && final_size <= MAX_MEMO_LENGTH)
     }
 }
 
@@ -721,7 +693,7 @@ impl RpcConnection {
         
         let project_program_id = ProjectConfig::get_program_id()?;
         let memo_token_mint = ProjectConfig::get_memo_token_mint()?;
-        let token_2022_program_id = ProjectConfig::get_token_2022_program_id()?;
+        let token_2022_program_id = get_token_2022_program_id()?;
         let memo_burn_program_id = ProjectConfig::get_memo_burn_program_id()?;
         
         let (global_counter_pda, _) = ProjectConfig::get_global_counter_pda()?;
@@ -748,7 +720,7 @@ impl RpcConnection {
             .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo: {}", e)))?;
         let memo_data_base64 = base64::encode(&memo_data_bytes);
         
-        ProjectConfig::validate_memo_length(memo_data_base64.as_bytes())?;
+        validate_memo_length_bytes(memo_data_base64.as_bytes())?;
         
         // Build base instructions (without compute budget)
         let mut base_instructions = vec![];
@@ -826,7 +798,7 @@ impl RpcConnection {
         // Add compute budget instructions using unified method
         let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
             simulated_cu,
-            ProjectConfig::COMPUTE_UNIT_BUFFER
+            COMPUTE_UNIT_BUFFER
         );
         final_instructions.extend(compute_budget_ixs);
         
@@ -891,7 +863,7 @@ impl RpcConnection {
         
         let project_program_id = ProjectConfig::get_program_id()?;
         let memo_token_mint = ProjectConfig::get_memo_token_mint()?;
-        let token_2022_program_id = ProjectConfig::get_token_2022_program_id()?;
+        let token_2022_program_id = get_token_2022_program_id()?;
         let memo_burn_program_id = ProjectConfig::get_memo_burn_program_id()?;
         
         let (project_pda, _) = ProjectConfig::get_project_pda(project_id)?;
@@ -914,7 +886,7 @@ impl RpcConnection {
             .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo: {}", e)))?;
         let memo_data_base64 = base64::encode(&memo_data_bytes);
         
-        ProjectConfig::validate_memo_length(memo_data_base64.as_bytes())?;
+        validate_memo_length_bytes(memo_data_base64.as_bytes())?;
         
         // Build base instructions (without compute budget)
         let mut base_instructions = vec![];
@@ -990,7 +962,7 @@ impl RpcConnection {
         // Add compute budget instructions using unified method
         let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
             simulated_cu,
-            ProjectConfig::COMPUTE_UNIT_BUFFER
+            COMPUTE_UNIT_BUFFER
         );
         final_instructions.extend(compute_budget_ixs);
         
@@ -1035,7 +1007,7 @@ impl RpcConnection {
         
         let project_program_id = ProjectConfig::get_program_id()?;
         let memo_token_mint = ProjectConfig::get_memo_token_mint()?;
-        let token_2022_program_id = ProjectConfig::get_token_2022_program_id()?;
+        let token_2022_program_id = get_token_2022_program_id()?;
         let memo_burn_program_id = ProjectConfig::get_memo_burn_program_id()?;
         
         let (project_pda, _) = ProjectConfig::get_project_pda(project_id)?;
@@ -1061,7 +1033,7 @@ impl RpcConnection {
             .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo: {}", e)))?;
         let memo_data_base64 = base64::encode(&memo_data_bytes);
         
-        ProjectConfig::validate_memo_length(memo_data_base64.as_bytes())?;
+        validate_memo_length_bytes(memo_data_base64.as_bytes())?;
         
         // Build base instructions (without compute budget)
         let mut base_instructions = vec![];
@@ -1137,7 +1109,7 @@ impl RpcConnection {
         // Add compute budget instructions using unified method
         let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
             simulated_cu,
-            ProjectConfig::COMPUTE_UNIT_BUFFER
+            COMPUTE_UNIT_BUFFER
         );
         final_instructions.extend(compute_budget_ixs);
         

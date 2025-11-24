@@ -1,7 +1,5 @@
-use super::rpc_base::{RpcConnection, RpcError};
-use super::rpc_mint::MintConfig;
+use super::rpc_base::{RpcConnection, RpcError, get_token_mint};
 use solana_sdk::{
-    instruction::{AccountMeta, Instruction},
     message::Message,
     pubkey::Pubkey,
     transaction::Transaction,
@@ -12,15 +10,6 @@ use spl_token_2022::instruction as token_instruction;
 use std::str::FromStr;
 use base64;
 use bincode;
-
-/// Transfer type enum
-#[derive(Debug, Clone, PartialEq)]
-pub enum TransferType {
-    /// Transfer native token (XNT/SOL)
-    Native,
-    /// Transfer SPL token (MEMO)
-    Token,
-}
 
 impl RpcConnection {
     /// Build a transfer transaction for native tokens (XNT/SOL)
@@ -133,7 +122,7 @@ impl RpcConnection {
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid recipient address: {}", e)))?;
         
         // Get token mint address
-        let token_mint = MintConfig::get_token_mint()
+        let token_mint = get_token_mint()
             .map_err(|e| RpcError::Other(format!("Failed to get token mint: {}", e)))?;
         
         // Get token program ID (Token-2022)

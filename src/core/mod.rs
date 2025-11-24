@@ -5,6 +5,7 @@ pub mod session;
 pub mod backpack;
 pub mod rpc_base;
 pub mod pixel;
+pub mod constants;
 pub mod rpc_mint;
 pub mod rpc_chat;
 pub mod rpc_project;
@@ -14,4 +15,4 @@ pub mod rpc_transfer;
 pub mod settings;
 
 // Re-export commonly used network types
-pub use network_config::{NetworkType, get_network, initialize_network, clear_network};
+pub use network_config::{NetworkType, initialize_network};

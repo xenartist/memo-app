@@ -17,10 +17,10 @@ pub struct Wallet {
 #[derive(Debug)]
 pub enum WalletError {
     MnemonicGeneration,
-    SeedGeneration(String),
-    KeypairGeneration(String),
-    Encryption(String),
-    Storage(String),
+    SeedGeneration,
+    KeypairGeneration,
+    Encryption,
+    Storage,
 }
 
 // generate mnemonic
@@ -46,7 +46,7 @@ pub fn generate_seed_from_mnemonic(
     passphrase: Option<&str>
 ) -> Result<[u8; 64], WalletError> {
     let mnemonic = Mnemonic::parse_in_normalized(Language::English, mnemonic)
-        .map_err(|_| WalletError::SeedGeneration("Invalid mnemonic".to_string()))?;
+        .map_err(|_| WalletError::SeedGeneration)?;
     
     let salt = format!("mnemonic{}", passphrase.unwrap_or(""));
     let mut seed = [0u8; 64];
@@ -75,10 +75,10 @@ pub fn derive_keypair_from_seed(
     path: &str,
 ) -> Result<(Keypair, String), WalletError> {
     let derivation_path = DerivationPath::from_absolute_path_str(path)
-        .map_err(|_| WalletError::KeypairGeneration("Invalid derivation path".to_string()))?;
+        .map_err(|_| WalletError::KeypairGeneration)?;
     
     let keypair = keypair_from_seed_and_derivation_path(seed, Some(derivation_path))
-        .map_err(|_| WalletError::KeypairGeneration("Failed to derive keypair".to_string()))?;
+        .map_err(|_| WalletError::KeypairGeneration)?;
     
     let pubkey = keypair.pubkey().to_string();
 
@@ -91,7 +91,7 @@ pub async fn store_encrypted_seed(
     password: &str,
 ) -> Result<(), WalletError> {
     let encrypted = crate::core::encrypt::encrypt(&hex::encode(seed), password)
-        .map_err(|e| WalletError::Encryption(e.to_string()))?;
+        .map_err(|_| WalletError::Encryption)?;
 
     let config = Wallet {
         encrypted_seed: encrypted,
@@ -100,14 +100,14 @@ pub async fn store_encrypted_seed(
     if let Some(window) = window() {
         let storage: Storage = window
             .local_storage()
-            .map_err(|_| WalletError::Storage("Failed to get localStorage".to_string()))?
-            .ok_or_else(|| WalletError::Storage("localStorage not available".to_string()))?;
+            .map_err(|_| WalletError::Storage)?
+            .ok_or_else(|| WalletError::Storage)?;
 
         let json = serde_json::to_string(&config)
-            .map_err(|e| WalletError::Storage(e.to_string()))?;
+            .map_err(|_| WalletError::Storage)?;
         
         storage.set_item("wallet", &json)
-            .map_err(|_| WalletError::Storage("Failed to store data".to_string()))?;
+            .map_err(|_| WalletError::Storage)?;
     }
 
     Ok(())
@@ -142,11 +142,11 @@ impl Wallet {
             if let Ok(Some(storage)) = window.local_storage() {
                 if let Ok(Some(json)) = storage.get_item("wallet") {
                     return serde_json::from_str(&json)
-                        .map_err(|e| WalletError::Storage(e.to_string()));
+                        .map_err(|_| WalletError::Storage);
                 }
             }
         }
-        Err(WalletError::Storage("Wallet not found".to_string()))
+        Err(WalletError::Storage)
     }
 
     // get encrypted seed from storage without loading the entire wallet
@@ -217,7 +217,7 @@ mod tests {
 
         // Test invalid mnemonic
         let result = generate_seed_from_mnemonic("invalid mnemonic", None);
-        assert!(matches!(result, Err(WalletError::SeedGeneration(_))));
+        assert!(matches!(result, Err(WalletError::SeedGeneration)));
     }
 
     #[test]
@@ -235,7 +235,7 @@ mod tests {
         // Test with invalid derivation path
         let invalid_path = "m/44'/0'/0'/0/";
         let result = derive_keypair_from_seed(&seed, invalid_path);
-        assert!(matches!(result, Err(WalletError::KeypairGeneration(_))));
+        assert!(matches!(result, Err(WalletError::KeypairGeneration)));
 
         // Test with different seeds produce different keypairs
         let seed2 = [2u8; 64];
@@ -262,17 +262,17 @@ mod tests {
     fn test_wallet_error_variants() {
         // Test error variants construction
         let mnemonic_err = WalletError::MnemonicGeneration;
-        let seed_err = WalletError::SeedGeneration("test error".to_string());
-        let keypair_err = WalletError::KeypairGeneration("test error".to_string());
-        let encryption_err = WalletError::Encryption("test error".to_string());
-        let storage_err = WalletError::Storage("test error".to_string());
+        let seed_err = WalletError::SeedGeneration;
+        let keypair_err = WalletError::KeypairGeneration;
+        let encryption_err = WalletError::Encryption;
+        let storage_err = WalletError::Storage;
 
         // Verify each error can be matched
         assert!(matches!(mnemonic_err, WalletError::MnemonicGeneration));
-        assert!(matches!(seed_err, WalletError::SeedGeneration(_)));
-        assert!(matches!(keypair_err, WalletError::KeypairGeneration(_)));
-        assert!(matches!(encryption_err, WalletError::Encryption(_)));
-        assert!(matches!(storage_err, WalletError::Storage(_)));
+        assert!(matches!(seed_err, WalletError::SeedGeneration));
+        assert!(matches!(keypair_err, WalletError::KeypairGeneration));
+        assert!(matches!(encryption_err, WalletError::Encryption));
+        assert!(matches!(storage_err, WalletError::Storage));
     }
 
     #[test]
@@ -316,12 +316,12 @@ mod tests {
         // Test error handling in the seed generation flow
         let invalid_mnemonic = "invalid mnemonic";
         let seed_result = generate_seed_from_mnemonic(invalid_mnemonic, None);
-        assert!(matches!(seed_result, Err(WalletError::SeedGeneration(_))));
+        assert!(matches!(seed_result, Err(WalletError::SeedGeneration)));
 
         // Test error handling in the keypair derivation flow
         let seed = [0u8; 64];
         let invalid_path = "invalid/path";
         let keypair_result = derive_keypair_from_seed(&seed, invalid_path);
-        assert!(matches!(keypair_result, Err(WalletError::KeypairGeneration(_))));
+        assert!(matches!(keypair_result, Err(WalletError::KeypairGeneration)));
     }
 }

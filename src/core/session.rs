@@ -1,8 +1,7 @@
 use serde::{Serialize, Deserialize};
 use crate::core::encrypt;
 use crate::core::rpc_base::RpcConnection;
-use crate::core::rpc_mint::MintConfig;
-use crate::core::rpc_profile::{UserProfile, parse_user_profile_new};
+use crate::core::rpc_profile::UserProfile;
 use crate::core::rpc_project::{ProjectInfo, ProjectStatistics, ProjectBurnLeaderboardResponse};
 use crate::core::rpc_burn::{UserGlobalBurnStats};
 use crate::core::network_config::{NetworkType, clear_network};
@@ -153,11 +152,6 @@ impl Session {
         self.network
     }
     
-    /// Check if session has network set
-    pub fn has_network(&self) -> bool {
-        self.network.is_some()
-    }
-    
     /// Logout and clear session
     pub fn logout(&mut self) {
         // Check if Backpack wallet BEFORE clearing wallet_type
@@ -216,7 +210,7 @@ impl Session {
         let (_, pubkey) = crate::core::wallet::derive_keypair_from_seed(
             &seed,
             crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::Encryption("Failed to derive keypair".to_string()))?;
+        ).map_err(|_| SessionError::Encryption("Failed to derive keypair".to_string()))?;
 
         // save session info (Internal wallet)
         self.wallet_type = WalletType::Internal;
@@ -292,22 +286,12 @@ impl Session {
         }
     }
 
-    // check if operation needs additional password confirmation
-    pub fn needs_confirmation(&self, amount: u64) -> bool {
-        amount >= self.config.confirm_threshold
-    }
-
     // verify password (for operations that need confirmation)
     pub fn verify_password(&self, password: &str, original_encrypted_seed: &str) -> Result<bool, SessionError> {
         // try to decrypt original encrypted seed
         encrypt::decrypt(original_encrypted_seed, password)
             .map(|_| true)
             .map_err(|_| SessionError::InvalidPassword)
-    }
-
-    // refresh session time
-    pub fn refresh(&mut self) {
-        self.start_time = Date::now();
     }
 
     // clear session data
@@ -322,11 +306,6 @@ impl Session {
         self.balance_update_needed = false;
         self.ui_locked = false;
         self.user_burn_stats = None;
-    }
-
-    // update config
-    pub fn update_config(&mut self, config: SessionConfig) {
-        self.config = config;
     }
 
     // get public key
@@ -355,11 +334,6 @@ impl Session {
             Ok(false) => Err(SessionError::InvalidPassword),
             Err(e) => Err(e),
         }
-    }
-
-    // check if UI is locked
-    pub fn can_access_ui(&self) -> bool {
-        !self.ui_locked
     }
 
     // get user profile
@@ -391,7 +365,7 @@ impl Session {
         let (_, pubkey) = crate::core::wallet::derive_keypair_from_seed(
             &seed,
             crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::Encryption("Failed to derive keypair".to_string()))?;
+        ).map_err(|_| SessionError::Encryption("Failed to derive keypair".to_string()))?;
 
         // save session info
         self.session_key = Some(session_key);
@@ -568,7 +542,7 @@ impl Session {
         let (keypair, _) = crate::core::wallet::derive_keypair_from_seed(
             &seed_array,
             crate::core::wallet::get_default_derivation_path()
-        ).map_err(|e| SessionError::Encryption("Failed to derive keypair".to_string()))?;
+        ).map_err(|_| SessionError::Encryption("Failed to derive keypair".to_string()))?;
 
         Ok(keypair.to_bytes().to_vec())
     }
@@ -739,7 +713,7 @@ impl Session {
         let rpc = RpcConnection::new();
         
         // Get token balance using dynamic token mint
-        let token_mint = MintConfig::get_token_mint()
+        let token_mint = crate::core::rpc_base::get_token_mint()
             .map_err(|e| SessionError::InvalidData(format!("Failed to get token mint: {}", e)))?;
         match rpc.get_token_balance(&pubkey, &token_mint.to_string()).await {
             Ok(token_result) => {
@@ -783,36 +757,6 @@ impl Session {
 
         self.balance_update_needed = false;
         Ok(())
-    }
-
-    // check if expiration is enabled
-    pub fn has_expiration(&self) -> bool {
-        self.config.timeout_minutes.is_some()
-    }
-
-    // get expiration time setting
-    pub fn get_timeout_minutes(&self) -> Option<u32> {
-        self.config.timeout_minutes
-    }
-
-    // set expiration time (None = never expire)
-    pub fn set_timeout(&mut self, timeout_minutes: Option<u32>) {
-        self.config.timeout_minutes = timeout_minutes;
-        // reset start time
-        self.start_time = Date::now();
-    }
-
-    // get session remaining time
-    pub fn get_remaining_time(&self) -> Option<f64> {
-        match self.config.timeout_minutes {
-            None => None, // never expire
-            Some(timeout_minutes) => {
-                let current_time = Date::now();
-                let elapsed_minutes = (current_time - self.start_time) / (60.0 * 1000.0);
-                let remaining = timeout_minutes as f64 - elapsed_minutes;
-                Some(remaining.max(0.0))
-            }
-        }
     }
 
     /// Send chat message to group - internal handle all key operations
@@ -1247,40 +1191,6 @@ impl Session {
         Ok(tx_hash)
     }
 
-    // burn tokens using memo-burn contract
-    pub async fn burn_tokens(&mut self, amount: u64, message: &str) -> Result<String, SessionError> {
-        if self.is_expired() {
-            return Err(SessionError::Expired);
-        }
-
-        // Check if burn stats are initialized, if not, initialize them first
-        if self.user_burn_stats.is_none() {
-            log::info!("Burn stats not initialized, initializing first...");
-            self.initialize_user_burn_stats().await?;
-        }
-
-        let rpc = RpcConnection::new();
-        let pubkey_str = self.get_public_key()?;
-        let pubkey = Pubkey::from_str(&pubkey_str)
-            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
-        
-        // Step 1: Build unsigned transaction
-        let mut transaction = rpc.build_burn_transaction(&pubkey, amount, message).await
-            .map_err(|e| SessionError::InvalidData(format!("Failed to build burn transaction: {}", e)))?;
-        
-        // Step 2: Sign in Session
-        self.sign_transaction(&mut transaction).await?;
-        
-        // Step 3: Send signed transaction
-        let tx_hash = rpc.send_signed_transaction(&transaction).await
-            .map_err(|e| SessionError::InvalidData(format!("Failed to send burn transaction: {}", e)))?;
-        
-        log::info!("Burn transaction sent: {}", tx_hash);
-        self.balance_update_needed = true;
-        let _ = self.fetch_and_cache_user_burn_stats().await;
-        Ok(tx_hash)
-    }
-
     // check if user has burn stats initialized
     pub fn has_burn_stats_initialized(&self) -> bool {
         self.user_burn_stats.is_some()
@@ -1388,18 +1298,3 @@ impl Drop for Session {
     }
 }
 
-// Legacy parse function for compatibility (now uses new profile system)
-pub fn parse_user_profile(account_data: &str) -> Result<UserProfile, SessionError> {
-    log::info!("Starting to parse user profile from account data using new format");
-    
-    match parse_user_profile_new(account_data) {
-        Ok(profile) => {
-            log::info!("Successfully parsed new format user profile");
-            Ok(profile)
-        },
-        Err(e) => {
-            log::error!("Failed to parse new format user profile: {}", e);
-            Err(SessionError::ProfileError(format!("Parse error: {}", e)))
-        }
-    }
-} 
