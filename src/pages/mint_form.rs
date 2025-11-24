@@ -96,10 +96,10 @@ pub fn MintForm(
     let (auto_count, set_auto_count) = create_signal(0); // 0 means infinite
     let (grid_size, set_grid_size) = create_signal(GridSize::Size32);
     let (pixel_art, set_pixel_art) = create_signal(Pixel::new_with_size(32));
-    let (is_minting, set_is_minting) = create_signal(false);
+    let (_is_minting, _set_is_minting) = create_signal(false);
     let (error_message, set_error_message) = create_signal(String::new());
     let (show_copied, set_show_copied) = create_signal(false);
-    let (minting_status, set_minting_status) = create_signal(String::new());
+    let (_minting_status, _set_minting_status) = create_signal(String::new());
     let (title_text, set_title_text) = create_signal(String::new());
     let (content_text, set_content_text) = create_signal(String::new());
     
@@ -804,7 +804,7 @@ pub fn MintForm(
                                         }}
                                     </span>
                                     {if total > 0 {
-                                        let percentage = if total > 0 { (current as f32 / total as f32 * 100.0) } else { 0.0 };
+                                        let percentage = if total > 0 { current as f32 / total as f32 * 100.0 } else { 0.0 };
                                         view! {
                                             <div class="progress-bar">
                                                 <div class="progress-fill" style=format!("width: {}%", percentage)></div>

@@ -1,5 +1,9 @@
-use super::rpc_base::{RpcConnection, RpcError};
+use super::rpc_base::{
+    RpcConnection, RpcError,
+    get_token_2022_program_id, validate_memo_length_bytes
+};
 use super::network_config::get_program_ids;
+use super::constants::*;
 use serde::{Serialize, Deserialize};
 use borsh::{BorshSerialize, BorshDeserialize};
 use std::str::FromStr;
@@ -17,15 +21,8 @@ use base64;
 use bincode;
 use spl_associated_token_account;
 
-/// Borsh serialization version constants
-pub const BURN_MEMO_VERSION: u8 = 1;
+/// Chat group creation data version
 pub const CHAT_GROUP_CREATION_DATA_VERSION: u8 = 1;
-
-/// Borsh length constants
-const BORSH_U8_SIZE: usize = 1;         // version (u8)
-const BORSH_U64_SIZE: usize = 8;        // burn_amount (u64)
-const BORSH_VEC_LENGTH_SIZE: usize = 4; // user_data.len() (u32)
-const BORSH_FIXED_OVERHEAD: usize = BORSH_U8_SIZE + BORSH_U64_SIZE + BORSH_VEC_LENGTH_SIZE;
 
 /// Memo-Chat contract configuration and constants
 pub struct ChatConfig;
@@ -41,15 +38,11 @@ impl ChatConfig {
     /// Minimum burn amount required to create a chat group (42,069 tokens = 42,069,000,000 lamports)
     pub const MIN_BURN_AMOUNT: u64 = 42_069_000_000;
     
-    /// Memo validation limits (from contract: 69-800 bytes)
-    pub const MIN_MEMO_LENGTH: usize = 69;
-    pub const MAX_MEMO_LENGTH: usize = 800;
+    /// Minimum burn amount for burning to a group (1 token = 1,000,000 lamports)
+    pub const MIN_GROUP_BURN_AMOUNT: u64 = 1_000_000;
     
-    /// Maximum payload length = memo maximum length - borsh fixed overhead
-    pub const MAX_PAYLOAD_LENGTH: usize = Self::MAX_MEMO_LENGTH - BORSH_FIXED_OVERHEAD; // 800 - 13 = 787
-    
-    /// Compute budget configuration
-    pub const COMPUTE_UNIT_BUFFER: f64 = 1.0; // 0% buffer - exact simulation
+    // Note: Memo validation limits, payload length, and compute unit config
+    // are now directly used from the constants module to avoid duplication
     
     /// Helper functions
     pub fn get_program_id() -> Result<Pubkey, RpcError> {
@@ -90,12 +83,8 @@ impl ChatConfig {
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo token mint: {}", e)))
     }
     
-    /// Helper to get Token 2022 program ID
-    pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
-        let program_ids = get_program_ids();
-        Pubkey::from_str(program_ids.token_2022_program_id)
-            .map_err(|e| RpcError::InvalidAddress(format!("Invalid Token 2022 program ID: {}", e)))
-    }
+    // Note: get_token_2022_program_id() and validate_memo_length() 
+    // are now provided by rpc_base module to avoid duplication
     
     /// Calculate mint authority PDA (from memo-mint program)
     pub fn get_mint_authority_pda() -> Result<(Pubkey, u8), RpcError> {
@@ -114,24 +103,6 @@ impl ChatConfig {
         let mut discriminator = [0u8; 8];
         discriminator.copy_from_slice(&result[..8]);
         discriminator
-    }
-    
-    /// Validate memo length for binary data
-    pub fn validate_memo_length(memo_data: &[u8]) -> Result<(), RpcError> {
-        let memo_len = memo_data.len();
-        if memo_len < Self::MIN_MEMO_LENGTH {
-            return Err(RpcError::InvalidParameter(format!(
-                "Memo too short: {} bytes (minimum: {})", 
-                memo_len, Self::MIN_MEMO_LENGTH
-            )));
-        }
-        if memo_len > Self::MAX_MEMO_LENGTH {
-            return Err(RpcError::InvalidParameter(format!(
-                "Memo too long: {} bytes (maximum: {})", 
-                memo_len, Self::MAX_MEMO_LENGTH
-            )));
-        }
-        Ok(())
     }
 
     /// Get create_chat_group instruction discriminator
@@ -516,7 +487,6 @@ pub enum MessageStatus {
 #[derive(Debug)]
 pub enum ChatError {
     Rpc(RpcError),
-    Timeout,
 }
 
 impl From<RpcError> for ChatError {
@@ -529,14 +499,7 @@ impl std::fmt::Display for ChatError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ChatError::Rpc(e) => write!(f, "RPC Error: {}", e),
-            ChatError::Timeout => write!(f, "Request timeout"),
         }
-    }
-}
-
-impl ChatError {
-    pub fn is_timeout(&self) -> bool {
-        matches!(self, ChatError::Timeout)
     }
 }
 
@@ -593,12 +556,6 @@ impl LocalChatMessage {
             is_local: false,
         }
     }
-    
-    /// Update status
-    pub fn with_status(mut self, status: MessageStatus) -> Self {
-        self.status = status;
-        self
-    }
 }
 
 impl RpcConnection {
@@ -624,7 +581,7 @@ impl RpcConnection {
         let chat_program_id = ChatConfig::get_program_id()?;
         let memo_mint_program_id = ChatConfig::get_memo_mint_program_id()?;
         let memo_token_mint = ChatConfig::get_memo_token_mint()?;
-        let token_2022_program_id = ChatConfig::get_token_2022_program_id()?;
+        let token_2022_program_id = get_token_2022_program_id()?;
         
         let (chat_group_pda, _) = ChatConfig::get_chat_group_pda(group_id)?;
         let (mint_authority_pda, _) = ChatConfig::get_mint_authority_pda()?;
@@ -655,7 +612,7 @@ impl RpcConnection {
             .map_err(|e| RpcError::Other(format!("Failed to serialize chat message data: {}", e)))?;
         let memo_data_base64 = base64::encode(&memo_data_bytes);
         
-        ChatConfig::validate_memo_length(memo_data_base64.as_bytes())?;
+        validate_memo_length_bytes(memo_data_base64.as_bytes())?;
         
         // Build base instructions (without compute budget)
         let mut base_instructions = vec![];
@@ -747,7 +704,7 @@ impl RpcConnection {
         // Add compute budget instructions using unified method
         let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
             simulated_cu,
-            ChatConfig::COMPUTE_UNIT_BUFFER
+            COMPUTE_UNIT_BUFFER
         );
         final_instructions.extend(compute_budget_ixs);
         
@@ -791,7 +748,7 @@ impl RpcConnection {
         
         let chat_program_id = ChatConfig::get_program_id()?;
         let memo_token_mint = ChatConfig::get_memo_token_mint()?;
-        let token_2022_program_id = ChatConfig::get_token_2022_program_id()?;
+        let token_2022_program_id = get_token_2022_program_id()?;
         let memo_burn_program_id = ChatConfig::get_memo_burn_program_id()?;
         
         let (global_counter_pda, _) = ChatConfig::get_global_counter_pda()?;
@@ -823,7 +780,7 @@ impl RpcConnection {
             .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo: {}", e)))?;
         let memo_data_base64 = base64::encode(&memo_data_bytes);
         
-        ChatConfig::validate_memo_length(memo_data_base64.as_bytes())?;
+        validate_memo_length_bytes(memo_data_base64.as_bytes())?;
         
         // Build base instructions (without compute budget)
         let mut base_instructions = vec![];
@@ -905,7 +862,7 @@ impl RpcConnection {
         // Add compute budget instructions using unified method
         let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
             simulated_cu,
-            ChatConfig::COMPUTE_UNIT_BUFFER
+            COMPUTE_UNIT_BUFFER
         );
         final_instructions.extend(compute_budget_ixs);
         
@@ -925,8 +882,11 @@ impl RpcConnection {
         message: &str,
     ) -> Result<Transaction, RpcError> {
         // Basic parameter validation
-        if amount < 1_000_000 {
-            return Err(RpcError::InvalidParameter("Burn amount must be at least 1 MEMO token".to_string()));
+        if amount < ChatConfig::MIN_GROUP_BURN_AMOUNT {
+            return Err(RpcError::InvalidParameter(format!(
+                "Burn amount must be at least {} MEMO token(s)", 
+                ChatConfig::MIN_GROUP_BURN_AMOUNT / 1_000_000
+            )));
         }
         if amount % 1_000_000 != 0 {
             return Err(RpcError::InvalidParameter("Burn amount must be a whole number of tokens".to_string()));
@@ -939,7 +899,7 @@ impl RpcConnection {
         
         let chat_program_id = ChatConfig::get_program_id()?;
         let memo_token_mint = ChatConfig::get_memo_token_mint()?;
-        let token_2022_program_id = ChatConfig::get_token_2022_program_id()?;
+        let token_2022_program_id = get_token_2022_program_id()?;
         let memo_burn_program_id = ChatConfig::get_memo_burn_program_id()?;
         
         let (chat_group_pda, _) = ChatConfig::get_chat_group_pda(group_id)?;
@@ -972,7 +932,7 @@ impl RpcConnection {
             .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo: {}", e)))?;
         let memo_data_base64 = base64::encode(&memo_data_bytes);
         
-        ChatConfig::validate_memo_length(memo_data_base64.as_bytes())?;
+        validate_memo_length_bytes(memo_data_base64.as_bytes())?;
         
         // Build base instructions (without compute budget)
         let mut base_instructions = vec![];
@@ -1052,7 +1012,7 @@ impl RpcConnection {
         // Add compute budget instructions using unified method
         let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
             simulated_cu,
-            ChatConfig::COMPUTE_UNIT_BUFFER
+            COMPUTE_UNIT_BUFFER
         );
         final_instructions.extend(compute_budget_ixs);
         
@@ -1600,7 +1560,7 @@ impl RpcConnection {
         let chat_program_id = ChatConfig::get_program_id()?;
         let memo_mint_program_id = ChatConfig::get_memo_mint_program_id()?;
         let memo_token_mint = ChatConfig::get_memo_token_mint()?;
-        let token_2022_program_id = ChatConfig::get_token_2022_program_id()?;
+        let token_2022_program_id = get_token_2022_program_id()?;
         
         // Calculate chat group PDA
         let (chat_group_pda, _) = ChatConfig::get_chat_group_pda(group_id)?;
@@ -1648,7 +1608,7 @@ impl RpcConnection {
                   memo_data_bytes.len(), memo_data_base64.len());
 
         // Validate memo length (now Base64 string length)
-        ChatConfig::validate_memo_length(memo_data_base64.as_bytes())?;
+        validate_memo_length_bytes(memo_data_base64.as_bytes())?;
         
         // Build base instructions (for simulation first)
         let mut base_instructions = vec![];
@@ -1794,7 +1754,7 @@ impl RpcConnection {
         // Add compute budget instructions using unified method
         let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
             simulated_cu,
-            ChatConfig::COMPUTE_UNIT_BUFFER
+            COMPUTE_UNIT_BUFFER
         );
         final_instructions.extend(compute_budget_ixs);
         
@@ -2033,12 +1993,6 @@ impl ChatGroupCreationData {
         
         Ok(memo_data_base64.len())
     }
-    
-    /// Check if the final memo size is within valid limits (69-800 bytes)
-    pub fn is_valid_memo_size(&self, burn_amount: u64) -> Result<bool, String> {
-        let final_size = self.calculate_final_memo_size(burn_amount)?;
-        Ok(final_size >= ChatConfig::MIN_MEMO_LENGTH && final_size <= ChatConfig::MAX_MEMO_LENGTH)
-    }
 }
 
 /// leaderboard entry
@@ -2054,29 +2008,4 @@ pub struct LeaderboardEntry {
 pub struct BurnLeaderboardResponse {
     pub entries: Vec<LeaderboardEntry>,
     pub total_burned_tokens: u64, // total burned amount of all leaderboard entries
-}
-
-// Chat page view mode
-#[derive(Clone, PartialEq)]
-enum ChatView {
-    GroupsList,
-    ChatRoom(u64), // group_id
-}
-
-// Chat groups display mode
-#[derive(Clone, PartialEq, Debug)]
-enum GroupsDisplayMode {
-    BurnLeaderboard,
-    Latest,
-    Oldest,
-}
-
-impl ToString for GroupsDisplayMode {
-    fn to_string(&self) -> String {
-        match self {
-            GroupsDisplayMode::BurnLeaderboard => "Burn Leaderboard".to_string(),
-            GroupsDisplayMode::Latest => "Latest".to_string(),
-            GroupsDisplayMode::Oldest => "Oldest".to_string(),
-        }
-    }
 }

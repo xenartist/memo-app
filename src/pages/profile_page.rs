@@ -5,10 +5,9 @@ use crate::pages::pixel_view::{PixelView, LazyPixelView};
 use crate::core::pixel::Pixel;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::JsCast;
-use web_sys::{HtmlInputElement, File, FileReader, Event, ProgressEvent};
+use web_sys::{HtmlInputElement, FileReader, Event, ProgressEvent};
 use wasm_bindgen::closure::Closure;
 use js_sys::Uint8Array;
-use std::rc::Rc;
 
 #[component]
 pub fn ProfilePage(session: RwSignal<Session>) -> impl IntoView {

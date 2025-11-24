@@ -9,10 +9,12 @@ use js_sys::{Date, Math};
 use solana_sdk::transaction::Transaction;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::compute_budget::ComputeBudgetInstruction;
+use solana_sdk::pubkey::Pubkey;
 use base64;
 use bincode;
-use super::network_config::try_get_network_config;
+use super::network_config::{try_get_network_config, get_program_ids};
 use super::settings::load_current_network_settings;
+use super::constants::*;
 
 // error type
 #[derive(Debug, Deserialize)]
@@ -42,7 +44,10 @@ impl fmt::Display for RpcError {
 // define the rpc response error structure
 #[derive(Deserialize, Debug)]
 struct RpcResponseError {
+    // Note: Fields are used by serde for deserialization but not directly accessed
+    #[allow(dead_code)]
     code: i64,
+    #[allow(dead_code)]
     message: String,
 }
 
@@ -60,9 +65,14 @@ struct RpcRequest<T> {
 
 #[derive(Deserialize)]
 struct RpcResponse<T> {
+    // Note: Fields are used by serde for deserialization but not directly accessed
+    #[allow(dead_code)]
     jsonrpc: String,
+    #[allow(dead_code)]
     id: u64,
+    #[allow(dead_code)]
     result: T,
+    #[allow(dead_code)]
     #[serde(default)]
     error: Option<RpcResponseError>,
 }
@@ -111,16 +121,6 @@ impl RpcConnection {
             let index = (random_value * endpoints.len() as f64) as usize;
             endpoints[index.min(endpoints.len() - 1)].to_string()
         }
-    }
-
-    /// create a new connection instance, using the randomly selected endpoint (for retry etc.)
-    pub fn new_with_random_endpoint() -> Self {
-        Self::new()
-    }
-
-    /// get the current used endpoint
-    pub fn get_endpoint(&self) -> &str {
-        &self.endpoint
     }
 
     pub fn with_endpoint(endpoint: &str) -> Self {
@@ -203,7 +203,7 @@ impl RpcConnection {
             log::debug!("RPC request body: {}", request_body);
         }
 
-        let mut opts = RequestInit::new();
+        let opts = RequestInit::new();
         opts.set_method("POST");
         opts.set_mode(RequestMode::Cors);
         opts.set_body(&JsValue::from_str(&request_body));
@@ -328,15 +328,6 @@ impl RpcConnection {
 
     pub async fn get_balance(&self, pubkey: &str) -> Result<String, RpcError> {
         let result: serde_json::Value = self.send_request("getBalance", vec![pubkey]).await?;
-        Ok(result.to_string())
-    }
-
-    pub async fn send_transaction(&self, serialized_tx: &str) -> Result<String, RpcError> {
-        self.send_request("sendTransaction", vec![serialized_tx]).await
-    }
-
-    pub async fn get_transaction_status(&self, signature: &str) -> Result<String, RpcError> {
-        let result: serde_json::Value = self.send_request("getSignatureStatuses", vec![vec![signature]]).await?;
         Ok(result.to_string())
     }
 
@@ -494,21 +485,6 @@ impl RpcConnection {
         instructions
     }
 
-    /// interface: get transaction details by signature
-    /// return full transaction information, including meta, transaction, etc.
-    pub async fn get_transaction_details(&self, signature: &str) -> Result<String, RpcError> {
-        let params = serde_json::json!([
-            signature,
-            {
-                "encoding": "json",
-                "maxSupportedTransactionVersion": 0
-            }
-        ]);
-        
-        let result: serde_json::Value = self.send_request("getTransaction", params).await?;
-        Ok(result.to_string())
-    }
-
     /// interface: get signatures for address
     /// returns confirmed transaction signatures that include the given address
     pub async fn get_signatures_for_address(&self, address: &str, options: Option<serde_json::Value>) -> Result<String, RpcError> {
@@ -573,4 +549,48 @@ impl Default for RpcConnection {
     fn default() -> Self {
         Self::new()
     }
-} 
+}
+
+// ============================================================================
+// Shared Helper Functions
+// ============================================================================
+// These functions are commonly used across multiple RPC modules
+
+/// Get the token mint address from network configuration
+pub fn get_token_mint() -> Result<Pubkey, RpcError> {
+    let program_ids = get_program_ids();
+    Pubkey::from_str(program_ids.token_mint)
+        .map_err(|e| RpcError::InvalidAddress(format!("Invalid token mint: {}", e)))
+}
+
+/// Get the Token 2022 program ID from network configuration
+pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
+    let program_ids = get_program_ids();
+    Pubkey::from_str(program_ids.token_2022_program_id)
+        .map_err(|e| RpcError::InvalidAddress(format!("Invalid Token 2022 program ID: {}", e)))
+}
+
+/// Validate memo string length (for &str input)
+pub fn validate_memo_length_str(memo: &str) -> Result<(), RpcError> {
+    let len = memo.len();
+    if len < MIN_MEMO_LENGTH {
+        return Err(RpcError::Other(format!("Memo too short: {} bytes (min: {})", len, MIN_MEMO_LENGTH)));
+    }
+    if len > MAX_MEMO_LENGTH {
+        return Err(RpcError::Other(format!("Memo too long: {} bytes (max: {})", len, MAX_MEMO_LENGTH)));
+    }
+    Ok(())
+}
+
+/// Validate memo data length (for &[u8] input)
+pub fn validate_memo_length_bytes(memo_data: &[u8]) -> Result<(), RpcError> {
+    let len = memo_data.len();
+    if len < MIN_MEMO_LENGTH {
+        return Err(RpcError::Other(format!("Memo data too short: {} bytes (min: {})", len, MIN_MEMO_LENGTH)));
+    }
+    if len > MAX_MEMO_LENGTH {
+        return Err(RpcError::Other(format!("Memo data too long: {} bytes (max: {})", len, MAX_MEMO_LENGTH)));
+    }
+    Ok(())
+}
+ 

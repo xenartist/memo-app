@@ -24,7 +24,6 @@ struct AirdropRequest {
 #[derive(Deserialize)]
 struct AirdropResponse {
     signature: String,
-    message: String,
 }
 
 #[derive(Deserialize)]

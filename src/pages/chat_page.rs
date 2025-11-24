@@ -3,15 +3,14 @@ use leptos::html::Div;
 use wasm_bindgen::JsCast;
 use crate::core::session::Session;
 use crate::core::rpc_base::RpcConnection;
-use crate::core::rpc_chat::{ChatStatistics, ChatGroupInfo, ChatMessage, ChatMessagesResponse, LocalChatMessage, MessageStatus, BurnLeaderboardResponse, LeaderboardEntry};
+use crate::core::rpc_chat::{ChatStatistics, ChatGroupInfo, LocalChatMessage, MessageStatus, BurnLeaderboardResponse, LeaderboardEntry};
 use crate::core::rpc_profile::{UserDisplayInfo};
-use crate::core::rpc_mint::MintConfig;
 use crate::pages::log_view::add_log_entry;
 use crate::pages::pixel_view::{PixelView, LazyPixelView};
 use crate::core::pixel::Pixel;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
-use web_sys::{HtmlInputElement, File, FileReader, Event, ProgressEvent, window};
+use web_sys::{HtmlInputElement, FileReader, Event, ProgressEvent, window};
 use wasm_bindgen::{closure::Closure};
 use js_sys::Uint8Array;
 use std::rc::Rc;
@@ -716,7 +715,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     };
 
     // Helper function to extract fallback error messages
-    let extract_fallback_error_message = |error_str: &str| -> String {
+    let _extract_fallback_error_message = |error_str: &str| -> String {
         if error_str.contains("MemoTooFrequent") || error_str.contains("6009") {
             "Message sent too frequently. Please wait before sending another message.".to_string()
         } else if error_str.contains("timeout") {
@@ -1064,7 +1063,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
             let per_page = groups_per_page.get();
             let page = current_page.get();
             let start_idx = (page - 1) * per_page;
-            let end_idx = start_idx + per_page;
+            let _end_idx = start_idx + per_page;
             
             let total_groups = leaderboard.entries.len();
             let total_pages = (total_groups + per_page - 1) / per_page; // round up
@@ -1213,7 +1212,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     });
 
     // handle group info loaded callback
-    let handle_group_info_loaded = move |group_id: u64, group_info: ChatGroupInfo| {
+    let _handle_group_info_loaded = move |group_id: u64, group_info: ChatGroupInfo| {
         set_leaderboard_group_infos.update(|infos| {
             infos.insert(group_id, group_info);
         });
@@ -2155,8 +2154,7 @@ fn MessageItem(
                                                         </button>
                                                     </span>
                                                 }.into_view()
-                                            },
-                                            _ => view! { <div></div> }.into_view(),
+                                            }
                                         }
                                     }
                                 </div>

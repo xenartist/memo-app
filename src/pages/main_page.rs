@@ -11,10 +11,8 @@ use crate::pages::faucet_page::FaucetPage;
 use crate::pages::log_view::{LogView, add_log_entry};
 use crate::pages::pixel_view::LazyPixelView;
 
-use wasm_bindgen::prelude::*;
-use web_sys::{window, Navigator, Clipboard};
+use web_sys::window;
 use std::time::Duration;
-use serde_json;
 use gloo_timers::future::TimeoutFuture;
 
 // menu item enum
@@ -56,8 +54,8 @@ pub fn MainPage(
     let on_logout = store_value(on_logout);
     let on_lock_screen = store_value(on_lock_screen);
     
-    let (version_status, set_version_status) = create_signal(String::from("Testing RPC connection..."));
-    let (blockhash_status, set_blockhash_status) = create_signal(String::from("Getting latest blockhash..."));
+    let (_version_status, set_version_status) = create_signal(String::from("Testing RPC connection..."));
+    let (_blockhash_status, set_blockhash_status) = create_signal(String::from("Getting latest blockhash..."));
     
     let (show_copied, set_show_copied) = create_signal(false);
     
@@ -71,7 +69,7 @@ pub fn MainPage(
     let (has_shown_welcome, set_has_shown_welcome) = create_signal(false);
     
     // Force refresh signal to trigger UI updates
-    let (force_refresh, set_force_refresh) = create_signal(0u32);
+    let (_force_refresh, set_force_refresh) = create_signal(0u32);
     
     // Transfer dialog states
     let (show_transfer_dialog, set_show_transfer_dialog) = create_signal(false);
@@ -107,7 +105,7 @@ pub fn MainPage(
     };
     
     // get username from session
-    let profile_status = move || {
+    let _profile_status = move || {
         session.with(|s| {
             match s.get_user_profile() {
                 Some(profile) => {
@@ -228,7 +226,7 @@ pub fn MainPage(
     
     // test rpc connection
     spawn_local(async move {
-        let addr = session.get_untracked().get_public_key().unwrap_or_else(|_| "Not initialized".to_string());
+        let _addr = session.get_untracked().get_public_key().unwrap_or_else(|_| "Not initialized".to_string());
         
         add_log_entry("INFO", "Starting RPC connection tests");
         let rpc = RpcConnection::new();

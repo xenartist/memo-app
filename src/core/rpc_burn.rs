@@ -1,14 +1,14 @@
-use crate::core::rpc_base::{RpcConnection, RpcError};
+use crate::core::rpc_base::{
+    RpcConnection, RpcError
+};
 use crate::core::network_config::get_program_ids;
+use crate::core::constants::*;
 use solana_sdk::{
     pubkey::Pubkey,
     instruction::{Instruction, AccountMeta},
     message::Message,
     transaction::Transaction,
-    compute_budget::ComputeBudgetInstruction,
 };
-use spl_associated_token_account;
-use spl_memo;
 use borsh::{BorshSerialize, BorshDeserialize};
 use serde::{Serialize, Deserialize};
 use base64;
@@ -16,16 +16,6 @@ use std::str::FromStr;
 use log;
 use bincode;
 use sha2::{Sha256, Digest};
-use bs58;
-
-/// Borsh serialization version constants
-pub const BURN_MEMO_VERSION: u8 = 1;
-
-/// Borsh length constants
-const BORSH_U8_SIZE: usize = 1;         // version (u8)
-const BORSH_U64_SIZE: usize = 8;        // burn_amount (u64)
-const BORSH_VEC_LENGTH_SIZE: usize = 4; // payload.len() (u32)
-const BORSH_FIXED_OVERHEAD: usize = BORSH_U8_SIZE + BORSH_U64_SIZE + BORSH_VEC_LENGTH_SIZE;
 
 /// Memo-Burn contract configuration and constants
 pub struct BurnConfig;
@@ -33,22 +23,8 @@ pub struct BurnConfig;
 impl BurnConfig {
     // Note: Program IDs and token mint are now retrieved dynamically from network configuration
     
-    /// Minimum burn amount (1 token = 1,000,000 units)
-    pub const MIN_BURN_AMOUNT: u64 = 1_000_000;
-    
-    /// Maximum burn per transaction (1 trillion tokens)
-    pub const MAX_BURN_PER_TX: u64 = 1_000_000_000_000 * 1_000_000;
-    
-    /// Memo validation limits (from contract: 69-800 bytes)
-    pub const MIN_MEMO_LENGTH: usize = 69;
-    pub const MAX_MEMO_LENGTH: usize = 800;
-    
-    /// Maximum payload length = memo maximum length - borsh fixed overhead
-    pub const MAX_PAYLOAD_LENGTH: usize = Self::MAX_MEMO_LENGTH - BORSH_FIXED_OVERHEAD; // 800 - 13 = 787
-    
-    /// Compute budget configuration
-    pub const COMPUTE_UNIT_BUFFER: f64 = 1.0; // 0% buffer - exact simulation
-    pub const MIN_COMPUTE_UNITS: u64 = 300_000;
+    // Note: Memo validation limits, payload length, and compute unit config
+    // are now directly used from the constants module to avoid duplication
     
     /// PDA Seeds
     pub const USER_GLOBAL_BURN_STATS_SEED: &'static [u8] = b"user_global_burn_stats";
@@ -60,17 +36,8 @@ impl BurnConfig {
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo-burn program ID: {}", e)))
     }
     
-    pub fn get_token_mint() -> Result<Pubkey, RpcError> {
-        let program_ids = get_program_ids();
-        Pubkey::from_str(program_ids.token_mint)
-            .map_err(|e| RpcError::InvalidAddress(format!("Invalid token mint: {}", e)))
-    }
-    
-    pub fn get_token_2022_program_id() -> Result<Pubkey, RpcError> {
-        let program_ids = get_program_ids();
-        Pubkey::from_str(program_ids.token_2022_program_id)
-            .map_err(|e| RpcError::InvalidAddress(format!("Invalid Token 2022 program ID: {}", e)))
-    }
+    // Note: get_token_mint(), get_token_2022_program_id(), and validate_memo_length() 
+    // are now provided by rpc_base module to avoid duplication
     
     /// Calculate user global burn stats PDA
     pub fn get_user_global_burn_stats_pda(user_pubkey: &Pubkey) -> Result<(Pubkey, u8), RpcError> {
@@ -79,18 +46,6 @@ impl BurnConfig {
             &[Self::USER_GLOBAL_BURN_STATS_SEED, user_pubkey.as_ref()],
             &program_id
         ))
-    }
-    
-    /// Validate memo length
-    pub fn validate_memo_length(memo: &str) -> Result<(), RpcError> {
-        let len = memo.len();
-        if len < Self::MIN_MEMO_LENGTH {
-            return Err(RpcError::Other(format!("Memo too short: {} bytes (min: {})", len, Self::MIN_MEMO_LENGTH)));
-        }
-        if len > Self::MAX_MEMO_LENGTH {
-            return Err(RpcError::Other(format!("Memo too long: {} bytes (max: {})", len, Self::MAX_MEMO_LENGTH)));
-        }
-        Ok(())
     }
     
     /// Generate Anchor instruction discriminator using SHA256
@@ -169,7 +124,7 @@ impl RpcConnection {
             
             // Parse user pubkey (32 bytes)
             let user_bytes = &data[offset..offset + 32];
-            let user = Pubkey::new_from_array(user_bytes.try_into().unwrap());
+            let _user = Pubkey::new_from_array(user_bytes.try_into().unwrap());
             offset += 32;
             
             // Parse total_burned (8 bytes)
@@ -185,7 +140,7 @@ impl RpcConnection {
             offset += 8;
             
             // Parse bump (1 byte)
-            let bump = data[offset];
+            let _bump = data[offset];
             
             let stats = UserGlobalBurnStats {
                 total_burned,
@@ -200,124 +155,6 @@ impl RpcConnection {
         } else {
             Err(RpcError::Other("Failed to get account data".to_string()))
         }
-    }
-    
-    /// Build an unsigned transaction to burn tokens
-    pub async fn build_burn_transaction(
-        &self,
-        user_pubkey: &Pubkey,
-        amount: u64,
-        message: &str,
-    ) -> Result<Transaction, RpcError> {
-        let amount_units = amount * 1_000_000;
-        if amount_units < BurnConfig::MIN_BURN_AMOUNT {
-            return Err(RpcError::Other(format!(
-                "Burn amount too small. Must be at least {} tokens",
-                BurnConfig::MIN_BURN_AMOUNT / 1_000_000
-            )));
-        }
-        
-        if amount_units > BurnConfig::MAX_BURN_PER_TX {
-            return Err(RpcError::Other(format!(
-                "Burn amount too large. Maximum allowed: {} tokens",
-                BurnConfig::MAX_BURN_PER_TX / 1_000_000
-            )));
-        }
-        
-        log::info!("Building burn transaction: {} tokens for user: {}", amount, user_pubkey);
-        
-        let program_id = BurnConfig::get_program_id()?;
-        let mint = BurnConfig::get_token_mint()?;
-        let token_2022_program_id = BurnConfig::get_token_2022_program_id()?;
-        let (stats_pda, _) = BurnConfig::get_user_global_burn_stats_pda(user_pubkey)?;
-        let token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
-            user_pubkey, &mint, &token_2022_program_id,
-        );
-        
-        let burn_memo = BurnMemo {
-            version: BURN_MEMO_VERSION,
-            burn_amount: amount_units,
-            payload: message.as_bytes().to_vec(),
-        };
-        
-        let memo_data_bytes = burn_memo.try_to_vec()
-            .map_err(|e| RpcError::Other(format!("Failed to serialize burn memo: {}", e)))?;
-        let memo_data_base64 = base64::encode(&memo_data_bytes);
-        BurnConfig::validate_memo_length(&memo_data_base64)?;
-        
-        let memo_instruction = spl_memo::build_memo(memo_data_base64.as_bytes(), &[user_pubkey]);
-        
-        let discriminator = BurnConfig::get_instruction_discriminator("process_burn");
-        let mut instruction_data = discriminator.to_vec();
-        instruction_data.extend_from_slice(&amount_units.to_le_bytes());
-        
-        let burn_instruction = Instruction {
-            program_id,
-            accounts: vec![
-                AccountMeta::new(*user_pubkey, true),
-                AccountMeta::new(mint, false),
-                AccountMeta::new(token_account, false),
-                AccountMeta::new(stats_pda, false),
-                AccountMeta::new_readonly(token_2022_program_id, false),
-                AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false),
-            ],
-            data: instruction_data,
-        };
-        
-        let blockhash = self.get_latest_blockhash().await?;
-        
-        // Simulate with dummy compute budget instructions for accurate CU estimation
-        // Note: Keep same instruction order as final transaction (memo at index 0)
-        let mut sim_instructions = vec![memo_instruction.clone(), burn_instruction.clone()];
-        sim_instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(1_400_000u32));
-        
-        // If user has set a price, include it in simulation to match final transaction
-        if let Some(settings) = crate::core::settings::load_current_network_settings() {
-            if let Some(price) = settings.get_cu_price_micro_lamports() {
-                sim_instructions.push(ComputeBudgetInstruction::set_compute_unit_price(price));
-            }
-        }
-        let message = Message::new(&sim_instructions, Some(user_pubkey));
-        let mut sim_transaction = Transaction::new_unsigned(message);
-        sim_transaction.message.recent_blockhash = blockhash;
-        
-        let sim_serialized_tx = base64::encode(bincode::serialize(&sim_transaction)
-            .map_err(|e| RpcError::Other(format!("Failed to serialize simulation transaction: {}", e)))?);
-        
-        let sim_options = serde_json::json!({
-            "encoding": "base64",
-            "commitment": "confirmed",
-            "replaceRecentBlockhash": true,
-            "sigVerify": false
-        });
-        
-        let sim_result = self.simulate_transaction(&sim_serialized_tx, Some(sim_options)).await?;
-        let sim_result: serde_json::Value = serde_json::from_str(&sim_result)
-            .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
-        
-        let simulated_cu = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
-            std::cmp::max(units_consumed, BurnConfig::MIN_COMPUTE_UNITS)
-        } else {
-            400_000u64
-        };
-        
-        // Build final transaction: memo at index 0, then other instructions, compute budget at end
-        let mut final_instructions = vec![];
-        final_instructions.push(memo_instruction);
-        final_instructions.push(burn_instruction);
-        
-        // Add compute budget instructions using unified method
-        let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
-            simulated_cu,
-            BurnConfig::COMPUTE_UNIT_BUFFER
-        );
-        final_instructions.extend(compute_budget_ixs);
-        
-        let final_message = Message::new(&final_instructions, Some(user_pubkey));
-        let mut final_transaction = Transaction::new_unsigned(final_message);
-        final_transaction.message.recent_blockhash = blockhash;
-        
-        Ok(final_transaction)
     }
 
     /// Build an unsigned transaction to initialize burn stats
@@ -364,7 +201,7 @@ impl RpcConnection {
             .map_err(|e| RpcError::Other(format!("Failed to parse simulation result: {}", e)))?;
         
         let simulated_cu = if let Some(units_consumed) = sim_result["value"]["unitsConsumed"].as_u64() {
-            std::cmp::max(units_consumed, BurnConfig::MIN_COMPUTE_UNITS)
+            std::cmp::max(units_consumed, MIN_COMPUTE_UNITS)
         } else {
             300_000u64
         };
@@ -374,7 +211,7 @@ impl RpcConnection {
         // Add compute budget instructions using unified method
         let compute_budget_ixs = RpcConnection::build_compute_budget_instructions(
             simulated_cu,
-            BurnConfig::COMPUTE_UNIT_BUFFER
+            COMPUTE_UNIT_BUFFER
         );
         final_instructions.extend(compute_budget_ixs);
         final_instructions.push(instruction);
@@ -473,6 +310,7 @@ impl RpcConnection {
     /// 
     /// # Returns
     /// Result containing a vector of signature strings
+    #[allow(dead_code)]
     pub async fn get_latest_burn_signatures(&self, limit: usize) -> Result<Vec<String>, RpcError> {
         let program_id = BurnConfig::get_program_id()?;
         

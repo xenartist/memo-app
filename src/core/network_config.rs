@@ -97,16 +97,6 @@ impl NetworkConfig {
 }
 
 impl NetworkType {
-    /// Parse network type from string
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "testnet" | "test" => Some(NetworkType::Testnet),
-            "prod-staging" | "staging" => Some(NetworkType::ProdStaging),
-            "mainnet" | "main" | "prod" => Some(NetworkType::Mainnet),
-            _ => None,
-        }
-    }
-
     /// Convert to string representation
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -136,15 +126,6 @@ impl NetworkType {
             NetworkType::Testnet => "Development and testing environment",
             NetworkType::ProdStaging => "Final testing with mainnet contracts on testnet",
             NetworkType::Mainnet => "Production environment - real assets",
-        }
-    }
-
-    /// Get badge color class
-    pub fn badge_class(&self) -> &'static str {
-        match self {
-            NetworkType::Testnet => "network-badge-testnet",
-            NetworkType::ProdStaging => "network-badge-staging",
-            NetworkType::Mainnet => "network-badge-mainnet",
         }
     }
 }
@@ -193,11 +174,6 @@ impl NetworkState {
     fn get(&self) -> Option<NetworkType> {
         *self.current.read().unwrap()
     }
-
-    /// Check if network is initialized
-    fn is_initialized(&self) -> bool {
-        self.current.read().unwrap().is_some()
-    }
 }
 
 /// Global network state
@@ -222,11 +198,6 @@ pub fn get_network() -> Option<NetworkType> {
     NETWORK_STATE.get()
 }
 
-/// Check if network is initialized
-pub fn is_network_initialized() -> bool {
-    NETWORK_STATE.is_initialized()
-}
-
 /// Get network configuration for current network
 /// Panics if network not initialized - should only be called after login
 pub fn get_network_config() -> &'static NetworkConfig {
@@ -241,26 +212,7 @@ pub fn get_program_ids() -> &'static ProgramIds {
     &get_network_config().program_ids
 }
 
-/// Get RPC endpoints for current network
-/// Panics if network not initialized - should only be called after login
-pub fn get_rpc_endpoints() -> &'static [&'static str] {
-    get_network_config().rpc_endpoints
-}
-
 /// Try to get network config safely (returns None if not initialized)
 pub fn try_get_network_config() -> Option<&'static NetworkConfig> {
     get_network().map(NetworkConfig::for_network)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_network_types() {
-        assert_eq!(NetworkType::from_str("testnet"), Some(NetworkType::Testnet));
-        assert_eq!(NetworkType::from_str("prod-staging"), Some(NetworkType::ProdStaging));
-        assert_eq!(NetworkType::from_str("mainnet"), Some(NetworkType::Mainnet));
-    }
-}
-

@@ -1,6 +1,7 @@
 use leptos::*;
 use serde::{Serialize, Deserialize};
-use wasm_bindgen::prelude::*;
+use std::sync::RwLock;
+use once_cell::sync::Lazy;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LogEntry {
@@ -9,8 +10,8 @@ pub struct LogEntry {
     pub message: String,
 }
 
-// simple log storage
-static mut LOG_ENTRIES: Vec<LogEntry> = Vec::new();
+// simple log storage - thread-safe
+static LOG_ENTRIES: Lazy<RwLock<Vec<LogEntry>>> = Lazy::new(|| RwLock::new(Vec::new()));
 
 pub fn add_log_entry(level: &str, message: &str) {
     let timestamp = {
@@ -27,21 +28,23 @@ pub fn add_log_entry(level: &str, message: &str) {
         message: message.to_string(),
     };
     
-    unsafe {
-        LOG_ENTRIES.push(entry);
+    if let Ok(mut entries) = LOG_ENTRIES.write() {
+        entries.push(entry);
         // keep latest 100 logs
-        if LOG_ENTRIES.len() > 100 {
-            LOG_ENTRIES.remove(0);
+        if entries.len() > 100 {
+            entries.remove(0);
         }
     }
 }
 
 pub fn get_log_entries() -> Vec<LogEntry> {
-    unsafe { LOG_ENTRIES.clone() }
+    LOG_ENTRIES.read().map(|entries| entries.clone()).unwrap_or_default()
 }
 
 pub fn clear_logs() {
-    unsafe { LOG_ENTRIES.clear(); }
+    if let Ok(mut entries) = LOG_ENTRIES.write() {
+        entries.clear();
+    }
 }
 
 #[component]

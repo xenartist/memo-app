@@ -1,5 +1,4 @@
 use leptos::*;
-use crate::CreateWalletStep;
 use crate::core::session::Session;
 use crate::core::{NetworkType, initialize_network};
 use wasm_bindgen_futures::spawn_local;

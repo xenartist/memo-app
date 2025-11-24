@@ -1,7 +1,7 @@
 use leptos::*;
 use leptos::html::Canvas;
 use web_sys::{HtmlCanvasElement, CanvasRenderingContext2d, MouseEvent};
-use wasm_bindgen::{JsCast, JsValue};
+use wasm_bindgen::JsCast;
 use crate::core::pixel::Pixel;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
@@ -60,11 +60,11 @@ pub fn PixelView(
             context.clear_rect(0.0, 0.0, canvas_size, canvas_size);
             
             // draw white background
-            context.set_fill_style(&JsValue::from_str("white"));
+            context.set_fill_style_str("white");
             context.fill_rect(0.0, 0.0, canvas_size, canvas_size);
             
             // draw black pixels
-            context.set_fill_style(&JsValue::from_str("black"));
+            context.set_fill_style_str("black");
             for row in 0..rows {
                 for col in 0..cols {
                     if pixel.get_pixel(row, col) {
@@ -77,7 +77,7 @@ pub fn PixelView(
             
             // draw grid lines (if enabled and editable)
             if show_grid && editable {
-                context.set_stroke_style(&JsValue::from_str("#ddd"));
+                context.set_stroke_style_str("#ddd");
                 context.set_line_width(0.5);
                 
                 // vertical lines
@@ -148,7 +148,7 @@ pub fn PixelView(
             height=display_size
             class="pixel-grid"
             class:editable=editable
-            class:disabled=(!editable)
+            class:disabled=!editable
             style=format!(
                 "width: {}px; height: {}px; display: block;",
                 display_size, display_size
