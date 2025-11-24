@@ -11,15 +11,6 @@ use std::str::FromStr;
 use base64;
 use bincode;
 
-/// Transfer type enum
-#[derive(Debug, Clone, PartialEq)]
-pub enum TransferType {
-    /// Transfer native token (XNT/SOL)
-    Native,
-    /// Transfer SPL token (MEMO)
-    Token,
-}
-
 impl RpcConnection {
     /// Build a transfer transaction for native tokens (XNT/SOL)
     /// 

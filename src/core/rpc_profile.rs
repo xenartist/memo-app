@@ -163,52 +163,6 @@ impl ProfileUpdateData {
             about_me,
         }
     }
-    
-    /// Validate the structure fields
-    pub fn validate(&self, expected_user: Pubkey) -> Result<(), RpcError> {
-        // basic validation logic (similar to the validation in the contract)
-        if self.version != 1 {
-            return Err(RpcError::Other(format!("Unsupported profile update data version: {} (expected: 1)", self.version)));
-        }
-        
-        if self.category != "profile" {
-            return Err(RpcError::Other(format!("Invalid category: '{}' (expected: 'profile')", self.category)));
-        }
-        
-        if self.operation != "update_profile" {
-            return Err(RpcError::Other(format!("Invalid operation: '{}' (expected: 'update_profile')", self.operation)));
-        }
-        
-        let parsed_pubkey = Pubkey::from_str(&self.user_pubkey)
-            .map_err(|_| RpcError::Other(format!("Invalid user_pubkey format: {}", self.user_pubkey)))?;
-        
-        if parsed_pubkey != expected_user {
-            return Err(RpcError::Other(format!("User pubkey mismatch: {} vs expected {}", parsed_pubkey, expected_user)));
-        }
-        
-        // validate field length
-        if let Some(ref username) = self.username {
-            if username.is_empty() || username.len() > 32 {
-                return Err(RpcError::Other("Invalid username length".to_string()));
-            }
-        }
-        
-        if let Some(ref image) = self.image {
-            if image.len() > 256 {
-                return Err(RpcError::Other("Image too long".to_string()));
-            }
-        }
-        
-        if let Some(ref about_me_opt) = self.about_me {
-            if let Some(ref about_me_text) = about_me_opt {
-                if about_me_text.len() > 128 {
-                    return Err(RpcError::Other("About me too long".to_string()));
-                }
-            }
-        }
-        
-        Ok(())
-    }
 }
 
 /// Memo-Profile contract configuration and constants
@@ -770,84 +724,6 @@ impl RpcConnection {
         }
     }
 
-    /// get username by pubkey (lightweight interface for chat display)
-    pub async fn get_username_by_pubkey(&self, user_pubkey: &str) -> Result<Option<String>, RpcError> {
-        log::info!("Fetching username for user: {}", user_pubkey);
-        
-        match self.get_profile(user_pubkey).await? {
-            Some(profile) => Ok(Some(profile.username)),
-            None => Ok(None),
-        }
-    }
-
-    /// batch get profiles for multiple users (optimized for chat loading)
-    pub async fn get_profiles_batch(&self, user_pubkeys: &[&str]) -> Result<Vec<(String, Option<UserProfile>)>, RpcError> {
-        log::info!("Batch fetching profiles for {} users", user_pubkeys.len());
-        
-        let mut results = Vec::new();
-        
-        // Note: This is a simple sequential implementation
-        // For better performance, could be optimized with concurrent requests
-        for pubkey in user_pubkeys {
-            match self.get_profile(pubkey).await {
-                Ok(profile) => results.push((pubkey.to_string(), profile)),
-                Err(e) => {
-                    log::warn!("Failed to fetch profile for {}: {}", pubkey, e);
-                    results.push((pubkey.to_string(), None));
-                }
-            }
-        }
-        
-        Ok(results)
-    }
-
-    /// batch get usernames for multiple users (lightweight for chat display)
-    pub async fn get_usernames_batch(&self, user_pubkeys: &[&str]) -> Result<Vec<(String, Option<String>)>, RpcError> {
-        log::info!("Batch fetching usernames for {} users", user_pubkeys.len());
-        
-        let mut results = Vec::new();
-        
-        for pubkey in user_pubkeys {
-            match self.get_username_by_pubkey(pubkey).await {
-                Ok(username) => results.push((pubkey.to_string(), username)),
-                Err(e) => {
-                    log::warn!("Failed to fetch username for {}: {}", pubkey, e);
-                    results.push((pubkey.to_string(), None));
-                }
-            }
-        }
-        
-        Ok(results)
-    }
-
-    /// get user display info (pubkey + username + image) for chat display
-    pub async fn get_user_display_info(&self, user_pubkey: &str) -> Result<UserDisplayInfo, RpcError> {
-        // Try to get full profile
-        match self.get_profile(user_pubkey).await {
-            Ok(Some(profile)) => {
-                Ok(UserDisplayInfo {
-                    pubkey: user_pubkey.to_string(),
-                    username: profile.username,
-                    has_profile: true,
-                    image: profile.image,
-                })
-            },
-            _ => {
-                // No profile found, use default values
-                Ok(UserDisplayInfo {
-                    pubkey: user_pubkey.to_string(),
-                    username: if user_pubkey.len() > 8 {
-                        format!("{}...{}", &user_pubkey[..4], &user_pubkey[user_pubkey.len()-4..])
-                    } else {
-                        user_pubkey.to_string()
-                    },
-                    has_profile: false,
-                    image: String::new(), // Empty string for no avatar
-                })
-            }
-        }
-    }
-
     /// batch get user display info for chat
     pub async fn get_user_display_info_batch(&self, user_pubkeys: &[&str]) -> Result<Vec<UserDisplayInfo>, RpcError> {
         log::info!("Batch fetching display info for {} users", user_pubkeys.len());
@@ -892,11 +768,4 @@ pub struct UserDisplayInfo {
     pub username: String,
     pub has_profile: bool,
     pub image: String, // Profile image (hex string)
-}
-
-/// exported helper function for session use
-pub fn parse_user_profile_new(account_data: &str) -> Result<UserProfile, RpcError> {
-    // create a temporary RpcConnection instance to use the parsing method
-    let rpc = RpcConnection::new();
-    rpc.parse_profile_account(account_data)
 }

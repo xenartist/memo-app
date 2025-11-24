@@ -487,7 +487,6 @@ pub enum MessageStatus {
 #[derive(Debug)]
 pub enum ChatError {
     Rpc(RpcError),
-    Timeout,
 }
 
 impl From<RpcError> for ChatError {
@@ -500,14 +499,7 @@ impl std::fmt::Display for ChatError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ChatError::Rpc(e) => write!(f, "RPC Error: {}", e),
-            ChatError::Timeout => write!(f, "Request timeout"),
         }
-    }
-}
-
-impl ChatError {
-    pub fn is_timeout(&self) -> bool {
-        matches!(self, ChatError::Timeout)
     }
 }
 
@@ -563,12 +555,6 @@ impl LocalChatMessage {
             status: MessageStatus::Sent,
             is_local: false,
         }
-    }
-    
-    /// Update status
-    pub fn with_status(mut self, status: MessageStatus) -> Self {
-        self.status = status;
-        self
     }
 }
 
@@ -2007,12 +1993,6 @@ impl ChatGroupCreationData {
         
         Ok(memo_data_base64.len())
     }
-    
-    /// Check if the final memo size is within valid limits (69-800 bytes)
-    pub fn is_valid_memo_size(&self, burn_amount: u64) -> Result<bool, String> {
-        let final_size = self.calculate_final_memo_size(burn_amount)?;
-        Ok(final_size >= MIN_MEMO_LENGTH && final_size <= MAX_MEMO_LENGTH)
-    }
 }
 
 /// leaderboard entry
@@ -2028,29 +2008,4 @@ pub struct LeaderboardEntry {
 pub struct BurnLeaderboardResponse {
     pub entries: Vec<LeaderboardEntry>,
     pub total_burned_tokens: u64, // total burned amount of all leaderboard entries
-}
-
-// Chat page view mode
-#[derive(Clone, PartialEq)]
-enum ChatView {
-    GroupsList,
-    ChatRoom(u64), // group_id
-}
-
-// Chat groups display mode
-#[derive(Clone, PartialEq, Debug)]
-enum GroupsDisplayMode {
-    BurnLeaderboard,
-    Latest,
-    Oldest,
-}
-
-impl ToString for GroupsDisplayMode {
-    fn to_string(&self) -> String {
-        match self {
-            GroupsDisplayMode::BurnLeaderboard => "Burn Leaderboard".to_string(),
-            GroupsDisplayMode::Latest => "Latest".to_string(),
-            GroupsDisplayMode::Oldest => "Oldest".to_string(),
-        }
-    }
 }

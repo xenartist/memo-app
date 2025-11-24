@@ -1,7 +1,7 @@
 use serde::{Serialize, Deserialize};
 use crate::core::encrypt;
 use crate::core::rpc_base::RpcConnection;
-use crate::core::rpc_profile::{UserProfile, parse_user_profile_new};
+use crate::core::rpc_profile::UserProfile;
 use crate::core::rpc_project::{ProjectInfo, ProjectStatistics, ProjectBurnLeaderboardResponse};
 use crate::core::rpc_burn::{UserGlobalBurnStats};
 use crate::core::network_config::{NetworkType, clear_network};
@@ -334,11 +334,6 @@ impl Session {
             Ok(false) => Err(SessionError::InvalidPassword),
             Err(e) => Err(e),
         }
-    }
-
-    // check if UI is locked
-    pub fn can_access_ui(&self) -> bool {
-        !self.ui_locked
     }
 
     // get user profile
@@ -762,16 +757,6 @@ impl Session {
 
         self.balance_update_needed = false;
         Ok(())
-    }
-
-    // check if expiration is enabled
-    pub fn has_expiration(&self) -> bool {
-        self.config.timeout_minutes.is_some()
-    }
-
-    // get expiration time setting
-    pub fn get_timeout_minutes(&self) -> Option<u32> {
-        self.config.timeout_minutes
     }
 
     /// Send chat message to group - internal handle all key operations
