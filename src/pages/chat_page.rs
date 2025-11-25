@@ -96,10 +96,16 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         
         // Small delay to ensure DOM is updated
         spawn_local(async move {
-            TimeoutFuture::new(50).await;
+            TimeoutFuture::new(100).await;
             
             if let Some(messages_area) = messages_area_ref.get() {
-                messages_area.set_scroll_top(messages_area.scroll_height());
+                // Scroll to maximum position to show new messages above the input area
+                // scrollHeight - clientHeight gives the maximum scrollable position
+                // The 300px bottom padding ensures messages stay visible above the fixed input
+                let scroll_height = messages_area.scroll_height();
+                let client_height = messages_area.client_height();
+                let max_scroll = scroll_height - client_height;
+                messages_area.set_scroll_top(max_scroll);
             }
         });
     });
