@@ -380,7 +380,7 @@
     transform: translateX(-50%); /* Center horizontally */
     z-index: 100;
     width: calc(100% - 240px); /* Account for sidebar width */
-    max-width: 800px; /* Match messages-area width */
+    max-width: 1200px; /* Match messages-area width */
 }
 
 /* Error message in chat room - position at top of content area */
@@ -435,7 +435,7 @@
 
 .messages-area {
     padding: 20px;
-    padding-bottom: 300px; /* Extra padding at bottom to prevent messages from being covered by input area */
+    padding-bottom: 450px; /* Extra padding at bottom to prevent messages from being covered by input area (increased to accommodate larger input panel with action selector) */
     background: #f8f9fa;
     min-height: 400px; /* Minimum height to ensure usability */
     /* Remove overflow-y: auto to allow natural expansion */
@@ -847,7 +847,7 @@
     
     .messages-area {
         padding: 15px;
-        padding-bottom: 320px; /* Extra padding at bottom for mobile */
+        padding-bottom: 470px; /* Extra padding at bottom for mobile (increased to accommodate larger input panel) */
     }
     
     .chat-container {
@@ -949,7 +949,7 @@
     
     .messages-area {
         padding: 12px;
-        padding-bottom: 340px; /* Extra padding at bottom for small screens */
+        padding-bottom: 490px; /* Extra padding at bottom for small screens (increased to accommodate larger input panel) */
     }
     
     .chat-container {
