@@ -6,8 +6,9 @@ use gloo_timers::future::TimeoutFuture;
 use web_sys::{HtmlInputElement, FileReader, Event, ProgressEvent, window};
 use wasm_bindgen::{closure::Closure, JsCast};
 use js_sys::Uint8Array;
+use wasm_bindgen::JsValue;
 use std::rc::Rc;
-use crate::pages::pixel_view::PixelView;
+use crate::pages::pixel_view::{PixelView, LazyPixelView};
 use crate::core::pixel::Pixel;
 
 /// Project row data for table display
@@ -16,6 +17,7 @@ struct ProjectRow {
     project_id: u64,
     name: String,
     description: String,
+    image: String,
     website: String,
     burned_amount: u64,
     last_memo_time: i64,
@@ -71,6 +73,7 @@ pub fn ProjectPage(
                                     project_id: entry.project_id,
                                     name: project_info.name,
                                     description: project_info.description,
+                                    image: project_info.image,
                                     website: project_info.website,
                                     burned_amount: entry.burned_amount,
                                     last_memo_time: project_info.last_memo_time,
@@ -375,7 +378,16 @@ pub fn ProjectPage(
     }
 }
 
-/// Project Details View component - placeholder for now
+/// Shorten address for display (e.g., "ABC123...XYZ9")
+fn shorten_address(addr: &str) -> String {
+    if addr.len() > 12 {
+        format!("{}...{}", &addr[..6], &addr[addr.len()-4..])
+    } else {
+        addr.to_string()
+    }
+}
+
+/// Project Details View component - displays project information in a clean card layout
 #[component]
 fn ProjectDetailsView(
     project: ProjectRow,
@@ -383,6 +395,9 @@ fn ProjectDetailsView(
     session: RwSignal<Session>,
 ) -> impl IntoView {
     let on_back_signal = create_rw_signal(Some(on_back));
+    
+    // Store project data for update dialog
+    let project_data = create_rw_signal(project.clone());
 
     let handle_back = move |_| {
         on_back_signal.with_untracked(|cb_opt| {
@@ -392,33 +407,948 @@ fn ProjectDetailsView(
         });
     };
 
+    // Format burned amount
+    let burned_tokens = project.burned_amount / 1_000_000;
+    let burned_display = format_number_with_commas(burned_tokens);
+    
+    // Format last memo time
+    let last_memo_display = if project.last_memo_time > 0 {
+        let date = web_sys::js_sys::Date::new(&JsValue::from_f64(project.last_memo_time as f64 * 1000.0));
+        format!(
+            "{}-{:02}-{:02} {:02}:{:02}",
+            date.get_full_year(),
+            date.get_month() + 1,
+            date.get_date(),
+            date.get_hours(),
+            date.get_minutes()
+        )
+    } else {
+        "Never".to_string()
+    };
+
+    // Check if current user is the creator
+    let creator_address = project.creator.clone();
+    let creator_address_for_check = creator_address.clone();
+    let is_creator = move || {
+        session.with(|s| {
+            match s.get_public_key() {
+                Ok(pubkey) => pubkey == creator_address_for_check,
+                Err(_) => false,
+            }
+        })
+    };
+    
+    // Update dialog state
+    let (show_update_dialog, set_show_update_dialog) = create_signal(false);
+    
+    // Creator display name - start with shortened address, then try to fetch username
+    let creator_addr_for_display = project.creator.clone();
+    let (creator_display, set_creator_display) = create_signal(shorten_address(&creator_addr_for_display));
+    let (creator_username, set_creator_username) = create_signal::<Option<String>>(None);
+    
+    // Fetch creator's profile to get username
+    {
+        let creator_addr = creator_addr_for_display.clone();
+        create_effect(move |_| {
+            let addr = creator_addr.clone();
+            spawn_local(async move {
+                let rpc = crate::core::rpc_base::RpcConnection::new();
+                match rpc.get_profile(&addr).await {
+                    Ok(Some(profile)) => {
+                        log::info!("Found creator profile: {}", profile.username);
+                        set_creator_display.set(profile.username.clone());
+                        set_creator_username.set(Some(profile.username));
+                    },
+                    Ok(None) => {
+                        log::info!("No profile found for creator: {}", addr);
+                    },
+                    Err(e) => {
+                        log::warn!("Failed to fetch creator profile: {}", e);
+                    }
+                }
+            });
+        });
+    }
+
+    // Copy address to clipboard
+    let copy_address = {
+        let address = project.creator.clone();
+        move |_| {
+            if let Some(window) = window() {
+                let clipboard = window.navigator().clipboard();
+                let _ = clipboard.write_text(&address);
+            }
+        }
+    };
+    
+    // Open update dialog
+    let open_update_dialog = move |_| {
+        set_show_update_dialog.set(true);
+    };
+    
+    // Close update dialog
+    let close_update_dialog = move || {
+        set_show_update_dialog.set(false);
+    };
+    
+    // Handle update success - refresh project data
+    let on_update_success = move |_signature: String| {
+        log::info!("Project updated successfully!");
+        set_show_update_dialog.set(false);
+        // Note: In a real app, we'd refresh the project data here
+    };
+
     view! {
-        <div class="project-details-view">
-            <div class="details-header">
+        <div class="project-details-page">
+            <div class="project-details-container">
+                // Back button
                 <button 
-                    class="back-button"
+                    class="pd-back-btn"
                     on:click=handle_back
                     title="Back to leaderboard"
                 >
                     <i class="fas fa-arrow-left"></i>
                     "Back to Projects"
                 </button>
-                <h1 class="project-title">{project.name.clone()}</h1>
-            </div>
-            
-            <div class="details-content">
-                <div class="placeholder-content">
-                    <div class="placeholder-text">
-                        <h2>
-                            <i class="fas fa-tools"></i>
-                            "Project Details"
-                        </h2>
-                        <p>"This is a placeholder for the project details page."</p>
-                        <p>"Project ID: " {project.project_id.to_string()}</p>
-                        <p>"More details will be implemented here later."</p>
+                
+                // Project Detail Card
+                <div class="project-detail-card">
+                    // Card Header with Image, Name, Rank and Update Button
+                    <div class="pd-card-header">
+                        <div class="pd-header-content">
+                            // Project Image
+                            {if !project.image.is_empty() {
+                                if project.image.starts_with("c:") || project.image.starts_with("n:") {
+                                    view! {
+                                        <div class="pd-project-avatar">
+                                            <LazyPixelView
+                                                art={project.image.clone()}
+                                                size=80
+                                            />
+                                        </div>
+                                    }.into_view()
+                                } else {
+                                    view! {
+                                        <div class="pd-project-avatar">
+                                            <img src={project.image.clone()} alt="Project Image" />
+                                        </div>
+                                    }.into_view()
+                                }
+                            } else {
+                                view! {
+                                    <div class="pd-project-avatar placeholder">
+                                        <i class="fas fa-cube"></i>
+                                    </div>
+                                }.into_view()
+                            }}
+                            
+                            // Name and Rank
+                            <div class="project-name-section">
+                                <h1 class="project-detail-name">{project.name.clone()}</h1>
+                                <span class={format!("rank-badge rank-{}", if project.rank <= 3 { project.rank.to_string() } else if project.rank <= 10 { "top10".to_string() } else { "other".to_string() })}>
+                                    {if project.rank == 1 {
+                                        view! { <><i class="fas fa-trophy"></i> " #1"</> }.into_view()
+                                    } else if project.rank <= 3 {
+                                        view! { <><i class="fas fa-medal"></i> {format!(" #{}", project.rank)}</> }.into_view()
+                                    } else {
+                                        view! { <><i class="fas fa-fire"></i> {format!(" #{}", project.rank)}</> }.into_view()
+                                    }}
+                                </span>
+                            </div>
+                            
+                            // Update button (only visible to creator)
+                            <Show when=move || is_creator()>
+                                <button 
+                                    class="pd-update-btn"
+                                    on:click=open_update_dialog
+                                    title="Update project"
+                                >
+                                    <i class="fas fa-edit"></i>
+                                    "Update"
+                                </button>
+                            </Show>
+                        </div>
+                    </div>
+                    
+                    // Card Body with horizontal layout
+                    <div class="pd-card-body">
+                        // Left side - Main info
+                        <div class="info-left">
+                            // Project ID
+                            <div class="detail-field">
+                                <div class="pd-field-icon">
+                                    <i class="fas fa-hashtag"></i>
+                                </div>
+                                <div class="pd-field-content">
+                                    <span class="pd-field-label">"Project ID"</span>
+                                    <span class="pd-field-value mono">{project.project_id.to_string()}</span>
+                                </div>
+                            </div>
+                            
+                            // Description
+                            <div class="detail-field description-field">
+                                <div class="pd-field-icon">
+                                    <i class="fas fa-align-left"></i>
+                                </div>
+                                <div class="pd-field-content">
+                                    <span class="pd-field-label">"Description"</span>
+                                    <span class="pd-field-value">
+                                        {if project.description.is_empty() {
+                                            "-".to_string()
+                                        } else {
+                                            project.description.clone()
+                                        }}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            // Website
+                            <div class="detail-field">
+                                <div class="pd-field-icon">
+                                    <i class="fas fa-globe"></i>
+                                </div>
+                                <div class="pd-field-content">
+                                    <span class="pd-field-label">"Website"</span>
+                                    {if !project.website.is_empty() {
+                                        view! {
+                                            <a 
+                                                href={project.website.clone()} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                class="pd-field-value link"
+                                            >
+                                                {project.website.clone()}
+                                                <i class="fas fa-external-link-alt"></i>
+                                            </a>
+                                        }.into_view()
+                                    } else {
+                                        view! {
+                                            <span class="pd-field-value muted">"-"</span>
+                                        }.into_view()
+                                    }}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        // Right side - Stats
+                        <div class="info-right">
+                            // Burned Amount
+                            <div class="pd-stat-card">
+                                <div class="pd-stat-icon">
+                                    <i class="fas fa-fire"></i>
+                                </div>
+                                <div class="pd-stat-content">
+                                    <span class="pd-stat-label">"Burned"</span>
+                                    <span class="pd-stat-value">{burned_display}" MEMO"</span>
+                                </div>
+                            </div>
+                            
+                            // Last Memo Time
+                            <div class="pd-stat-card">
+                                <div class="pd-stat-icon">
+                                    <i class="fas fa-clock"></i>
+                                </div>
+                                <div class="pd-stat-content">
+                                    <span class="pd-stat-label">"Last Memo"</span>
+                                    <span class="pd-stat-value">{last_memo_display}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    // Card Footer - Creator
+                    <div class="pd-card-footer">
+                        <div class="creator-section">
+                            <span class="creator-label">
+                                <i class="fas fa-user"></i>
+                                "Created by"
+                            </span>
+                            <div class="creator-info">
+                                <span class="pd-creator-name">{move || creator_display.get()}</span>
+                                // Show address hint if we have a username
+                                {move || {
+                                    if creator_username.get().is_some() {
+                                        let addr = creator_address.clone();
+                                        view! {
+                                            <span class="pd-address-hint">
+                                                "(" {shorten_address(&addr)} ")"
+                                            </span>
+                                        }.into_view()
+                                    } else {
+                                        view! { <span></span> }.into_view()
+                                    }
+                                }}
+                                <button 
+                                    class="pd-copy-btn"
+                                    on:click=copy_address
+                                    title="Copy full address to clipboard"
+                                >
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
+            
+            // Update Project Dialog
+            <Show when=move || show_update_dialog.get()>
+                <div class="modal-overlay">
+                    <UpdateProjectForm
+                        session=session
+                        project=project_data
+                        on_close=Rc::new(close_update_dialog)
+                        on_success=Rc::new(on_update_success)
+                    />
+                </div>
+            </Show>
+        </div>
+    }
+}
+
+/// Update Project Form component - allows creator to update project details
+#[component]
+fn UpdateProjectForm(
+    session: RwSignal<Session>,
+    project: RwSignal<ProjectRow>,
+    on_close: Rc<dyn Fn()>,
+    on_success: Rc<dyn Fn(String)>,
+) -> impl IntoView {
+    let on_close_signal = create_rw_signal(Some(on_close));
+    let on_success_signal = create_rw_signal(Some(on_success));
+    
+    // Get original project data
+    let original_project = project.get_untracked();
+    
+    // Original values for comparison
+    let original_name = original_project.name.clone();
+    let original_description = original_project.description.clone();
+    let original_image = original_project.image.clone();
+    let original_website = original_project.website.clone();
+    
+    // Parse original image to pixel art
+    let original_pixel_art = if original_image.starts_with("c:") || original_image.starts_with("n:") {
+        Pixel::from_optimal_string(&original_image).unwrap_or_else(|| Pixel::new_with_size(16))
+    } else {
+        Pixel::new_with_size(16)
+    };
+    let (original_grid_size, _) = original_pixel_art.dimensions();
+    
+    // Form state signals - initialized with original values
+    let (project_name, set_project_name) = create_signal(original_name.clone());
+    let (project_description, set_project_description) = create_signal(original_description.clone());
+    let (project_website, set_project_website) = create_signal(original_website.clone());
+    let (burn_amount, set_burn_amount) = create_signal(1u64); // Minimum 1 token for update
+    let (pixel_art, set_pixel_art) = create_signal(original_pixel_art.clone());
+    let (grid_size, set_grid_size) = create_signal(original_grid_size);
+    
+    // UI state signals
+    let (is_updating, set_is_updating) = create_signal(false);
+    let (error_message, set_error_message) = create_signal(String::new());
+    let (show_copied, set_show_copied) = create_signal(false);
+    
+    // Original values for change detection (stored as signals for reactive comparison)
+    let original_name_signal = create_rw_signal(original_name.clone());
+    let original_description_signal = create_rw_signal(original_description.clone());
+    let original_website_signal = create_rw_signal(original_website.clone());
+    let original_pixel_art_signal = create_rw_signal(original_pixel_art.clone());
+    
+    // Change detection
+    let name_changed = move || project_name.get() != original_name_signal.get();
+    let description_changed = move || project_description.get() != original_description_signal.get();
+    let website_changed = move || project_website.get() != original_website_signal.get();
+    let image_changed = move || pixel_art.get().to_optimal_string() != original_pixel_art_signal.get().to_optimal_string();
+    
+    let has_changes = move || {
+        name_changed() || description_changed() || website_changed() || image_changed()
+    };
+    
+    // Get current image data
+    let get_image_data = move || -> String {
+        pixel_art.get().to_optimal_string()
+    };
+
+    // Calculate memo size in real time (same rule as create: 69-800 bytes)
+    let calculate_memo_size = move || -> (usize, bool, String) {
+        let name = project_name.get().trim().to_string();
+        let description = project_description.get().trim().to_string();
+        let image_data = get_image_data();
+        let website = project_website.get().trim().to_string();
+        let tags: Vec<String> = vec![]; // tags not editable in update for now
+        let amount = burn_amount.get() * 1_000_000; // lamports
+
+        let project_data = ProjectCreationData::new(
+            original_project.project_id,
+            name,
+            description,
+            image_data,
+            website,
+            tags,
+        );
+
+        match project_data.calculate_final_memo_size(amount) {
+            Ok(size) => {
+                let is_valid = size >= 69 && size <= 800;
+                let status = if is_valid {
+                    "✅ Valid".to_string()
+                } else if size < 69 {
+                    "❌ Too short".to_string()
+                } else {
+                    "❌ Too long".to_string()
+                };
+                (size, is_valid, status)
+            },
+            Err(e) => (0, false, format!("❌ Error: {}", e)),
+        }
+    };
+
+    // Handle form submission
+    let handle_submit = move |ev: leptos::leptos_dom::ev::SubmitEvent| {
+        ev.prevent_default();
+
+        if is_updating.get() || !has_changes() {
+            return;
+        }
+
+        let name = project_name.get().trim().to_string();
+        let description = project_description.get().trim().to_string();
+        let image = get_image_data();
+        let website = project_website.get().trim().to_string();
+        let amount = burn_amount.get();
+        let proj_id = original_project.project_id;
+
+        // Validation
+        if name.is_empty() || name.len() > 64 {
+            set_error_message.set(format!("❌ Project name must be 1-64 characters, got {}", name.len()));
+            return;
+        }
+        if description.len() > 256 {
+            set_error_message.set(format!("❌ Description must be at most 256 characters, got {}", description.len()));
+            return;
+        }
+        if website.len() > 128 {
+            set_error_message.set(format!("❌ Website must be at most 128 characters, got {}", website.len()));
+            return;
+        }
+
+        // Check balance
+        let token_balance = session.with_untracked(|s| s.get_token_balance());
+        if token_balance < amount as f64 {
+            set_error_message.set(format!("❌ Insufficient balance. Required: {} MEMO, Available: {:.2} MEMO", amount, token_balance));
+            return;
+        }
+
+        set_is_updating.set(true);
+        set_error_message.set(String::new());
+
+        // Prepare optional fields - only send changed ones
+        let name_opt = if name_changed() { Some(name) } else { None };
+        let desc_opt = if description_changed() { Some(description) } else { None };
+        let image_opt = if image_changed() { Some(image) } else { None };
+        let website_opt = if website_changed() { Some(website) } else { None };
+
+        spawn_local(async move {
+            TimeoutFuture::new(100).await;
+            
+            let mut session_update = session.get_untracked();
+            let result = session_update.update_project(
+                proj_id,
+                name_opt,
+                desc_opt,
+                image_opt,
+                website_opt,
+                None, // tags not editable for now
+                amount,
+            ).await;
+
+            set_is_updating.set(false);
+
+            match result {
+                Ok(signature) => {
+                    session.update(|s| {
+                        s.mark_balance_update_needed();
+                    });
+
+                    on_success_signal.with_untracked(|cb_opt| {
+                        if let Some(callback) = cb_opt.as_ref() {
+                            callback(signature);
+                        }
+                    });
+                },
+                Err(e) => {
+                    set_error_message.set(format!("❌ Failed to update project: {}", e));
+                }
+            }
+        });
+    };
+
+    // Handle close
+    let handle_close = move |_| {
+        on_close_signal.with_untracked(|cb_opt| {
+            if let Some(callback) = cb_opt.as_ref() {
+                callback();
+            }
+        });
+    };
+
+    // Handle image import
+    let handle_import = move |ev: web_sys::MouseEvent| {
+        ev.prevent_default();
+        
+        let window = web_sys::window().unwrap();
+        let document = window.document().unwrap();
+        let input: HtmlInputElement = document
+            .create_element("input")
+            .unwrap()
+            .dyn_into()
+            .unwrap();
+        
+        input.set_type("file");
+        input.set_accept("image/*");
+        
+        let pixel_art_write = set_pixel_art;
+        let error_signal = set_error_message;
+        let grid_size_signal = grid_size;
+        
+        let onchange = Closure::wrap(Box::new(move |event: Event| {
+            let input: HtmlInputElement = event.target().unwrap().dyn_into().unwrap();
+            if let Some(file) = input.files().unwrap().get(0) {
+                let reader = FileReader::new().unwrap();
+                let reader_clone = reader.clone();
+                let current_grid_size = grid_size_signal.get();
+                
+                let onload = Closure::wrap(Box::new(move |_: ProgressEvent| {
+                    if let Ok(buffer) = reader_clone.result() {
+                        let array = Uint8Array::new(&buffer);
+                        let data = array.to_vec();
+                        
+                        match Pixel::from_image_data_with_size(&data, current_grid_size) {
+                            Ok(new_art) => {
+                                pixel_art_write.set(new_art);
+                                error_signal.set(String::new());
+                            }
+                            Err(e) => {
+                                error_signal.set(format!("Failed to process image: {}", e));
+                            }
+                        }
+                    }
+                }) as Box<dyn FnMut(ProgressEvent)>);
+                
+                reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+                onload.forget();
+                
+                reader.read_as_array_buffer(&file).unwrap();
+            }
+        }) as Box<dyn FnMut(_)>);
+        
+        input.set_onchange(Some(onchange.as_ref().unchecked_ref()));
+        onchange.forget();
+        
+        input.click();
+    };
+
+    // Copy pixel art string
+    let copy_string = move |ev: web_sys::MouseEvent| {
+        ev.prevent_default();
+        let art_string = pixel_art.get().to_optimal_string();
+        if let Some(window) = window() {
+            let clipboard = window.navigator().clipboard();
+            let _ = clipboard.write_text(&art_string);
+            set_show_copied.set(true);
+            spawn_local(async move {
+                TimeoutFuture::new(2000).await;
+                set_show_copied.set(false);
+            });
+        }
+    };
+
+    view! {
+        <div class="update-project-form">
+            <div class="form-header">
+                <h3 class="form-title">
+                    <i class="fas fa-edit"></i>
+                    "Update Project"
+                </h3>
+                <button
+                    type="button"
+                    class="form-close-btn"
+                    on:click=handle_close
+                    title="Close"
+                >
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form class="project-form" on:submit=handle_submit>
+                <div class="form-layout">
+                    // Left side: Basic Information
+                    <div class="form-left">
+                        // Project Name
+                        <div class="form-group">
+                            <label for="update-project-name">
+                                <i class="fas fa-pencil-alt"></i>
+                                "Project Name"
+                                {move || if name_changed() {
+                                    view! { 
+                                        <span class="changed-indicator">
+                                            <i class="fas fa-edit"></i>
+                                            "Modified"
+                                        </span> 
+                                    }.into_view()
+                                } else {
+                                    view! { <span></span> }.into_view()
+                                }}
+                            </label>
+                            <input
+                                type="text"
+                                id="update-project-name"
+                                prop:value=project_name
+                                on:input=move |ev| set_project_name.set(event_target_value(&ev))
+                                placeholder="Enter project name (1-64 characters)..."
+                                maxlength="64"
+                                prop:disabled=move || is_updating.get()
+                                class:changed=name_changed
+                            />
+                        </div>
+
+                        // Project Description
+                        <div class="form-group">
+                            <label for="update-project-description">
+                                <i class="fas fa-align-left"></i>
+                                "Description"
+                                {move || if description_changed() {
+                                    view! { 
+                                        <span class="changed-indicator">
+                                            <i class="fas fa-edit"></i>
+                                            "Modified"
+                                        </span> 
+                                    }.into_view()
+                                } else {
+                                    view! { <span></span> }.into_view()
+                                }}
+                            </label>
+                            <textarea
+                                id="update-project-description"
+                                prop:value=project_description
+                                on:input=move |ev| set_project_description.set(event_target_value(&ev))
+                                placeholder="Enter project description (max 256 characters)..."
+                                maxlength="256"
+                                rows="3"
+                                prop:disabled=move || is_updating.get()
+                                class:changed=description_changed
+                            ></textarea>
+                        </div>
+
+                        // Project Website
+                        <div class="form-group">
+                            <label for="update-project-website">
+                                <i class="fas fa-link"></i>
+                                "Website"
+                                {move || if website_changed() {
+                                    view! { 
+                                        <span class="changed-indicator">
+                                            <i class="fas fa-edit"></i>
+                                            "Modified"
+                                        </span> 
+                                    }.into_view()
+                                } else {
+                                    view! { <span></span> }.into_view()
+                                }}
+                            </label>
+                            <input
+                                type="text"
+                                id="update-project-website"
+                                prop:value=project_website
+                                on:input=move |ev| set_project_website.set(event_target_value(&ev))
+                                placeholder="Enter website URL (max 128 characters)..."
+                                maxlength="128"
+                                prop:disabled=move || is_updating.get()
+                                class:changed=website_changed
+                            />
+                        </div>
+                    </div>
+
+                    // Right side: Project Image
+                    <div class="form-right">
+                        <div class="pixel-art-editor">
+                            <div class="pixel-art-header">
+                                <label>
+                                    <i class="fas fa-image"></i>
+                                    "Project Image"
+                                    {move || if image_changed() {
+                                        view! { 
+                                            <span class="changed-indicator">
+                                                <i class="fas fa-edit"></i>
+                                                "Modified"
+                                            </span> 
+                                        }.into_view()
+                                    } else {
+                                        view! { <span></span> }.into_view()
+                                    }}
+                                </label>
+                                <div class="pixel-art-controls">
+                                    <select
+                                        class="size-selector"
+                                        prop:value=move || grid_size.get().to_string()
+                                        on:change=move |ev| {
+                                            let value = event_target_value(&ev);
+                                            if let Ok(size) = value.parse::<usize>() {
+                                                set_grid_size.set(size);
+                                                set_pixel_art.set(Pixel::new_with_size(size));
+                                            }
+                                        }
+                                        prop:disabled=move || is_updating.get()
+                                    >
+                                        <option value="16">"16×16 pixels"</option>
+                                        <option value="32">"32×32 pixels"</option>
+                                    </select>
+                                    <button 
+                                        type="button"
+                                        class="import-btn"
+                                        on:click=handle_import
+                                        prop:disabled=move || is_updating.get()
+                                    >
+                                        <i class="fas fa-upload"></i>
+                                        "Import"
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            // Pixel Art Canvas
+                            {move || {
+                                let art_string = pixel_art.get().to_optimal_string();
+                                let click_handler = Box::new(move |row, col| {
+                                    let mut new_art = pixel_art.get();
+                                    new_art.toggle_pixel(row, col);
+                                    set_pixel_art.set(new_art);
+                                });
+                                
+                                view! {
+                                    <PixelView
+                                        art=art_string
+                                        size=200
+                                        editable=true
+                                        show_grid=true
+                                        on_click=click_handler
+                                    />
+                                }
+                            }}
+
+                            // Pixel art info
+                            <div class="pixel-string-info">
+                                <div class="string-display">
+                                    <span class="label">
+                                        <i class="fas fa-code"></i>
+                                        "Encoded: "
+                                    </span>
+                                    <span class="value">
+                                        {move || {
+                                            let art_string = pixel_art.get().to_optimal_string();
+                                            if art_string.len() <= 16 {
+                                                art_string
+                                            } else {
+                                                format!("{}...{}", &art_string[..8], &art_string[art_string.len()-6..])
+                                            }
+                                        }}
+                                    </span>
+                                    <div class="copy-container">
+                                        <button
+                                            type="button"
+                                            class="copy-button"
+                                            on:click=copy_string
+                                            title="Copy"
+                                        >
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                        <div class="copy-tooltip" class:show=move || show_copied.get()>
+                                            "Copied!"
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        // Burn Amount
+                        <div class="form-group" style="margin-top: 16px;">
+                            <label for="update-burn-amount">
+                                <i class="fas fa-fire"></i>
+                                "Burn Amount (MEMO)"
+                            </label>
+                            <input
+                                type="number"
+                                id="update-burn-amount"
+                                prop:value=burn_amount
+                                on:input=move |ev| {
+                                    let input = event_target::<HtmlInputElement>(&ev);
+                                    if let Ok(value) = input.value().parse::<u64>() {
+                                        set_burn_amount.set(value.max(1));
+                                    }
+                                }
+                                min="1"
+                                prop:disabled=move || is_updating.get()
+                            />
+                            <small class="form-hint">
+                                <i class="fas fa-wallet"></i>
+                                {move || {
+                                    let balance = session.with(|s| s.get_token_balance());
+                                    view! {
+                                        "Minimum: 1 MEMO (Available: "
+                                        <span class={if balance >= 1.0 { "balance-sufficient" } else { "balance-insufficient" }}>
+                                            {format!("{:.2} MEMO", balance)}
+                                        </span>
+                                        ")"
+                                    }
+                                }}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                // Memo size indicator (real-time)
+                <div class="memo-size-indicator update">
+                    <div class="size-info">
+                        <span class="size-label">
+                            <i class="fas fa-database"></i>
+                            "Memo Size: "
+                        </span>
+                        {move || {
+                            let (size, is_valid, status) = calculate_memo_size();
+                            view! {
+                                <span class="size-value" class:valid=is_valid class:invalid=move || !is_valid>
+                                    {format!("{} bytes", size)}
+                                </span>
+                                <span class="size-range">"(Required: 69-800 bytes)"</span>
+                                <span class="size-status" class:valid=is_valid class:invalid=move || !is_valid>
+                                    {status}
+                                </span>
+                            }
+                        }}
+                    </div>
+                    <div class="size-progress">
+                        {move || {
+                            let (size, is_valid, _) = calculate_memo_size();
+                            let percentage = ((size as f64 / 800.0) * 100.0).min(100.0);
+                            view! {
+                                <div class="progress-bar">
+                                    <div class="progress-track">
+                                        <div 
+                                            class="progress-fill"
+                                            class:valid=is_valid
+                                            class:invalid=move || !is_valid
+                                            style:width=move || format!("{}%", percentage)
+                                        ></div>
+                                        <div class="progress-markers">
+                                            <div class="marker min-marker" style="left: 8.625%"></div>
+                                            <div class="marker max-marker" style="left: 100%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }}
+                    </div>
+                </div>
+
+                // Pending Changes Summary
+                {move || if has_changes() {
+                    view! {
+                        <div class="changes-summary">
+                            <h4>
+                                <i class="fas fa-exclamation-circle"></i>
+                                "Pending Changes"
+                            </h4>
+                            <ul>
+                                {move || if name_changed() {
+                                    view! {
+                                        <li>
+                                            "Name: "
+                                            <span class="old-value">{original_name_signal.get()}</span>
+                                            " → "
+                                            <span class="new-value">{project_name.get()}</span>
+                                        </li>
+                                    }.into_view()
+                                } else {
+                                    view! { <li style="display:none"></li> }.into_view()
+                                }}
+                                {move || if description_changed() {
+                                    let old_desc = original_description_signal.get();
+                                    let new_desc = project_description.get();
+                                    view! {
+                                        <li>
+                                            "Description: "
+                                            <span class="old-value">{if old_desc.len() > 30 { format!("{}...", &old_desc[..30]) } else { old_desc }}</span>
+                                            " → "
+                                            <span class="new-value">{if new_desc.len() > 30 { format!("{}...", &new_desc[..30]) } else { new_desc }}</span>
+                                        </li>
+                                    }.into_view()
+                                } else {
+                                    view! { <li style="display:none"></li> }.into_view()
+                                }}
+                                {move || if website_changed() {
+                                    view! {
+                                        <li>
+                                            "Website: "
+                                            <span class="old-value">{original_website_signal.get()}</span>
+                                            " → "
+                                            <span class="new-value">{project_website.get()}</span>
+                                        </li>
+                                    }.into_view()
+                                } else {
+                                    view! { <li style="display:none"></li> }.into_view()
+                                }}
+                                {move || if image_changed() {
+                                    view! {
+                                        <li>
+                                            "Image: "
+                                            <span class="old-value">"(previous)"</span>
+                                            " → "
+                                            <span class="new-value">"(new image)"</span>
+                                        </li>
+                                    }.into_view()
+                                } else {
+                                    view! { <li style="display:none"></li> }.into_view()
+                                }}
+                            </ul>
+                        </div>
+                    }.into_view()
+                } else {
+                    view! { <div></div> }.into_view()
+                }}
+
+                // Error message
+                {move || {
+                    let message = error_message.get();
+                    if !message.is_empty() {
+                        view! {
+                            <div class="error-message">{message}</div>
+                        }.into_view()
+                    } else {
+                        view! { <div></div> }.into_view()
+                    }
+                }}
+
+                // Submit button
+                <div class="button-group">
+                    <button
+                        type="submit"
+                        class="update-project-btn"
+                        prop:disabled=move || {
+                            is_updating.get() ||
+                            !has_changes() ||
+                            project_name.get().trim().is_empty() ||
+                            session.with(|s| s.get_token_balance()) < burn_amount.get() as f64
+                        }
+                    >
+                        <i class="fas fa-save"></i>
+                        {move || {
+                            if is_updating.get() {
+                                "Updating...".to_string()
+                            } else {
+                                format!("Update Project (Burn {} MEMO)", burn_amount.get())
+                            }
+                        }}
+                    </button>
+                </div>
+            </form>
         </div>
     }
 }
