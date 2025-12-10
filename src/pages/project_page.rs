@@ -738,7 +738,7 @@ fn UpdateProjectForm(
     let (project_name, set_project_name) = create_signal(original_name.clone());
     let (project_description, set_project_description) = create_signal(original_description.clone());
     let (project_website, set_project_website) = create_signal(original_website.clone());
-    let (burn_amount, set_burn_amount) = create_signal(1u64); // Minimum 1 token for update
+    let (burn_amount, set_burn_amount) = create_signal(42069u64); // Minimum 42,069 tokens for update (same as contract requirement)
     let (pixel_art, set_pixel_art) = create_signal(original_pixel_art.clone());
     let (grid_size, set_grid_size) = create_signal(original_grid_size);
     
@@ -828,6 +828,10 @@ fn UpdateProjectForm(
         }
         if website.len() > 128 {
             set_error_message.set(format!("❌ Website must be at most 128 characters, got {}", website.len()));
+            return;
+        }
+        if amount < 42069 {
+            set_error_message.set("❌ Burn amount must be at least 42,069 MEMO tokens".to_string());
             return;
         }
 
@@ -1181,10 +1185,10 @@ fn UpdateProjectForm(
                                 on:input=move |ev| {
                                     let input = event_target::<HtmlInputElement>(&ev);
                                     if let Ok(value) = input.value().parse::<u64>() {
-                                        set_burn_amount.set(value.max(1));
+                                        set_burn_amount.set(value.max(42069));
                                     }
                                 }
-                                min="1"
+                                min="42069"
                                 prop:disabled=move || is_updating.get()
                             />
                             <small class="form-hint">
@@ -1192,8 +1196,8 @@ fn UpdateProjectForm(
                                 {move || {
                                     let balance = session.with(|s| s.get_token_balance());
                                     view! {
-                                        "Minimum: 1 MEMO (Available: "
-                                        <span class={if balance >= 1.0 { "balance-sufficient" } else { "balance-insufficient" }}>
+                                        "Minimum: 42,069 MEMO (Available: "
+                                        <span class={if balance >= 42069.0 { "balance-sufficient" } else { "balance-insufficient" }}>
                                             {format!("{:.2} MEMO", balance)}
                                         </span>
                                         ")"
@@ -1335,6 +1339,7 @@ fn UpdateProjectForm(
                             is_updating.get() ||
                             !has_changes() ||
                             project_name.get().trim().is_empty() ||
+                            burn_amount.get() < 42069 ||
                             session.with(|s| s.get_token_balance()) < burn_amount.get() as f64
                         }
                     >
