@@ -1,5 +1,6 @@
 use leptos::*;
 use crate::core::rpc_base::RpcConnection;
+use crate::core::rpc_domain::get_primary_domain;
 use crate::core::session::Session;
 use crate::core::NetworkType;
 use crate::pages::profile_page::ProfilePage;
@@ -58,6 +59,9 @@ pub fn MainPage(
     let (_blockhash_status, set_blockhash_status) = create_signal(String::from("Getting latest blockhash..."));
     
     let (show_copied, set_show_copied) = create_signal(false);
+    
+    // Primary domain from X1NS
+    let (primary_domain, set_primary_domain) = create_signal(Option::<String>::None);
     
     // Initialize Burn Stats dialog states
     let (show_init_dialog, set_show_init_dialog) = create_signal(false);
@@ -223,6 +227,29 @@ pub fn MainPage(
             }
         });
     });
+    
+    // Fetch primary domain from X1NS
+    {
+        let session_clone = session;
+        spawn_local(async move {
+            let addr = session_clone.get_untracked().get_public_key().unwrap_or_else(|_| String::new());
+            if !addr.is_empty() && addr != "Not initialized" {
+                log::info!("Fetching primary domain for address: {}", addr);
+                match get_primary_domain(&addr).await {
+                    Ok(Some(domain)) => {
+                        log::info!("Primary domain found: {}", domain);
+                        set_primary_domain.set(Some(domain));
+                    },
+                    Ok(None) => {
+                        log::debug!("No primary domain set for this address");
+                    },
+                    Err(e) => {
+                        log::warn!("Failed to fetch primary domain: {}", e);
+                    }
+                }
+            }
+        });
+    }
     
     // test rpc connection
     spawn_local(async move {
@@ -480,7 +507,12 @@ pub fn MainPage(
                         >
                             {move || {
                                 let addr = wallet_address();
-                                format!("{}...{}", &addr[..4], &addr[addr.len()-4..])
+                                let short_addr = format!("{}...{}", &addr[..4], &addr[addr.len()-4..]);
+                                if let Some(domain) = primary_domain.get() {
+                                    format!("{} ({})", domain, short_addr)
+                                } else {
+                                    short_addr
+                                }
                             }}
                         </span>
                     </button>

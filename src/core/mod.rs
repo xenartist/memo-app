@@ -12,6 +12,7 @@ pub mod rpc_project;
 pub mod rpc_profile;
 pub mod rpc_burn;
 pub mod rpc_transfer;
+pub mod rpc_domain;
 pub mod settings;
 
 // Re-export commonly used network types
