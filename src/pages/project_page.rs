@@ -1110,30 +1110,43 @@ fn DevlogCard(
                 </div>
             </div>
             
-            // Card Body
+            // Card Body - Horizontal layout
             <div class="devlog-card-body">
-                // Image (if present)
+                // Image section (left side)
                 {if !image.is_empty() && (image.starts_with("c:") || image.starts_with("n:")) {
                     view! {
-                        <div class="devlog-image">
-                            <LazyPixelView
-                                art={image.clone()}
-                                size=120
-                            />
+                        <div class="devlog-image-section">
+                            <div class="devlog-image">
+                                <LazyPixelView
+                                    art={image.clone()}
+                                    size=100
+                                />
+                            </div>
                         </div>
                     }.into_view()
                 } else {
-                    view! { <div></div> }.into_view()
-                }}
-                
-                // Content
-                {if !content.is_empty() {
                     view! {
-                        <p class="devlog-content">{content}</p>
+                        <div class="devlog-image-section">
+                            <div class="devlog-image-placeholder">
+                                <i class="fas fa-image"></i>
+                                <span>"No image"</span>
+                            </div>
+                        </div>
                     }.into_view()
-                } else {
-                    view! { <div></div> }.into_view()
                 }}
+
+                // Content section (right side)
+                <div class="devlog-content-section">
+                    {if !content.is_empty() {
+                        view! {
+                            <p class="devlog-content">{content}</p>
+                        }.into_view()
+                    } else {
+                        view! {
+                            <p class="devlog-content devlog-content-empty">"No content"</p>
+                        }.into_view()
+                    }}
+                </div>
             </div>
             
             // Status indicator (for local messages) - rendered based on initial status
