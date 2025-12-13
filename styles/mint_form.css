@@ -2,10 +2,10 @@
 
 /* Main form container */
 .mint-form {
-    background: white;
+    background: var(--bg-card);
     padding: 32px;
     border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-light);
 }
 
 /* Form wrapper styles */
@@ -251,22 +251,27 @@
 
 /* Buttons */
 .start-minting-btn {
-    background-color: #28a745;
-    color: white;
+    background: var(--bg-primary);
+    color: var(--accent-success);
+    border: 2px solid var(--accent-success);
     padding: 12px 24px;
-    border: none;
     border-radius: 6px;
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
     min-width: 120px;
+    transition: all 0.2s;
 }
 
 .start-minting-btn:hover:not(:disabled) {
-    background-color: #218838;
+    background: var(--accent-success);
+    color: white;
 }
 
 .start-minting-btn:disabled {
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    border-color: var(--border-secondary);
     opacity: 0.6;
     cursor: not-allowed;
 }

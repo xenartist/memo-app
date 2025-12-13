@@ -2,9 +2,9 @@
 
 /* Pixel grid (Canvas-based) */
 .pixel-grid {
-    border: 1px solid #ccc;
-    background: white;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    border: 1px solid var(--border-primary);
+    background: var(--pixel-canvas-bg);
+    box-shadow: 0 2px 4px var(--shadow-light);
     image-rendering: pixelated;
     image-rendering: -moz-crisp-edges;
     image-rendering: crisp-edges;
@@ -15,7 +15,7 @@
 }
 
 .pixel-grid.editable:hover {
-    border-color: #007bff;
+    border-color: var(--accent-primary);
 }
 
 .pixel-grid.disabled {
@@ -39,9 +39,9 @@
 .pixel-art-editor {
     margin: 20px 0;
     padding: 16px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--border-primary);
     border-radius: 8px;
-    background: #fafafa;
+    background: var(--bg-tertiary);
 }
 
 .pixel-art-header {
@@ -85,9 +85,9 @@
     align-items: center;
     justify-content: center;
     height: 128px;
-    background-color: #f8f9fa;
+    background-color: var(--bg-secondary);
     border-radius: 6px;
-    color: #666;
+    color: var(--text-secondary);
     font-size: 14px;
 }
 
@@ -101,7 +101,7 @@
     justify-content: center;
     align-items: center;
     margin-bottom: 16px;
-    background: #f5f5f5;
+    background: var(--bg-secondary);
     border-radius: 4px;
     padding: 8px;
 }
@@ -110,8 +110,9 @@
 .pixel-string-info {
     margin-top: 16px;
     padding: 12px;
-    background: #f8f9fa;
+    background: var(--bg-secondary);
     border-radius: 6px;
+    border: 1px solid var(--border-primary);
 }
 
 .string-display {
@@ -128,18 +129,18 @@
 }
 
 .pixel-string-info .label {
-    color: #666;
+    color: var(--text-secondary);
     font-size: 14px;
 }
 
 .pixel-string-info .value {
     font-family: monospace;
-    color: #333;
+    color: var(--text-primary);
     font-size: 14px;
-    background: #fff;
+    background: var(--bg-input);
     padding: 4px 8px;
     border-radius: 4px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--border-primary);
 }
 
 /* Responsive design for pixel grid */

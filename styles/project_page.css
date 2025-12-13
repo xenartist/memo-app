@@ -3,9 +3,9 @@
 /* Base Layout */
 .project-page {
     min-height: 100vh;
-    background: #f8fafc; 
+    background: var(--bg-primary); 
     padding: 2rem;
-    color: #333;
+    color: var(--text-primary);
 }
 
 .leaderboard-view {
@@ -15,13 +15,13 @@
 
 /* Header Section */
 .project-header {
-    background: rgba(255, 255, 255, 0.95);
+    background: var(--bg-card);
     backdrop-filter: blur(10px);
     border-radius: 16px;
     padding: 2rem;
     margin-bottom: 2rem;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: var(--shadow-medium);
+    border: 1px solid var(--border-primary);
 }
 
 .header-content {
@@ -32,7 +32,7 @@
 }
 
 .header-text h1 {
-    color: #374151;
+    color: var(--text-primary);
     font-size: 2.5rem;
     font-weight: 700;
     margin: 0 0 0.5rem 0;
@@ -42,7 +42,7 @@
 }
 
 .project-subtitle {
-    color: #6b7280;
+    color: var(--text-secondary);
     font-size: 1.1rem;
     margin: 0;
     font-weight: 500;
@@ -54,9 +54,9 @@
 
 /* New Project Button */
 .new-project-button {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 2px solid var(--accent-primary);
     border-radius: 12px;
     padding: 16px 32px;
     font-size: 16px;
@@ -70,13 +70,16 @@
 }
 
 .new-project-button:hover:not(:disabled) {
+    background: var(--accent-primary);
+    color: white;
     transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
 }
 
 .new-project-button:disabled {
-    background: #e2e8f0;
-    color: #9ca3af;
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    border-color: var(--border-secondary);
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
@@ -126,12 +129,12 @@
 
 /* Main Content Container */
 .project-content {
-    background: rgba(255, 255, 255, 0.95);
+    background: var(--bg-card);
     backdrop-filter: blur(10px);
     border-radius: 16px;
     overflow: hidden;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: var(--shadow-medium);
+    border: 1px solid var(--border-primary);
 }
 
 /* Loading, Error, Empty States */
@@ -140,7 +143,7 @@
 .empty-state {
     padding: 4rem 2rem;
     text-align: center;
-    color: #6b7280;
+    color: var(--text-secondary);
 }
 
 .loading-state {
@@ -195,12 +198,12 @@
 }
 
 .project-table th {
-    background: #f8fafc;
-    color: #374151;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
     font-weight: 600;
     padding: 18px 20px;
     text-align: left;
-    border-bottom: 2px solid rgba(102, 126, 234, 0.1);
+    border-bottom: 2px solid var(--border-primary);
     position: sticky;
     top: 0;
     z-index: 10;
@@ -216,19 +219,19 @@
 
 .project-table td {
     padding: 16px 20px;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    border-bottom: 1px solid var(--border-light);
     vertical-align: middle;
 }
 
 .project-row {
     transition: all 0.3s ease;
-    background: white;
+    background: var(--bg-card);
 }
 
 .project-row:hover {
-    background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+    background: var(--bg-hover);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-light);
 }
 
 /* Cell-specific styles */
@@ -354,7 +357,7 @@
 
 .project-name {
     font-weight: 600;
-    color: #374151;
+    color: var(--text-primary);
     font-size: 15px;
 }
 
@@ -364,7 +367,7 @@
 }
 
 .project-description {
-    color: #6b7280;
+    color: var(--text-secondary);
     line-height: 1.4;
 }
 
@@ -435,9 +438,9 @@
 
 /* Details Button */
 .details-button {
-    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-    color: white;
-    border: none;
+    background: var(--bg-primary);
+    color: var(--accent-info);
+    border: 2px solid var(--accent-info);
     padding: 10px 18px;
     border-radius: 8px;
     cursor: pointer;
@@ -447,19 +450,18 @@
     align-items: center;
     gap: 8px;
     transition: all 0.3s ease;
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
     margin: 0 auto;
 }
 
 .details-button:hover {
-    background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+    background: var(--accent-info);
+    color: white;
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
 }
 
 .details-button:active {
     transform: translateY(0);
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 
 /* Modal Overlay */
@@ -486,13 +488,14 @@
 
 /* Create Project Form */
 .create-project-form {
-    background: white;
+    background: var(--bg-card);
     border-radius: 16px;
     max-width: 900px;
     width: 100%;
     max-height: 90vh;
     overflow-y: auto;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-heavy);
+    border: 1px solid var(--border-primary);
     animation: modalSlideIn 0.3s ease-out;
 }
 
@@ -508,8 +511,9 @@
 }
 
 .create-project-form .form-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: var(--bg-tertiary);
+    border-bottom: 2px solid var(--accent-primary);
+    color: var(--text-primary);
     padding: 24px;
     border-radius: 16px 16px 0 0;
     display: flex;
@@ -527,8 +531,8 @@
 }
 
 .create-project-form .form-close-btn {
-    background: rgba(255, 255, 255, 0.2);
-    color: white;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
     border: none;
     width: 40px;
     height: 40px;
@@ -542,7 +546,8 @@
 }
 
 .create-project-form .form-close-btn:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: var(--bg-hover);
+    color: var(--accent-danger);
     transform: scale(1.1);
 }
 
@@ -573,7 +578,7 @@
 
 .create-project-form .form-group label {
     font-weight: 600;
-    color: #374151;
+    color: var(--text-primary);
     font-size: 14px;
     display: flex;
     align-items: center;
@@ -581,7 +586,7 @@
 }
 
 .create-project-form .form-group label i {
-    color: #667eea;
+    color: var(--accent-primary);
     width: 16px;
     text-align: center;
 }
@@ -589,31 +594,32 @@
 .create-project-form .form-group input,
 .create-project-form .form-group textarea {
     padding: 12px 16px;
-    border: 2px solid #e2e8f0;
+    border: 2px solid var(--border-primary);
     border-radius: 8px;
     font-size: 14px;
     transition: all 0.3s ease;
-    background: white;
+    background: var(--bg-input);
+    color: var(--text-primary);
     font-family: inherit;
 }
 
 .create-project-form .form-group input:focus,
 .create-project-form .form-group textarea:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.2);
 }
 
 .create-project-form .form-group input:disabled,
 .create-project-form .form-group textarea:disabled {
-    background: #f8fafc;
-    color: #6b7280;
+    background: var(--bg-secondary);
+    color: var(--text-muted);
     cursor: not-allowed;
 }
 
 .create-project-form .form-hint {
     font-size: 12px;
-    color: #6b7280;
+    color: var(--text-secondary);
     display: flex;
     align-items: center;
     gap: 6px;
@@ -621,10 +627,10 @@
 
 /* Pixel Art Editor */
 .create-project-form .pixel-art-editor {
-    background: #f8fafc;
+    background: var(--bg-tertiary);
     border-radius: 12px;
     padding: 20px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--border-primary);
 }
 
 .create-project-form .pixel-art-header {
@@ -644,25 +650,25 @@
 
 .create-project-form .size-selector {
     padding: 8px 12px;
-    border: 2px solid #e2e8f0;
+    border: 2px solid var(--border-primary);
     border-radius: 8px;
-    background: white;
+    background: var(--bg-input);
     font-size: 13px;
-    color: #374151;
+    color: var(--text-primary);
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
 .create-project-form .size-selector:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
 }
 
 .create-project-form .import-btn {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 2px solid var(--accent-primary);
     border-radius: 8px;
     padding: 8px 16px;
     font-size: 13px;
@@ -675,14 +681,16 @@
 }
 
 .create-project-form .import-btn:hover {
+    background: var(--accent-primary);
+    color: white;
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
 /* Pixel String Info */
 .create-project-form .pixel-string-info {
-    background: white;
-    border: 1px solid #e2e8f0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
     border-radius: 8px;
     padding: 12px;
     margin-top: 12px;
@@ -697,7 +705,7 @@
 
 .create-project-form .string-display .label {
     font-weight: 600;
-    color: #374151;
+    color: var(--text-primary);
     font-size: 12px;
     display: flex;
     align-items: center;
@@ -706,9 +714,13 @@
 
 .create-project-form .string-display .value {
     font-size: 12px;
-    color: #6b7280;
+    color: var(--text-secondary);
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     flex: 1;
+    background: var(--bg-input);
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    padding: 6px 10px;
 }
 
 .create-project-form .copy-container {
@@ -716,9 +728,9 @@
 }
 
 .create-project-form .copy-button {
-    background: rgba(102, 126, 234, 0.1);
-    color: #667eea;
-    border: 1px solid rgba(102, 126, 234, 0.2);
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 1px solid var(--accent-primary);
     border-radius: 6px;
     padding: 6px 8px;
     cursor: pointer;
@@ -727,7 +739,8 @@
 }
 
 .create-project-form .copy-button:hover {
-    background: rgba(102, 126, 234, 0.2);
+    background: var(--accent-primary);
+    color: white;
 }
 
 .create-project-form .copy-tooltip {
@@ -735,7 +748,7 @@
     top: -35px;
     left: 50%;
     transform: translateX(-50%);
-    background: #374151;
+    background: var(--tooltip-bg);
     color: white;
     padding: 6px 12px;
     border-radius: 6px;
@@ -753,8 +766,8 @@
 
 /* Memo Size Indicator */
 .create-project-form .memo-size-indicator {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
     border-radius: 12px;
     padding: 20px;
     margin: 24px 0;
@@ -770,7 +783,7 @@
 
 .create-project-form .size-label {
     font-weight: 600;
-    color: #374151;
+    color: var(--text-primary);
     font-size: 14px;
     display: flex;
     align-items: center;
@@ -782,18 +795,20 @@
     font-size: 14px;
     padding: 4px 12px;
     border-radius: 20px;
-    background: #e2e8f0;
-    color: #374151;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
 }
 
 .create-project-form .size-value.valid {
-    background: rgba(34, 197, 94, 0.2);
-    color: #16a34a;
+    background: var(--bg-secondary);
+    color: var(--accent-success);
+    border: 1px solid var(--accent-success);
 }
 
 .create-project-form .size-value.invalid {
-    background: rgba(239, 68, 68, 0.2);
-    color: #dc2626;
+    background: var(--bg-secondary);
+    color: var(--accent-danger);
+    border: 1px solid var(--accent-danger);
 }
 
 .create-project-form .size-status {
@@ -804,13 +819,15 @@
 }
 
 .create-project-form .size-status.valid {
-    background: rgba(34, 197, 94, 0.2);
-    color: #16a34a;
+    background: var(--bg-secondary);
+    color: var(--accent-success);
+    border: 1px solid var(--accent-success);
 }
 
 .create-project-form .size-status.invalid {
-    background: rgba(239, 68, 68, 0.2);
-    color: #dc2626;
+    background: var(--bg-secondary);
+    color: var(--accent-danger);
+    border: 1px solid var(--accent-danger);
 }
 
 /* Progress Bar */
@@ -818,7 +835,7 @@
     position: relative;
     width: 100%;
     height: 8px;
-    background: #e2e8f0;
+    background: var(--bg-secondary);
     border-radius: 4px;
     overflow: hidden;
 }
@@ -878,9 +895,9 @@
 }
 
 .create-project-form .create-project-btn {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 2px solid var(--accent-primary);
     padding: 16px 40px;
     border-radius: 12px;
     cursor: pointer;
@@ -892,17 +909,19 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
 }
 
 .create-project-form .create-project-btn:hover:not(:disabled) {
+    background: var(--accent-primary);
+    color: white;
     transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
 }
 
 .create-project-form .create-project-btn:disabled {
-    background: #e2e8f0;
-    color: #9ca3af;
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    border-color: var(--border-secondary);
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
@@ -923,7 +942,7 @@
 /* All styles scoped to .project-details-page to avoid conflicts */
 .project-details-page {
     min-height: 100vh;
-    background: #f8fafc;
+    background: var(--bg-primary);
     padding: 2rem;
 }
 
@@ -934,9 +953,9 @@
 
 /* Back Button */
 .project-details-page .pd-back-btn {
-    background: white;
-    color: #666;
-    border: 1px solid #e0e0e0;
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 2px solid var(--accent-primary);
     padding: 10px 20px;
     border-radius: 8px;
     cursor: pointer;
@@ -950,8 +969,8 @@
 }
 
 .project-details-page .pd-back-btn:hover {
-    background: #f5f5f5;
-    border-color: #ccc;
+    background: var(--accent-primary);
+    color: white;
 }
 
 .project-details-page .pd-back-btn i {
@@ -960,16 +979,16 @@
 
 /* Project Detail Card */
 .project-details-page .project-detail-card {
-    background: white;
+    background: var(--bg-card);
     border-radius: 12px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--border-primary);
     overflow: hidden;
 }
 
 /* Card Header */
 .project-details-page .pd-card-header {
     padding: 24px 28px;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid var(--border-primary);
 }
 
 .project-details-page .pd-header-content {
@@ -985,8 +1004,8 @@
     border-radius: 12px;
     overflow: hidden;
     flex-shrink: 0;
-    background: #f5f5f5;
-    border: 1px solid #e0e0e0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
 }
 
 .project-details-page .pd-project-avatar img {
@@ -999,12 +1018,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #f0f0f0;
+    background: var(--bg-tertiary);
 }
 
 .project-details-page .pd-project-avatar.placeholder i {
     font-size: 32px;
-    color: #bbb;
+    color: var(--text-muted);
 }
 
 .project-details-page .project-name-section {
@@ -1017,7 +1036,7 @@
     margin: 0;
     font-size: 24px;
     font-weight: 600;
-    color: #333;
+    color: var(--text-primary);
 }
 
 .project-details-page .rank-badge {
@@ -1028,8 +1047,8 @@
     border-radius: 4px;
     font-size: 13px;
     font-weight: 500;
-    background: #f5f5f5;
-    color: #666;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
 }
 
 .project-details-page .rank-badge i {
@@ -1106,27 +1125,27 @@
 .project-details-page .pd-field-label {
     font-size: 12px;
     font-weight: 500;
-    color: #999;
+    color: var(--text-secondary);
 }
 
 .project-details-page .pd-field-value {
     font-size: 14px;
-    color: #333;
+    color: var(--text-primary);
     line-height: 1.5;
     word-break: break-word;
 }
 
 .project-details-page .pd-field-value.mono {
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-    color: #666;
+    color: var(--text-secondary);
 }
 
 .project-details-page .pd-field-value.muted {
-    color: #999;
+    color: var(--text-muted);
 }
 
 .project-details-page .pd-field-value.link {
-    color: #667eea;
+    color: var(--accent-primary);
     text-decoration: none;
     display: inline-flex;
     align-items: center;
@@ -1156,8 +1175,8 @@
     gap: 12px;
     padding: 14px 16px;
     border-radius: 8px;
-    background: white;
-    border: 1px solid #e0e0e0;
+    background: var(--bg-card);
+    border: 1px solid var(--border-primary);
 }
 
 .project-details-page .pd-stat-icon {
@@ -1191,20 +1210,20 @@
 .project-details-page .pd-stat-label {
     font-size: 11px;
     font-weight: 500;
-    color: #999;
+    color: var(--text-secondary);
 }
 
 .project-details-page .pd-stat-value {
     font-size: 15px;
     font-weight: 600;
-    color: #333;
+    color: var(--text-primary);
 }
 
 /* Card Footer - Creator */
 .project-details-page .pd-card-footer {
     padding: 18px 28px;
-    background: #fafafa;
-    border-top: 1px solid #eee;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-primary);
 }
 
 .project-details-page .creator-section {
@@ -1217,14 +1236,14 @@
 .project-details-page .creator-label {
     font-size: 12px;
     font-weight: 500;
-    color: #999;
+    color: var(--text-secondary);
     display: flex;
     align-items: center;
     gap: 5px;
 }
 
 .project-details-page .creator-label i {
-    color: #667eea;
+    color: var(--accent-primary);
 }
 
 .project-details-page .creator-info {
@@ -1238,19 +1257,19 @@
 .project-details-page .pd-creator-name {
     font-size: 14px;
     font-weight: 500;
-    color: #333;
+    color: var(--text-primary);
 }
 
 .project-details-page .pd-address-hint {
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     font-size: 12px;
-    color: #999;
+    color: var(--text-secondary);
 }
 
 .project-details-page .pd-copy-btn {
-    background: #f5f5f5;
-    color: #666;
-    border: none;
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 1px solid var(--accent-primary);
     border-radius: 4px;
     padding: 5px 8px;
     cursor: pointer;
@@ -1261,7 +1280,8 @@
 }
 
 .project-details-page .pd-copy-btn:hover {
-    background: #e0e0e0;
+    background: var(--accent-primary);
+    color: white;
 }
 
 .project-details-page .pd-copy-btn i {
@@ -1270,9 +1290,9 @@
 
 /* Update Button in Header */
 .project-details-page .pd-update-btn {
-    background: #667eea;
-    color: white;
-    border: none;
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 2px solid var(--accent-primary);
     padding: 10px 20px;
     border-radius: 8px;
     cursor: pointer;
@@ -1286,7 +1306,8 @@
 }
 
 .project-details-page .pd-update-btn:hover {
-    background: #5a6fd8;
+    background: var(--accent-primary);
+    color: white;
 }
 
 .project-details-page .pd-update-btn i {
@@ -1295,18 +1316,20 @@
 
 /* Update Project Form */
 .update-project-form {
-    background: white;
+    background: var(--bg-card);
     border-radius: 12px;
     max-width: 900px;
     width: 100%;
     max-height: 90vh;
     overflow-y: auto;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-heavy);
+    border: 1px solid var(--border-primary);
 }
 
 .update-project-form .form-header {
-    background: #667eea;
-    color: white;
+    background: var(--bg-tertiary);
+    border-bottom: 2px solid var(--accent-primary);
+    color: var(--text-primary);
     padding: 20px 24px;
     border-radius: 12px 12px 0 0;
     display: flex;
@@ -1324,8 +1347,8 @@
 }
 
 .update-project-form .form-close-btn {
-    background: rgba(255, 255, 255, 0.2);
-    color: white;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
     border: none;
     width: 36px;
     height: 36px;
@@ -1339,7 +1362,8 @@
 }
 
 .update-project-form .form-close-btn:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: var(--bg-hover);
+    color: var(--accent-danger);
 }
 
 .update-project-form .project-form {
@@ -1368,7 +1392,7 @@
 
 .update-project-form .form-group label {
     font-weight: 500;
-    color: #333;
+    color: var(--text-primary);
     font-size: 13px;
     display: flex;
     align-items: center;
@@ -1376,7 +1400,7 @@
 }
 
 .update-project-form .form-group label i {
-    color: #667eea;
+    color: var(--accent-primary);
     width: 14px;
     text-align: center;
 }
@@ -1384,35 +1408,36 @@
 .update-project-form .form-group input,
 .update-project-form .form-group textarea {
     padding: 10px 14px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--border-primary);
     border-radius: 6px;
     font-size: 14px;
     transition: all 0.2s ease;
-    background: white;
+    background: var(--bg-input);
+    color: var(--text-primary);
 }
 
 .update-project-form .form-group input:focus,
 .update-project-form .form-group textarea:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
 }
 
 .update-project-form .form-group input.changed,
 .update-project-form .form-group textarea.changed {
-    border-color: #22c55e;
+    border-color: var(--accent-success);
     box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.15);
 }
 
 .update-project-form .form-group input:disabled,
 .update-project-form .form-group textarea:disabled {
-    background: #f5f5f5;
-    color: #999;
+    background: var(--bg-secondary);
+    color: var(--text-muted);
 }
 
 .update-project-form .form-hint {
     font-size: 12px;
-    color: #666;
+    color: var(--text-secondary);
     display: flex;
     align-items: center;
     gap: 5px;
@@ -1436,10 +1461,10 @@
 
 /* Pixel Art Editor in Update Form */
 .update-project-form .pixel-art-editor {
-    background: #f8f9fa;
+    background: var(--bg-tertiary);
     border-radius: 8px;
     padding: 16px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--border-primary);
 }
 
 .update-project-form .pixel-art-header {
@@ -1459,17 +1484,18 @@
 
 .update-project-form .size-selector {
     padding: 6px 10px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--border-primary);
     border-radius: 6px;
-    background: white;
+    background: var(--bg-input);
+    color: var(--text-primary);
     font-size: 12px;
     cursor: pointer;
 }
 
 .update-project-form .import-btn {
-    background: #667eea;
-    color: white;
-    border: none;
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 2px solid var(--accent-primary);
     border-radius: 6px;
     padding: 6px 12px;
     font-size: 12px;
@@ -1482,13 +1508,14 @@
 }
 
 .update-project-form .import-btn:hover {
-    background: #5a6fd8;
+    background: var(--accent-primary);
+    color: white;
 }
 
 /* Pixel String Info */
 .update-project-form .pixel-string-info {
-    background: white;
-    border: 1px solid #e0e0e0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
     border-radius: 6px;
     padding: 10px;
     margin-top: 10px;
@@ -1502,7 +1529,7 @@
 
 .update-project-form .string-display .label {
     font-weight: 500;
-    color: #333;
+    color: var(--text-primary);
     font-size: 11px;
     display: flex;
     align-items: center;
@@ -1511,9 +1538,13 @@
 
 .update-project-form .string-display .value {
     font-size: 11px;
-    color: #666;
+    color: var(--text-secondary);
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     flex: 1;
+    background: var(--bg-input);
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    padding: 4px 8px;
 }
 
 .update-project-form .copy-container {
@@ -1521,9 +1552,9 @@
 }
 
 .update-project-form .copy-button {
-    background: rgba(102, 126, 234, 0.1);
-    color: #667eea;
-    border: 1px solid rgba(102, 126, 234, 0.2);
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 1px solid var(--accent-primary);
     border-radius: 4px;
     padding: 4px 6px;
     cursor: pointer;
@@ -1532,7 +1563,8 @@
 }
 
 .update-project-form .copy-button:hover {
-    background: rgba(102, 126, 234, 0.2);
+    background: var(--accent-primary);
+    color: white;
 }
 
 .update-project-form .copy-tooltip {
@@ -1540,7 +1572,7 @@
     top: -28px;
     left: 50%;
     transform: translateX(-50%);
-    background: #333;
+    background: var(--tooltip-bg);
     color: white;
     padding: 4px 8px;
     border-radius: 4px;
@@ -1558,15 +1590,15 @@
 
 /* Changes Summary */
 .update-project-form .changes-summary {
-    background: #ecfdf5;
-    border: 1px solid #a7f3d0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--accent-success);
     border-radius: 8px;
     padding: 16px;
     margin-bottom: 16px;
 }
 
 .update-project-form .changes-summary h4 {
-    color: #047857;
+    color: var(--accent-success);
     margin: 0 0 10px 0;
     font-size: 14px;
     display: flex;
@@ -1575,13 +1607,13 @@
 }
 
 .update-project-form .changes-summary h4 i {
-    color: #10b981;
+    color: var(--accent-success);
 }
 
 .update-project-form .changes-summary ul {
     margin: 0;
     padding-left: 18px;
-    color: #065f46;
+    color: var(--text-primary);
     font-size: 13px;
 }
 
@@ -1590,8 +1622,9 @@
 }
 
 .update-project-form .old-value {
-    background: #fee2e2;
-    color: #991b1b;
+    background: var(--bg-secondary);
+    color: var(--accent-danger);
+    border: 1px solid var(--accent-danger);
     padding: 1px 5px;
     border-radius: 3px;
     font-family: monospace;
@@ -1600,8 +1633,9 @@
 }
 
 .update-project-form .new-value {
-    background: #d1fae5;
-    color: #065f46;
+    background: var(--bg-secondary);
+    color: var(--accent-success);
+    border: 1px solid var(--accent-success);
     padding: 1px 5px;
     border-radius: 3px;
     font-family: monospace;
@@ -1611,8 +1645,8 @@
 
 /* Memo size indicator (reuse create style, scoped) */
 .update-project-form .memo-size-indicator {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
     border-radius: 10px;
     padding: 14px;
     margin: 16px 0;
@@ -1628,12 +1662,12 @@
     gap: 10px;
     flex-wrap: wrap;
     font-size: 13px;
-    color: #333;
+    color: var(--text-primary);
 }
 
 .update-project-form .size-label {
     font-weight: 600;
-    color: #4b5563;
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     gap: 6px;
@@ -1643,22 +1677,24 @@
     font-weight: 700;
     padding: 4px 10px;
     border-radius: 16px;
-    background: #e5e7eb;
-    color: #1f2937;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
 }
 
 .update-project-form .size-value.valid {
-    background: #ecfdf3;
-    color: #047857;
+    background: var(--bg-secondary);
+    color: var(--accent-success);
+    border: 1px solid var(--accent-success);
 }
 
 .update-project-form .size-value.invalid {
-    background: #fef2f2;
-    color: #991b1b;
+    background: var(--bg-secondary);
+    color: var(--accent-danger);
+    border: 1px solid var(--accent-danger);
 }
 
 .update-project-form .size-range {
-    color: #6b7280;
+    color: var(--text-secondary);
     font-size: 12px;
 }
 
@@ -1670,13 +1706,15 @@
 }
 
 .update-project-form .size-status.valid {
-    background: #ecfdf3;
-    color: #047857;
+    background: var(--bg-secondary);
+    color: var(--accent-success);
+    border: 1px solid var(--accent-success);
 }
 
 .update-project-form .size-status.invalid {
-    background: #fef2f2;
-    color: #991b1b;
+    background: var(--bg-secondary);
+    color: var(--accent-danger);
+    border: 1px solid var(--accent-danger);
 }
 
 .update-project-form .size-progress {
@@ -1691,7 +1729,7 @@
     position: relative;
     width: 100%;
     height: 6px;
-    background: #e5e7eb;
+    background: var(--bg-secondary);
     border-radius: 4px;
     overflow: hidden;
 }
@@ -1728,12 +1766,12 @@
 }
 /* Error Message */
 .update-project-form .error-message {
-    background: #fef2f2;
-    border: 1px solid #fecaca;
+    background: var(--bg-secondary);
+    border: 1px solid var(--accent-danger);
     border-radius: 6px;
     padding: 12px;
     margin-bottom: 16px;
-    color: #991b1b;
+    color: var(--accent-danger);
     font-size: 13px;
 }
 
@@ -1745,9 +1783,9 @@
 }
 
 .update-project-form .update-project-btn {
-    background: #667eea;
-    color: white;
-    border: none;
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 2px solid var(--accent-primary);
     padding: 12px 32px;
     border-radius: 8px;
     cursor: pointer;
@@ -1760,12 +1798,14 @@
 }
 
 .update-project-form .update-project-btn:hover:not(:disabled) {
-    background: #5a6fd8;
+    background: var(--accent-primary);
+    color: white;
 }
 
 .update-project-form .update-project-btn:disabled {
-    background: #e0e0e0;
-    color: #999;
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    border-color: var(--border-secondary);
     cursor: not-allowed;
 }
 

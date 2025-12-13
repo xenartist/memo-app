@@ -60,6 +60,48 @@ pub fn MainPage(
     
     let (show_copied, set_show_copied) = create_signal(false);
     
+    // Theme state - true for dark mode, false for light mode
+    let (is_dark_mode, set_is_dark_mode) = create_signal(false);
+    
+    // Initialize theme from localStorage on component mount
+    create_effect(move |_| {
+        if let Some(window) = window() {
+            if let Ok(Some(storage)) = window.local_storage() {
+                if let Ok(Some(theme)) = storage.get_item("theme") {
+                    let is_dark = theme == "dark";
+                    set_is_dark_mode.set(is_dark);
+                    // Apply theme to document
+                    if let Some(document) = window.document() {
+                        if let Some(html) = document.document_element() {
+                            let _ = html.set_attribute("data-theme", if is_dark { "dark" } else { "light" });
+                        }
+                    }
+                }
+            }
+        }
+    });
+    
+    // Theme toggle handler
+    let toggle_theme = move |_| {
+        let new_is_dark = !is_dark_mode.get();
+        set_is_dark_mode.set(new_is_dark);
+        
+        if let Some(window) = window() {
+            // Save to localStorage
+            if let Ok(Some(storage)) = window.local_storage() {
+                let _ = storage.set_item("theme", if new_is_dark { "dark" } else { "light" });
+            }
+            // Apply theme to document
+            if let Some(document) = window.document() {
+                if let Some(html) = document.document_element() {
+                    let _ = html.set_attribute("data-theme", if new_is_dark { "dark" } else { "light" });
+                }
+            }
+        }
+        
+        add_log_entry("INFO", &format!("Theme changed to {}", if new_is_dark { "Dark Mode" } else { "Light Mode" }));
+    };
+    
     // Primary domain from X1NS
     let (primary_domain, set_primary_domain) = create_signal(Option::<String>::None);
     
@@ -420,6 +462,19 @@ pub fn MainPage(
             <div class="top-bar">
                 // Left side - Control buttons
                 <div class="left-controls">
+                    // Theme toggle button
+                    <button
+                        class="theme-toggle-btn"
+                        on:click=toggle_theme
+                        title=move || if is_dark_mode.get() { "Switch to Light Mode" } else { "Switch to Dark Mode" }
+                    >
+                        {move || if is_dark_mode.get() {
+                            view! { <><i class="fas fa-sun"></i><span>"Light"</span></> }
+                        } else {
+                            view! { <><i class="fas fa-moon"></i><span>"Dark"</span></> }
+                        }}
+                    </button>
+                    
                     // Logout button
                     <button
                         class="logout-btn"

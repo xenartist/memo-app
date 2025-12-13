@@ -59,8 +59,15 @@ pub fn PixelView(
             // clear Canvas
             context.clear_rect(0.0, 0.0, canvas_size, canvas_size);
             
-            // draw white background
-            context.set_fill_style_str("white");
+            // check if dark mode is enabled and set appropriate background color
+            let is_dark_mode = web_sys::window()
+                .and_then(|w| w.document())
+                .and_then(|d| d.document_element())
+                .map(|el| el.get_attribute("data-theme").map_or(false, |t| t == "dark"))
+                .unwrap_or(false);
+            
+            let bg_color = if is_dark_mode { "#d8d8d8" } else { "white" };
+            context.set_fill_style_str(bg_color);
             context.fill_rect(0.0, 0.0, canvas_size, canvas_size);
             
             // draw black pixels
@@ -77,7 +84,9 @@ pub fn PixelView(
             
             // draw grid lines (if enabled and editable)
             if show_grid && editable {
-                context.set_stroke_style_str("#ddd");
+                // use darker grid color for better visibility on light gray background
+                let grid_color = if is_dark_mode { "#999" } else { "#ddd" };
+                context.set_stroke_style_str(grid_color);
                 context.set_line_width(0.5);
                 
                 // vertical lines
