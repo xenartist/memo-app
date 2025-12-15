@@ -18,12 +18,12 @@
     align-items: center;
     gap: 1rem;
     padding: 1.25rem;
-    background: linear-gradient(135deg, #ffffff, #f8f9fa);
-    border: 2px solid #dee2e6;
+    background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+    border: 2px solid var(--border-secondary);
     border-radius: 12px;
     cursor: pointer;
     transition: all 0.3s ease;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 2px 8px var(--shadow-light);
     text-align: left;
 }
 
@@ -64,14 +64,14 @@
     margin: 0 0 0.25rem 0;
     font-size: 1.1rem;
     font-weight: 600;
-    color: #333;
+    color: var(--text-secondary);
     line-height: 1.3;
 }
 
 .swap-bridge-description {
     margin: 0;
     font-size: 0.9rem;
-    color: #666;
+    color: var(--text-tertiary);
     line-height: 1.4;
 }
 
@@ -99,7 +99,7 @@
 }
 
 .mint-page-header h1 {
-    color: #333;
+    color: var(--text-secondary);
     font-size: 2rem;
     font-weight: 600;
     margin: 0 0 0.5rem 0;
@@ -110,7 +110,7 @@
 }
 
 .mint-page-header p {
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 1rem;
     margin: 0;
     line-height: 1.5;
@@ -118,10 +118,12 @@
 
 /* Main content area */
 .mint-content {
-    background: white;
+    background: var(--bg-card);
     border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 8px var(--shadow-light);
     overflow: hidden;
+    border: 1px solid var(--border-primary);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 /* Mint controls section */
@@ -132,10 +134,10 @@
 
 /* Main mint button - consistent with project style */
 .mint-button {
-    background: linear-gradient(135deg, #28a745, #20c997);
-    color: white;
+    background: var(--bg-primary);
+    color: var(--accent-success);
+    border: 2px solid var(--accent-success);
     padding: 1rem 2rem;
-    border: none;
     border-radius: 8px;
     font-size: 1.2rem;
     font-weight: 500;
@@ -150,13 +152,16 @@
 }
 
 .mint-button:hover:not(:disabled) {
-    background: linear-gradient(135deg, #218838, #1e7e34);
+    background: var(--accent-success);
+    color: white;
     transform: translateY(-2px);
     box-shadow: 0 6px 12px rgba(40, 167, 69, 0.3);
 }
 
 .mint-button:disabled {
-    background: #6c757d;
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    border-color: var(--border-secondary);
     cursor: not-allowed;
     opacity: 0.7;
     transform: none;
@@ -181,22 +186,23 @@
     padding: 1.5rem;
     margin: 1rem auto;
     max-width: 600px;
-    background: #f8f9fa;
+    background: var(--bg-tertiary);
     border-radius: 8px;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--border-secondary);
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .minting-progress i {
-    color: #28a745;
+    color: var(--accent-success);
     font-size: 1.1rem;
 }
 
 .minting-progress span {
-    color: #333;
+    color: var(--text-secondary);
     font-weight: 500;
 }
 
@@ -390,9 +396,10 @@
 .supply-progress-container {
     margin: 2rem 0;
     padding: 1.5rem;
-    background: white;
+    background: var(--bg-card);
     border-radius: 8px;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--border-secondary);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .supply-progress-header {
@@ -408,7 +415,7 @@
 }
 
 .supply-progress-header h3 {
-    color: #333;
+    color: var(--text-secondary);
     font-size: 1.1rem;
     font-weight: 600;
     margin: 0 0 0.5rem 0;
@@ -419,7 +426,7 @@
 }
 
 .supply-progress-header p {
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 0.9rem;
     margin: 0;
 }
@@ -430,9 +437,9 @@
     align-items: center;
     gap: 6px;
     padding: 8px 14px;
-    background: linear-gradient(135deg, #28a745, #20c997);
-    color: white;
-    border: none;
+    background: var(--bg-primary);
+    color: var(--accent-success);
+    border: 2px solid var(--accent-success);
     border-radius: 6px;
     font-size: 14px;
     font-weight: 500;
@@ -443,7 +450,8 @@
 }
 
 .supply-refresh-btn:hover:not(:disabled) {
-    background: linear-gradient(135deg, #218838, #1e7e34);
+    background: var(--accent-success);
+    color: white;
     transform: translateY(-1px);
     box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
 }
@@ -454,6 +462,9 @@
 }
 
 .supply-refresh-btn:disabled {
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    border-color: var(--border-secondary);
     opacity: 0.6;
     cursor: not-allowed;
 }
@@ -465,11 +476,12 @@
 .supply-progress-track {
     position: relative;
     height: 24px;
-    background: #f8f9fa;
+    background: var(--bg-tertiary);
     border-radius: 12px;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--border-secondary);
     overflow: hidden;
     margin-bottom: 1rem;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .supply-progress-fill {
@@ -502,7 +514,7 @@
     display: flex;
     justify-content: space-between;
     font-size: 0.8rem;
-    color: #666;
+    color: var(--text-tertiary);
     margin-top: 0.5rem;
 }
 
@@ -518,8 +530,9 @@
     gap: 1rem;
     margin-top: 1rem;
     padding: 1rem;
-    background: #f8f9fa;
+    background: var(--bg-tertiary);
     border-radius: 6px;
+    transition: background-color 0.3s ease;
 }
 
 .supply-info-item {
@@ -528,20 +541,20 @@
 
 .supply-info-label {
     font-size: 0.8rem;
-    color: #666;
+    color: var(--text-tertiary);
     margin-bottom: 0.25rem;
 }
 
 .supply-info-value {
     font-size: 1rem;
     font-weight: 600;
-    color: #333;
+    color: var(--text-secondary);
 }
 
 .supply-loading {
     text-align: center;
     padding: 1rem;
-    color: #666;
+    color: var(--text-tertiary);
     font-style: italic;
 }
 
@@ -609,13 +622,14 @@
 .mint-mode-section {
     margin: 2rem 0;
     padding: 1.5rem;
-    background: white;
+    background: var(--bg-card);
     border-radius: 8px;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--border-secondary);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .mint-mode-section h3 {
-    color: #333;
+    color: var(--text-secondary);
     font-size: 1.1rem;
     font-weight: 600;
     margin: 0 0 1rem 0;
@@ -637,28 +651,28 @@
     flex-direction: row;
     align-items: center;
     padding: 1rem;
-    border: 2px solid #dee2e6;
+    border: 2px solid var(--border-secondary);
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.3s ease;
-    background: #f8f9fa;
+    background: var(--bg-tertiary);
 }
 
 .mint-mode-option:hover {
-    border-color: #28a745;
-    background: #f0f8f0;
+    border-color: var(--accent-success);
+    background: var(--bg-hover);
 }
 
 .mint-mode-option:has(input[type="radio"]:disabled) {
     opacity: 0.6;
     cursor: not-allowed;
-    background: #f8f9fa;
-    border-color: #dee2e6;
+    background: var(--bg-secondary);
+    border-color: var(--border-secondary);
 }
 
 .mint-mode-option:has(input[type="radio"]:disabled):hover {
-    border-color: #dee2e6;
-    background: #f8f9fa;
+    border-color: var(--border-secondary);
+    background: var(--bg-secondary);
 }
 
 .mint-mode-option input[type="radio"]:disabled {
@@ -667,7 +681,7 @@
 
 .mint-mode-option:has(input[type="radio"]:disabled) .mint-mode-label,
 .mint-mode-option:has(input[type="radio"]:disabled) .mint-mode-description {
-    color: #999;
+    color: var(--text-muted);
 }
 
 .mint-mode-radio-line {
@@ -688,13 +702,13 @@
 }
 
 .mint-mode-option:has(input[type="radio"]:checked) {
-    border-color: #28a745;
-    background: #e8f5e8;
+    border-color: var(--accent-success);
+    background: var(--menu-active-bg);
 }
 
 .mint-mode-label {
     font-weight: 600;
-    color: #333;
+    color: var(--text-secondary);
     display: flex;
     align-items: center;
     gap: 6px;
@@ -704,7 +718,7 @@
 
 .mint-mode-description {
     font-size: 0.85rem;
-    color: #666;
+    color: var(--text-tertiary);
     line-height: 1.4;
     margin-left: 0.5rem;
 }
@@ -717,9 +731,10 @@
 /* Auto Mint Settings */
 .auto-mint-settings {
     padding: 0.75rem;
-    background: #f8f9fa;
+    background: var(--bg-tertiary);
     border-radius: 6px;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--border-secondary);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 /* Auto count line layout */
@@ -794,7 +809,7 @@
     display: flex;
     gap: 0.5rem;
     margin-bottom: 1rem;
-    border-bottom: 2px solid #dee2e6;
+    border-bottom: 2px solid var(--border-secondary);
 }
 
 .tab-button {
@@ -807,15 +822,15 @@
     border-bottom: 3px solid transparent;
     font-size: 1rem;
     font-weight: 500;
-    color: #666;
+    color: var(--text-tertiary);
     cursor: pointer;
     transition: all 0.3s ease;
     margin-bottom: -2px;
 }
 
 .tab-button:hover {
-    color: #28a745;
-    background: #f8f9fa;
+    color: var(--accent-success);
+    background: var(--bg-tertiary);
 }
 
 .tab-button.active {
@@ -855,17 +870,19 @@
 /* Token Holders Leaderboard */
 .token-holders-leaderboard {
     padding: 1.5rem;
-    background: white;
+    background: var(--bg-card);
     border-radius: 8px;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--border-secondary);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 /* Token Burners Leaderboard */
 .token-burners-leaderboard {
     padding: 1.5rem;
-    background: white;
+    background: var(--bg-card);
     border-radius: 8px;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--border-secondary);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .leaderboard-header {
@@ -874,7 +891,7 @@
 }
 
 .leaderboard-header h3 {
-    color: #333;
+    color: var(--text-secondary);
     font-size: 1.1rem;
     font-weight: 600;
     margin: 0 0 0.5rem 0;
@@ -890,11 +907,11 @@
 
 /* Burner leaderboard fire icon in red */
 .token-burners-leaderboard .leaderboard-header h3 i {
-    color: #dc3545;
+    color: var(--accent-danger);
 }
 
 .leaderboard-header p {
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 0.9rem;
     margin: 0;
 }
@@ -904,7 +921,7 @@
 .leaderboard-empty {
     text-align: center;
     padding: 2rem;
-    color: #666;
+    color: var(--text-tertiary);
 }
 
 .leaderboard-error {
@@ -914,7 +931,7 @@
 }
 
 .leaderboard-empty {
-    background: #f8f9fa;
+    background: var(--bg-secondary);
     border-radius: 6px;
 }
 
@@ -922,14 +939,15 @@
     width: 100%;
     border-radius: 6px;
     overflow: hidden;
-    border: 1px solid #dee2e6;
+    border: 1px solid var(--border-secondary);
 }
 
 .leaderboard-table-header {
     display: grid;
     grid-template-columns: 80px 1fr 150px;
-    background: linear-gradient(135deg, #2c3e50, #34495e);
-    color: white;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--border-primary);
     padding: 1rem;
     font-weight: 600;
     font-size: 0.9rem;
@@ -942,19 +960,19 @@
 }
 
 .leaderboard-table-body {
-    background: white;
+    background: var(--bg-card);
 }
 
 .leaderboard-row {
     display: grid;
     grid-template-columns: 80px 1fr 150px;
     padding: 0.875rem 1rem;
-    border-bottom: 1px solid #f0f0f0;
+    border-bottom: 1px solid var(--border-light);
     transition: background-color 0.2s ease;
 }
 
 .leaderboard-row:hover {
-    background: #f8f9fa;
+    background: var(--bg-hover);
 }
 
 .leaderboard-row:last-child {
@@ -962,19 +980,19 @@
 }
 
 .leaderboard-row.top-three {
-    background: linear-gradient(135deg, #fff9e6, #ffffff);
+    background: var(--leaderboard-top3-bg);
     font-weight: 500;
 }
 
 .leaderboard-row.top-three:hover {
-    background: linear-gradient(135deg, #fff4d6, #f8f9fa);
+    background: var(--leaderboard-top3-hover);
 }
 
 .rank-col {
     display: flex;
     align-items: center;
     font-weight: 600;
-    color: #333;
+    color: var(--text-secondary);
 }
 
 .address-col {
@@ -982,7 +1000,7 @@
     align-items: center;
     font-family: 'Courier New', monospace;
     font-size: 0.9rem;
-    color: #666;
+    color: var(--text-tertiary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1009,7 +1027,7 @@
     align-items: center;
     justify-content: center;
     font-weight: 600;
-    color: #666;
+    color: var(--text-tertiary);
 }
 
 .avatar-col {
@@ -1022,7 +1040,7 @@
     display: flex;
     align-items: center;
     font-size: 0.9rem;
-    color: #333;
+    color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1031,7 +1049,7 @@
 
 .token-symbol {
     font-size: 0.85rem;
-    color: #666;
+    color: var(--text-tertiary);
     margin-left: 4px;
     font-weight: normal;
 }

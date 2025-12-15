@@ -588,7 +588,7 @@ pub struct ProjectBurnLeaderboardResponse {
 }
 
 /// Represents a single burn action to a project
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProjectBurnMessage {
     pub signature: String,      // Transaction signature
     pub burner: String,         // Burner's public key

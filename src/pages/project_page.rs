@@ -1,14 +1,124 @@
 use leptos::*;
 use crate::core::session::Session;
-use crate::core::rpc_project::ProjectCreationData;
+use crate::core::rpc_project::{ProjectCreationData, ProjectBurnMessage};
+use crate::core::rpc_base::RpcConnection;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
 use web_sys::{HtmlInputElement, FileReader, Event, ProgressEvent, window};
 use wasm_bindgen::{closure::Closure, JsCast};
 use js_sys::Uint8Array;
+use wasm_bindgen::JsValue;
 use std::rc::Rc;
-use crate::pages::pixel_view::PixelView;
+use crate::pages::pixel_view::{PixelView, LazyPixelView};
 use crate::core::pixel::Pixel;
+
+/// Devlog message status for UI display
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum DevlogStatus {
+    Sending,
+    Sent,
+    Failed,
+}
+
+/// Parsed devlog data from JSON message
+#[derive(Debug, Clone, PartialEq)]
+struct ParsedDevlog {
+    title: String,
+    content: String,
+    image: String,
+}
+
+impl ParsedDevlog {
+    /// Parse devlog from JSON message string
+    fn from_message(message: &str) -> Option<Self> {
+        // Try to parse as JSON devlog format: {"type":"devlog","title":"...","content":"...","image":"..."}
+        if !message.contains("\"type\":\"devlog\"") {
+            return None;
+        }
+        
+        // Simple JSON parsing (avoiding external dependency)
+        let title = Self::extract_json_field(message, "title").unwrap_or_default();
+        let content = Self::extract_json_field(message, "content").unwrap_or_default();
+        let image = Self::extract_json_field(message, "image").unwrap_or_default();
+        
+        Some(Self { title, content, image })
+    }
+    
+    /// Extract a field value from JSON string
+    fn extract_json_field(json: &str, field: &str) -> Option<String> {
+        let pattern = format!("\"{}\":\"", field);
+        let start = json.find(&pattern)? + pattern.len();
+        let remaining = &json[start..];
+        
+        // Find the closing quote, handling escaped quotes
+        let mut end = 0;
+        let mut escaped = false;
+        for (i, c) in remaining.chars().enumerate() {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if c == '\\' {
+                escaped = true;
+                continue;
+            }
+            if c == '"' {
+                end = i;
+                break;
+            }
+        }
+        
+        let value = &remaining[..end];
+        // Unescape the string
+        Some(value.replace("\\\"", "\"").replace("\\\\", "\\"))
+    }
+}
+
+/// Local devlog message for immediate UI display
+#[derive(Debug, Clone, PartialEq)]
+struct LocalDevlogMessage {
+    message: ProjectBurnMessage,
+    parsed: Option<ParsedDevlog>,
+    status: DevlogStatus,
+    is_local: bool, // true if this is a local message not yet confirmed on chain
+}
+
+impl LocalDevlogMessage {
+    /// Create a new local devlog for immediate UI display
+    fn new_local(burner: String, title: String, content: String, image: String, burn_amount: u64) -> Self {
+        let message_json = format!(
+            r#"{{"type":"devlog","title":"{}","content":"{}","image":"{}"}}"#,
+            title.replace('\\', "\\\\").replace('"', "\\\""),
+            content.replace('\\', "\\\\").replace('"', "\\\""),
+            image.replace('\\', "\\\\").replace('"', "\\\"")
+        );
+        
+        Self {
+            message: ProjectBurnMessage {
+                signature: format!("local_devlog_{}", js_sys::Date::now() as u64),
+                burner,
+                message: message_json.clone(),
+                timestamp: (js_sys::Date::now() / 1000.0) as i64,
+                slot: 0,
+                burn_amount: burn_amount * 1_000_000, // Convert to lamports
+            },
+            parsed: Some(ParsedDevlog { title, content, image }),
+            status: DevlogStatus::Sending,
+            is_local: true,
+        }
+    }
+    
+    /// Create from chain message
+    fn from_chain_message(message: ProjectBurnMessage) -> Self {
+        let parsed = ParsedDevlog::from_message(&message.message);
+        Self {
+            message,
+            parsed,
+            status: DevlogStatus::Sent,
+            is_local: false,
+        }
+    }
+}
 
 /// Project row data for table display
 #[derive(Clone, Debug, PartialEq)]
@@ -16,6 +126,7 @@ struct ProjectRow {
     project_id: u64,
     name: String,
     description: String,
+    image: String,
     website: String,
     burned_amount: u64,
     last_memo_time: i64,
@@ -71,6 +182,7 @@ pub fn ProjectPage(
                                     project_id: entry.project_id,
                                     name: project_info.name,
                                     description: project_info.description,
+                                    image: project_info.image,
                                     website: project_info.website,
                                     burned_amount: entry.burned_amount,
                                     last_memo_time: project_info.last_memo_time,
@@ -375,7 +487,16 @@ pub fn ProjectPage(
     }
 }
 
-/// Project Details View component - placeholder for now
+/// Shorten address for display (e.g., "ABC123...XYZ9")
+fn shorten_address(addr: &str) -> String {
+    if addr.len() > 12 {
+        format!("{}...{}", &addr[..6], &addr[addr.len()-4..])
+    } else {
+        addr.to_string()
+    }
+}
+
+/// Project Details View component - displays project information in a clean card layout
 #[component]
 fn ProjectDetailsView(
     project: ProjectRow,
@@ -383,6 +504,9 @@ fn ProjectDetailsView(
     session: RwSignal<Session>,
 ) -> impl IntoView {
     let on_back_signal = create_rw_signal(Some(on_back));
+    
+    // Store project data for update dialog
+    let project_data = create_rw_signal(project.clone());
 
     let handle_back = move |_| {
         on_back_signal.with_untracked(|cb_opt| {
@@ -392,33 +516,1920 @@ fn ProjectDetailsView(
         });
     };
 
+    // Format burned amount
+    let burned_tokens = project.burned_amount / 1_000_000;
+    let burned_display = format_number_with_commas(burned_tokens);
+    
+    // Format last memo time
+    let last_memo_display = if project.last_memo_time > 0 {
+        let date = web_sys::js_sys::Date::new(&JsValue::from_f64(project.last_memo_time as f64 * 1000.0));
+        format!(
+            "{}-{:02}-{:02} {:02}:{:02}",
+            date.get_full_year(),
+            date.get_month() + 1,
+            date.get_date(),
+            date.get_hours(),
+            date.get_minutes()
+        )
+    } else {
+        "Never".to_string()
+    };
+
+    // Check if current user is the creator (create multiple closures for multiple uses)
+    let creator_address = project.creator.clone();
+    let creator_address_for_check1 = creator_address.clone();
+    let creator_address_for_check2 = creator_address.clone();
+    let creator_address_for_check3 = creator_address.clone();
+    
+    let is_creator = move || {
+        session.with(|s| {
+            match s.get_public_key() {
+                Ok(pubkey) => pubkey == creator_address_for_check1,
+                Err(_) => false,
+            }
+        })
+    };
+    
+    let is_creator_for_devlog_btn = move || {
+        session.with(|s| {
+            match s.get_public_key() {
+                Ok(pubkey) => pubkey == creator_address_for_check2,
+                Err(_) => false,
+            }
+        })
+    };
+    
+    let is_creator_for_hint = move || {
+        session.with(|s| {
+            match s.get_public_key() {
+                Ok(pubkey) => pubkey == creator_address_for_check3,
+                Err(_) => false,
+            }
+        })
+    };
+    
+    // Create a reactive memo for is_creator check (used in devlog list)
+    let creator_address_for_memo = creator_address.clone();
+    let is_creator_memo = create_memo(move |_| {
+        session.with(|s| {
+            match s.get_public_key() {
+                Ok(pubkey) => pubkey == creator_address_for_memo,
+                Err(_) => false,
+            }
+        })
+    });
+    
+    // Update dialog state
+    let (show_update_dialog, set_show_update_dialog) = create_signal(false);
+    
+    // Devlog dialog state
+    let (show_devlog_dialog, set_show_devlog_dialog) = create_signal(false);
+    
+    // Devlog list state
+    let (devlogs, set_devlogs) = create_signal::<Vec<LocalDevlogMessage>>(vec![]);
+    let (devlogs_loading, set_devlogs_loading) = create_signal(true);
+    let (devlogs_error, set_devlogs_error) = create_signal::<Option<String>>(None);
+    
+    // Store project_id for devlog operations
+    let project_id_for_devlogs = project.project_id;
+    
+    // Load devlogs on mount
+    {
+        let project_id = project.project_id;
+        create_effect(move |_| {
+            spawn_local(async move {
+                set_devlogs_loading.set(true);
+                set_devlogs_error.set(None);
+                
+                let rpc = RpcConnection::new();
+                match rpc.get_project_burn_messages(project_id, 50, None).await {
+                    Ok(response) => {
+                        // Filter only devlog messages and convert to LocalDevlogMessage
+                        let devlog_messages: Vec<LocalDevlogMessage> = response.messages
+                            .into_iter()
+                            .filter(|msg| msg.message.contains("\"type\":\"devlog\""))
+                            .map(LocalDevlogMessage::from_chain_message)
+                            .collect();
+                        
+                        log::info!("Loaded {} devlogs for project {}", devlog_messages.len(), project_id);
+                        set_devlogs.set(devlog_messages);
+                    },
+                    Err(e) => {
+                        log::error!("Failed to load devlogs: {}", e);
+                        set_devlogs_error.set(Some(format!("Failed to load devlogs: {}", e)));
+                    }
+                }
+                set_devlogs_loading.set(false);
+            });
+        });
+    }
+    
+    // Creator display name - start with shortened address, then try to fetch username
+    let creator_addr_for_display = project.creator.clone();
+    let (creator_display, set_creator_display) = create_signal(shorten_address(&creator_addr_for_display));
+    let (creator_username, set_creator_username) = create_signal::<Option<String>>(None);
+    
+    // Fetch creator's profile to get username
+    {
+        let creator_addr = creator_addr_for_display.clone();
+        create_effect(move |_| {
+            let addr = creator_addr.clone();
+            spawn_local(async move {
+                let rpc = crate::core::rpc_base::RpcConnection::new();
+                match rpc.get_profile(&addr).await {
+                    Ok(Some(profile)) => {
+                        log::info!("Found creator profile: {}", profile.username);
+                        set_creator_display.set(profile.username.clone());
+                        set_creator_username.set(Some(profile.username));
+                    },
+                    Ok(None) => {
+                        log::info!("No profile found for creator: {}", addr);
+                    },
+                    Err(e) => {
+                        log::warn!("Failed to fetch creator profile: {}", e);
+                    }
+                }
+            });
+        });
+    }
+
+    // Copy address to clipboard
+    let copy_address = {
+        let address = project.creator.clone();
+        move |_| {
+            if let Some(window) = window() {
+                let clipboard = window.navigator().clipboard();
+                let _ = clipboard.write_text(&address);
+            }
+        }
+    };
+    
+    // Open update dialog
+    let open_update_dialog = move |_| {
+        set_show_update_dialog.set(true);
+    };
+    
+    // Close update dialog
+    let close_update_dialog = move || {
+        set_show_update_dialog.set(false);
+    };
+    
+    // Handle update success - refresh project data
+    let on_update_success = move |_signature: String| {
+        log::info!("Project updated successfully!");
+        set_show_update_dialog.set(false);
+        // Note: In a real app, we'd refresh the project data here
+    };
+
+    // Open devlog dialog
+    let open_devlog_dialog = move |_| {
+        set_show_devlog_dialog.set(true);
+    };
+    
+    // Close devlog dialog
+    let close_devlog_dialog = move || {
+        set_show_devlog_dialog.set(false);
+    };
+    
+    // Handle devlog success
+    let on_devlog_success = move |_signature: String| {
+        log::info!("Devlog posted successfully!");
+        set_show_devlog_dialog.set(false);
+    };
+
     view! {
-        <div class="project-details-view">
-            <div class="details-header">
+        <div class="project-details-page">
+            <div class="project-details-container">
+                // Back button
                 <button 
-                    class="back-button"
+                    class="pd-back-btn"
                     on:click=handle_back
                     title="Back to leaderboard"
                 >
                     <i class="fas fa-arrow-left"></i>
                     "Back to Projects"
                 </button>
-                <h1 class="project-title">{project.name.clone()}</h1>
-            </div>
-            
-            <div class="details-content">
-                <div class="placeholder-content">
-                    <div class="placeholder-text">
-                        <h2>
-                            <i class="fas fa-tools"></i>
-                            "Project Details"
+                
+                // Project Detail Card
+                <div class="project-detail-card">
+                    // Card Header with Image, Name, Rank and Update Button
+                    <div class="pd-card-header">
+                        <div class="pd-header-content">
+                            // Project Image
+                            {if !project.image.is_empty() {
+                                if project.image.starts_with("c:") || project.image.starts_with("n:") {
+                                    view! {
+                                        <div class="pd-project-avatar">
+                                            <LazyPixelView
+                                                art={project.image.clone()}
+                                                size=80
+                                            />
+                                        </div>
+                                    }.into_view()
+                                } else {
+                                    view! {
+                                        <div class="pd-project-avatar">
+                                            <img src={project.image.clone()} alt="Project Image" />
+                                        </div>
+                                    }.into_view()
+                                }
+                            } else {
+                                view! {
+                                    <div class="pd-project-avatar placeholder">
+                                        <i class="fas fa-cube"></i>
+                                    </div>
+                                }.into_view()
+                            }}
+                            
+                            // Name and Rank
+                            <div class="project-name-section">
+                                <h1 class="project-detail-name">{project.name.clone()}</h1>
+                                <span class={format!("rank-badge rank-{}", if project.rank <= 3 { project.rank.to_string() } else if project.rank <= 10 { "top10".to_string() } else { "other".to_string() })}>
+                                    {if project.rank == 1 {
+                                        view! { <><i class="fas fa-trophy"></i> " #1"</> }.into_view()
+                                    } else if project.rank <= 3 {
+                                        view! { <><i class="fas fa-medal"></i> {format!(" #{}", project.rank)}</> }.into_view()
+                                    } else {
+                                        view! { <><i class="fas fa-fire"></i> {format!(" #{}", project.rank)}</> }.into_view()
+                                    }}
+                                </span>
+                            </div>
+                            
+                            // Update button (only visible to creator)
+                            <Show when=move || is_creator()>
+                                <button 
+                                    class="pd-update-btn"
+                                    on:click=open_update_dialog
+                                    title="Update project"
+                                >
+                                    <i class="fas fa-edit"></i>
+                                    "Update"
+                                </button>
+                            </Show>
+                        </div>
+                    </div>
+                    
+                    // Card Body with horizontal layout
+                    <div class="pd-card-body">
+                        // Left side - Main info
+                        <div class="info-left">
+                            // Project ID
+                            <div class="detail-field">
+                                <div class="pd-field-icon">
+                                    <i class="fas fa-hashtag"></i>
+                                </div>
+                                <div class="pd-field-content">
+                                    <span class="pd-field-label">"Project ID"</span>
+                                    <span class="pd-field-value mono">{project.project_id.to_string()}</span>
+                                </div>
+                            </div>
+                            
+                            // Description
+                            <div class="detail-field description-field">
+                                <div class="pd-field-icon">
+                                    <i class="fas fa-align-left"></i>
+                                </div>
+                                <div class="pd-field-content">
+                                    <span class="pd-field-label">"Description"</span>
+                                    <span class="pd-field-value">
+                                        {if project.description.is_empty() {
+                                            "-".to_string()
+                                        } else {
+                                            project.description.clone()
+                                        }}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            // Website
+                            <div class="detail-field">
+                                <div class="pd-field-icon">
+                                    <i class="fas fa-globe"></i>
+                                </div>
+                                <div class="pd-field-content">
+                                    <span class="pd-field-label">"Website"</span>
+                                    {if !project.website.is_empty() {
+                                        view! {
+                                            <a 
+                                                href={project.website.clone()} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                class="pd-field-value link"
+                                            >
+                                                {project.website.clone()}
+                                                <i class="fas fa-external-link-alt"></i>
+                                            </a>
+                                        }.into_view()
+                                    } else {
+                                        view! {
+                                            <span class="pd-field-value muted">"-"</span>
+                                        }.into_view()
+                                    }}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        // Right side - Stats
+                        <div class="info-right">
+                            // Burned Amount
+                            <div class="pd-stat-card">
+                                <div class="pd-stat-icon">
+                                    <i class="fas fa-fire"></i>
+                                </div>
+                                <div class="pd-stat-content">
+                                    <span class="pd-stat-label">"Burned"</span>
+                                    <span class="pd-stat-value">{burned_display}" MEMO"</span>
+                                </div>
+                            </div>
+                            
+                            // Last Memo Time
+                            <div class="pd-stat-card">
+                                <div class="pd-stat-icon">
+                                    <i class="fas fa-clock"></i>
+                                </div>
+                                <div class="pd-stat-content">
+                                    <span class="pd-stat-label">"Last Memo"</span>
+                                    <span class="pd-stat-value">{last_memo_display}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    // Card Footer - Creator
+                    <div class="pd-card-footer">
+                        <div class="creator-section">
+                            <span class="creator-label">
+                                <i class="fas fa-user"></i>
+                                "Created by"
+                            </span>
+                            <div class="creator-info">
+                                <span class="pd-creator-name">{move || creator_display.get()}</span>
+                                // Show address hint if we have a username
+                                {move || {
+                                    if creator_username.get().is_some() {
+                                        let addr = creator_address.clone();
+                                        view! {
+                                            <span class="pd-address-hint">
+                                                "(" {shorten_address(&addr)} ")"
+                                            </span>
+                                        }.into_view()
+                                    } else {
+                                        view! { <span></span> }.into_view()
+                                    }
+                                }}
+                                <button 
+                                    class="pd-copy-btn"
+                                    on:click=copy_address
+                                    title="Copy full address to clipboard"
+                                >
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                // Devlog Section (outside project card)
+                <div class="devlog-section">
+                    // Section Header with New Devlog button
+                    <div class="devlog-section-header">
+                        <h2 class="devlog-section-title">
+                            <i class="fas fa-book-open"></i>
+                            "Development Logs"
                         </h2>
-                        <p>"This is a placeholder for the project details page."</p>
-                        <p>"Project ID: " {project.project_id.to_string()}</p>
-                        <p>"More details will be implemented here later."</p>
+                        // New Devlog button (only visible to creator)
+                        <Show when=move || is_creator_for_devlog_btn()>
+                            <button 
+                                class="pd-devlog-btn"
+                                on:click=open_devlog_dialog
+                                title="Post a new devlog"
+                            >
+                                <i class="fas fa-plus"></i>
+                                "New Devlog"
+                            </button>
+                        </Show>
+                    </div>
+                    
+                    // Devlog list
+                    <div class="devlog-list">
+                        {move || {
+                            if devlogs_loading.get() {
+                                // Loading state
+                                view! {
+                                    <div class="devlog-loading">
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        <p>"Loading development logs..."</p>
+                                    </div>
+                                }.into_view()
+                            } else if let Some(error) = devlogs_error.get() {
+                                // Error state
+                                view! {
+                                    <div class="devlog-error">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                        <p>{error}</p>
+                                    </div>
+                                }.into_view()
+                            } else if devlogs.get().is_empty() {
+                                // Empty state
+                                view! {
+                                    <div class="devlog-empty-state">
+                                        <i class="fas fa-scroll"></i>
+                                        <p>"No development logs yet"</p>
+                                        <Show when=move || is_creator_memo.get()>
+                                            <span class="devlog-empty-hint">"Click 'New Devlog' to share your first update!"</span>
+                                        </Show>
+                                    </div>
+                                }.into_view()
+                            } else {
+                                // Devlog cards
+                                let logs = devlogs.get();
+                                view! {
+                                    <For
+                                        each=move || devlogs.get()
+                                        key=|devlog| devlog.message.signature.clone()
+                                        children=move |devlog| {
+                                            view! {
+                                                <DevlogCard 
+                                                    devlog=devlog.clone()
+                                                    session=session
+                                                    devlogs=set_devlogs
+                                                    project_id=project_id_for_devlogs
+                                                />
+                                            }
+                                        }
+                                    />
+                                }.into_view()
+                            }
+                        }}
                     </div>
                 </div>
             </div>
+            
+            // Update Project Dialog
+            <Show when=move || show_update_dialog.get()>
+                <div class="modal-overlay">
+                    <UpdateProjectForm
+                        session=session
+                        project=project_data
+                        on_close=Rc::new(close_update_dialog)
+                        on_success=Rc::new(on_update_success)
+                    />
+                </div>
+            </Show>
+            
+            // Devlog Dialog
+            <Show when=move || show_devlog_dialog.get()>
+                <div class="modal-overlay">
+                    <DevlogForm
+                        session=session
+                        project=project_data
+                        devlogs=set_devlogs
+                        on_close=Rc::new(close_devlog_dialog)
+                        on_success=Rc::new(on_devlog_success)
+                    />
+                </div>
+            </Show>
+        </div>
+    }
+}
+
+/// Devlog Card component - displays a single devlog entry
+#[component]
+fn DevlogCard(
+    devlog: LocalDevlogMessage,
+    session: RwSignal<Session>,
+    devlogs: WriteSignal<Vec<LocalDevlogMessage>>,
+    project_id: u64,
+) -> impl IntoView {
+    let status = devlog.status;
+    let is_local = devlog.is_local;
+    let signature = devlog.message.signature.clone();
+    let burner = devlog.message.burner.clone();
+    let timestamp = devlog.message.timestamp;
+    let burn_amount = devlog.message.burn_amount;
+    let message_raw = devlog.message.message.clone();
+    
+    // Get parsed devlog data
+    let parsed = devlog.parsed.clone();
+    let title = parsed.as_ref().map(|p| p.title.clone()).unwrap_or_else(|| "Untitled".to_string());
+    let content = parsed.as_ref().map(|p| p.content.clone()).unwrap_or_default();
+    let image = parsed.as_ref().map(|p| p.image.clone()).unwrap_or_default();
+    
+    // Clone for retry
+    let title_for_retry = title.clone();
+    let content_for_retry = content.clone();
+    let image_for_retry = image.clone();
+    let signature_for_retry = signature.clone();
+    
+    // Format timestamp
+    let time_display = if timestamp > 0 {
+        let date = web_sys::js_sys::Date::new(&JsValue::from_f64(timestamp as f64 * 1000.0));
+        format!(
+            "{}-{:02}-{:02} {:02}:{:02}",
+            date.get_full_year(),
+            date.get_month() + 1,
+            date.get_date(),
+            date.get_hours(),
+            date.get_minutes()
+        )
+    } else {
+        "Just now".to_string()
+    };
+    
+    // Format burn amount
+    let burn_display = format!("{}", burn_amount / 1_000_000);
+    
+    // Handle retry
+    let handle_retry = move |_| {
+        let title = title_for_retry.clone();
+        let content = content_for_retry.clone();
+        let image = image_for_retry.clone();
+        let sig = signature_for_retry.clone();
+        let proj_id = project_id;
+        
+        // Update status to Sending
+        devlogs.update(|logs| {
+            if let Some(devlog) = logs.iter_mut().find(|d| d.message.signature == sig) {
+                devlog.status = DevlogStatus::Sending;
+            }
+        });
+        
+        spawn_local(async move {
+            let devlog_data = DevlogData::new(title.clone(), content.clone(), image.clone());
+            let message = devlog_data.to_json();
+            
+            let mut session_update = session.get_untracked();
+            let result = session_update.burn_tokens_for_project(
+                proj_id,
+                420, // Minimum burn amount for retry
+                &message,
+            ).await;
+            
+            match result {
+                Ok(new_signature) => {
+                    devlogs.update(|logs| {
+                        if let Some(devlog) = logs.iter_mut().find(|d| d.message.signature == sig) {
+                            devlog.status = DevlogStatus::Sent;
+                            devlog.message.signature = new_signature;
+                        }
+                    });
+                    
+                    session.update(|s| {
+                        s.mark_balance_update_needed();
+                    });
+                },
+                Err(_) => {
+                    devlogs.update(|logs| {
+                        if let Some(devlog) = logs.iter_mut().find(|d| d.message.signature == sig) {
+                            devlog.status = DevlogStatus::Failed;
+                        }
+                    });
+                }
+            }
+        });
+    };
+    
+    view! {
+        <div 
+            class="devlog-card"
+            class:devlog-sending=move || status == DevlogStatus::Sending
+            class:devlog-failed=move || status == DevlogStatus::Failed
+        >
+            // Card Header
+            <div class="devlog-card-header">
+                <h3 class="devlog-title">{title}</h3>
+                <div class="devlog-meta">
+                    <span class="devlog-time">
+                        <i class="fas fa-clock"></i>
+                        {time_display}
+                    </span>
+                    <span class="devlog-burn">
+                        <i class="fas fa-fire"></i>
+                        {burn_display}" MEMO"
+                    </span>
+                </div>
+            </div>
+            
+            // Card Body - Horizontal layout
+            <div class="devlog-card-body">
+                // Image section (left side)
+                {if !image.is_empty() && (image.starts_with("c:") || image.starts_with("n:")) {
+                    view! {
+                        <div class="devlog-image-section">
+                            <div class="devlog-image">
+                                <LazyPixelView
+                                    art={image.clone()}
+                                    size=100
+                                />
+                            </div>
+                        </div>
+                    }.into_view()
+                } else {
+                    view! {
+                        <div class="devlog-image-section">
+                            <div class="devlog-image-placeholder">
+                                <i class="fas fa-image"></i>
+                                <span>"No image"</span>
+                            </div>
+                        </div>
+                    }.into_view()
+                }}
+
+                // Content section (right side)
+                <div class="devlog-content-section">
+                    {if !content.is_empty() {
+                        view! {
+                            <p class="devlog-content">{content}</p>
+                        }.into_view()
+                    } else {
+                        view! {
+                            <p class="devlog-content devlog-content-empty">"No content"</p>
+                        }.into_view()
+                    }}
+                </div>
+            </div>
+            
+            // Status indicator (for local messages) - rendered based on initial status
+            {if status == DevlogStatus::Sending {
+                view! {
+                    <div class="devlog-status sending">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        " Sending..."
+                    </div>
+                }.into_view()
+            } else if status == DevlogStatus::Failed {
+                view! {
+                    <div class="devlog-status failed">
+                        <i class="fas fa-exclamation-circle"></i>
+                        " Failed to send"
+                        <button 
+                            class="retry-btn"
+                            on:click=handle_retry
+                        >
+                            <i class="fas fa-redo"></i>
+                            " Retry"
+                        </button>
+                    </div>
+                }.into_view()
+            } else {
+                view! { <div></div> }.into_view()
+            }}
+        </div>
+    }
+}
+
+/// Devlog data structure for calculating memo size
+#[derive(Clone, Debug)]
+struct DevlogData {
+    title: String,
+    content: String,
+    image: String,
+}
+
+impl DevlogData {
+    fn new(title: String, content: String, image: String) -> Self {
+        Self { title, content, image }
+    }
+    
+    /// Convert to JSON string for storage in message field
+    fn to_json(&self) -> String {
+        format!(
+            r#"{{"type":"devlog","title":"{}","content":"{}","image":"{}"}}"#,
+            self.title.replace('\\', "\\\\").replace('"', "\\\""),
+            self.content.replace('\\', "\\\\").replace('"', "\\\""),
+            self.image.replace('\\', "\\\\").replace('"', "\\\"")
+        )
+    }
+    
+    /// Calculate final memo size (Borsh + Base64) for devlog
+    fn calculate_final_memo_size(&self, project_id: u64, burner: &str, burn_amount: u64) -> Result<usize, String> {
+        use crate::core::rpc_project::{ProjectBurnData, BurnMemo};
+        use crate::core::constants::BURN_MEMO_VERSION;
+        use borsh::BorshSerialize;
+        
+        let message = self.to_json();
+        
+        // Create ProjectBurnData
+        let burn_data = ProjectBurnData::new(
+            project_id,
+            burner.to_string(),
+            message,
+        );
+        
+        // Serialize ProjectBurnData to Borsh
+        let payload_bytes = burn_data.try_to_vec()
+            .map_err(|e| format!("Failed to serialize ProjectBurnData: {}", e))?;
+        
+        // Create BurnMemo with the payload
+        let burn_memo = BurnMemo {
+            version: BURN_MEMO_VERSION,
+            burn_amount,
+            payload: payload_bytes,
+        };
+        
+        // Serialize BurnMemo to Borsh
+        let memo_data_bytes = burn_memo.try_to_vec()
+            .map_err(|e| format!("Failed to serialize BurnMemo: {}", e))?;
+        
+        // Encode to Base64 (this is what actually gets sent)
+        let memo_data_base64 = base64::encode(&memo_data_bytes);
+        
+        Ok(memo_data_base64.len())
+    }
+}
+
+/// Devlog Form component - allows creator to post development logs
+#[component]
+fn DevlogForm(
+    session: RwSignal<Session>,
+    project: RwSignal<ProjectRow>,
+    devlogs: WriteSignal<Vec<LocalDevlogMessage>>,
+    on_close: Rc<dyn Fn()>,
+    on_success: Rc<dyn Fn(String)>,
+) -> impl IntoView {
+    let on_close_signal = create_rw_signal(Some(on_close));
+    let on_success_signal = create_rw_signal(Some(on_success));
+    
+    // Get project data
+    let original_project = project.get_untracked();
+    let project_id = original_project.project_id;
+    
+    // Form state signals
+    let (devlog_title, set_devlog_title) = create_signal(String::new());
+    let (devlog_content, set_devlog_content) = create_signal(String::new());
+    let (burn_amount, set_burn_amount) = create_signal(420u64); // Minimum 420 tokens for burn_for_project
+    let (pixel_art, set_pixel_art) = create_signal(Pixel::new_with_size(16));
+    let (grid_size, set_grid_size) = create_signal(16usize);
+    
+    // UI state signals
+    let (is_posting, set_is_posting) = create_signal(false);
+    let (error_message, set_error_message) = create_signal(String::new());
+    let (show_copied, set_show_copied) = create_signal(false);
+    
+    // Get current image data
+    let get_image_data = move || -> String {
+        pixel_art.get().to_optimal_string()
+    };
+    
+    // Get burner pubkey
+    let get_burner_pubkey = move || -> String {
+        session.with(|s| s.get_public_key().unwrap_or_default())
+    };
+
+    // Calculate memo size in real time (69-800 bytes)
+    let calculate_memo_size = move || -> (usize, bool, String) {
+        let title = devlog_title.get().trim().to_string();
+        let content = devlog_content.get().trim().to_string();
+        let image_data = get_image_data();
+        let amount = burn_amount.get() * 1_000_000; // lamports
+        let burner = get_burner_pubkey();
+
+        let devlog_data = DevlogData::new(title, content, image_data);
+
+        match devlog_data.calculate_final_memo_size(project_id, &burner, amount) {
+            Ok(size) => {
+                let is_valid = size >= 69 && size <= 800;
+                let status = if is_valid {
+                    "✅ Valid".to_string()
+                } else if size < 69 {
+                    "❌ Too short".to_string()
+                } else {
+                    "❌ Too long".to_string()
+                };
+                (size, is_valid, status)
+            },
+            Err(e) => (0, false, format!("❌ Error: {}", e)),
+        }
+    };
+
+    // Handle form submission
+    let handle_submit = move |ev: leptos::leptos_dom::ev::SubmitEvent| {
+        ev.prevent_default();
+
+        if is_posting.get() {
+            return;
+        }
+
+        let title = devlog_title.get().trim().to_string();
+        let content = devlog_content.get().trim().to_string();
+        let image = get_image_data();
+        let amount = burn_amount.get();
+
+        // Validation
+        if title.is_empty() || title.len() > 64 {
+            set_error_message.set(format!("❌ Devlog title must be 1-64 characters, got {}", title.len()));
+            return;
+        }
+        if content.len() > 500 {
+            set_error_message.set(format!("❌ Devlog content must be at most 500 characters, got {}", content.len()));
+            return;
+        }
+        if amount < 420 {
+            set_error_message.set("❌ Burn amount must be at least 420 MEMO tokens".to_string());
+            return;
+        }
+
+        // Check memo size
+        let (memo_size, is_valid, _) = calculate_memo_size();
+        if !is_valid {
+            set_error_message.set(format!("❌ Memo size ({} bytes) must be between 69-800 bytes", memo_size));
+            return;
+        }
+
+        // Check balance
+        let token_balance = session.with_untracked(|s| s.get_token_balance());
+        if token_balance < amount as f64 {
+            set_error_message.set(format!("❌ Insufficient balance. Required: {} MEMO, Available: {:.2} MEMO", amount, token_balance));
+            return;
+        }
+
+        set_is_posting.set(true);
+        set_error_message.set(String::new());
+
+        // Get user pubkey for local message
+        let user_pubkey = session.with_untracked(|s| s.get_public_key().unwrap_or_default());
+        
+        // 1. Create local devlog for immediate UI display (optimistic update)
+        let local_devlog = LocalDevlogMessage::new_local(
+            user_pubkey.clone(),
+            title.clone(),
+            content.clone(),
+            image.clone(),
+            amount,
+        );
+        let local_signature = local_devlog.message.signature.clone();
+        
+        // Add to devlogs list immediately (at the beginning)
+        devlogs.update(|logs| {
+            logs.insert(0, local_devlog);
+        });
+        
+        // Clear form and close dialog
+        set_devlog_title.set(String::new());
+        set_devlog_content.set(String::new());
+        set_pixel_art.set(Pixel::new_with_size(16));
+        
+        // Create devlog message (JSON format) for sending
+        let devlog_data = DevlogData::new(title.clone(), content.clone(), image.clone());
+        let message = devlog_data.to_json();
+        let proj_id = project_id;
+
+        // 2. Send to blockchain
+        spawn_local(async move {
+            TimeoutFuture::new(100).await;
+            
+            let mut session_update = session.get_untracked();
+            let result = session_update.burn_tokens_for_project(
+                proj_id,
+                amount,
+                &message,
+            ).await;
+
+            set_is_posting.set(false);
+
+            match result {
+                Ok(signature) => {
+                    // 3. Update local devlog status to Sent
+                    devlogs.update(|logs| {
+                        if let Some(devlog) = logs.iter_mut().find(|d| {
+                            d.is_local && 
+                            d.message.signature == local_signature
+                        }) {
+                            devlog.status = DevlogStatus::Sent;
+                            devlog.message.signature = signature.clone();
+                        }
+                    });
+                    
+                    session.update(|s| {
+                        s.mark_balance_update_needed();
+                    });
+
+                    on_success_signal.with_untracked(|cb_opt| {
+                        if let Some(callback) = cb_opt.as_ref() {
+                            callback(signature);
+                        }
+                    });
+                },
+                Err(e) => {
+                    // 4. Update local devlog status to Failed
+                    devlogs.update(|logs| {
+                        if let Some(devlog) = logs.iter_mut().find(|d| {
+                            d.is_local && 
+                            d.message.signature == local_signature
+                        }) {
+                            devlog.status = DevlogStatus::Failed;
+                        }
+                    });
+                    
+                    set_error_message.set(format!("❌ Failed to post devlog: {}", e));
+                }
+            }
+        });
+    };
+
+    // Handle close
+    let handle_close = move |_| {
+        on_close_signal.with_untracked(|cb_opt| {
+            if let Some(callback) = cb_opt.as_ref() {
+                callback();
+            }
+        });
+    };
+
+    // Handle image import
+    let handle_import = move |ev: web_sys::MouseEvent| {
+        ev.prevent_default();
+        
+        let window = web_sys::window().unwrap();
+        let document = window.document().unwrap();
+        let input: HtmlInputElement = document
+            .create_element("input")
+            .unwrap()
+            .dyn_into()
+            .unwrap();
+        
+        input.set_type("file");
+        input.set_accept("image/*");
+        
+        let pixel_art_write = set_pixel_art;
+        let error_signal = set_error_message;
+        let grid_size_signal = grid_size;
+        
+        let onchange = Closure::wrap(Box::new(move |event: Event| {
+            let input: HtmlInputElement = event.target().unwrap().dyn_into().unwrap();
+            if let Some(file) = input.files().unwrap().get(0) {
+                let reader = FileReader::new().unwrap();
+                let reader_clone = reader.clone();
+                let current_grid_size = grid_size_signal.get();
+                
+                let onload = Closure::wrap(Box::new(move |_: ProgressEvent| {
+                    if let Ok(buffer) = reader_clone.result() {
+                        let array = Uint8Array::new(&buffer);
+                        let data = array.to_vec();
+                        
+                        match Pixel::from_image_data_with_size(&data, current_grid_size) {
+                            Ok(new_art) => {
+                                pixel_art_write.set(new_art);
+                                error_signal.set(String::new());
+                            }
+                            Err(e) => {
+                                error_signal.set(format!("Failed to process image: {}", e));
+                            }
+                        }
+                    }
+                }) as Box<dyn FnMut(ProgressEvent)>);
+                
+                reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+                onload.forget();
+                
+                reader.read_as_array_buffer(&file).unwrap();
+            }
+        }) as Box<dyn FnMut(_)>);
+        
+        input.set_onchange(Some(onchange.as_ref().unchecked_ref()));
+        onchange.forget();
+        
+        input.click();
+    };
+
+    // Copy pixel art string
+    let copy_string = move |ev: web_sys::MouseEvent| {
+        ev.prevent_default();
+        let art_string = pixel_art.get().to_optimal_string();
+        if let Some(window) = window() {
+            let clipboard = window.navigator().clipboard();
+            let _ = clipboard.write_text(&art_string);
+            set_show_copied.set(true);
+            spawn_local(async move {
+                TimeoutFuture::new(2000).await;
+                set_show_copied.set(false);
+            });
+        }
+    };
+
+    view! {
+        <div class="devlog-form">
+            <div class="form-header">
+                <h3 class="form-title">
+                    <i class="fas fa-book-open"></i>
+                    "New Devlog"
+                </h3>
+                <button
+                    type="button"
+                    class="form-close-btn"
+                    on:click=handle_close
+                    title="Close"
+                >
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form class="project-form" on:submit=handle_submit>
+                <div class="form-layout">
+                    // Left side: Basic Information
+                    <div class="form-left">
+                        // Devlog Title
+                        <div class="form-group">
+                            <label for="devlog-title">
+                                <i class="fas fa-heading"></i>
+                                "Devlog Title"
+                                <span class="required">*</span>
+                            </label>
+                            <input
+                                type="text"
+                                id="devlog-title"
+                                prop:value=devlog_title
+                                on:input=move |ev| set_devlog_title.set(event_target_value(&ev))
+                                placeholder="Enter devlog title (1-64 characters)..."
+                                maxlength="64"
+                                prop:disabled=move || is_posting.get()
+                            />
+                            <small class="char-count">
+                                {move || format!("{}/64 characters", devlog_title.get().len())}
+                            </small>
+                        </div>
+
+                        // Devlog Content
+                        <div class="form-group">
+                            <label for="devlog-content">
+                                <i class="fas fa-align-left"></i>
+                                "Content"
+                            </label>
+                            <textarea
+                                id="devlog-content"
+                                prop:value=devlog_content
+                                on:input=move |ev| set_devlog_content.set(event_target_value(&ev))
+                                placeholder="Write your development log here (max 500 characters)..."
+                                maxlength="500"
+                                rows="6"
+                                prop:disabled=move || is_posting.get()
+                            ></textarea>
+                            <small class="char-count">
+                                {move || format!("{}/500 characters", devlog_content.get().len())}
+                            </small>
+                        </div>
+                    </div>
+
+                    // Right side: Image and Burn Amount
+                    <div class="form-right">
+                        <div class="pixel-art-editor">
+                            <div class="pixel-art-header">
+                                <label>
+                                    <i class="fas fa-image"></i>
+                                    "Devlog Image (Optional)"
+                                </label>
+                                <div class="pixel-art-controls">
+                                    <select
+                                        class="size-selector"
+                                        prop:value=move || grid_size.get().to_string()
+                                        on:change=move |ev| {
+                                            let value = event_target_value(&ev);
+                                            if let Ok(size) = value.parse::<usize>() {
+                                                set_grid_size.set(size);
+                                                set_pixel_art.set(Pixel::new_with_size(size));
+                                            }
+                                        }
+                                        prop:disabled=move || is_posting.get()
+                                    >
+                                        <option value="16">"16×16 pixels"</option>
+                                        <option value="32">"32×32 pixels"</option>
+                                    </select>
+                                    <button 
+                                        type="button"
+                                        class="import-btn"
+                                        on:click=handle_import
+                                        prop:disabled=move || is_posting.get()
+                                    >
+                                        <i class="fas fa-upload"></i>
+                                        "Import"
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            // Pixel Art Canvas
+                            {move || {
+                                let art_string = pixel_art.get().to_optimal_string();
+                                let click_handler = Box::new(move |row, col| {
+                                    let mut new_art = pixel_art.get();
+                                    new_art.toggle_pixel(row, col);
+                                    set_pixel_art.set(new_art);
+                                });
+                                
+                                view! {
+                                    <PixelView
+                                        art=art_string
+                                        size=180
+                                        editable=true
+                                        show_grid=true
+                                        on_click=click_handler
+                                    />
+                                }
+                            }}
+
+                            // Pixel art info
+                            <div class="pixel-string-info">
+                                <div class="string-display">
+                                    <span class="label">
+                                        <i class="fas fa-code"></i>
+                                        "Encoded: "
+                                    </span>
+                                    <span class="value">
+                                        {move || {
+                                            let art_string = pixel_art.get().to_optimal_string();
+                                            if art_string.len() <= 16 {
+                                                art_string
+                                            } else {
+                                                format!("{}...{}", &art_string[..8], &art_string[art_string.len()-6..])
+                                            }
+                                        }}
+                                    </span>
+                                    <div class="copy-container">
+                                        <button
+                                            type="button"
+                                            class="copy-button"
+                                            on:click=copy_string
+                                            title="Copy"
+                                        >
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                        <div class="copy-tooltip" class:show=move || show_copied.get()>
+                                            "Copied!"
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        // Burn Amount
+                        <div class="form-group" style="margin-top: 16px;">
+                            <label for="devlog-burn-amount">
+                                <i class="fas fa-fire"></i>
+                                "Burn Amount (MEMO)"
+                            </label>
+                            <input
+                                type="number"
+                                id="devlog-burn-amount"
+                                prop:value=burn_amount
+                                on:input=move |ev| {
+                                    let input = event_target::<HtmlInputElement>(&ev);
+                                    if let Ok(value) = input.value().parse::<u64>() {
+                                        set_burn_amount.set(value.max(420));
+                                    }
+                                }
+                                min="420"
+                                prop:disabled=move || is_posting.get()
+                            />
+                            <small class="form-hint">
+                                <i class="fas fa-wallet"></i>
+                                {move || {
+                                    let balance = session.with(|s| s.get_token_balance());
+                                    view! {
+                                        "Minimum: 420 MEMO (Available: "
+                                        <span class={if balance >= 420.0 { "balance-sufficient" } else { "balance-insufficient" }}>
+                                            {format!("{:.2} MEMO", balance)}
+                                        </span>
+                                        ")"
+                                    }
+                                }}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                // Memo size indicator (real-time)
+                <div class="memo-size-indicator devlog">
+                    <div class="size-info">
+                        <span class="size-label">
+                            <i class="fas fa-database"></i>
+                            "Memo Size: "
+                        </span>
+                        {move || {
+                            let (size, is_valid, status) = calculate_memo_size();
+                            view! {
+                                <span class="size-value" class:valid=is_valid class:invalid=move || !is_valid>
+                                    {format!("{} bytes", size)}
+                                </span>
+                                <span class="size-range">"(Required: 69-800 bytes)"</span>
+                                <span class="size-status" class:valid=is_valid class:invalid=move || !is_valid>
+                                    {status}
+                                </span>
+                            }
+                        }}
+                    </div>
+                    <div class="size-progress">
+                        {move || {
+                            let (size, is_valid, _) = calculate_memo_size();
+                            let percentage = ((size as f64 / 800.0) * 100.0).min(100.0);
+                            view! {
+                                <div class="progress-bar">
+                                    <div class="progress-track">
+                                        <div 
+                                            class="progress-fill"
+                                            class:valid=is_valid
+                                            class:invalid=move || !is_valid
+                                            style:width=move || format!("{}%", percentage)
+                                        ></div>
+                                        <div class="progress-markers">
+                                            <div class="marker min-marker" style="left: 8.625%"></div>
+                                            <div class="marker max-marker" style="left: 100%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }}
+                    </div>
+                </div>
+
+                // Error message
+                {move || {
+                    let message = error_message.get();
+                    if !message.is_empty() {
+                        view! {
+                            <div class="error-message">{message}</div>
+                        }.into_view()
+                    } else {
+                        view! { <div></div> }.into_view()
+                    }
+                }}
+
+                // Submit button
+                <div class="button-group">
+                    <button
+                        type="submit"
+                        class="post-devlog-btn"
+                        prop:disabled=move || {
+                            is_posting.get() ||
+                            devlog_title.get().trim().is_empty() ||
+                            devlog_title.get().len() > 64 ||
+                            devlog_content.get().len() > 500 ||
+                            burn_amount.get() < 420 ||
+                            session.with(|s| s.get_token_balance()) < burn_amount.get() as f64 ||
+                            !calculate_memo_size().1 // Check if memo size is valid
+                        }
+                    >
+                        <i class="fas fa-paper-plane"></i>
+                        {move || {
+                            if is_posting.get() {
+                                "Posting Devlog...".to_string()
+                            } else {
+                                format!("Post Devlog (Burn {} MEMO)", burn_amount.get())
+                            }
+                        }}
+                    </button>
+                </div>
+            </form>
+        </div>
+    }
+}
+
+/// Update Project Form component - allows creator to update project details
+#[component]
+fn UpdateProjectForm(
+    session: RwSignal<Session>,
+    project: RwSignal<ProjectRow>,
+    on_close: Rc<dyn Fn()>,
+    on_success: Rc<dyn Fn(String)>,
+) -> impl IntoView {
+    let on_close_signal = create_rw_signal(Some(on_close));
+    let on_success_signal = create_rw_signal(Some(on_success));
+    
+    // Get original project data
+    let original_project = project.get_untracked();
+    
+    // Original values for comparison
+    let original_name = original_project.name.clone();
+    let original_description = original_project.description.clone();
+    let original_image = original_project.image.clone();
+    let original_website = original_project.website.clone();
+    
+    // Parse original image to pixel art
+    let original_pixel_art = if original_image.starts_with("c:") || original_image.starts_with("n:") {
+        Pixel::from_optimal_string(&original_image).unwrap_or_else(|| Pixel::new_with_size(16))
+    } else {
+        Pixel::new_with_size(16)
+    };
+    let (original_grid_size, _) = original_pixel_art.dimensions();
+    
+    // Form state signals - initialized with original values
+    let (project_name, set_project_name) = create_signal(original_name.clone());
+    let (project_description, set_project_description) = create_signal(original_description.clone());
+    let (project_website, set_project_website) = create_signal(original_website.clone());
+    let (burn_amount, set_burn_amount) = create_signal(42069u64); // Minimum 42,069 tokens for update (same as contract requirement)
+    let (pixel_art, set_pixel_art) = create_signal(original_pixel_art.clone());
+    let (grid_size, set_grid_size) = create_signal(original_grid_size);
+    
+    // UI state signals
+    let (is_updating, set_is_updating) = create_signal(false);
+    let (error_message, set_error_message) = create_signal(String::new());
+    let (show_copied, set_show_copied) = create_signal(false);
+    
+    // Original values for change detection (stored as signals for reactive comparison)
+    let original_name_signal = create_rw_signal(original_name.clone());
+    let original_description_signal = create_rw_signal(original_description.clone());
+    let original_website_signal = create_rw_signal(original_website.clone());
+    let original_pixel_art_signal = create_rw_signal(original_pixel_art.clone());
+    
+    // Change detection
+    let name_changed = move || project_name.get() != original_name_signal.get();
+    let description_changed = move || project_description.get() != original_description_signal.get();
+    let website_changed = move || project_website.get() != original_website_signal.get();
+    let image_changed = move || pixel_art.get().to_optimal_string() != original_pixel_art_signal.get().to_optimal_string();
+    
+    let has_changes = move || {
+        name_changed() || description_changed() || website_changed() || image_changed()
+    };
+    
+    // Get current image data
+    let get_image_data = move || -> String {
+        pixel_art.get().to_optimal_string()
+    };
+
+    // Calculate memo size in real time (same rule as create: 69-800 bytes)
+    let calculate_memo_size = move || -> (usize, bool, String) {
+        let name = project_name.get().trim().to_string();
+        let description = project_description.get().trim().to_string();
+        let image_data = get_image_data();
+        let website = project_website.get().trim().to_string();
+        let tags: Vec<String> = vec![]; // tags not editable in update for now
+        let amount = burn_amount.get() * 1_000_000; // lamports
+
+        let project_data = ProjectCreationData::new(
+            original_project.project_id,
+            name,
+            description,
+            image_data,
+            website,
+            tags,
+        );
+
+        match project_data.calculate_final_memo_size(amount) {
+            Ok(size) => {
+                let is_valid = size >= 69 && size <= 800;
+                let status = if is_valid {
+                    "✅ Valid".to_string()
+                } else if size < 69 {
+                    "❌ Too short".to_string()
+                } else {
+                    "❌ Too long".to_string()
+                };
+                (size, is_valid, status)
+            },
+            Err(e) => (0, false, format!("❌ Error: {}", e)),
+        }
+    };
+
+    // Handle form submission
+    let handle_submit = move |ev: leptos::leptos_dom::ev::SubmitEvent| {
+        ev.prevent_default();
+
+        if is_updating.get() || !has_changes() {
+            return;
+        }
+
+        let name = project_name.get().trim().to_string();
+        let description = project_description.get().trim().to_string();
+        let image = get_image_data();
+        let website = project_website.get().trim().to_string();
+        let amount = burn_amount.get();
+        let proj_id = original_project.project_id;
+
+        // Validation
+        if name.is_empty() || name.len() > 64 {
+            set_error_message.set(format!("❌ Project name must be 1-64 characters, got {}", name.len()));
+            return;
+        }
+        if description.len() > 256 {
+            set_error_message.set(format!("❌ Description must be at most 256 characters, got {}", description.len()));
+            return;
+        }
+        if website.len() > 128 {
+            set_error_message.set(format!("❌ Website must be at most 128 characters, got {}", website.len()));
+            return;
+        }
+        if amount < 42069 {
+            set_error_message.set("❌ Burn amount must be at least 42,069 MEMO tokens".to_string());
+            return;
+        }
+
+        // Check balance
+        let token_balance = session.with_untracked(|s| s.get_token_balance());
+        if token_balance < amount as f64 {
+            set_error_message.set(format!("❌ Insufficient balance. Required: {} MEMO, Available: {:.2} MEMO", amount, token_balance));
+            return;
+        }
+
+        set_is_updating.set(true);
+        set_error_message.set(String::new());
+
+        // Prepare optional fields - only send changed ones
+        let name_opt = if name_changed() { Some(name) } else { None };
+        let desc_opt = if description_changed() { Some(description) } else { None };
+        let image_opt = if image_changed() { Some(image) } else { None };
+        let website_opt = if website_changed() { Some(website) } else { None };
+
+        spawn_local(async move {
+            TimeoutFuture::new(100).await;
+            
+            let mut session_update = session.get_untracked();
+            let result = session_update.update_project(
+                proj_id,
+                name_opt,
+                desc_opt,
+                image_opt,
+                website_opt,
+                None, // tags not editable for now
+                amount,
+            ).await;
+
+            set_is_updating.set(false);
+
+            match result {
+                Ok(signature) => {
+                    session.update(|s| {
+                        s.mark_balance_update_needed();
+                    });
+
+                    on_success_signal.with_untracked(|cb_opt| {
+                        if let Some(callback) = cb_opt.as_ref() {
+                            callback(signature);
+                        }
+                    });
+                },
+                Err(e) => {
+                    set_error_message.set(format!("❌ Failed to update project: {}", e));
+                }
+            }
+        });
+    };
+
+    // Handle close
+    let handle_close = move |_| {
+        on_close_signal.with_untracked(|cb_opt| {
+            if let Some(callback) = cb_opt.as_ref() {
+                callback();
+            }
+        });
+    };
+
+    // Handle image import
+    let handle_import = move |ev: web_sys::MouseEvent| {
+        ev.prevent_default();
+        
+        let window = web_sys::window().unwrap();
+        let document = window.document().unwrap();
+        let input: HtmlInputElement = document
+            .create_element("input")
+            .unwrap()
+            .dyn_into()
+            .unwrap();
+        
+        input.set_type("file");
+        input.set_accept("image/*");
+        
+        let pixel_art_write = set_pixel_art;
+        let error_signal = set_error_message;
+        let grid_size_signal = grid_size;
+        
+        let onchange = Closure::wrap(Box::new(move |event: Event| {
+            let input: HtmlInputElement = event.target().unwrap().dyn_into().unwrap();
+            if let Some(file) = input.files().unwrap().get(0) {
+                let reader = FileReader::new().unwrap();
+                let reader_clone = reader.clone();
+                let current_grid_size = grid_size_signal.get();
+                
+                let onload = Closure::wrap(Box::new(move |_: ProgressEvent| {
+                    if let Ok(buffer) = reader_clone.result() {
+                        let array = Uint8Array::new(&buffer);
+                        let data = array.to_vec();
+                        
+                        match Pixel::from_image_data_with_size(&data, current_grid_size) {
+                            Ok(new_art) => {
+                                pixel_art_write.set(new_art);
+                                error_signal.set(String::new());
+                            }
+                            Err(e) => {
+                                error_signal.set(format!("Failed to process image: {}", e));
+                            }
+                        }
+                    }
+                }) as Box<dyn FnMut(ProgressEvent)>);
+                
+                reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+                onload.forget();
+                
+                reader.read_as_array_buffer(&file).unwrap();
+            }
+        }) as Box<dyn FnMut(_)>);
+        
+        input.set_onchange(Some(onchange.as_ref().unchecked_ref()));
+        onchange.forget();
+        
+        input.click();
+    };
+
+    // Copy pixel art string
+    let copy_string = move |ev: web_sys::MouseEvent| {
+        ev.prevent_default();
+        let art_string = pixel_art.get().to_optimal_string();
+        if let Some(window) = window() {
+            let clipboard = window.navigator().clipboard();
+            let _ = clipboard.write_text(&art_string);
+            set_show_copied.set(true);
+            spawn_local(async move {
+                TimeoutFuture::new(2000).await;
+                set_show_copied.set(false);
+            });
+        }
+    };
+
+    view! {
+        <div class="update-project-form">
+            <div class="form-header">
+                <h3 class="form-title">
+                    <i class="fas fa-edit"></i>
+                    "Update Project"
+                </h3>
+                <button
+                    type="button"
+                    class="form-close-btn"
+                    on:click=handle_close
+                    title="Close"
+                >
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form class="project-form" on:submit=handle_submit>
+                <div class="form-layout">
+                    // Left side: Basic Information
+                    <div class="form-left">
+                        // Project Name
+                        <div class="form-group">
+                            <label for="update-project-name">
+                                <i class="fas fa-pencil-alt"></i>
+                                "Project Name"
+                                {move || if name_changed() {
+                                    view! { 
+                                        <span class="changed-indicator">
+                                            <i class="fas fa-edit"></i>
+                                            "Modified"
+                                        </span> 
+                                    }.into_view()
+                                } else {
+                                    view! { <span></span> }.into_view()
+                                }}
+                            </label>
+                            <input
+                                type="text"
+                                id="update-project-name"
+                                prop:value=project_name
+                                on:input=move |ev| set_project_name.set(event_target_value(&ev))
+                                placeholder="Enter project name (1-64 characters)..."
+                                maxlength="64"
+                                prop:disabled=move || is_updating.get()
+                                class:changed=name_changed
+                            />
+                        </div>
+
+                        // Project Description
+                        <div class="form-group">
+                            <label for="update-project-description">
+                                <i class="fas fa-align-left"></i>
+                                "Description"
+                                {move || if description_changed() {
+                                    view! { 
+                                        <span class="changed-indicator">
+                                            <i class="fas fa-edit"></i>
+                                            "Modified"
+                                        </span> 
+                                    }.into_view()
+                                } else {
+                                    view! { <span></span> }.into_view()
+                                }}
+                            </label>
+                            <textarea
+                                id="update-project-description"
+                                prop:value=project_description
+                                on:input=move |ev| set_project_description.set(event_target_value(&ev))
+                                placeholder="Enter project description (max 256 characters)..."
+                                maxlength="256"
+                                rows="3"
+                                prop:disabled=move || is_updating.get()
+                                class:changed=description_changed
+                            ></textarea>
+                        </div>
+
+                        // Project Website
+                        <div class="form-group">
+                            <label for="update-project-website">
+                                <i class="fas fa-link"></i>
+                                "Website"
+                                {move || if website_changed() {
+                                    view! { 
+                                        <span class="changed-indicator">
+                                            <i class="fas fa-edit"></i>
+                                            "Modified"
+                                        </span> 
+                                    }.into_view()
+                                } else {
+                                    view! { <span></span> }.into_view()
+                                }}
+                            </label>
+                            <input
+                                type="text"
+                                id="update-project-website"
+                                prop:value=project_website
+                                on:input=move |ev| set_project_website.set(event_target_value(&ev))
+                                placeholder="Enter website URL (max 128 characters)..."
+                                maxlength="128"
+                                prop:disabled=move || is_updating.get()
+                                class:changed=website_changed
+                            />
+                        </div>
+                    </div>
+
+                    // Right side: Project Image
+                    <div class="form-right">
+                        <div class="pixel-art-editor">
+                            <div class="pixel-art-header">
+                                <label>
+                                    <i class="fas fa-image"></i>
+                                    "Project Image"
+                                    {move || if image_changed() {
+                                        view! { 
+                                            <span class="changed-indicator">
+                                                <i class="fas fa-edit"></i>
+                                                "Modified"
+                                            </span> 
+                                        }.into_view()
+                                    } else {
+                                        view! { <span></span> }.into_view()
+                                    }}
+                                </label>
+                                <div class="pixel-art-controls">
+                                    <select
+                                        class="size-selector"
+                                        prop:value=move || grid_size.get().to_string()
+                                        on:change=move |ev| {
+                                            let value = event_target_value(&ev);
+                                            if let Ok(size) = value.parse::<usize>() {
+                                                set_grid_size.set(size);
+                                                set_pixel_art.set(Pixel::new_with_size(size));
+                                            }
+                                        }
+                                        prop:disabled=move || is_updating.get()
+                                    >
+                                        <option value="16">"16×16 pixels"</option>
+                                        <option value="32">"32×32 pixels"</option>
+                                    </select>
+                                    <button 
+                                        type="button"
+                                        class="import-btn"
+                                        on:click=handle_import
+                                        prop:disabled=move || is_updating.get()
+                                    >
+                                        <i class="fas fa-upload"></i>
+                                        "Import"
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            // Pixel Art Canvas
+                            {move || {
+                                let art_string = pixel_art.get().to_optimal_string();
+                                let click_handler = Box::new(move |row, col| {
+                                    let mut new_art = pixel_art.get();
+                                    new_art.toggle_pixel(row, col);
+                                    set_pixel_art.set(new_art);
+                                });
+                                
+                                view! {
+                                    <PixelView
+                                        art=art_string
+                                        size=200
+                                        editable=true
+                                        show_grid=true
+                                        on_click=click_handler
+                                    />
+                                }
+                            }}
+
+                            // Pixel art info
+                            <div class="pixel-string-info">
+                                <div class="string-display">
+                                    <span class="label">
+                                        <i class="fas fa-code"></i>
+                                        "Encoded: "
+                                    </span>
+                                    <span class="value">
+                                        {move || {
+                                            let art_string = pixel_art.get().to_optimal_string();
+                                            if art_string.len() <= 16 {
+                                                art_string
+                                            } else {
+                                                format!("{}...{}", &art_string[..8], &art_string[art_string.len()-6..])
+                                            }
+                                        }}
+                                    </span>
+                                    <div class="copy-container">
+                                        <button
+                                            type="button"
+                                            class="copy-button"
+                                            on:click=copy_string
+                                            title="Copy"
+                                        >
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                        <div class="copy-tooltip" class:show=move || show_copied.get()>
+                                            "Copied!"
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        // Burn Amount
+                        <div class="form-group" style="margin-top: 16px;">
+                            <label for="update-burn-amount">
+                                <i class="fas fa-fire"></i>
+                                "Burn Amount (MEMO)"
+                            </label>
+                            <input
+                                type="number"
+                                id="update-burn-amount"
+                                prop:value=burn_amount
+                                on:input=move |ev| {
+                                    let input = event_target::<HtmlInputElement>(&ev);
+                                    if let Ok(value) = input.value().parse::<u64>() {
+                                        set_burn_amount.set(value.max(42069));
+                                    }
+                                }
+                                min="42069"
+                                prop:disabled=move || is_updating.get()
+                            />
+                            <small class="form-hint">
+                                <i class="fas fa-wallet"></i>
+                                {move || {
+                                    let balance = session.with(|s| s.get_token_balance());
+                                    view! {
+                                        "Minimum: 42,069 MEMO (Available: "
+                                        <span class={if balance >= 42069.0 { "balance-sufficient" } else { "balance-insufficient" }}>
+                                            {format!("{:.2} MEMO", balance)}
+                                        </span>
+                                        ")"
+                                    }
+                                }}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                // Memo size indicator (real-time)
+                <div class="memo-size-indicator update">
+                    <div class="size-info">
+                        <span class="size-label">
+                            <i class="fas fa-database"></i>
+                            "Memo Size: "
+                        </span>
+                        {move || {
+                            let (size, is_valid, status) = calculate_memo_size();
+                            view! {
+                                <span class="size-value" class:valid=is_valid class:invalid=move || !is_valid>
+                                    {format!("{} bytes", size)}
+                                </span>
+                                <span class="size-range">"(Required: 69-800 bytes)"</span>
+                                <span class="size-status" class:valid=is_valid class:invalid=move || !is_valid>
+                                    {status}
+                                </span>
+                            }
+                        }}
+                    </div>
+                    <div class="size-progress">
+                        {move || {
+                            let (size, is_valid, _) = calculate_memo_size();
+                            let percentage = ((size as f64 / 800.0) * 100.0).min(100.0);
+                            view! {
+                                <div class="progress-bar">
+                                    <div class="progress-track">
+                                        <div 
+                                            class="progress-fill"
+                                            class:valid=is_valid
+                                            class:invalid=move || !is_valid
+                                            style:width=move || format!("{}%", percentage)
+                                        ></div>
+                                        <div class="progress-markers">
+                                            <div class="marker min-marker" style="left: 8.625%"></div>
+                                            <div class="marker max-marker" style="left: 100%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }}
+                    </div>
+                </div>
+
+                // Pending Changes Summary
+                {move || if has_changes() {
+                    view! {
+                        <div class="changes-summary">
+                            <h4>
+                                <i class="fas fa-exclamation-circle"></i>
+                                "Pending Changes"
+                            </h4>
+                            <ul>
+                                {move || if name_changed() {
+                                    view! {
+                                        <li>
+                                            "Name: "
+                                            <span class="old-value">{original_name_signal.get()}</span>
+                                            " → "
+                                            <span class="new-value">{project_name.get()}</span>
+                                        </li>
+                                    }.into_view()
+                                } else {
+                                    view! { <li style="display:none"></li> }.into_view()
+                                }}
+                                {move || if description_changed() {
+                                    let old_desc = original_description_signal.get();
+                                    let new_desc = project_description.get();
+                                    view! {
+                                        <li>
+                                            "Description: "
+                                            <span class="old-value">{if old_desc.len() > 30 { format!("{}...", &old_desc[..30]) } else { old_desc }}</span>
+                                            " → "
+                                            <span class="new-value">{if new_desc.len() > 30 { format!("{}...", &new_desc[..30]) } else { new_desc }}</span>
+                                        </li>
+                                    }.into_view()
+                                } else {
+                                    view! { <li style="display:none"></li> }.into_view()
+                                }}
+                                {move || if website_changed() {
+                                    view! {
+                                        <li>
+                                            "Website: "
+                                            <span class="old-value">{original_website_signal.get()}</span>
+                                            " → "
+                                            <span class="new-value">{project_website.get()}</span>
+                                        </li>
+                                    }.into_view()
+                                } else {
+                                    view! { <li style="display:none"></li> }.into_view()
+                                }}
+                                {move || if image_changed() {
+                                    view! {
+                                        <li>
+                                            "Image: "
+                                            <span class="old-value">"(previous)"</span>
+                                            " → "
+                                            <span class="new-value">"(new image)"</span>
+                                        </li>
+                                    }.into_view()
+                                } else {
+                                    view! { <li style="display:none"></li> }.into_view()
+                                }}
+                            </ul>
+                        </div>
+                    }.into_view()
+                } else {
+                    view! { <div></div> }.into_view()
+                }}
+
+                // Error message
+                {move || {
+                    let message = error_message.get();
+                    if !message.is_empty() {
+                        view! {
+                            <div class="error-message">{message}</div>
+                        }.into_view()
+                    } else {
+                        view! { <div></div> }.into_view()
+                    }
+                }}
+
+                // Submit button
+                <div class="button-group">
+                    <button
+                        type="submit"
+                        class="update-project-btn"
+                        prop:disabled=move || {
+                            is_updating.get() ||
+                            !has_changes() ||
+                            project_name.get().trim().is_empty() ||
+                            burn_amount.get() < 42069 ||
+                            session.with(|s| s.get_token_balance()) < burn_amount.get() as f64
+                        }
+                    >
+                        <i class="fas fa-save"></i>
+                        {move || {
+                            if is_updating.get() {
+                                "Updating...".to_string()
+                            } else {
+                                format!("Update Project (Burn {} MEMO)", burn_amount.get())
+                            }
+                        }}
+                    </button>
+                </div>
+            </form>
         </div>
     }
 }
