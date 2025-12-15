@@ -1,5 +1,6 @@
 use leptos::*;
 use crate::core::rpc_base::RpcConnection;
+use crate::core::rpc_domain::get_primary_domain;
 use crate::core::session::Session;
 use crate::core::NetworkType;
 use crate::pages::profile_page::ProfilePage;
@@ -58,6 +59,51 @@ pub fn MainPage(
     let (_blockhash_status, set_blockhash_status) = create_signal(String::from("Getting latest blockhash..."));
     
     let (show_copied, set_show_copied) = create_signal(false);
+    
+    // Theme state - true for dark mode, false for light mode
+    let (is_dark_mode, set_is_dark_mode) = create_signal(false);
+    
+    // Initialize theme from localStorage on component mount
+    create_effect(move |_| {
+        if let Some(window) = window() {
+            if let Ok(Some(storage)) = window.local_storage() {
+                if let Ok(Some(theme)) = storage.get_item("theme") {
+                    let is_dark = theme == "dark";
+                    set_is_dark_mode.set(is_dark);
+                    // Apply theme to document
+                    if let Some(document) = window.document() {
+                        if let Some(html) = document.document_element() {
+                            let _ = html.set_attribute("data-theme", if is_dark { "dark" } else { "light" });
+                        }
+                    }
+                }
+            }
+        }
+    });
+    
+    // Theme toggle handler
+    let toggle_theme = move |_| {
+        let new_is_dark = !is_dark_mode.get();
+        set_is_dark_mode.set(new_is_dark);
+        
+        if let Some(window) = window() {
+            // Save to localStorage
+            if let Ok(Some(storage)) = window.local_storage() {
+                let _ = storage.set_item("theme", if new_is_dark { "dark" } else { "light" });
+            }
+            // Apply theme to document
+            if let Some(document) = window.document() {
+                if let Some(html) = document.document_element() {
+                    let _ = html.set_attribute("data-theme", if new_is_dark { "dark" } else { "light" });
+                }
+            }
+        }
+        
+        add_log_entry("INFO", &format!("Theme changed to {}", if new_is_dark { "Dark Mode" } else { "Light Mode" }));
+    };
+    
+    // Primary domain from X1NS
+    let (primary_domain, set_primary_domain) = create_signal(Option::<String>::None);
     
     // Initialize Burn Stats dialog states
     let (show_init_dialog, set_show_init_dialog) = create_signal(false);
@@ -223,6 +269,29 @@ pub fn MainPage(
             }
         });
     });
+    
+    // Fetch primary domain from X1NS
+    {
+        let session_clone = session;
+        spawn_local(async move {
+            let addr = session_clone.get_untracked().get_public_key().unwrap_or_else(|_| String::new());
+            if !addr.is_empty() && addr != "Not initialized" {
+                log::info!("Fetching primary domain for address: {}", addr);
+                match get_primary_domain(&addr).await {
+                    Ok(Some(domain)) => {
+                        log::info!("Primary domain found: {}", domain);
+                        set_primary_domain.set(Some(domain));
+                    },
+                    Ok(None) => {
+                        log::debug!("No primary domain set for this address");
+                    },
+                    Err(e) => {
+                        log::warn!("Failed to fetch primary domain: {}", e);
+                    }
+                }
+            }
+        });
+    }
     
     // test rpc connection
     spawn_local(async move {
@@ -393,6 +462,19 @@ pub fn MainPage(
             <div class="top-bar">
                 // Left side - Control buttons
                 <div class="left-controls">
+                    // Theme toggle button
+                    <button
+                        class="theme-toggle-btn"
+                        on:click=toggle_theme
+                        title=move || if is_dark_mode.get() { "Switch to Light Mode" } else { "Switch to Dark Mode" }
+                    >
+                        {move || if is_dark_mode.get() {
+                            view! { <><i class="fas fa-sun"></i><span>"Light"</span></> }
+                        } else {
+                            view! { <><i class="fas fa-moon"></i><span>"Dark"</span></> }
+                        }}
+                    </button>
+                    
                     // Logout button
                     <button
                         class="logout-btn"
@@ -480,7 +562,12 @@ pub fn MainPage(
                         >
                             {move || {
                                 let addr = wallet_address();
-                                format!("{}...{}", &addr[..4], &addr[addr.len()-4..])
+                                let short_addr = format!("{}...{}", &addr[..4], &addr[addr.len()-4..]);
+                                if let Some(domain) = primary_domain.get() {
+                                    format!("{} ({})", domain, short_addr)
+                                } else {
+                                    short_addr
+                                }
                             }}
                         </span>
                     </button>

@@ -4,10 +4,12 @@
     width: 100%;
     max-width: 800px;
     margin: 0 auto;
-    background: white;
+    background: var(--bg-card);
     border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 8px var(--shadow-light);
     overflow: hidden;
+    border: 1px solid var(--border-primary);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 /* Log header */
@@ -16,8 +18,9 @@
     justify-content: space-between;
     align-items: center;
     padding: 16px 20px;
-    background-color: #f8f9fa;
-    border-bottom: 1px solid #dee2e6;
+    background-color: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-secondary);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .log-title {
@@ -26,17 +29,17 @@
     gap: 8px;
     font-size: 1.1rem;
     font-weight: 600;
-    color: #333;
+    color: var(--text-secondary);
     margin: 0;
 }
 
 .log-title i {
-    color: #666;
+    color: var(--text-tertiary);
 }
 
 .log-count {
-    background-color: #007bff;
-    color: white;
+    background-color: var(--accent-primary);
+    color: var(--text-inverse);
     padding: 2px 8px;
     border-radius: 12px;
     font-size: 0.8rem;
@@ -71,8 +74,8 @@
 
 .log-toggle-btn {
     background: none;
-    border: 1px solid #6c757d;
-    color: #6c757d;
+    border: 1px solid var(--text-muted);
+    color: var(--text-muted);
     padding: 6px 10px;
     border-radius: 4px;
     cursor: pointer;
@@ -84,8 +87,8 @@
 }
 
 .log-toggle-btn:hover {
-    background-color: #6c757d;
-    color: white;
+    background-color: var(--text-muted);
+    color: var(--text-inverse);
 }
 
 /* Log content */
@@ -119,7 +122,7 @@
 }
 
 .log-entry:hover {
-    background-color: #f8f9fa;
+    background-color: var(--bg-hover);
 }
 
 .log-entry:last-child {
@@ -127,7 +130,7 @@
 }
 
 .log-timestamp {
-    color: #6c757d;
+    color: var(--text-muted);
     font-size: 0.8rem;
     white-space: nowrap;
     flex-shrink: 0;
@@ -180,14 +183,14 @@
 .log-message {
     flex: 1;
     word-break: break-word;
-    color: #333;
+    color: var(--text-secondary);
 }
 
 /* Empty state */
 .log-empty {
     text-align: center;
     padding: 40px 20px;
-    color: #6c757d;
+    color: var(--text-muted);
     font-style: italic;
 }
 
@@ -197,16 +200,16 @@
 }
 
 .log-content::-webkit-scrollbar-track {
-    background: #f1f1f1;
+    background: var(--bg-tertiary);
 }
 
 .log-content::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
+    background: var(--border-primary);
     border-radius: 3px;
 }
 
 .log-content::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
+    background: var(--text-muted);
 }
 
 /* Responsive design */

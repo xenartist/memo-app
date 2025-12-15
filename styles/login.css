@@ -2,15 +2,17 @@
 
 /* Base login container */
 .login-container {
-  background-color: white;
+  background-color: var(--bg-card);
   padding: 2rem;
   border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 10px var(--shadow-light);
   text-align: center;
   max-width: 600px;
   width: 90%;
   margin: 0 auto;
   position: relative;
+  border: 1px solid var(--border-primary);
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 /* App title */
@@ -127,7 +129,7 @@
 
 /* Mnemonic display */
 .mnemonic-display {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
   padding: 1.5rem;
   border-radius: 8px;
   margin: 1.5rem auto;
@@ -137,8 +139,10 @@
   line-height: 1.8;
   max-width: 500px;
   word-break: break-word;
-  border: 2px solid #dee2e6;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 2px solid var(--border-secondary);
+  box-shadow: 0 2px 8px var(--shadow-light);
+  color: var(--text-primary);
+  transition: background 0.3s ease, border-color 0.3s ease;
 }
 
 /* Form inputs */
@@ -149,14 +153,15 @@ input[type="text"] {
   max-width: 500px;
   margin: 1rem auto;
   padding: 1rem 1.2rem;
-  border: 2px solid #dee2e6;
+  border: 2px solid var(--border-secondary);
   border-radius: 8px;
   font-family: 'Courier New', monospace;
   font-size: 1rem;
   resize: vertical;
   display: block;
   transition: all 0.3s ease;
-  background-color: #fff;
+  background-color: var(--bg-input);
+  color: var(--text-primary);
 }
 
 textarea:focus,
@@ -167,6 +172,12 @@ input[type="text"]:focus {
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
+textarea::placeholder,
+input[type="password"]::placeholder,
+input[type="text"]::placeholder {
+  color: var(--text-muted);
+}
+
 .mnemonic-textarea {
   width: 100%;
   min-height: 120px;
@@ -175,7 +186,7 @@ input[type="text"]:focus {
 
 /* Headers */
 h2 {
-  color: #333;
+  color: var(--text-secondary);
   margin-bottom: 1.5rem;
 }
 
@@ -250,8 +261,9 @@ h2 {
   gap: 10px;
   margin: 20px 0;
   padding: 15px;
-  background-color: #f5f5f5;
+  background-color: var(--bg-tertiary);
   border-radius: 8px;
+  transition: background-color 0.3s ease;
 }
 
 .word-button {
@@ -259,34 +271,35 @@ h2 {
   min-height: 40px;
   width: 100%;
   padding: 10px;
-  border: 2px solid #4CAF50;
+  border: 2px solid var(--accent-success);
   border-radius: 4px;
-  background-color: white;
+  background-color: var(--bg-card);
   cursor: pointer;
   font-size: 14px;
-  color: #333;
+  color: var(--text-secondary);
+  transition: background-color 0.2s ease;
 }
 
 .word-button:hover {
-  background-color: #e8f5e9;
+  background-color: rgba(76, 175, 80, 0.1);
 }
 
 .verify-instruction {
-  color: #666;
+  color: var(--text-tertiary);
   margin: 15px 0;
   font-size: 1.1rem;
 }
 
 .current-word-index {
   font-size: 1.2rem;
-  color: #2196F3;
+  color: var(--accent-primary);
   margin: 15px 0;
   font-weight: bold;
 }
 
 .progress-bar {
   margin-top: 20px;
-  color: #666;
+  color: var(--text-tertiary);
   font-size: 0.9rem;
 }
 
@@ -319,8 +332,9 @@ h2 {
   margin-bottom: 20px;
   text-align: left;
   padding: 15px;
-  background-color: #f8f9fa;
+  background-color: var(--bg-tertiary);
   border-radius: 4px;
+  transition: background-color 0.3s ease;
 }
 
 .checkbox-label {
@@ -333,13 +347,13 @@ h2 {
 .warning-text {
   margin-top: 8px;
   font-size: 0.9rem;
-  color: #666;
+  color: var(--text-tertiary);
 }
 
 /* Form sections */
 .section-title {
   font-size: 1rem;
-  color: #333;
+  color: var(--text-secondary);
   margin-bottom: 10px;
   text-align: left;
   font-weight: 600;
@@ -348,15 +362,17 @@ h2 {
 .passphrase-section {
   margin-bottom: 20px;
   padding: 15px;
-  background-color: #fff3e0;
+  background-color: rgba(255, 152, 0, 0.1);
   border-radius: 4px;
+  transition: background-color 0.3s ease;
 }
 
 .password-section {
   margin-bottom: 20px;
   padding: 15px;
-  background-color: #f5f5f5;
+  background-color: var(--bg-tertiary);
   border-radius: 4px;
+  transition: background-color 0.3s ease;
 }
 
 .input-group {
@@ -366,9 +382,11 @@ h2 {
 .input-group input {
   width: 100%;
   padding: 10px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border-primary);
   border-radius: 4px;
   font-size: 1rem;
+  background: var(--bg-input);
+  color: var(--text-primary);
 }
 
 .mnemonic-input-section {
@@ -376,7 +394,7 @@ h2 {
 }
 
 .instruction-text {
-  color: #666;
+  color: var(--text-tertiary);
   margin-bottom: 1rem;
   text-align: left;
 }
@@ -385,21 +403,23 @@ h2 {
 .wallet-info {
   margin: 2rem 0;
   padding: 1.5rem;
-  background: #f8f9fa;
+  background: var(--bg-tertiary);
   border-radius: 8px;
   display: flex;
   align-items: center;
   gap: 12px;
+  transition: background-color 0.3s ease;
 }
 
 .address-container {
   margin: 1rem 0;
   padding: 1rem;
-  background: #fff;
-  border: 1px solid #dee2e6;
+  background: var(--bg-card);
+  border: 1px solid var(--border-secondary);
   border-radius: 4px;
   white-space: nowrap;
   -webkit-overflow-scrolling: touch;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .wallet-address {
@@ -413,7 +433,7 @@ h2 {
 }
 
 .info-text {
-  color: #666;
+  color: var(--text-tertiary);
   font-size: 0.9rem;
   margin-top: 1rem;
 }
@@ -470,19 +490,23 @@ h2 {
 }
 
 .reset-confirm-content {
-  background: white;
+  background: var(--bg-card);
   padding: 24px;
   border-radius: 8px;
   max-width: 400px;
   width: 90%;
+  border: 1px solid var(--border-primary);
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .cancel-btn {
   padding: 8px 16px;
-  border: 1px solid #ccc;
-  background: white;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-card);
+  color: var(--text-secondary);
   border-radius: 4px;
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .reset-btn {
@@ -506,19 +530,19 @@ h2 {
   justify-content: center;
   gap: 8px;
   margin: 16px 0;
-  color: #666;
+  color: var(--text-tertiary);
   font-size: 14px;
 }
 
 .initializing-status i,
 .encrypting-status i {
-  color: #007bff;
+  color: var(--accent-primary);
 }
 
 /* Disabled inputs */
 input:disabled {
-  background-color: #f8f9fa;
-  color: #6c757d;
+  background-color: var(--bg-tertiary);
+  color: var(--text-muted);
   cursor: not-allowed;
   opacity: 0.8;
 }
@@ -535,21 +559,21 @@ input:disabled {
   font-size: 16px;
   font-weight: 600;
   margin-bottom: 15px;
-  color: #333;
+  color: var(--text-secondary);
 }
 
 /* Network select dropdown */
 .network-select {
   width: 100%;
   padding: 14px 16px;
-  border: 2px solid #e0e0e0;
+  border: 2px solid var(--border-primary);
   border-radius: 8px;
-  background: white;
+  background: var(--bg-input);
   font-size: 16px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
-  color: #333;
+  color: var(--text-secondary);
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
@@ -561,8 +585,8 @@ input:disabled {
 }
 
 .network-select:hover {
-  border-color: #666;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  border-color: var(--text-tertiary);
+  box-shadow: 0 2px 8px var(--shadow-light);
 }
 
 .network-select:focus {
@@ -611,7 +635,7 @@ input:disabled {
   align-items: center;
   gap: 12px;
   font-size: 14px;
-  color: #666;
+  color: var(--text-tertiary);
   line-height: 1.8;
   flex-wrap: wrap;
   padding: 20px 20px;
@@ -667,17 +691,17 @@ input:disabled {
 .network-option {
   width: 100%;
   padding: 16px;
-  border: 2px solid #e0e0e0;
+  border: 2px solid var(--border-primary);
   border-radius: 8px;
-  background: white;
+  background: var(--bg-card);
   cursor: pointer;
   transition: all 0.3s ease;
   text-align: left;
 }
 
 .network-option:hover {
-  border-color: #666;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  border-color: var(--text-tertiary);
+  box-shadow: 0 2px 8px var(--shadow-light);
   transform: translateY(-1px);
 }
 
@@ -709,26 +733,26 @@ input:disabled {
 .network-name {
   font-size: 18px;
   font-weight: 600;
-  color: #333;
+  color: var(--text-secondary);
 }
 
 /* Disabled network option */
 .network-option.disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  background: #f5f5f5;
-  border-color: #ddd;
+  background: var(--bg-tertiary);
+  border-color: var(--border-primary);
 }
 
 .network-option.disabled:hover {
-  border-color: #ddd;
+  border-color: var(--border-primary);
   box-shadow: none;
   transform: none;
 }
 
 .network-option.disabled .network-name,
 .network-option.disabled .network-description {
-  color: #999;
+  color: var(--text-muted);
 }
 
 /* ====== Backpack Wallet Styles ====== */
@@ -809,12 +833,12 @@ input:disabled {
 }
 
 .backpack-info h2 {
-  color: #333;
+  color: var(--text-secondary);
   margin-bottom: 1rem;
 }
 
-.info-text {
-  color: #666;
+.backpack-info .info-text {
+  color: var(--text-tertiary);
   line-height: 1.6;
   max-width: 450px;
   margin: 0 auto;
@@ -832,8 +856,8 @@ input:disabled {
 
 /* Connection status */
 .connection-status {
-  background-color: #e3f2fd;
-  border: 1px solid #90caf9;
+  background-color: rgba(33, 150, 243, 0.15);
+  border: 1px solid var(--accent-primary);
   padding: 1rem;
   border-radius: 4px;
   margin: 1rem 0;
@@ -841,7 +865,7 @@ input:disabled {
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
-  color: #1976d2;
+  color: var(--accent-primary);
 }
 
 /* Spinner animation */
@@ -1007,7 +1031,7 @@ input:disabled {
 }
 
 .wallet-type-hint {
-  color: #666;
+  color: var(--text-tertiary);
   font-size: 0.9rem;
   margin-top: 0.5rem;
 }
@@ -1017,16 +1041,16 @@ input:disabled {
   max-width: 600px;
   width: 90%;
   margin: 0 auto 20px;
-  background: linear-gradient(135deg, #fff9f0 0%, #fff5e6 100%);
+  background: var(--bg-card);
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(255, 152, 0, 0.15);
-  border: 1px solid #ffe0b3;
+  box-shadow: 0 2px 8px var(--shadow-light);
+  border: 1px solid var(--accent-warning);
   transition: all 0.3s ease;
 }
 
 .latest-burn-card-external:hover {
-  box-shadow: 0 4px 12px rgba(255, 152, 0, 0.25);
+  box-shadow: 0 4px 12px var(--shadow-medium);
   transform: translateY(-2px);
 }
 
@@ -1043,9 +1067,9 @@ input:disabled {
   flex-shrink: 0;
   border-radius: 8px;
   overflow: hidden;
-  background: white;
-  border: 2px solid #ff9800;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  background: var(--bg-secondary);
+  border: 2px solid var(--accent-warning);
+  box-shadow: 0 2px 6px var(--shadow-light);
 }
 
 .burn-avatar canvas {
@@ -1066,7 +1090,7 @@ input:disabled {
 .burn-label {
   font-size: 11px;
   font-weight: 600;
-  color: #f57c00;
+  color: var(--accent-warning);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -1074,7 +1098,7 @@ input:disabled {
 .burn-username {
   font-weight: 700;
   font-size: 15px;
-  color: #333;
+  color: var(--text-secondary);
   margin-bottom: 4px;
   word-wrap: break-word;
   text-align: left;
@@ -1082,7 +1106,7 @@ input:disabled {
 
 .burn-description {
   font-size: 12px;
-  color: #666;
+  color: var(--text-tertiary);
   line-height: 1.4;
   word-wrap: break-word;
   display: -webkit-box;
@@ -1100,12 +1124,12 @@ input:disabled {
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  color: #f57c00;
+  color: var(--accent-warning);
   font-weight: 700;
-  background: rgba(255, 152, 0, 0.1);
+  background: rgba(255, 193, 7, 0.15);
   padding: 4px 10px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 152, 0, 0.3);
+  border: 1px solid var(--accent-warning);
 }
 
 .burn-amount-corner i {
