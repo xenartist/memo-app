@@ -440,10 +440,9 @@
 
 .messages-area {
     padding: 20px;
-    padding-bottom: 450px; /* Extra padding at bottom to prevent messages from being covered by input area (increased to accommodate larger input panel with action selector) */
+    padding-bottom: 200px; /* Further reduced padding for new compact design */
     background: var(--bg-primary);
-    min-height: 400px; /* Minimum height to ensure usability */
-    /* Remove overflow-y: auto to allow natural expansion */
+    min-height: 400px;
 }
 
 .empty-messages {
@@ -525,51 +524,66 @@
 }
 
 .message-input-area {
-    background: var(--bg-card); /* More opaque background */
-    backdrop-filter: blur(10px); /* Add blur effect for better readability */
+    background: var(--bg-card);
+    backdrop-filter: blur(10px);
     border-top: 2px solid var(--border-primary);
-    padding: 12px 16px; /* Reduced padding for more compact layout */
+    padding: 12px 16px;
     flex-shrink: 0;
-    width: calc(100% - 240px); /* Account for sidebar width */
-    max-width: 800px; /* Match messages-list width */
+    width: calc(100% - 240px);
+    max-width: 800px;
     position: fixed;
-    bottom: 20px; /* Add space from bottom so content is visible */
-    left: calc(120px + 50%); /* Center in content area: sidebar_width/2 + 50% = 240px/2 + 50% */
-    transform: translateX(-50%); /* Center horizontally */
+    bottom: 20px;
+    left: calc(120px + 50%);
+    transform: translateX(-50%);
     z-index: 100;
     box-shadow: 0 -2px 10px var(--shadow-light);
-    border-radius: 12px 12px 0 0; /* Add rounded corners at top */
+    border-radius: 12px;
 }
 
+/* New redesigned input wrapper */
+.input-wrapper-container {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    max-width: 800px;
+    width: 100%;
+    margin: 0 auto;
+    flex-wrap: nowrap;
+}
+
+.input-with-toggle {
+    flex: 1;
+    position: relative;
+    min-width: 0;
+}
+
+/* Legacy input-container - kept for backward compatibility */
 .input-container {
     display: flex;
-    gap: 10px; /* Reduced gap */
+    gap: 10px;
     align-items: center;
-    max-width: 800px; /* Limit width for better readability */
-    width: 100%; /* Use full width */
+    max-width: 800px;
+    width: 100%;
     margin: 0 auto;
-    padding: 0; /* Remove padding that was reducing width */
+    padding: 0;
 }
 
 .message-input {
-    flex: 1;
-    min-height: 40px; /* Reduced from 50px */
-    max-height: 150px; /* Reduced from 200px */
-    padding: 10px 16px; /* Reduced padding */
+    width: 100%;
+    min-height: 56px;
+    max-height: 150px;
+    padding: 14px 88px 14px 16px; /* Extra right padding for toggle */
     border: 2px solid var(--border-primary);
-    border-radius: 20px; /* Slightly smaller radius */
+    border-radius: 12px;
     resize: none;
     font-family: inherit;
-    font-size: 15px; /* Slightly smaller font */
-    line-height: 1.4;
+    font-size: 15px;
+    line-height: 1.5;
     outline: none;
-    transition: border-color 0.2s;
-    width: 100%;
-    min-width: 0;
-    overflow-y: hidden;
-    transition: height 0.1s ease;
+    transition: all 0.2s ease;
     background: var(--bg-input);
     color: var(--text-primary);
+    overflow-y: hidden;
 }
 
 .message-input:focus {
@@ -858,38 +872,34 @@
     
     .messages-area {
         padding: 15px;
-        padding-bottom: 470px; /* Extra padding at bottom for mobile (increased to accommodate larger input panel) */
+        padding-bottom: 220px; /* Reduced for new compact design */
     }
     
     .chat-container {
-        max-width: 100%; /* Full width on mobile */
+        max-width: 100%;
     }
     
     .chat-room-container {
-        padding-top: 180px; /* More space for mobile header (60px top offset + 120px) */
-        padding-bottom: 0; /* Remove container padding, use messages-area padding instead */
+        padding-top: 180px;
+        padding-bottom: 0;
     }
     
     .chat-room-header {
-        top: 60px; /* Keep same offset on mobile */
-        left: 50%; /* On mobile, sidebar is on top, so center in full width */
-        width: 100%; /* Full width on mobile */
-        max-width: calc(100% - 40px); /* Add some margin on mobile */
+        top: 60px;
+        left: 50%;
+        width: 100%;
+        max-width: calc(100% - 40px);
     }
     
     .message-input-area {
-        left: 50%; /* On mobile, sidebar is on top, so center in full width */
-        width: calc(100% - 40px); /* Full width with padding on mobile */
-        max-width: calc(100% - 40px); /* Ensure it respects the margin */
+        left: 50%;
+        width: calc(100% - 40px);
+        max-width: calc(100% - 40px);
+        padding: 12px;
     }
     
     .messages-list {
         max-width: none;
-    }
-    
-    .message-input-area {
-        max-width: none;
-        padding: 15px;
     }
     
     .message-item {
@@ -900,20 +910,8 @@
         max-width: 90%;
     }
     
-    .input-container {
-        gap: 10px;
-    }
-    
-    .message-input {
-        font-size: 16px;
-        min-height: 45px;
-        min-width: 0;
-    }
-    
-    .send-button {
-        width: 45px;
-        height: 45px;
-        font-size: 16px;
+    .input-wrapper-container {
+        gap: 8px;
     }
 }
 
@@ -949,35 +947,31 @@
         max-width: 95%;
     }
     
-    .input-container {
-        gap: 8px;
-    }
-    
     .chat-room-container {
-        padding-top: 200px; /* Even more space for smaller screens */
-        padding-bottom: 0; /* Remove container padding, use messages-area padding instead */
+        padding-top: 200px;
+        padding-bottom: 0;
     }
     
     .messages-area {
         padding: 12px;
-        padding-bottom: 490px; /* Extra padding at bottom for small screens (increased to accommodate larger input panel) */
+        padding-bottom: 240px; /* Adjusted for new compact design */
     }
     
     .chat-container {
-        max-width: 100%; /* Full width on small screens */
+        max-width: 100%;
     }
     
     .message-input-area {
-        padding: 10px 12px; /* Even more compact on small screens */
-        left: 50%; /* On mobile, sidebar is on top, so center in full width */
-        width: calc(100% - 24px); /* Full width with smaller padding on mobile */
-        max-width: calc(100% - 24px); /* Ensure it respects the margin */
+        padding: 10px;
+        left: 50%;
+        width: calc(100% - 24px);
+        max-width: calc(100% - 24px);
     }
     
     .chat-room-header {
-        left: 50%; /* On mobile, sidebar is on top, so center in full width */
-        width: 100%; /* Full width on mobile */
-        max-width: calc(100% - 24px); /* Add some margin on small screens */
+        left: 50%;
+        width: 100%;
+        max-width: calc(100% - 24px);
     }
 } 
 
@@ -2601,4 +2595,284 @@
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
     font-size: 14px;
+}
+
+/* ===== New Redesigned Toggle & Input Styles ===== */
+
+/* Mode toggle pill - sits inside input area */
+.mode-toggle-pill {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: 20px;
+    padding: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    z-index: 10;
+}
+
+.mode-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    color: var(--text-tertiary);
+    font-size: 14px;
+}
+
+.mode-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.mode-btn.active {
+    background: var(--accent-primary);
+    color: white;
+    box-shadow: 0 2px 6px rgba(0, 123, 255, 0.3);
+}
+
+.mode-btn.burn-mode.active {
+    background: linear-gradient(135deg, #ff6b35, #f7931e);
+    box-shadow: 0 2px 6px rgba(255, 107, 53, 0.4);
+}
+
+/* Burn amount inline input - Two rows layout */
+.burn-amount-inline {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background: var(--bg-secondary);
+    border: 2px solid #ff6b35;
+    border-radius: 10px;
+    padding: 6px 8px;
+    width: 70px;
+    flex-shrink: 0;
+    height: 56px; /* Match send button height */
+}
+
+.burn-input-inline {
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 700;
+    text-align: center;
+    outline: none;
+    padding: 0;
+    line-height: 1;
+}
+
+.burn-input-inline::placeholder {
+    color: var(--text-tertiary);
+}
+
+.burn-input-inline::-webkit-inner-spin-button,
+.burn-input-inline::-webkit-outer-spin-button {
+    opacity: 1;
+}
+
+.burn-input-inline:disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+.burn-unit-inline {
+    font-size: 12px;
+    font-weight: 700;
+    color: #ff6b35;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    line-height: 1;
+}
+
+/* Redesigned send button */
+.send-button-redesign {
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
+    border: none;
+    background: var(--accent-primary);
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+    flex-shrink: 0;
+}
+
+.send-button-redesign:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 123, 255, 0.4);
+}
+
+.send-button-redesign:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.send-button-redesign.burn-mode-btn {
+    background: linear-gradient(135deg, #ff6b35, #f7931e);
+    box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+}
+
+.send-button-redesign.burn-mode-btn:hover:not(:disabled) {
+    box-shadow: 0 6px 16px rgba(255, 107, 53, 0.4);
+}
+
+.send-button-redesign:disabled {
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
+/* Input hint at bottom */
+.input-hint {
+    margin-top: 8px;
+    padding: 0 4px;
+}
+
+.hint-text {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    line-height: 1.4;
+}
+
+.hint-text i {
+    color: var(--accent-success);
+    font-size: 12px;
+}
+
+.hint-text.burn i {
+    color: #ff6b35;
+}
+
+.hint-text strong {
+    color: var(--accent-success);
+    font-weight: 600;
+}
+
+/* Update message input for better integration */
+.input-with-toggle .message-input {
+    padding-right: 88px; /* Space for toggle pill */
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+    .mode-toggle-pill {
+        background: #2d3748;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+    
+    .burn-amount-inline {
+        background: #2d3748;
+    }
+}
+
+/* Desktop layout optimization */
+@media (min-width: 769px) {
+    .input-wrapper-container {
+        flex-wrap: nowrap;
+    }
+    
+    .input-with-toggle {
+        flex: 1 1 auto;
+        min-width: 0;
+        max-width: 100%;
+    }
+    
+    .burn-amount-inline {
+        flex: 0 0 70px;
+        width: 70px;
+    }
+    
+    .send-button-redesign {
+        flex: 0 0 56px;
+        width: 56px;
+    }
+}
+
+/* Tablet and mobile responsive design */
+@media (max-width: 768px) {
+    .input-wrapper-container {
+        flex-wrap: wrap;
+    }
+    
+    .input-with-toggle {
+        order: 2;
+        flex: 1 1 100%;
+        width: 100%;
+    }
+    
+    .burn-amount-inline {
+        order: 1;
+        flex: 0 0 70px;
+        width: 70px;
+    }
+    
+    .send-button-redesign {
+        order: 3;
+        flex: 0 0 56px;
+        width: 56px;
+        margin-left: 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    .input-wrapper-container {
+        gap: 8px;
+    }
+    
+    .send-button-redesign {
+        width: 48px;
+        height: 48px;
+        font-size: 16px;
+        flex: 0 0 48px;
+    }
+    
+    .mode-toggle-pill {
+        top: 6px;
+        right: 6px;
+    }
+    
+    .mode-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 12px;
+    }
+    
+    .burn-amount-inline {
+        height: 48px; /* Match mobile send button height */
+        width: 64px;
+        flex: 0 0 64px;
+        padding: 5px 6px;
+        gap: 3px;
+    }
+    
+    .burn-input-inline {
+        font-size: 15px;
+    }
+    
+    .burn-unit-inline {
+        font-size: 10px;
+    }
 } 
