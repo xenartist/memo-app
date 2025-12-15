@@ -1041,16 +1041,16 @@ input:disabled {
   max-width: 600px;
   width: 90%;
   margin: 0 auto 20px;
-  background: var(--bg-card);
+  background: linear-gradient(135deg, #fff9f0 0%, #fff5e6 100%);
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 2px 8px var(--shadow-light);
-  border: 1px solid var(--accent-warning);
+  box-shadow: 0 2px 8px rgba(255, 152, 0, 0.15);
+  border: 1px solid #ffe0b3;
   transition: all 0.3s ease;
 }
 
 .latest-burn-card-external:hover {
-  box-shadow: 0 4px 12px var(--shadow-medium);
+  box-shadow: 0 4px 12px rgba(255, 152, 0, 0.25);
   transform: translateY(-2px);
 }
 
@@ -1067,9 +1067,9 @@ input:disabled {
   flex-shrink: 0;
   border-radius: 8px;
   overflow: hidden;
-  background: var(--bg-secondary);
-  border: 2px solid var(--accent-warning);
-  box-shadow: 0 2px 6px var(--shadow-light);
+  background: white;
+  border: 2px solid #ff9800;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
 .burn-avatar canvas {
@@ -1090,7 +1090,7 @@ input:disabled {
 .burn-label {
   font-size: 11px;
   font-weight: 600;
-  color: var(--accent-warning);
+  color: #f57c00;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -1124,17 +1124,43 @@ input:disabled {
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  color: var(--accent-warning);
+  color: #f57c00;
   font-weight: 700;
-  background: rgba(255, 193, 7, 0.15);
+  background: rgba(255, 152, 0, 0.1);
   padding: 4px 10px;
   border-radius: 12px;
-  border: 1px solid var(--accent-warning);
+  border: 1px solid rgba(255, 152, 0, 0.3);
 }
 
 .burn-amount-corner i {
   font-size: 12px;
   animation: flicker 2s ease-in-out infinite;
+}
+
+/* Dark mode styles for burn card */
+[data-theme="dark"] .latest-burn-card-external {
+  background: linear-gradient(135deg, rgba(58, 50, 30, 0.8) 0%, rgba(37, 37, 58, 0.8) 100%);
+  border: 1px solid var(--accent-warning);
+  box-shadow: 0 2px 8px rgba(255, 193, 7, 0.15);
+}
+
+[data-theme="dark"] .latest-burn-card-external:hover {
+  box-shadow: 0 4px 12px rgba(255, 193, 7, 0.25);
+}
+
+[data-theme="dark"] .burn-avatar {
+  background: var(--bg-secondary);
+  border: 2px solid var(--accent-warning);
+}
+
+[data-theme="dark"] .burn-label {
+  color: var(--accent-warning);
+}
+
+[data-theme="dark"] .burn-amount-corner {
+  color: var(--accent-warning);
+  background: rgba(255, 193, 7, 0.2);
+  border: 1px solid var(--accent-warning);
 }
 
 @keyframes flicker {
