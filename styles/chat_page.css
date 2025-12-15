@@ -440,7 +440,7 @@
 
 .messages-area {
     padding: 20px;
-    padding-bottom: 200px; /* Further reduced padding for new compact design */
+    padding-bottom: 400px; /* Large padding to ensure new messages are fully visible above input panel */
     background: var(--bg-primary);
     min-height: 400px;
 }
@@ -872,7 +872,7 @@
     
     .messages-area {
         padding: 15px;
-        padding-bottom: 220px; /* Reduced for new compact design */
+        padding-bottom: 420px; /* Large padding to ensure new messages are fully visible above input panel */
     }
     
     .chat-container {
@@ -954,7 +954,7 @@
     
     .messages-area {
         padding: 12px;
-        padding-bottom: 240px; /* Adjusted for new compact design */
+        padding-bottom: 440px; /* Large padding to ensure new messages are fully visible above input panel */
     }
     
     .chat-container {
