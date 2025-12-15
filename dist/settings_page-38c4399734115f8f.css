@@ -7,7 +7,7 @@
 }
 
 .settings-page h2 {
-    color: #333;
+    color: var(--text-secondary);
     font-size: 2rem;
     margin-bottom: 2rem;
     font-weight: 600;
@@ -16,11 +16,13 @@
 
 /* Settings sections */
 .settings-section {
-    background: white;
+    background: var(--bg-card);
     padding: 24px;
     border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 1px 3px var(--shadow-light);
     margin-bottom: 24px;
+    border: 1px solid var(--border-primary);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .settings-section-network {
@@ -31,19 +33,31 @@
 .settings-section-network.settings-network-testnet {
     border-color: #ef5350;
     box-shadow: 0 6px 18px rgba(239, 83, 80, 0.15);
-    background-color: #fff5f5;
+    background: linear-gradient(135deg, rgba(255, 245, 245, 0.95), rgba(255, 255, 255, 0.95));
 }
 
 .settings-section-network.settings-network-staging {
     border-color: #ff9800;
     box-shadow: 0 6px 18px rgba(255, 152, 0, 0.15);
-    background-color: #fff8e6;
+    background: linear-gradient(135deg, rgba(255, 248, 230, 0.95), rgba(255, 255, 255, 0.95));
 }
 
 .settings-section-network.settings-network-mainnet {
     border-color: #66bb6a;
     box-shadow: 0 6px 18px rgba(102, 187, 106, 0.15);
-    background-color: #f3fbf3;
+    background: linear-gradient(135deg, rgba(243, 251, 243, 0.95), rgba(255, 255, 255, 0.95));
+}
+
+[data-theme="dark"] .settings-section-network.settings-network-testnet {
+    background: linear-gradient(135deg, rgba(58, 30, 30, 0.8), rgba(37, 37, 58, 0.8));
+}
+
+[data-theme="dark"] .settings-section-network.settings-network-staging {
+    background: linear-gradient(135deg, rgba(58, 50, 30, 0.8), rgba(37, 37, 58, 0.8));
+}
+
+[data-theme="dark"] .settings-section-network.settings-network-mainnet {
+    background: linear-gradient(135deg, rgba(30, 58, 30, 0.8), rgba(37, 37, 58, 0.8));
 }
 
 .settings-section-network.settings-network-testnet h3 {
@@ -76,10 +90,10 @@
 
 .settings-section h3 {
     margin: 0 0 20px 0;
-    color: #333;
+    color: var(--text-secondary);
     font-size: 1.3rem;
     font-weight: 600;
-    border-bottom: 2px solid #f8f9fa;
+    border-bottom: 2px solid var(--border-light);
     padding-bottom: 8px;
 }
 
@@ -99,14 +113,14 @@
 
 .network-group h4 {
     margin: 0 0 12px 0;
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 1rem;
     font-weight: 500;
 }
 
 .network-description {
     margin: 4px 0 16px 0;
-    color: #777;
+    color: var(--text-muted);
     font-size: 0.9rem;
 }
 
@@ -126,7 +140,7 @@
 
 .radio-option label {
     margin-right: 12px;
-    color: #333;
+    color: var(--text-secondary);
     cursor: pointer;
     font-size: 14px;
     user-select: none;
@@ -136,27 +150,29 @@
 .custom-rpc-input {
     flex: 1;
     padding: 8px 12px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-primary);
     border-radius: 4px;
     font-size: 14px;
     margin-left: 8px;
     transition: border-color 0.2s ease;
     font-family: monospace;
+    background: var(--bg-input);
+    color: var(--text-primary);
 }
 
 .custom-rpc-input:focus {
-    border-color: #007bff;
+    border-color: var(--accent-primary);
     outline: none;
 }
 
 .custom-rpc-input:disabled {
-    background-color: #f5f5f5;
-    color: #999;
+    background-color: var(--bg-tertiary);
+    color: var(--text-muted);
     cursor: not-allowed;
 }
 
 .custom-rpc-input::placeholder {
-    color: #aaa;
+    color: var(--text-muted);
     font-style: italic;
 }
 
@@ -164,12 +180,12 @@
 .current-rpc {
     margin-top: 24px;
     padding-top: 16px;
-    border-top: 1px solid #eee;
+    border-top: 1px solid var(--border-light);
 }
 
 .current-rpc h4 {
     margin: 0 0 8px 0;
-    color: #666;
+    color: var(--text-tertiary);
     font-size: 0.9rem;
     font-weight: 500;
     text-transform: uppercase;
@@ -178,13 +194,13 @@
 
 .rpc-url {
     padding: 8px 12px;
-    background: #f8f9fa;
+    background: var(--bg-tertiary);
     border-radius: 4px;
     font-family: monospace;
-    color: #333;
+    color: var(--text-secondary);
     font-size: 13px;
     word-break: break-all;
-    border: 1px solid #e9ecef;
+    border: 1px solid var(--border-primary);
 }
 
 /* Status indicators */
@@ -200,31 +216,35 @@
 }
 
 .rpc-status.connected {
-    background-color: #d4edda;
-    color: #155724;
-    border: 1px solid #c3e6cb;
+    background-color: rgba(40, 167, 69, 0.15);
+    color: var(--accent-success);
+    border: 1px solid var(--accent-success);
 }
 
 .rpc-status.connecting {
-    background-color: #fff3cd;
-    color: #856404;
-    border: 1px solid #ffeaa7;
+    background-color: rgba(255, 193, 7, 0.15);
+    color: var(--accent-warning);
+    border: 1px solid var(--accent-warning);
 }
 
 .rpc-status.error {
-    background-color: #f8d7da;
-    color: #721c24;
-    border: 1px solid #f5c6cb;
+    background-color: rgba(220, 53, 69, 0.15);
+    color: var(--accent-danger);
+    border: 1px solid var(--accent-danger);
 }
 
 .settings-warning {
     padding: 12px 16px;
-    background-color: #fff3cd;
+    background-color: rgba(255, 193, 7, 0.15);
     color: #856404;
-    border: 1px solid #ffeeba;
+    border: 1px solid var(--accent-warning);
     border-radius: 6px;
     font-size: 0.95rem;
     margin: 0;
+}
+
+[data-theme="dark"] .settings-warning {
+    color: var(--accent-warning);
 }
 
 /* Network type badges */
@@ -262,7 +282,7 @@
 .settings-actions {
     margin-top: 24px;
     padding-top: 16px;
-    border-top: 1px solid #eee;
+    border-top: 1px solid var(--border-light);
     display: flex;
     justify-content: flex-end;
     gap: 12px;
@@ -270,7 +290,7 @@
 
 .save-feedback {
     margin-top: 12px;
-    color: #28a745;
+    color: var(--accent-success);
     font-size: 0.9rem;
     text-align: right;
 }
@@ -293,13 +313,15 @@
 }
 
 .save-btn {
-    background-color: #28a745;
-    color: white;
+    background: var(--bg-primary);
+    color: var(--accent-success);
+    border: 2px solid var(--accent-success);
 }
 
 .reset-btn {
-    background-color: #6c757d;
-    color: white;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border: 2px solid var(--border-secondary);
 }
 
 .settings-btn i {
@@ -307,7 +329,8 @@
 }
 
 .save-btn:hover:not(:disabled) {
-    background-color: #218838;
+    background: var(--accent-success);
+    color: white;
     transform: translateY(-1px);
     box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
 }
@@ -318,14 +341,17 @@
 }
 
 .save-btn:disabled {
-    background-color: #6c757d;
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    border-color: var(--border-secondary);
     cursor: not-allowed;
     opacity: 0.65;
     box-shadow: none;
 }
 
 .reset-btn:hover:not(:disabled) {
-    background-color: #5a6268;
+    background: var(--bg-hover);
+    border-color: var(--text-secondary);
 }
 
 /* Connection test */
@@ -340,21 +366,21 @@
 }
 
 .connection-test.success {
-    background-color: #d4edda;
-    color: #155724;
-    border: 1px solid #c3e6cb;
+    background-color: rgba(40, 167, 69, 0.15);
+    color: var(--accent-success);
+    border: 1px solid var(--accent-success);
 }
 
 .connection-test.error {
-    background-color: #f8d7da;
-    color: #721c24;
-    border: 1px solid #f5c6cb;
+    background-color: rgba(220, 53, 69, 0.15);
+    color: var(--accent-danger);
+    border: 1px solid var(--accent-danger);
 }
 
 .connection-test.testing {
-    background-color: #e2e3e5;
-    color: #383d41;
-    border: 1px solid #d6d8db;
+    background-color: var(--bg-tertiary);
+    color: var(--text-tertiary);
+    border: 1px solid var(--border-primary);
 }
 
 .form-field {
@@ -365,20 +391,22 @@
 
 .form-field label {
     font-weight: 500;
-    color: #444;
+    color: var(--text-secondary);
     margin-bottom: 8px;
 }
 
 .form-field input[type="number"] {
     padding: 8px 12px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--border-primary);
     border-radius: 4px;
     font-size: 14px;
     transition: border-color 0.2s ease;
+    background: var(--bg-input);
+    color: var(--text-primary);
 }
 
 .form-field input[type="number"]:focus {
-    border-color: #007bff;
+    border-color: var(--accent-primary);
     outline: none;
 }
 
@@ -394,7 +422,7 @@
 
 .field-help {
     margin-top: 6px;
-    color: #6c757d;
+    color: var(--text-muted);
     font-size: 12px;
     line-height: 1.4;
 }

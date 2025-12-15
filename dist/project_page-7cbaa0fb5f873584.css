@@ -1,0 +1,2746 @@
+/* Project Page Styles - Consistent with Main App Design */
+
+/* Base Layout */
+.project-page {
+    min-height: 100vh;
+    background: var(--bg-primary); 
+    padding: 2rem;
+    color: var(--text-primary);
+}
+
+.leaderboard-view {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+/* Header Section */
+.project-header {
+    background: var(--bg-card);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    box-shadow: var(--shadow-medium);
+    border: 1px solid var(--border-primary);
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 2rem;
+}
+
+.header-text h1 {
+    color: var(--text-primary);
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin: 0 0 0.5rem 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.project-subtitle {
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    margin: 0;
+    font-weight: 500;
+}
+
+.header-actions {
+    flex-shrink: 0;
+}
+
+/* New Project Button */
+.new-project-button {
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 2px solid var(--accent-primary);
+    border-radius: 12px;
+    padding: 16px 32px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+
+.new-project-button:hover:not(:disabled) {
+    background: var(--accent-primary);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+}
+
+.new-project-button:disabled {
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    border-color: var(--border-secondary);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Countdown Banner */
+.countdown-banner {
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    color: white;
+    padding: 16px 24px;
+    border-radius: 12px;
+    margin-bottom: 2rem;
+    box-shadow: 0 4px 15px rgba(34, 197, 94, 0.3);
+    animation: slideInDown 0.3s ease-out;
+}
+
+.countdown-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.countdown-content i {
+    font-size: 20px;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.countdown-content strong {
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 18px;
+}
+
+@keyframes slideInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Main Content Container */
+.project-content {
+    background: var(--bg-card);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: var(--shadow-medium);
+    border: 1px solid var(--border-primary);
+}
+
+/* Loading, Error, Empty States */
+.loading-state,
+.error-state,
+.empty-state {
+    padding: 4rem 2rem;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.loading-state {
+    color: #667eea;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font-size: 18px;
+    font-weight: 500;
+}
+
+.loading-state:before {
+    content: "";
+    width: 20px;
+    height: 20px;
+    border: 2px solid transparent;
+    border-top: 2px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.error-state {
+    color: #dc2626;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 12px;
+    margin: 2rem;
+}
+
+.error-state:before {
+    content: "⚠️";
+    font-size: 2rem;
+    display: block;
+    margin-bottom: 1rem;
+}
+
+/* Table Styles */
+.project-table-container {
+    overflow-x: auto;
+}
+
+.project-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.project-table th {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-weight: 600;
+    padding: 18px 20px;
+    text-align: left;
+    border-bottom: 2px solid var(--border-primary);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.project-table th:first-child {
+    border-top-left-radius: 0;
+}
+
+.project-table th:last-child {
+    border-top-right-radius: 0;
+}
+
+.project-table td {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-light);
+    vertical-align: middle;
+}
+
+.project-row {
+    transition: all 0.3s ease;
+    background: var(--bg-card);
+}
+
+.project-row:hover {
+    background: var(--bg-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-light);
+}
+
+/* Cell-specific styles */
+.rank-cell {
+    width: 60px;
+}
+
+.rank-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    min-width: 50px;
+    background: transparent;
+    border: 1px solid transparent;
+}
+
+.rank-icon i {
+    font-size: 16px;
+}
+
+.rank-number {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.rank-1st {
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
+.rank-1st i {
+    color: #f59e0b;
+}
+
+.rank-2nd {
+    color: #9ca3af;
+    background: rgba(156, 163, 175, 0.1);
+    border-color: rgba(156, 163, 175, 0.3);
+}
+
+.rank-2nd i {
+    color: #9ca3af;
+}
+
+.rank-3rd {
+    color: #cd7c2f;
+    background: rgba(205, 124, 47, 0.1);
+    border-color: rgba(205, 124, 47, 0.3);
+}
+
+.rank-3rd i {
+    color: #cd7c2f;
+}
+
+.rank-top10 {
+    color: #dc2626;
+    background: rgba(220, 38, 38, 0.1);
+    border-color: rgba(220, 38, 38, 0.3);
+}
+
+.rank-top10 i {
+    color: #dc2626;
+}
+
+.rank-others {
+    color: #6b7280;
+    background: rgba(107, 114, 128, 0.1);
+    border-color: rgba(107, 114, 128, 0.3);
+}
+
+.rank-others i {
+    color: #6b7280;
+}
+
+/* Hover effects */
+.rank-icon:hover {
+    transform: scale(1.05);
+    transition: all 0.2s ease;
+}
+
+.rank-1st:hover {
+    background: rgba(245, 158, 11, 0.2);
+    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+}
+
+.rank-2nd:hover {
+    background: rgba(156, 163, 175, 0.2);
+    box-shadow: 0 2px 8px rgba(156, 163, 175, 0.3);
+}
+
+.rank-3rd:hover {
+    background: rgba(205, 124, 47, 0.2);
+    box-shadow: 0 2px 8px rgba(205, 124, 47, 0.3);
+}
+
+.rank-top10:hover {
+    background: rgba(220, 38, 38, 0.2);
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+}
+
+.rank-others:hover {
+    background: rgba(107, 114, 128, 0.2);
+    box-shadow: 0 2px 8px rgba(107, 114, 128, 0.3);
+}
+
+.id-cell {
+    width: 60px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+    color: #6b7280;
+    font-weight: 500;
+}
+
+.name-cell {
+    min-width: 200px;
+}
+
+.project-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 15px;
+}
+
+.description-cell {
+    min-width: 350px;
+    max-width: 500px;
+}
+
+.project-description {
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.website-cell {
+    min-width: 200px;
+    max-width: 250px;
+}
+
+.website-link {
+    color: #667eea;
+    text-decoration: none;
+    font-weight: 500;
+    word-break: break-all;
+    font-size: 13px;
+    padding: 4px 8px;
+    background: rgba(102, 126, 234, 0.1);
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.website-link:hover {
+    background: rgba(102, 126, 234, 0.2);
+    text-decoration: none;
+}
+
+.no-website {
+    color: #9ca3af;
+    font-style: italic;
+}
+
+.burned-cell {
+    width: 110px;
+    text-align: right;
+    vertical-align: middle;
+}
+
+.burned-amount {
+    font-weight: 500;
+    color: #6b7280;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.burned-amount i {
+    color: #6b7280;
+    font-size: 13px;
+    opacity: 1;
+    margin-right: 6px;
+}
+
+.burned-fire-icon {
+    margin-right: 8px;
+}
+
+.time-cell {
+    width: 130px;
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.actions-cell {
+    width: 120px;
+    text-align: center;
+}
+
+/* Details Button */
+.details-button {
+    background: var(--bg-primary);
+    color: var(--accent-info);
+    border: 2px solid var(--accent-info);
+    padding: 10px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.3s ease;
+    margin: 0 auto;
+}
+
+.details-button:hover {
+    background: var(--accent-info);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+.details-button:active {
+    transform: translateY(0);
+}
+
+/* Modal Overlay */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(5px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    padding: 20px;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Create Project Form */
+.create-project-form {
+    background: var(--bg-card);
+    border-radius: 16px;
+    max-width: 900px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: var(--shadow-heavy);
+    border: 1px solid var(--border-primary);
+    animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.create-project-form .form-header {
+    background: var(--bg-tertiary);
+    border-bottom: 2px solid var(--accent-primary);
+    color: var(--text-primary);
+    padding: 24px;
+    border-radius: 16px 16px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.create-project-form .form-title {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.create-project-form .form-close-btn {
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    border: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    transition: all 0.3s ease;
+}
+
+.create-project-form .form-close-btn:hover {
+    background: var(--bg-hover);
+    color: var(--accent-danger);
+    transform: scale(1.1);
+}
+
+/* Form Layout and Styles */
+.create-project-form .project-form {
+    padding: 32px;
+}
+
+.create-project-form .form-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    margin-bottom: 32px;
+}
+
+.create-project-form .form-left,
+.create-project-form .form-right {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.create-project-form .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.create-project-form .form-group label {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.create-project-form .form-group label i {
+    color: var(--accent-primary);
+    width: 16px;
+    text-align: center;
+}
+
+.create-project-form .form-group input,
+.create-project-form .form-group textarea {
+    padding: 12px 16px;
+    border: 2px solid var(--border-primary);
+    border-radius: 8px;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    font-family: inherit;
+}
+
+.create-project-form .form-group input:focus,
+.create-project-form .form-group textarea:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.2);
+}
+
+.create-project-form .form-group input:disabled,
+.create-project-form .form-group textarea:disabled {
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+.create-project-form .form-hint {
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Pixel Art Editor */
+.create-project-form .pixel-art-editor {
+    background: var(--bg-tertiary);
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid var(--border-primary);
+}
+
+.create-project-form .pixel-art-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.create-project-form .pixel-art-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.create-project-form .size-selector {
+    padding: 8px 12px;
+    border: 2px solid var(--border-primary);
+    border-radius: 8px;
+    background: var(--bg-input);
+    font-size: 13px;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.create-project-form .size-selector:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+.create-project-form .import-btn {
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 2px solid var(--accent-primary);
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.create-project-form .import-btn:hover {
+    background: var(--accent-primary);
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+/* Pixel String Info */
+.create-project-form .pixel-string-info {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: 8px;
+    padding: 12px;
+    margin-top: 12px;
+}
+
+.create-project-form .string-display {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.create-project-form .string-display .label {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.create-project-form .string-display .value {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    flex: 1;
+    background: var(--bg-input);
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    padding: 6px 10px;
+}
+
+.create-project-form .copy-container {
+    position: relative;
+}
+
+.create-project-form .copy-button {
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 1px solid var(--accent-primary);
+    border-radius: 6px;
+    padding: 6px 8px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s ease;
+}
+
+.create-project-form .copy-button:hover {
+    background: var(--accent-primary);
+    color: white;
+}
+
+.create-project-form .copy-tooltip {
+    position: absolute;
+    top: -35px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--tooltip-bg);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.create-project-form .copy-tooltip.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Memo Size Indicator */
+.create-project-form .memo-size-indicator {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    border-radius: 12px;
+    padding: 20px;
+    margin: 24px 0;
+}
+
+.create-project-form .size-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.create-project-form .size-label {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.create-project-form .size-value {
+    font-weight: 700;
+    font-size: 14px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.create-project-form .size-value.valid {
+    background: var(--bg-secondary);
+    color: var(--accent-success);
+    border: 1px solid var(--accent-success);
+}
+
+.create-project-form .size-value.invalid {
+    background: var(--bg-secondary);
+    color: var(--accent-danger);
+    border: 1px solid var(--accent-danger);
+}
+
+.create-project-form .size-status {
+    font-weight: 600;
+    font-size: 13px;
+    padding: 4px 8px;
+    border-radius: 12px;
+}
+
+.create-project-form .size-status.valid {
+    background: var(--bg-secondary);
+    color: var(--accent-success);
+    border: 1px solid var(--accent-success);
+}
+
+.create-project-form .size-status.invalid {
+    background: var(--bg-secondary);
+    color: var(--accent-danger);
+    border: 1px solid var(--accent-danger);
+}
+
+/* Progress Bar */
+.create-project-form .progress-track {
+    position: relative;
+    width: 100%;
+    height: 8px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.create-project-form .progress-fill {
+    height: 100%;
+    background: #667eea;
+    transition: width 0.3s ease;
+    border-radius: 4px;
+}
+
+.create-project-form .progress-fill.valid {
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+}
+
+.create-project-form .progress-fill.invalid {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
+
+/* Messages */
+.create-project-form .error-message {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+    color: #dc2626;
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.create-project-form .creating-progress {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+    color: #1d4ed8;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.create-project-form .creating-progress i {
+    animation: spin 1s linear infinite;
+}
+
+/* Submit Button */
+.create-project-form .button-group {
+    display: flex;
+    justify-content: center;
+    padding-top: 20px;
+}
+
+.create-project-form .create-project-btn {
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 2px solid var(--accent-primary);
+    padding: 16px 40px;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    min-width: 220px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.create-project-form .create-project-btn:hover:not(:disabled) {
+    background: var(--accent-primary);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+}
+
+.create-project-form .create-project-btn:disabled {
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    border-color: var(--border-secondary);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Balance Status */
+.create-project-form .balance-sufficient {
+    color: #16a34a;
+    font-weight: 600;
+}
+
+.create-project-form .balance-insufficient {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+/* Project Details Page - Simple & Clean Style */
+/* All styles scoped to .project-details-page to avoid conflicts */
+.project-details-page {
+    min-height: 100vh;
+    background: var(--bg-primary);
+    padding: 2rem;
+}
+
+.project-details-page .project-details-container {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+/* Back Button */
+.project-details-page .pd-back-btn {
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 2px solid var(--accent-primary);
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+    margin-bottom: 20px;
+}
+
+.project-details-page .pd-back-btn:hover {
+    background: var(--accent-primary);
+    color: white;
+}
+
+.project-details-page .pd-back-btn i {
+    font-size: 12px;
+}
+
+/* Project Detail Card */
+.project-details-page .project-detail-card {
+    background: var(--bg-card);
+    border-radius: 12px;
+    border: 1px solid var(--border-primary);
+    overflow: hidden;
+}
+
+/* Card Header */
+.project-details-page .pd-card-header {
+    padding: 24px 28px;
+    border-bottom: 1px solid var(--border-primary);
+}
+
+.project-details-page .pd-header-content {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+/* Project Avatar */
+.project-details-page .pd-project-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 12px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+}
+
+.project-details-page .pd-project-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.project-details-page .pd-project-avatar.placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-tertiary);
+}
+
+.project-details-page .pd-project-avatar.placeholder i {
+    font-size: 32px;
+    color: var(--text-muted);
+}
+
+.project-details-page .project-name-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.project-details-page .project-detail-name {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.project-details-page .rank-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+}
+
+.project-details-page .rank-badge i {
+    font-size: 12px;
+}
+
+/* Rank badge icons with colors */
+.project-details-page .rank-badge i.fa-trophy {
+    color: #f59e0b;
+}
+
+.project-details-page .rank-badge i.fa-medal {
+    color: #9ca3af;
+}
+
+.project-details-page .rank-badge i.fa-fire {
+    color: #f97316;
+}
+
+/* Card Body - Horizontal Layout */
+.project-details-page .pd-card-body {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 32px;
+    padding: 24px 28px;
+}
+
+/* Left Side - Main Info */
+.project-details-page .info-left {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.project-details-page .detail-field {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.project-details-page .pd-field-icon {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.project-details-page .pd-field-icon i {
+    font-size: 16px;
+}
+
+/* Field icons with colors */
+.project-details-page .pd-field-icon i.fa-hashtag {
+    color: #667eea;
+}
+
+.project-details-page .pd-field-icon i.fa-align-left {
+    color: #64748b;
+}
+
+.project-details-page .pd-field-icon i.fa-globe {
+    color: #3b82f6;
+}
+
+.project-details-page .pd-field-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.project-details-page .pd-field-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.project-details-page .pd-field-value {
+    font-size: 14px;
+    color: var(--text-primary);
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.project-details-page .pd-field-value.mono {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    color: var(--text-secondary);
+}
+
+.project-details-page .pd-field-value.muted {
+    color: var(--text-muted);
+}
+
+.project-details-page .pd-field-value.link {
+    color: var(--accent-primary);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.project-details-page .pd-field-value.link:hover {
+    text-decoration: underline;
+}
+
+.project-details-page .pd-field-value.link i {
+    font-size: 10px;
+    opacity: 0.6;
+}
+
+/* Right Side - Stats */
+.project-details-page .info-right {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 180px;
+}
+
+.project-details-page .pd-stat-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-primary);
+}
+
+.project-details-page .pd-stat-icon {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.project-details-page .pd-stat-icon i {
+    font-size: 18px;
+}
+
+/* Stat icons with colors */
+.project-details-page .pd-stat-icon i.fa-fire {
+    color: #f97316;
+}
+
+.project-details-page .pd-stat-icon i.fa-clock {
+    color: #3b82f6;
+}
+
+.project-details-page .pd-stat-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.project-details-page .pd-stat-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.project-details-page .pd-stat-value {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* Card Footer - Creator */
+.project-details-page .pd-card-footer {
+    padding: 18px 28px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-primary);
+}
+
+.project-details-page .creator-section {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.project-details-page .creator-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.project-details-page .creator-label i {
+    color: var(--accent-primary);
+}
+
+.project-details-page .creator-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.project-details-page .pd-creator-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.project-details-page .pd-address-hint {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.project-details-page .pd-copy-btn {
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 1px solid var(--accent-primary);
+    border-radius: 4px;
+    padding: 5px 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.project-details-page .pd-copy-btn:hover {
+    background: var(--accent-primary);
+    color: white;
+}
+
+.project-details-page .pd-copy-btn i {
+    font-size: 11px;
+}
+
+/* Update Button in Header */
+.project-details-page .pd-update-btn {
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 2px solid var(--accent-primary);
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+    margin-left: auto;
+}
+
+.project-details-page .pd-update-btn:hover {
+    background: var(--accent-primary);
+    color: white;
+}
+
+.project-details-page .pd-update-btn i {
+    font-size: 13px;
+}
+
+/* Update Project Form */
+.update-project-form {
+    background: var(--bg-card);
+    border-radius: 12px;
+    max-width: 900px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: var(--shadow-heavy);
+    border: 1px solid var(--border-primary);
+}
+
+.update-project-form .form-header {
+    background: var(--bg-tertiary);
+    border-bottom: 2px solid var(--accent-primary);
+    color: var(--text-primary);
+    padding: 20px 24px;
+    border-radius: 12px 12px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.update-project-form .form-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.update-project-form .form-close-btn {
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    transition: all 0.2s ease;
+}
+
+.update-project-form .form-close-btn:hover {
+    background: var(--bg-hover);
+    color: var(--accent-danger);
+}
+
+.update-project-form .project-form {
+    padding: 24px;
+}
+
+.update-project-form .form-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    margin-bottom: 24px;
+}
+
+.update-project-form .form-left,
+.update-project-form .form-right {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.update-project-form .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.update-project-form .form-group label {
+    font-weight: 500;
+    color: var(--text-primary);
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.update-project-form .form-group label i {
+    color: var(--accent-primary);
+    width: 14px;
+    text-align: center;
+}
+
+.update-project-form .form-group input,
+.update-project-form .form-group textarea {
+    padding: 10px 14px;
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    background: var(--bg-input);
+    color: var(--text-primary);
+}
+
+.update-project-form .form-group input:focus,
+.update-project-form .form-group textarea:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+.update-project-form .form-group input.changed,
+.update-project-form .form-group textarea.changed {
+    border-color: var(--accent-success);
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.15);
+}
+
+.update-project-form .form-group input:disabled,
+.update-project-form .form-group textarea:disabled {
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+}
+
+.update-project-form .form-hint {
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* Changed Indicator */
+.update-project-form .changed-indicator {
+    color: #22c55e;
+    font-size: 11px;
+    font-weight: 500;
+    margin-left: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.update-project-form .changed-indicator i {
+    color: #22c55e;
+    font-size: 10px;
+}
+
+/* Pixel Art Editor in Update Form */
+.update-project-form .pixel-art-editor {
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid var(--border-primary);
+}
+
+.update-project-form .pixel-art-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.update-project-form .pixel-art-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.update-project-form .size-selector {
+    padding: 6px 10px;
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.update-project-form .import-btn {
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 2px solid var(--accent-primary);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.2s ease;
+}
+
+.update-project-form .import-btn:hover {
+    background: var(--accent-primary);
+    color: white;
+}
+
+/* Pixel String Info */
+.update-project-form .pixel-string-info {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    padding: 10px;
+    margin-top: 10px;
+}
+
+.update-project-form .string-display {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.update-project-form .string-display .label {
+    font-weight: 500;
+    color: var(--text-primary);
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.update-project-form .string-display .value {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    flex: 1;
+    background: var(--bg-input);
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    padding: 4px 8px;
+}
+
+.update-project-form .copy-container {
+    position: relative;
+}
+
+.update-project-form .copy-button {
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 1px solid var(--accent-primary);
+    border-radius: 4px;
+    padding: 4px 6px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.2s ease;
+}
+
+.update-project-form .copy-button:hover {
+    background: var(--accent-primary);
+    color: white;
+}
+
+.update-project-form .copy-tooltip {
+    position: absolute;
+    top: -28px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--tooltip-bg);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+}
+
+.update-project-form .copy-tooltip.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Changes Summary */
+.update-project-form .changes-summary {
+    background: var(--bg-secondary);
+    border: 1px solid var(--accent-success);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.update-project-form .changes-summary h4 {
+    color: var(--accent-success);
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.update-project-form .changes-summary h4 i {
+    color: var(--accent-success);
+}
+
+.update-project-form .changes-summary ul {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.update-project-form .changes-summary li {
+    margin-bottom: 4px;
+}
+
+.update-project-form .old-value {
+    background: var(--bg-secondary);
+    color: var(--accent-danger);
+    border: 1px solid var(--accent-danger);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 12px;
+    text-decoration: line-through;
+}
+
+.update-project-form .new-value {
+    background: var(--bg-secondary);
+    color: var(--accent-success);
+    border: 1px solid var(--accent-success);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* Memo size indicator (reuse create style, scoped) */
+.update-project-form .memo-size-indicator {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    border-radius: 10px;
+    padding: 14px;
+    margin: 16px 0;
+}
+
+.update-project-form .memo-size-indicator.update {
+    margin-top: 0;
+}
+
+.update-project-form .size-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.update-project-form .size-label {
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.update-project-form .size-value {
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 16px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.update-project-form .size-value.valid {
+    background: var(--bg-secondary);
+    color: var(--accent-success);
+    border: 1px solid var(--accent-success);
+}
+
+.update-project-form .size-value.invalid {
+    background: var(--bg-secondary);
+    color: var(--accent-danger);
+    border: 1px solid var(--accent-danger);
+}
+
+.update-project-form .size-range {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.update-project-form .size-status {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.update-project-form .size-status.valid {
+    background: var(--bg-secondary);
+    color: var(--accent-success);
+    border: 1px solid var(--accent-success);
+}
+
+.update-project-form .size-status.invalid {
+    background: var(--bg-secondary);
+    color: var(--accent-danger);
+    border: 1px solid var(--accent-danger);
+}
+
+.update-project-form .size-progress {
+    margin-top: 10px;
+}
+
+.update-project-form .progress-bar {
+    width: 100%;
+}
+
+.update-project-form .progress-track {
+    position: relative;
+    width: 100%;
+    height: 6px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.update-project-form .progress-fill {
+    height: 100%;
+    background: #667eea;
+    transition: width 0.3s ease;
+    border-radius: 4px;
+}
+
+.update-project-form .progress-fill.valid {
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+}
+
+.update-project-form .progress-fill.invalid {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
+
+.update-project-form .progress-markers {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100%;
+}
+
+.update-project-form .progress-markers .marker {
+    position: absolute;
+    top: -2px;
+    width: 2px;
+    height: 10px;
+    background: #9ca3af;
+}
+/* Error Message */
+.update-project-form .error-message {
+    background: var(--bg-secondary);
+    border: 1px solid var(--accent-danger);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 16px;
+    color: var(--accent-danger);
+    font-size: 13px;
+}
+
+/* Submit Button */
+.update-project-form .button-group {
+    display: flex;
+    justify-content: center;
+    padding-top: 16px;
+}
+
+.update-project-form .update-project-btn {
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border: 2px solid var(--accent-primary);
+    padding: 12px 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+}
+
+.update-project-form .update-project-btn:hover:not(:disabled) {
+    background: var(--accent-primary);
+    color: white;
+}
+
+.update-project-form .update-project-btn:disabled {
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    border-color: var(--border-secondary);
+    cursor: not-allowed;
+}
+
+/* Balance status */
+.update-project-form .balance-sufficient {
+    color: #059669;
+    font-weight: 500;
+}
+
+.update-project-form .balance-insufficient {
+    color: #dc2626;
+    font-weight: 500;
+}
+
+/* Update Form Responsive */
+@media (max-width: 768px) {
+    .update-project-form .form-layout {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .update-project-form .pixel-art-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .project-page {
+        padding: 1rem;
+    }
+    
+    .project-header {
+        padding: 1.5rem;
+    }
+    
+    .header-content {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+    }
+    
+    .header-text h1 {
+        font-size: 2rem;
+        text-align: center;
+    }
+    
+    .project-table {
+        font-size: 12px;
+    }
+    
+    .project-table th,
+    .project-table td {
+        padding: 12px 10px;
+    }
+    
+    /* Hide less important columns on mobile */
+    .website-cell {
+        display: none;
+    }
+    
+    /* Form responsive */
+    .create-project-form .form-layout {
+        grid-template-columns: 1fr;
+        gap: 24px;
+    }
+    
+    .create-project-form .pixel-art-header {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .create-project-form .size-info {
+        justify-content: center;
+        text-align: center;
+    }
+    
+    /* Details button text hide on very small screens */
+    .details-button {
+        padding: 8px 10px;
+        min-width: auto;
+    }
+    
+    .countdown-banner {
+        margin-bottom: 1rem;
+    }
+    
+    .countdown-content {
+        font-size: 14px;
+    }
+    
+    /* Project Detail Card - Responsive */
+    .project-details-page {
+        padding: 1rem;
+    }
+    
+    .project-details-page .pd-card-header {
+        padding: 18px 20px;
+    }
+    
+    .project-details-page .pd-header-content {
+        gap: 16px;
+    }
+    
+    .project-details-page .pd-project-avatar {
+        width: 64px;
+        height: 64px;
+        border-radius: 10px;
+    }
+    
+    .project-details-page .pd-project-avatar.placeholder i {
+        font-size: 26px;
+    }
+    
+    .project-details-page .project-detail-name {
+        font-size: 20px;
+    }
+    
+    .project-details-page .project-name-section {
+        gap: 6px;
+    }
+    
+    .project-details-page .pd-card-body {
+        grid-template-columns: 1fr;
+        gap: 20px;
+        padding: 20px;
+    }
+    
+    .project-details-page .info-right {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    
+    .project-details-page .pd-stat-card {
+        flex: 1;
+        min-width: 140px;
+    }
+    
+    .project-details-page .pd-card-footer {
+        padding: 14px 20px;
+    }
+    
+    .project-details-page .creator-section {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .project-details-page .creator-address {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .project-table th,
+    .project-table td {
+        padding: 8px 6px;
+    }
+    
+    .id-cell {
+        display: none;
+    }
+    
+    .details-button span {
+        display: none;
+    }
+    
+    .details-button {
+        min-width: 36px;
+        padding: 8px;
+    }
+    
+    .project-details-page .pd-back-btn {
+        padding: 8px 12px;
+        font-size: 13px;
+    }
+    
+    .project-details-page .pd-project-avatar {
+        width: 56px;
+        height: 56px;
+        border-radius: 8px;
+    }
+    
+    .project-details-page .pd-project-avatar.placeholder i {
+        font-size: 22px;
+    }
+    
+    .project-details-page .project-detail-name {
+        font-size: 18px;
+    }
+    
+    .project-details-page .info-right {
+        flex-direction: column;
+    }
+    
+    .project-details-page .pd-stat-card {
+        min-width: auto;
+        width: 100%;
+    }
+}
+
+/* ===== Devlog Section Styles ===== */
+
+/* Devlog Section Container */
+.devlog-section {
+    margin-top: 24px;
+}
+
+.devlog-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 0 4px;
+}
+
+.devlog-section-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--text-primary);
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.devlog-section-title i {
+    color: var(--accent-success);
+    font-size: 1.2rem;
+}
+
+/* Devlog List */
+.devlog-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Empty State */
+.devlog-empty-state {
+    background: var(--bg-card);
+    border-radius: 16px;
+    padding: 48px 24px;
+    text-align: center;
+    border: 2px dashed var(--border-primary);
+    color: var(--text-muted);
+}
+
+.devlog-empty-state i {
+    font-size: 48px;
+    margin-bottom: 16px;
+    color: var(--text-muted);
+}
+
+.devlog-empty-state p {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 8px 0;
+    color: var(--text-secondary);
+}
+
+.devlog-empty-hint {
+    font-size: 14px;
+    color: var(--accent-success);
+}
+
+/* Loading State */
+.devlog-loading {
+    background: var(--bg-card);
+    border-radius: 16px;
+    padding: 48px 24px;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.devlog-loading i {
+    font-size: 36px;
+    margin-bottom: 16px;
+    color: var(--accent-success);
+}
+
+.devlog-loading p {
+    font-size: 16px;
+    margin: 0;
+}
+
+/* Error State */
+.devlog-error {
+    background: var(--alert-error-bg);
+    border-radius: 16px;
+    padding: 32px 24px;
+    text-align: center;
+    color: var(--accent-danger);
+    border: 1px solid var(--alert-error-border);
+}
+
+.devlog-error i {
+    font-size: 36px;
+    margin-bottom: 12px;
+}
+
+.devlog-error p {
+    font-size: 14px;
+    margin: 0;
+}
+
+/* ===== Devlog Card Styles ===== */
+
+.devlog-card {
+    background: var(--bg-card);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: var(--shadow-medium);
+    border: 1px solid var(--border-primary);
+    transition: all 0.3s ease;
+}
+
+.devlog-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-heavy);
+}
+
+.devlog-card.devlog-sending {
+    opacity: 0.7;
+    border-color: var(--accent-warning);
+}
+
+.devlog-card.devlog-failed {
+    border-color: var(--accent-danger);
+    background: var(--alert-error-bg);
+}
+
+/* Card Header */
+.devlog-card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-light);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.devlog-title {
+    color: var(--text-primary);
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 0;
+    flex: 1;
+    line-height: 1.4;
+}
+
+.devlog-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.devlog-time {
+    color: var(--text-muted);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.devlog-time i {
+    font-size: 11px;
+}
+
+.devlog-burn {
+    color: var(--accent-warning);
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.devlog-burn i {
+    font-size: 11px;
+}
+
+/* Card Body - Horizontal Layout */
+.devlog-card-body {
+    padding: 16px 20px;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+}
+
+.devlog-image-section {
+    flex-shrink: 0;
+    width: 120px;
+}
+
+.devlog-image {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.devlog-image-placeholder {
+    width: 100px;
+    height: 100px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 12px;
+    gap: 8px;
+}
+
+.devlog-image-placeholder i {
+    font-size: 24px;
+}
+
+.devlog-content-section {
+    flex: 1;
+    min-width: 0; /* Allow text to wrap */
+}
+
+.devlog-content {
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.devlog-content-empty {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* Status Indicator */
+.devlog-status {
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.devlog-status.sending {
+    background: var(--alert-warning-bg);
+    color: var(--alert-warning-text);
+    border-top: 1px solid var(--alert-warning-border);
+}
+
+.devlog-status.sending i {
+    color: var(--accent-warning);
+}
+
+.devlog-status.failed {
+    background: var(--alert-error-bg);
+    color: var(--alert-error-text);
+    border-top: 1px solid var(--alert-error-border);
+    justify-content: space-between;
+}
+
+.devlog-status .retry-btn {
+    background: var(--bg-primary);
+    color: var(--accent-danger);
+    border: 2px solid var(--accent-danger);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+}
+
+.devlog-status .retry-btn:hover {
+    background: var(--accent-danger);
+    color: white;
+    transform: translateY(-1px);
+}
+
+.devlog-status .retry-btn i {
+    font-size: 11px;
+}
+
+/* Responsive Devlog Cards */
+@media (max-width: 768px) {
+    .devlog-card-header {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .devlog-meta {
+        flex-direction: row;
+        align-items: center;
+        width: 100%;
+    }
+
+    .devlog-card-body {
+        flex-direction: column;
+        gap: 12px;
+        padding: 14px 16px;
+    }
+
+    .devlog-image-section {
+        width: 100%;
+        display: flex;
+        justify-content: center;
+    }
+
+    .devlog-image-section,
+    .devlog-content-section {
+        width: 100%;
+    }
+}
+
+/* ===== Devlog Form Styles ===== */
+
+/* New Devlog Button */
+.pd-devlog-btn {
+    background: var(--bg-primary);
+    color: var(--accent-success);
+    border: 2px solid var(--accent-success);
+    border-radius: 10px;
+    padding: 10px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pd-devlog-btn:hover:not(:disabled) {
+    background: var(--accent-success);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+.pd-devlog-btn:disabled {
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    border-color: var(--border-secondary);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Devlog Form */
+.devlog-form {
+    background: var(--bg-card);
+    border-radius: 20px;
+    padding: 28px;
+    width: 100%;
+    max-width: 900px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: var(--shadow-heavy);
+    border: 1px solid var(--border-primary);
+}
+
+.devlog-form .form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-primary);
+}
+
+.devlog-form .form-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--accent-success);
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.devlog-form .form-title i {
+    font-size: 1.3rem;
+}
+
+.devlog-form .form-close-btn {
+    background: transparent;
+    border: 2px solid var(--border-primary);
+    color: var(--text-secondary);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.devlog-form .form-close-btn:hover {
+    background: var(--alert-error-bg);
+    border-color: var(--accent-danger);
+    color: var(--accent-danger);
+}
+
+.devlog-form .form-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+}
+
+.devlog-form .form-left,
+.devlog-form .form-right {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.devlog-form .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.devlog-form .form-group label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.devlog-form .form-group label i {
+    color: var(--accent-success);
+    font-size: 14px;
+}
+
+.devlog-form .form-group label .required {
+    color: var(--accent-danger);
+    font-weight: 700;
+}
+
+.devlog-form .form-group input[type="text"],
+.devlog-form .form-group input[type="number"],
+.devlog-form .form-group textarea {
+    padding: 12px 16px;
+    border: 2px solid var(--border-primary);
+    border-radius: 10px;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    background: var(--bg-input);
+    color: var(--text-primary);
+}
+
+.devlog-form .form-group input[type="text"]:focus,
+.devlog-form .form-group input[type="number"]:focus,
+.devlog-form .form-group textarea:focus {
+    outline: none;
+    border-color: var(--accent-success);
+    background: var(--bg-input);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.devlog-form .form-group textarea {
+    resize: vertical;
+    min-height: 140px;
+    font-family: inherit;
+    line-height: 1.5;
+}
+
+.devlog-form .char-count {
+    color: var(--text-secondary);
+    font-size: 12px;
+    text-align: right;
+}
+
+.devlog-form .form-hint {
+    color: var(--text-secondary);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.devlog-form .form-hint i {
+    color: var(--accent-success);
+}
+
+.devlog-form .balance-sufficient {
+    color: var(--accent-success);
+    font-weight: 600;
+}
+
+.devlog-form .balance-insufficient {
+    color: var(--accent-danger);
+    font-weight: 600;
+}
+
+/* Pixel Art Editor in Devlog Form */
+.devlog-form .pixel-art-editor {
+    background: var(--bg-tertiary);
+    border-radius: 14px;
+    padding: 18px;
+    border: 1px solid var(--border-primary);
+}
+
+.devlog-form .pixel-art-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.devlog-form .pixel-art-header label {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.devlog-form .pixel-art-header label i {
+    color: var(--accent-success);
+}
+
+.devlog-form .pixel-art-controls {
+    display: flex;
+    gap: 10px;
+}
+
+.devlog-form .size-selector {
+    padding: 8px 12px;
+    border: 2px solid var(--border-primary);
+    border-radius: 8px;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.devlog-form .size-selector:focus {
+    outline: none;
+    border-color: var(--accent-success);
+}
+
+.devlog-form .import-btn {
+    background: var(--bg-primary);
+    border: 2px solid var(--accent-success);
+    border-radius: 8px;
+    padding: 8px 14px;
+    color: var(--accent-success);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+}
+
+.devlog-form .import-btn:hover:not(:disabled) {
+    background: var(--accent-success);
+    color: white;
+    border-color: var(--accent-success);
+}
+
+.devlog-form .pixel-string-info {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-primary);
+}
+
+.devlog-form .string-display {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.devlog-form .string-display .label {
+    color: var(--text-secondary);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.devlog-form .string-display .label i {
+    color: var(--accent-success);
+}
+
+.devlog-form .string-display .value {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text-primary);
+    background: var(--bg-input);
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border-primary);
+    word-break: break-all;
+}
+
+.devlog-form .copy-container {
+    position: relative;
+}
+
+.devlog-form .copy-button {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    padding: 6px 8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.devlog-form .copy-button:hover {
+    background: var(--accent-success);
+    color: white;
+    border-color: var(--accent-success);
+}
+
+.devlog-form .copy-tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(-5px);
+    background: var(--tooltip-bg);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+}
+
+.devlog-form .copy-tooltip.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Memo Size Indicator for Devlog */
+.memo-size-indicator.devlog {
+    background: var(--bg-tertiary);
+    border-radius: 12px;
+    padding: 16px;
+    margin: 20px 0;
+    border: 1px solid var(--border-primary);
+}
+
+/* Post Devlog Button */
+.post-devlog-btn {
+    width: 100%;
+    background: var(--bg-primary);
+    color: var(--accent-success);
+    border: 2px solid var(--accent-success);
+    border-radius: 12px;
+    padding: 16px 24px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.post-devlog-btn:hover:not(:disabled) {
+    background: var(--accent-success);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(16, 185, 129, 0.4);
+}
+
+.post-devlog-btn:disabled {
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    border-color: var(--border-secondary);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Responsive Devlog Section & Form */
+@media (max-width: 768px) {
+    .devlog-section-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
+    
+    .devlog-section-title {
+        font-size: 1.2rem;
+    }
+    
+    .pd-devlog-btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .devlog-empty-state {
+        padding: 32px 16px;
+    }
+    
+    .devlog-empty-state i {
+        font-size: 36px;
+    }
+    
+    .devlog-form {
+        padding: 20px;
+        max-width: 100%;
+        margin: 10px;
+    }
+    
+    .devlog-form .form-layout {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .devlog-form .form-title {
+        font-size: 1.2rem;
+    }
+}
