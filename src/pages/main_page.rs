@@ -739,7 +739,8 @@ pub fn MainPage(
             </div>
 
             // Global log viewer - always visible at the bottom
-            <LogView/>
+            // Temporarily disabled by user request
+            // <LogView/>
             
             // Welcome Info Dialog (shown after login/registration if burn stats not initialized)
             <Show when=move || show_welcome_info.get()>
