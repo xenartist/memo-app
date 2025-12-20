@@ -35,8 +35,8 @@ fn is_menu_available(menu_item: &MenuItem, network: Option<NetworkType>) -> bool
             true
         }
         Some(NetworkType::ProdStaging) | Some(NetworkType::Mainnet) => {
-            // Production and Staging: Mint, Chat, Profile, and Settings available
-            matches!(menu_item, MenuItem::Mint | MenuItem::Chat | MenuItem::Profile | MenuItem::Settings)
+            // Production and Staging: Mint, Project, Chat, Profile, and Settings available
+            matches!(menu_item, MenuItem::Mint | MenuItem::Project | MenuItem::Chat | MenuItem::Profile | MenuItem::Settings)
         }
         None => {
             // If network not set (shouldn't happen), default to restricted mode

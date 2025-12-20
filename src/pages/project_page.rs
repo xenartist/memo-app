@@ -505,8 +505,11 @@ fn ProjectDetailsView(
 ) -> impl IntoView {
     let on_back_signal = create_rw_signal(Some(on_back));
     
-    // Store project data for update dialog
+    // Store project data as reactive signal for updates
     let project_data = create_rw_signal(project.clone());
+    
+    // Create a reactive accessor for current project
+    let current_project = move || project_data.get();
 
     let handle_back = move |_| {
         on_back_signal.with_untracked(|cb_opt| {
@@ -516,64 +519,67 @@ fn ProjectDetailsView(
         });
     };
 
-    // Format burned amount
-    let burned_tokens = project.burned_amount / 1_000_000;
-    let burned_display = format_number_with_commas(burned_tokens);
+    // Reactive computed values based on project_data
+    let burned_display = move || {
+        let proj = current_project();
+        let burned_tokens = proj.burned_amount / 1_000_000;
+        format_number_with_commas(burned_tokens)
+    };
     
-    // Format last memo time
-    let last_memo_display = if project.last_memo_time > 0 {
-        let date = web_sys::js_sys::Date::new(&JsValue::from_f64(project.last_memo_time as f64 * 1000.0));
-        format!(
-            "{}-{:02}-{:02} {:02}:{:02}",
-            date.get_full_year(),
-            date.get_month() + 1,
-            date.get_date(),
-            date.get_hours(),
-            date.get_minutes()
-        )
-    } else {
-        "Never".to_string()
+    let last_memo_display = move || {
+        let proj = current_project();
+        if proj.last_memo_time > 0 {
+            let date = web_sys::js_sys::Date::new(&JsValue::from_f64(proj.last_memo_time as f64 * 1000.0));
+            format!(
+                "{}-{:02}-{:02} {:02}:{:02}",
+                date.get_full_year(),
+                date.get_month() + 1,
+                date.get_date(),
+                date.get_hours(),
+                date.get_minutes()
+            )
+        } else {
+            "Never".to_string()
+        }
     };
 
-    // Check if current user is the creator (create multiple closures for multiple uses)
-    let creator_address = project.creator.clone();
-    let creator_address_for_check1 = creator_address.clone();
-    let creator_address_for_check2 = creator_address.clone();
-    let creator_address_for_check3 = creator_address.clone();
-    
+    // Check if current user is the creator - make these reactive
     let is_creator = move || {
+        let proj = current_project();
         session.with(|s| {
             match s.get_public_key() {
-                Ok(pubkey) => pubkey == creator_address_for_check1,
+                Ok(pubkey) => pubkey == proj.creator,
                 Err(_) => false,
             }
         })
     };
     
     let is_creator_for_devlog_btn = move || {
+        let proj = current_project();
         session.with(|s| {
             match s.get_public_key() {
-                Ok(pubkey) => pubkey == creator_address_for_check2,
+                Ok(pubkey) => pubkey == proj.creator,
                 Err(_) => false,
             }
         })
     };
     
     let is_creator_for_hint = move || {
+        let proj = current_project();
         session.with(|s| {
             match s.get_public_key() {
-                Ok(pubkey) => pubkey == creator_address_for_check3,
+                Ok(pubkey) => pubkey == proj.creator,
                 Err(_) => false,
             }
         })
     };
     
     // Create a reactive memo for is_creator check (used in devlog list)
-    let creator_address_for_memo = creator_address.clone();
     let is_creator_memo = create_memo(move |_| {
+        let proj = current_project();
         session.with(|s| {
             match s.get_public_key() {
-                Ok(pubkey) => pubkey == creator_address_for_memo,
+                Ok(pubkey) => pubkey == proj.creator,
                 Err(_) => false,
             }
         })
@@ -581,6 +587,13 @@ fn ProjectDetailsView(
     
     // Update dialog state
     let (show_update_dialog, set_show_update_dialog) = create_signal(false);
+    
+    // Refresh countdown state (for showing countdown after update)
+    let (refresh_countdown, set_refresh_countdown) = create_signal(0u32);
+    let (is_refreshing, set_is_refreshing) = create_signal(false);
+    
+    // Refresh trigger - increment this to force reload all data
+    let (refresh_trigger, set_refresh_trigger) = create_signal(0u32);
     
     // Devlog dialog state
     let (show_devlog_dialog, set_show_devlog_dialog) = create_signal(false);
@@ -593,10 +606,13 @@ fn ProjectDetailsView(
     // Store project_id for devlog operations
     let project_id_for_devlogs = project.project_id;
     
-    // Load devlogs on mount
+    // Load devlogs on mount and when refresh_trigger changes
     {
         let project_id = project.project_id;
         create_effect(move |_| {
+            // Watch refresh_trigger to reload when it changes
+            let _ = refresh_trigger.get();
+            
             spawn_local(async move {
                 set_devlogs_loading.set(true);
                 set_devlogs_error.set(None);
@@ -674,11 +690,63 @@ fn ProjectDetailsView(
         set_show_update_dialog.set(false);
     };
     
-    // Handle update success - refresh project data
+    // Handle update success - just close dialog, no need to wait here
     let on_update_success = move |_signature: String| {
-        log::info!("Project updated successfully!");
+        log::info!("Project updated successfully, starting refresh countdown");
         set_show_update_dialog.set(false);
-        // Note: In a real app, we'd refresh the project data here
+        
+        // Start countdown and refresh
+        set_is_refreshing.set(true);
+        set_refresh_countdown.set(20);
+        
+        let project_id = project.project_id;
+        let original_rank = project.rank;
+        
+        // Countdown timer
+        spawn_local(async move {
+            for remaining in (1..=20).rev() {
+                set_refresh_countdown.set(remaining);
+                TimeoutFuture::new(1_000).await;
+            }
+            set_refresh_countdown.set(0);
+        });
+        
+        // Wait 20 seconds then refresh project details
+        spawn_local(async move {
+            log::info!("Waiting 20 seconds for blockchain to update...");
+            TimeoutFuture::new(20_000).await;
+            
+            log::info!("Fetching updated project info...");
+            let rpc = RpcConnection::new();
+            match rpc.get_project_info(project_id).await {
+                Ok(project_info) => {
+                    log::info!("Successfully fetched updated project data, reloading details page");
+                    // Create updated ProjectRow
+                    let updated_project = ProjectRow {
+                        project_id: project_info.project_id,
+                        name: project_info.name,
+                        description: project_info.description,
+                        image: project_info.image,
+                        website: project_info.website,
+                        burned_amount: project_info.burned_amount,
+                        last_memo_time: project_info.last_memo_time,
+                        rank: original_rank,
+                        creator: project_info.creator,
+                    };
+                    
+                    // Update project data - this will trigger all UI updates
+                    project_data.set(updated_project);
+                    
+                    // Trigger refresh for devlogs and other data
+                    set_refresh_trigger.update(|n| *n += 1);
+                },
+                Err(e) => {
+                    log::error!("Failed to refresh project data: {}", e);
+                }
+            }
+            
+            set_is_refreshing.set(false);
+        });
     };
 
     // Open devlog dialog
@@ -710,49 +778,82 @@ fn ProjectDetailsView(
                     "Back to Projects"
                 </button>
                 
+                // Refresh countdown banner (shown after update)
+                <Show when=move || is_refreshing.get()>
+                    <div style="
+                        background: #d1ecf1;
+                        color: #0c5460;
+                        padding: 20px;
+                        border-radius: 12px;
+                        border: 1px solid #bee5eb;
+                        margin: 20px 0;
+                        text-align: center;
+                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                    ">
+                        <div style="font-size: 18px; font-weight: 600; margin-bottom: 12px;">
+                            <i class="fas fa-sync-alt fa-spin" style="margin-right: 8px;"></i>
+                            "Project updated successfully!"
+                        </div>
+                        <div style="font-size: 48px; font-weight: 700; margin: 16px 0; color: #0c5460;">
+                            {move || refresh_countdown.get()}
+                        </div>
+                        <div style="font-size: 14px; opacity: 0.8;">
+                            "Waiting for blockchain synchronization..."
+                        </div>
+                    </div>
+                </Show>
+                
                 // Project Detail Card
                 <div class="project-detail-card">
                     // Card Header with Image, Name, Rank and Update Button
                     <div class="pd-card-header">
                         <div class="pd-header-content">
                             // Project Image
-                            {if !project.image.is_empty() {
-                                if project.image.starts_with("c:") || project.image.starts_with("n:") {
-                                    view! {
-                                        <div class="pd-project-avatar">
-                                            <LazyPixelView
-                                                art={project.image.clone()}
-                                                size=80
-                                            />
-                                        </div>
-                                    }.into_view()
+                            {move || {
+                                let proj = current_project();
+                                if !proj.image.is_empty() {
+                                    if proj.image.starts_with("c:") || proj.image.starts_with("n:") {
+                                        view! {
+                                            <div class="pd-project-avatar">
+                                                <LazyPixelView
+                                                    art={proj.image.clone()}
+                                                    size=80
+                                                />
+                                            </div>
+                                        }.into_view()
+                                    } else {
+                                        view! {
+                                            <div class="pd-project-avatar">
+                                                <img src={proj.image.clone()} alt="Project Image" />
+                                            </div>
+                                        }.into_view()
+                                    }
                                 } else {
                                     view! {
-                                        <div class="pd-project-avatar">
-                                            <img src={project.image.clone()} alt="Project Image" />
+                                        <div class="pd-project-avatar placeholder">
+                                            <i class="fas fa-cube"></i>
                                         </div>
                                     }.into_view()
                                 }
-                            } else {
-                                view! {
-                                    <div class="pd-project-avatar placeholder">
-                                        <i class="fas fa-cube"></i>
-                                    </div>
-                                }.into_view()
                             }}
                             
                             // Name and Rank
                             <div class="project-name-section">
-                                <h1 class="project-detail-name">{project.name.clone()}</h1>
-                                <span class={format!("rank-badge rank-{}", if project.rank <= 3 { project.rank.to_string() } else if project.rank <= 10 { "top10".to_string() } else { "other".to_string() })}>
-                                    {if project.rank == 1 {
-                                        view! { <><i class="fas fa-trophy"></i> " #1"</> }.into_view()
-                                    } else if project.rank <= 3 {
-                                        view! { <><i class="fas fa-medal"></i> {format!(" #{}", project.rank)}</> }.into_view()
-                                    } else {
-                                        view! { <><i class="fas fa-fire"></i> {format!(" #{}", project.rank)}</> }.into_view()
-                                    }}
-                                </span>
+                                <h1 class="project-detail-name">{move || current_project().name}</h1>
+                                {move || {
+                                    let proj = current_project();
+                                    view! {
+                                        <span class={format!("rank-badge rank-{}", if proj.rank <= 3 { proj.rank.to_string() } else if proj.rank <= 10 { "top10".to_string() } else { "other".to_string() })}>
+                                            {if proj.rank == 1 {
+                                                view! { <><i class="fas fa-trophy"></i> " #1"</> }.into_view()
+                                            } else if proj.rank <= 3 {
+                                                view! { <><i class="fas fa-medal"></i> {format!(" #{}", proj.rank)}</> }.into_view()
+                                            } else {
+                                                view! { <><i class="fas fa-fire"></i> {format!(" #{}", proj.rank)}</> }.into_view()
+                                            }}
+                                        </span>
+                                    }
+                                }}
                             </div>
                             
                             // Update button (only visible to creator)
@@ -780,7 +881,7 @@ fn ProjectDetailsView(
                                 </div>
                                 <div class="pd-field-content">
                                     <span class="pd-field-label">"Project ID"</span>
-                                    <span class="pd-field-value mono">{project.project_id.to_string()}</span>
+                                    <span class="pd-field-value mono">{move || current_project().project_id.to_string()}</span>
                                 </div>
                             </div>
                             
@@ -792,10 +893,13 @@ fn ProjectDetailsView(
                                 <div class="pd-field-content">
                                     <span class="pd-field-label">"Description"</span>
                                     <span class="pd-field-value">
-                                        {if project.description.is_empty() {
-                                            "-".to_string()
-                                        } else {
-                                            project.description.clone()
+                                        {move || {
+                                            let proj = current_project();
+                                            if proj.description.is_empty() {
+                                                "-".to_string()
+                                            } else {
+                                                proj.description.clone()
+                                            }
                                         }}
                                     </span>
                                 </div>
@@ -808,22 +912,25 @@ fn ProjectDetailsView(
                                 </div>
                                 <div class="pd-field-content">
                                     <span class="pd-field-label">"Website"</span>
-                                    {if !project.website.is_empty() {
-                                        view! {
-                                            <a 
-                                                href={project.website.clone()} 
-                                                target="_blank" 
-                                                rel="noopener noreferrer"
-                                                class="pd-field-value link"
-                                            >
-                                                {project.website.clone()}
-                                                <i class="fas fa-external-link-alt"></i>
-                                            </a>
-                                        }.into_view()
-                                    } else {
-                                        view! {
-                                            <span class="pd-field-value muted">"-"</span>
-                                        }.into_view()
+                                    {move || {
+                                        let proj = current_project();
+                                        if !proj.website.is_empty() {
+                                            view! {
+                                                <a 
+                                                    href={proj.website.clone()} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer"
+                                                    class="pd-field-value link"
+                                                >
+                                                    {proj.website.clone()}
+                                                    <i class="fas fa-external-link-alt"></i>
+                                                </a>
+                                            }.into_view()
+                                        } else {
+                                            view! {
+                                                <span class="pd-field-value muted">"-"</span>
+                                            }.into_view()
+                                        }
                                     }}
                                 </div>
                             </div>
@@ -866,11 +973,11 @@ fn ProjectDetailsView(
                                 <span class="pd-creator-name">{move || creator_display.get()}</span>
                                 // Show address hint if we have a username
                                 {move || {
+                                    let proj = current_project();
                                     if creator_username.get().is_some() {
-                                        let addr = creator_address.clone();
                                         view! {
                                             <span class="pd-address-hint">
-                                                "(" {shorten_address(&addr)} ")"
+                                                "(" {shorten_address(&proj.creator)} ")"
                                             </span>
                                         }.into_view()
                                     } else {
@@ -1949,6 +2056,8 @@ fn UpdateProjectForm(
                         s.mark_balance_update_needed();
                     });
 
+                    // Immediately trigger success callback and close dialog
+                    set_is_updating.set(false);
                     on_success_signal.with_untracked(|cb_opt| {
                         if let Some(callback) = cb_opt.as_ref() {
                             callback(signature);
@@ -2053,6 +2162,7 @@ fn UpdateProjectForm(
                     type="button"
                     class="form-close-btn"
                     on:click=handle_close
+                    prop:disabled=move || is_updating.get()
                     title="Close"
                 >
                     <i class="fas fa-times"></i>
@@ -2394,12 +2504,12 @@ fn UpdateProjectForm(
                     view! { <div></div> }.into_view()
                 }}
 
-                // Error message
+                // Error message only
                 {move || {
-                    let message = error_message.get();
-                    if !message.is_empty() {
+                    let error_msg = error_message.get();
+                    if !error_msg.is_empty() {
                         view! {
-                            <div class="error-message">{message}</div>
+                            <div class="error-message">{error_msg}</div>
                         }.into_view()
                     } else {
                         view! { <div></div> }.into_view()
