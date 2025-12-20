@@ -346,6 +346,7 @@ pub fn ProjectPage(
                                                                 <tr>
                                                                     <th>"Rank"</th>
                                                                     <th>"ID"</th>
+                                                                    <th>"Logo"</th>
                                                                     <th>"Name"</th>
                                                                     <th>"Description"</th>
                                                                     <th>"Website"</th>
@@ -408,6 +409,32 @@ pub fn ProjectPage(
                                                                                 }
                                                                             </td>
                                                                             <td class="id-cell">{project.project_id.to_string()}</td>
+                                                                            <td class="image-cell">
+                                                                                {if !project.image.is_empty() {
+                                                                                    if project.image.starts_with("c:") || project.image.starts_with("n:") {
+                                                                                        view! {
+                                                                                            <div class="project-avatar-small">
+                                                                                                <LazyPixelView
+                                                                                                    art={project.image.clone()}
+                                                                                                    size=40
+                                                                                                />
+                                                                                            </div>
+                                                                                        }.into_view()
+                                                                                    } else {
+                                                                                        view! {
+                                                                                            <div class="project-avatar-small">
+                                                                                                <img src={project.image.clone()} alt="Project" />
+                                                                                            </div>
+                                                                                        }.into_view()
+                                                                                    }
+                                                                                } else {
+                                                                                    view! {
+                                                                                        <div class="project-avatar-small placeholder">
+                                                                                            <i class="fas fa-cube"></i>
+                                                                                        </div>
+                                                                                    }.into_view()
+                                                                                }}
+                                                                            </td>
                                                                             <td class="name-cell">
                                                                                 <span class="project-name">{project.name}</span>
                                                                             </td>
