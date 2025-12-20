@@ -348,8 +348,8 @@ pub fn ProjectPage(
                                                                     <th>"ID"</th>
                                                                     <th>"Logo"</th>
                                                                     <th>"Name"</th>
-                                                                    <th>"Description"</th>
                                                                     <th>"Website"</th>
+                                                                    <th>"Description"</th>
                                                                     <th>"Burned (MEMO)"</th>
                                                                     <th>"Details"</th>
                                                                 </tr>
@@ -438,9 +438,6 @@ pub fn ProjectPage(
                                                                             <td class="name-cell">
                                                                                 <span class="project-name">{project.name}</span>
                                                                             </td>
-                                                                            <td class="description-cell">
-                                                                                <span class="project-description">{description_display}</span>
-                                                                            </td>
                                                                             <td class="website-cell">
                                                                                 {if !project.website.is_empty() {
                                                                                     view! {
@@ -458,6 +455,9 @@ pub fn ProjectPage(
                                                                                         <span class="no-website">"-"</span>
                                                                                     }.into_view()
                                                                                 }}
+                                                                            </td>
+                                                                            <td class="description-cell">
+                                                                                <span class="project-description">{description_display}</span>
                                                                             </td>
                                                                             <td class="burned-cell">
                                                                                 <i class="fas fa-fire burned-fire-icon"></i>
