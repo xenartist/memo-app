@@ -1665,8 +1665,8 @@ impl RpcConnection {
             }
         }
         
-        // Sort messages by timestamp from oldest to newest (ascending order)
-        messages.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+        // Sort messages by timestamp from newest to oldest (descending order)
+        messages.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
         
         let has_more = signatures.len() == limit;
         let total_found = messages.len();
