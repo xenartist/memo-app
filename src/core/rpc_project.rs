@@ -607,6 +607,61 @@ pub struct ProjectBurnMessagesResponse {
     pub has_more: bool,        // Indicates if there are more messages available
 }
 
+/// Operation type for project contract transactions
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ProjectOperationType {
+    CreateProject,
+    UpdateProject,
+    BurnForProject,
+}
+
+/// Detailed information for different operation types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ProjectOperationDetails {
+    /// Create project operation with full project details
+    Create {
+        project_id: u64,
+        name: String,
+        description: String,
+        image: String,
+        website: String,
+        tags: Vec<String>,
+    },
+    /// Update project operation with updated fields
+    Update {
+        project_id: u64,
+        name: Option<String>,
+        description: Option<String>,
+        image: Option<String>,
+        website: Option<String>,
+        tags: Option<Vec<String>>,
+    },
+    /// Burn for project operation with message
+    Burn {
+        project_id: u64,
+        message: String,
+    },
+}
+
+/// Transaction info for project contract
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectContractTransaction {
+    pub signature: String,          // Transaction signature
+    pub burner: String,             // Burner's public key
+    pub timestamp: i64,             // Block time
+    pub slot: u64,                  // Slot number
+    pub burn_amount: u64,           // Amount burned (in lamports)
+    pub operation_type: ProjectOperationType,  // Type of operation
+    pub details: ProjectOperationDetails,      // Operation-specific details
+}
+
+/// Response containing recent transactions for project contract
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectContractTransactionsResponse {
+    pub transactions: Vec<ProjectContractTransaction>,
+    pub total_found: usize,
+}
+
 /// Parse Base64+Borsh-formatted memo data to extract project burn message
 fn parse_borsh_project_burn_message(memo_data: &[u8]) -> Option<(String, String, u64)> {
     // Convert bytes to UTF-8 string (should be Base64)
@@ -633,6 +688,75 @@ fn parse_borsh_project_burn_message(memo_data: &[u8]) -> Option<(String, String,
         },
         Err(_) => None
     }
+}
+
+/// Parse memo data for all project operations (create, update, burn)
+/// Returns (burner, operation_type, details, burn_amount)
+fn parse_project_operation_memo(memo_data: &[u8]) -> Option<(String, ProjectOperationType, ProjectOperationDetails, u64)> {
+    // Convert bytes to UTF-8 string (should be Base64)
+    let memo_str = std::str::from_utf8(memo_data).ok()?;
+    
+    // Decode Base64 to get original Borsh binary data
+    let borsh_bytes = base64::decode(memo_str).ok()?;
+    
+    // Deserialize Borsh binary data to BurnMemo
+    let burn_memo = BurnMemo::try_from_slice(&borsh_bytes).ok()?;
+    let burn_amount = burn_memo.burn_amount;
+    
+    // Try to parse as ProjectCreationData
+    if let Ok(creation_data) = ProjectCreationData::try_from_slice(&burn_memo.payload) {
+        if creation_data.category == "project" && creation_data.operation == "create_project" {
+            return Some((
+                creation_data.name.clone(), // Use project name as "burner" identifier
+                ProjectOperationType::CreateProject,
+                ProjectOperationDetails::Create {
+                    project_id: creation_data.project_id,
+                    name: creation_data.name,
+                    description: creation_data.description,
+                    image: creation_data.image,
+                    website: creation_data.website,
+                    tags: creation_data.tags,
+                },
+                burn_amount,
+            ));
+        }
+    }
+    
+    // Try to parse as ProjectUpdateData
+    if let Ok(update_data) = ProjectUpdateData::try_from_slice(&burn_memo.payload) {
+        if update_data.category == "project" && update_data.operation == "update_project" {
+            return Some((
+                update_data.name.clone().unwrap_or_else(|| "Project Update".to_string()),
+                ProjectOperationType::UpdateProject,
+                ProjectOperationDetails::Update {
+                    project_id: update_data.project_id,
+                    name: update_data.name,
+                    description: update_data.description,
+                    image: update_data.image,
+                    website: update_data.website,
+                    tags: update_data.tags,
+                },
+                burn_amount,
+            ));
+        }
+    }
+    
+    // Try to parse as ProjectBurnData
+    if let Ok(burn_data) = ProjectBurnData::try_from_slice(&burn_memo.payload) {
+        if burn_data.category == "project" && burn_data.operation == "burn_for_project" {
+            return Some((
+                burn_data.burner.clone(),
+                ProjectOperationType::BurnForProject,
+                ProjectOperationDetails::Burn {
+                    project_id: burn_data.project_id,
+                    message: burn_data.message,
+                },
+                burn_amount,
+            ));
+        }
+    }
+    
+    None
 }
 
 /// Parse memo data to determine message type for projects
@@ -1665,8 +1789,8 @@ impl RpcConnection {
             }
         }
         
-        // Sort messages by timestamp from oldest to newest (ascending order)
-        messages.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+        // Sort messages by timestamp from newest to oldest (descending order)
+        messages.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
         
         let has_more = signatures.len() == limit;
         let total_found = messages.len();
@@ -1678,6 +1802,93 @@ impl RpcConnection {
             messages,
             total_found,
             has_more,
+        })
+    }
+
+    /// Get recent transactions for the project contract
+    /// 
+    /// Fetches the 3 most recent transactions (burns) to the project contract address.
+    /// All transactions are burn operations since the contract only supports burning.
+    /// 
+    /// # Returns
+    /// Recent transactions response with up to 3 transactions
+    pub async fn get_recent_project_contract_transactions(
+        &self,
+    ) -> Result<ProjectContractTransactionsResponse, RpcError> {
+        // Get project program address (the contract address)
+        let program_id = ProjectConfig::get_program_id()?;
+        
+        // Get signatures for the contract address (limit to 3 most recent)
+        let params = serde_json::json!([
+            program_id.to_string(),
+            {
+                "limit": 3,
+                "commitment": "confirmed"
+            }
+        ]);
+        
+        log::info!("Fetching recent transactions for project contract: {}", program_id);
+        
+        // Get signatures for address
+        let signatures_response: serde_json::Value = self.send_request("getSignaturesForAddress", params).await?;
+        let signatures = signatures_response.as_array()
+            .ok_or_else(|| RpcError::Other("Invalid signatures response format".to_string()))?;
+        
+        log::info!("Found {} recent signatures for project contract", signatures.len());
+        
+        let mut transactions = Vec::new();
+        
+        // Process each signature
+        for sig_info in signatures {
+            let signature = sig_info["signature"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+            
+            if signature.is_empty() {
+                continue;
+            }
+            
+            // Extract timestamp and slot
+            let block_time = sig_info["blockTime"].as_i64().unwrap_or(0);
+            let slot = sig_info["slot"].as_u64().unwrap_or(0);
+            
+            // Extract memo field from signature info
+            if let Some(memo_str) = sig_info["memo"].as_str() {
+                // The memo field format is "[length] base64_data"
+                let memo_data = if let Some(space_pos) = memo_str.find(' ') {
+                    &memo_str[space_pos + 1..]
+                } else {
+                    memo_str
+                };
+                
+                let memo_bytes = memo_data.as_bytes();
+                
+                // Parse memo data for all project operations
+                if let Some((burner, operation_type, details, burn_amount)) = parse_project_operation_memo(memo_bytes) {
+                    transactions.push(ProjectContractTransaction {
+                        signature: signature.clone(),
+                        burner,
+                        timestamp: block_time,
+                        slot,
+                        burn_amount,
+                        operation_type,
+                        details,
+                    });
+                }
+            }
+        }
+        
+        // Sort by timestamp from newest to oldest (descending order)
+        transactions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        
+        let total_found = transactions.len();
+        
+        log::info!("Found {} recent transactions for project contract", total_found);
+        
+        Ok(ProjectContractTransactionsResponse {
+            transactions,
+            total_found,
         })
     }
 }
