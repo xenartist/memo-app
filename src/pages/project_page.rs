@@ -1557,10 +1557,8 @@ fn DevlogForm(
             logs.insert(0, local_devlog);
         });
         
-        // Clear form and close dialog
-        set_devlog_title.set(String::new());
-        set_devlog_content.set(String::new());
-        set_pixel_art.set(Pixel::new_with_size(16));
+        // Don't clear form yet - wait for success
+        // This prevents users from thinking they sent empty content
         
         // Create devlog message (JSON format) for sending
         let devlog_data = DevlogData::new(title.clone(), content.clone(), image.clone());
@@ -1596,6 +1594,11 @@ fn DevlogForm(
                     session.update(|s| {
                         s.mark_balance_update_needed();
                     });
+
+                    // Clear form only on success
+                    set_devlog_title.set(String::new());
+                    set_devlog_content.set(String::new());
+                    set_pixel_art.set(Pixel::new_with_size(16));
 
                     on_success_signal.with_untracked(|cb_opt| {
                         if let Some(callback) = cb_opt.as_ref() {
