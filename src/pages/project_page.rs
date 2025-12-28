@@ -1,6 +1,9 @@
 use leptos::*;
 use crate::core::session::Session;
-use crate::core::rpc_project::{ProjectCreationData, ProjectBurnMessage};
+use crate::core::rpc_project::{
+    ProjectCreationData, ProjectBurnMessage, ProjectContractTransaction,
+    ProjectOperationDetails,
+};
 use crate::core::rpc_base::RpcConnection;
 use wasm_bindgen_futures::spawn_local;
 use gloo_timers::future::TimeoutFuture;
@@ -158,6 +161,52 @@ pub fn ProjectPage(
     
     // Countdown state
     let (countdown_seconds, set_countdown_seconds) = create_signal::<Option<i32>>(None);
+    
+    // Featured transactions state
+    let (featured_transactions, set_featured_transactions) = create_signal::<Vec<ProjectContractTransaction>>(vec![]);
+    let (current_featured_index, set_current_featured_index) = create_signal(0_usize);
+
+    // Load featured transactions
+    let load_featured_transactions = create_action(move |_: &()| {
+        async move {
+            let rpc = RpcConnection::new();
+            match rpc.get_recent_project_contract_transactions().await {
+                Ok(response) => {
+                    log::info!("Loaded {} featured transactions", response.transactions.len());
+                    set_featured_transactions.set(response.transactions);
+                },
+                Err(e) => {
+                    log::error!("Failed to load featured transactions: {}", e);
+                }
+            }
+        }
+    });
+
+    // Load featured transactions on mount
+    create_effect(move |_| {
+        load_featured_transactions.dispatch(());
+    });
+
+    // Auto-rotate featured cards every 30 seconds
+    {
+        let interval_handle = set_interval_with_handle(
+            move || {
+                let txs = featured_transactions.get();
+                if !txs.is_empty() {
+                    set_current_featured_index.update(|idx| {
+                        *idx = (*idx + 1) % txs.len();
+                    });
+                }
+            },
+            std::time::Duration::from_secs(30),
+        );
+        
+        on_cleanup(move || {
+            if let Ok(handle) = interval_handle {
+                handle.clear();
+            }
+        });
+    }
 
     // Function to load/refresh projects data  
     let load_projects_data = create_action(move |_: &()| {
@@ -314,6 +363,16 @@ pub fn ProjectPage(
                                             </span>
                                         </div>
                                     </div>
+                                </Show>
+                                
+                                // Featured transactions carousel
+                                <Show when=move || !featured_transactions.get().is_empty()>
+                                    <FeaturedCarousel
+                                        transactions=featured_transactions
+                                        current_index=current_featured_index
+                                        set_current_index=set_current_featured_index
+                                        session=session
+                                    />
                                 </Show>
                                 
                                 <div class="project-content">
@@ -3233,3 +3292,472 @@ fn truncate_description(description: &str) -> String {
         }
     }
 }
+
+/// Featured Carousel Component - displays recent project contract transactions
+#[component]
+fn FeaturedCarousel(
+    transactions: ReadSignal<Vec<ProjectContractTransaction>>,
+    current_index: ReadSignal<usize>,
+    set_current_index: WriteSignal<usize>,
+    session: RwSignal<Session>,
+) -> impl IntoView {
+    view! {
+        <div class="featured-carousel">
+            <div class="featured-header">
+                <i class="fas fa-star"></i>
+                <h2>"Featured Activity"</h2>
+            </div>
+            
+            <div class="carousel-container">
+                <div class="carousel-track">
+                    {move || {
+                        let txs = transactions.get();
+                        let idx = current_index.get();
+                        
+                        if txs.is_empty() {
+                            return view! { <div></div> }.into_view();
+                        }
+                        
+                        // Show current, prev, and next cards with stacked effect
+                        let total = txs.len();
+                        let prev_idx = if idx == 0 { total - 1 } else { idx - 1 };
+                        let next_idx = (idx + 1) % total;
+                        
+                        view! {
+                            <>
+                                // Back card (prev) - clickable
+                                <div 
+                                    class="featured-card featured-card-back"
+                                    on:click=move |_| {
+                                        set_current_index.set(prev_idx);
+                                    }
+                                >
+                                    <FeaturedCard 
+                                        transaction=txs[prev_idx].clone()
+                                        session=session
+                                    />
+                                </div>
+                                
+                                // Front card (current) - not clickable
+                                <div class="featured-card featured-card-front">
+                                    <FeaturedCard 
+                                        transaction=txs[idx].clone()
+                                        session=session
+                                    />
+                                </div>
+                                
+                                // Forward card (next) - clickable
+                                <div 
+                                    class="featured-card featured-card-next"
+                                    on:click=move |_| {
+                                        set_current_index.set(next_idx);
+                                    }
+                                >
+                                    <FeaturedCard 
+                                        transaction=txs[next_idx].clone()
+                                        session=session
+                                    />
+                                </div>
+                            </>
+                        }.into_view()
+                    }}
+                </div>
+                
+                // Indicators - also clickable
+                <div class="carousel-indicators">
+                    {move || {
+                        let txs = transactions.get();
+                        let idx = current_index.get();
+                        
+                        (0..txs.len()).map(|i| {
+                            view! {
+                                <div 
+                                    class="indicator"
+                                    class:active=move || i == idx
+                                    on:click=move |_| {
+                                        set_current_index.set(i);
+                                    }
+                                ></div>
+                            }
+                        }).collect::<Vec<_>>()
+                    }}
+                </div>
+            </div>
+        </div>
+    }
+}
+
+/// Featured Card Component - renders a single transaction card
+#[component]
+fn FeaturedCard(
+    transaction: ProjectContractTransaction,
+    session: RwSignal<Session>,
+) -> impl IntoView {
+    let burn_amount_display = transaction.burn_amount / 1_000_000;
+    
+    // Format timestamp
+    let timestamp = transaction.timestamp;
+    let time_display = if timestamp > 0 {
+        let date = web_sys::js_sys::Date::new(&JsValue::from_f64(timestamp as f64 * 1000.0));
+        format!(
+            "{}-{:02}-{:02} {:02}:{:02}",
+            date.get_full_year(),
+            date.get_month() + 1,
+            date.get_date(),
+            date.get_hours(),
+            date.get_minutes()
+        )
+    } else {
+        "Just now".to_string()
+    };
+    
+    match transaction.details {
+        ProjectOperationDetails::Create { 
+            project_id, 
+            name, 
+            description, 
+            image, 
+            website, 
+            tags: _
+        } => {
+            view! {
+                <div class="featured-card-content featured-create">
+                    <div class="featured-badge create-badge">
+                        <i class="fas fa-plus-circle"></i>
+                        "New Project"
+                    </div>
+                    
+                    <div class="featured-project-info">
+                        <div class="featured-project-header">
+                            {if !image.is_empty() && (image.starts_with("c:") || image.starts_with("n:")) {
+                                view! {
+                                    <div class="featured-logo">
+                                        <LazyPixelView
+                                            art={image.clone()}
+                                            size=64
+                                        />
+                                    </div>
+                                }.into_view()
+                            } else {
+                                view! {
+                                    <div class="featured-logo-placeholder">
+                                        <i class="fas fa-image"></i>
+                                    </div>
+                                }.into_view()
+                            }}
+                            
+                            <div class="featured-project-meta">
+                                <h3 class="featured-project-name">{name}</h3>
+                                <span class="featured-project-id">"ID: "{project_id}</span>
+                            </div>
+                        </div>
+                        
+                        {if !description.is_empty() {
+                            view! {
+                                <p class="featured-description">{description}</p>
+                            }.into_view()
+                        } else {
+                            view! { <div></div> }.into_view()
+                        }}
+                        
+                        {if !website.is_empty() {
+                            view! {
+                                <a 
+                                    href={website.clone()} 
+                                    target="_blank" 
+                                    class="featured-website"
+                                >
+                                    <i class="fas fa-external-link-alt"></i>
+                                    {website}
+                                </a>
+                            }.into_view()
+                        } else {
+                            view! { <div></div> }.into_view()
+                        }}
+                    </div>
+                    
+                    <div class="featured-stats">
+                        <div class="featured-stat">
+                            <i class="fas fa-fire"></i>
+                            <span class="stat-value">{burn_amount_display}</span>
+                            <span class="stat-label">" MEMO Burned"</span>
+                        </div>
+                        <div class="featured-stat">
+                            <i class="fas fa-clock"></i>
+                            <span class="stat-value">{time_display}</span>
+                        </div>
+                    </div>
+                </div>
+            }.into_view()
+        },
+        ProjectOperationDetails::Update { 
+            project_id, 
+            name, 
+            description, 
+            image, 
+            website, 
+            tags: _
+        } => {
+            // Fetch project info only for name and image (not for burned amount)
+            let (project_info, set_project_info) = create_signal(None::<(String, String)>);
+            
+            {
+                let session_clone = session;
+                create_effect(move |_| {
+                    spawn_local(async move {
+                        let session_read = session_clone.get_untracked();
+                        if let Ok(info) = session_read.get_project_info(project_id).await {
+                            set_project_info.set(Some((
+                                info.name.clone(),
+                                info.image.clone(),
+                            )));
+                        }
+                    });
+                });
+            }
+            
+            view! {
+                <div class="featured-card-content featured-update">
+                    <div class="featured-badge update-badge">
+                        <i class="fas fa-sync-alt"></i>
+                        "Project Updated"
+                    </div>
+                    
+                    <div class="featured-project-info">
+                        <div class="featured-project-header">
+                            {move || {
+                                let img = if let Some((_, project_image)) = project_info.get() {
+                                    project_image
+                                } else {
+                                    image.clone().unwrap_or_default()
+                                };
+                                
+                                if !img.is_empty() && (img.starts_with("c:") || img.starts_with("n:")) {
+                                    view! {
+                                        <div class="featured-logo">
+                                            <LazyPixelView
+                                                art={img}
+                                                size=64
+                                            />
+                                        </div>
+                                    }.into_view()
+                                } else {
+                                    view! {
+                                        <div class="featured-logo-placeholder">
+                                            <i class="fas fa-image"></i>
+                                        </div>
+                                    }.into_view()
+                                }
+                            }}
+                            
+                            <div class="featured-project-meta">
+                                <h3 class="featured-project-name">
+                                    {move || {
+                                        if let Some((project_name, _)) = project_info.get() {
+                                            project_name
+                                        } else {
+                                            name.clone().unwrap_or_else(|| "Project".to_string())
+                                        }
+                                    }}
+                                </h3>
+                                <span class="featured-project-id">"ID: "{project_id}</span>
+                            </div>
+                        </div>
+                        
+                        {move || {
+                            let desc = description.clone().unwrap_or_default();
+                            if !desc.is_empty() {
+                                view! {
+                                    <p class="featured-description">{desc}</p>
+                                }.into_view()
+                            } else {
+                                view! { <div></div> }.into_view()
+                            }
+                        }}
+                        
+                        {move || {
+                            let web = website.clone().unwrap_or_default();
+                            if !web.is_empty() {
+                                view! {
+                                    <a 
+                                        href={web.clone()} 
+                                        target="_blank" 
+                                        class="featured-website"
+                                    >
+                                        <i class="fas fa-external-link-alt"></i>
+                                        {web}
+                                    </a>
+                                }.into_view()
+                            } else {
+                                view! { <div></div> }.into_view()
+                            }
+                        }}
+                    </div>
+                    
+                    <div class="featured-stats">
+                        <div class="featured-stat">
+                            <i class="fas fa-fire"></i>
+                            <span class="stat-value">{burn_amount_display}</span>
+                            <span class="stat-label">" MEMO Burned"</span>
+                        </div>
+                        <div class="featured-stat">
+                            <i class="fas fa-clock"></i>
+                            <span class="stat-value">{time_display}</span>
+                        </div>
+                    </div>
+                </div>
+            }.into_view()
+        },
+        ProjectOperationDetails::Burn { project_id, message } => {
+            // Fetch project info
+            let (project_info, set_project_info) = create_signal(None::<(String, String, u64)>);
+            
+            {
+                let session_clone = session;
+                create_effect(move |_| {
+                    spawn_local(async move {
+                        let session_read = session_clone.get_untracked();
+                        if let Ok(info) = session_read.get_project_info(project_id).await {
+                            set_project_info.set(Some((
+                                info.name.clone(),
+                                info.image.clone(),
+                                info.burned_amount,
+                            )));
+                        }
+                    });
+                });
+            }
+            
+            // Parse devlog if message contains devlog JSON
+            let parsed_devlog = ParsedDevlog::from_message(&message);
+            
+            view! {
+                <div class="featured-card-content featured-burn">
+                    <div class="featured-badge burn-badge">
+                        <i class="fas fa-fire"></i>
+                        "Devlog Activity"
+                    </div>
+                    
+                    {if let Some(devlog) = parsed_devlog {
+                        // Render as devlog with horizontal layout
+                        view! {
+                            <div class="featured-devlog">
+                                <div class="devlog-layout-horizontal">
+                                    // Image on the left
+                                    {if !devlog.image.is_empty() && (devlog.image.starts_with("c:") || devlog.image.starts_with("n:")) {
+                                        view! {
+                                            <div class="devlog-image">
+                                                <LazyPixelView
+                                                    art={devlog.image}
+                                                    size=100
+                                                />
+                                            </div>
+                                        }.into_view()
+                                    } else {
+                                        view! { <div></div> }.into_view()
+                                    }}
+                                    
+                                    // Content on the right
+                                    <div class="devlog-content-wrapper">
+                                        <h3 class="devlog-title">{devlog.title}</h3>
+                                        
+                                        {if !devlog.content.is_empty() {
+                                            view! {
+                                                <p class="devlog-content">{devlog.content}</p>
+                                            }.into_view()
+                                        } else {
+                                            view! { <div></div> }.into_view()
+                                        }}
+                                        
+                                        <div class="devlog-project-info">
+                                            <span>"For project: "</span>
+                                            <strong>
+                                                {move || {
+                                                    if let Some((name, _, _)) = project_info.get() {
+                                                        name
+                                                    } else {
+                                                        format!("Project #{}", project_id)
+                                                    }
+                                                }}
+                                            </strong>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }.into_view()
+                    } else {
+                        // Render as simple burn message
+                        view! {
+                            <div class="featured-burn-simple">
+                                <div class="featured-project-header">
+                                    {move || {
+                                        let img = if let Some((_, project_image, _)) = project_info.get() {
+                                            project_image
+                                        } else {
+                                            String::new()
+                                        };
+                                        
+                                        if !img.is_empty() && (img.starts_with("c:") || img.starts_with("n:")) {
+                                            view! {
+                                                <div class="featured-logo">
+                                                    <LazyPixelView
+                                                        art={img}
+                                                        size=64
+                                                    />
+                                                </div>
+                                            }.into_view()
+                                        } else {
+                                            view! {
+                                                <div class="featured-logo-placeholder">
+                                                    <i class="fas fa-image"></i>
+                                                </div>
+                                            }.into_view()
+                                        }
+                                    }}
+                                    
+                                    <div class="featured-project-meta">
+                                        <h3 class="featured-project-name">
+                                            {move || {
+                                                if let Some((name, _, _)) = project_info.get() {
+                                                    name
+                                                } else {
+                                                    format!("Project #{}", project_id)
+                                                }
+                                            }}
+                                        </h3>
+                                        <span class="featured-project-id">"ID: "{project_id}</span>
+                                    </div>
+                                </div>
+                                
+                                {if !message.is_empty() {
+                                    view! {
+                                        <p class="featured-message">{message}</p>
+                                    }.into_view()
+                                } else {
+                                    view! { <div></div> }.into_view()
+                                }}
+                            </div>
+                        }.into_view()
+                    }}
+                    
+                    <div class="featured-stats">
+                        <div class="featured-stat">
+                            <i class="fas fa-fire"></i>
+                            <span class="stat-value">{burn_amount_display}</span>
+                            <span class="stat-label">" MEMO Burned"</span>
+                        </div>
+                        <div class="featured-stat">
+                            <i class="fas fa-user"></i>
+                            <span class="stat-value">{shorten_address(&transaction.burner)}</span>
+                        </div>
+                        <div class="featured-stat">
+                            <i class="fas fa-clock"></i>
+                            <span class="stat-value">{time_display}</span>
+                        </div>
+                    </div>
+                </div>
+            }.into_view()
+        },
+    }
+}
+
