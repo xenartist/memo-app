@@ -3,6 +3,7 @@ use crate::core::encrypt;
 use crate::core::rpc_base::RpcConnection;
 use crate::core::rpc_profile::UserProfile;
 use crate::core::rpc_project::{ProjectInfo, ProjectStatistics, ProjectBurnLeaderboardResponse};
+use crate::core::rpc_blog::BlogInfo;
 use crate::core::rpc_burn::{UserGlobalBurnStats};
 use crate::core::network_config::{NetworkType, clear_network};
 use crate::core::backpack::{BackpackWallet, BackpackError};
@@ -1135,6 +1136,289 @@ impl Session {
         let rpc = crate::core::rpc_base::RpcConnection::new();
         rpc.get_total_projects().await
             .map_err(|e| SessionError::InvalidData(format!("Get total projects failed: {}", e)))
+    }
+
+    // ============ Blog-related methods ============
+
+    /// Get information for a specific blog (doesn't require authentication)
+    /// 
+    /// # Parameters
+    /// * `blog_id` - The ID of the blog to fetch
+    /// 
+    /// # Returns
+    /// Blog information if it exists
+    pub async fn get_blog_info(&self, blog_id: u64) -> Result<BlogInfo, SessionError> {
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        rpc.get_blog_info(blog_id).await
+            .map_err(|e| SessionError::InvalidData(format!("Get blog info failed: {}", e)))
+    }
+
+    /// Get the total number of blogs
+    pub async fn get_total_blogs(&self) -> Result<u64, SessionError> {
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        rpc.get_total_blogs().await
+            .map_err(|e| SessionError::InvalidData(format!("Get total blogs failed: {}", e)))
+    }
+
+    /// Get all blogs created by a specific user
+    /// 
+    /// # Parameters
+    /// * `creator_pubkey` - The public key of the blog creator
+    /// * `limit` - Maximum number of blogs to return
+    /// 
+    /// # Returns
+    /// Vector of blogs created by the user, sorted by creation time (newest first)
+    pub async fn get_user_blogs(&self, creator_pubkey: &str, limit: usize) -> Result<Vec<BlogInfo>, SessionError> {
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        let total = rpc.get_total_blogs().await
+            .map_err(|e| SessionError::InvalidData(format!("Get total blogs failed: {}", e)))?;
+        
+        if total == 0 {
+            return Ok(vec![]);
+        }
+        
+        let mut user_blogs = Vec::new();
+        
+        // Iterate from newest to oldest
+        for blog_id in (0..total).rev() {
+            if user_blogs.len() >= limit {
+                break;
+            }
+            
+            match rpc.get_blog_info(blog_id).await {
+                Ok(blog) => {
+                    if blog.creator == creator_pubkey {
+                        user_blogs.push(blog);
+                    }
+                },
+                Err(_) => continue,
+            }
+        }
+        
+        Ok(user_blogs)
+    }
+
+    /// Create a new blog
+    /// 
+    /// # Parameters
+    /// * `name` - Blog name (1-64 characters)
+    /// * `description` - Blog description (optional, max 256 characters)
+    /// * `image` - Blog image data (optional, max 256 characters)
+    /// * `burn_amount` - Amount of tokens to burn (in tokens, minimum 1 MEMO)
+    /// 
+    /// # Returns
+    /// Transaction signature on success
+    pub async fn create_blog(
+        &mut self,
+        name: &str,
+        description: &str,
+        image: &str,
+        burn_amount: u64,
+    ) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey_str = self.get_public_key()?;
+        let user_pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+
+        // Convert tokens to lamports
+        let burn_amount_lamports = burn_amount * 1_000_000;
+
+        let rpc = RpcConnection::new();
+        let (mut transaction, blog_id) = rpc.build_create_blog_transaction(
+            &user_pubkey,
+            name,
+            description,
+            image,
+            burn_amount_lamports,
+        ).await.map_err(|e| SessionError::InvalidData(format!("Build transaction failed: {}", e)))?;
+
+        log::info!("Signing create blog transaction for blog_id {}...", blog_id);
+        self.sign_transaction(&mut transaction).await?;
+        
+        log::info!("Sending signed transaction...");
+        let signature = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Blog {} created successfully", blog_id);
+        
+        // Update balances after successful creation
+        match self.fetch_and_update_balances().await {
+            Ok(()) => log::info!("Successfully updated balances after creating blog"),
+            Err(e) => {
+                log::error!("Failed to update balances after creating blog: {}", e);
+                self.mark_balance_update_needed();
+            }
+        }
+
+        Ok(signature)
+    }
+
+    /// Update an existing blog
+    /// 
+    /// # Parameters
+    /// * `blog_id` - The ID of the blog to update
+    /// * `name` - New blog name (optional)
+    /// * `description` - New blog description (optional)
+    /// * `image` - New blog image data (optional)
+    /// * `burn_amount` - Amount of tokens to burn (in tokens, minimum 1 MEMO)
+    /// 
+    /// # Returns
+    /// Transaction signature on success
+    pub async fn update_blog(
+        &mut self,
+        blog_id: u64,
+        name: Option<String>,
+        description: Option<String>,
+        image: Option<String>,
+        burn_amount: u64,
+    ) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey_str = self.get_public_key()?;
+        let user_pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+
+        // Convert tokens to lamports
+        let burn_amount_lamports = burn_amount * 1_000_000;
+
+        let rpc = RpcConnection::new();
+        let mut transaction = rpc.build_update_blog_transaction(
+            &user_pubkey,
+            blog_id,
+            name,
+            description,
+            image,
+            burn_amount_lamports,
+        ).await.map_err(|e| SessionError::InvalidData(format!("Build transaction failed: {}", e)))?;
+
+        log::info!("Signing update blog transaction...");
+        self.sign_transaction(&mut transaction).await?;
+        
+        log::info!("Sending signed transaction...");
+        let signature = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Blog {} updated successfully", blog_id);
+        
+        // Update balances after successful update
+        match self.fetch_and_update_balances().await {
+            Ok(()) => log::info!("Successfully updated balances after updating blog"),
+            Err(e) => {
+                log::error!("Failed to update balances after updating blog: {}", e);
+                self.mark_balance_update_needed();
+            }
+        }
+
+        Ok(signature)
+    }
+
+    /// Burn tokens for a blog (post with burn)
+    /// 
+    /// # Parameters
+    /// * `blog_id` - The ID of the blog
+    /// * `amount` - Amount of tokens to burn (in tokens, minimum 1 MEMO)
+    /// * `message` - Post message (max 696 characters)
+    /// 
+    /// # Returns
+    /// Transaction signature on success
+    pub async fn burn_tokens_for_blog(
+        &mut self,
+        blog_id: u64,
+        amount: u64,
+        message: &str,
+    ) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey_str = self.get_public_key()?;
+        let user_pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+
+        // Convert tokens to lamports
+        let amount_lamports = amount * 1_000_000;
+
+        let rpc = RpcConnection::new();
+        let mut transaction = rpc.build_burn_tokens_for_blog_transaction(
+            &user_pubkey,
+            blog_id,
+            amount_lamports,
+            message,
+        ).await.map_err(|e| SessionError::InvalidData(format!("Build transaction failed: {}", e)))?;
+
+        log::info!("Signing burn for blog transaction...");
+        self.sign_transaction(&mut transaction).await?;
+        
+        log::info!("Sending signed transaction...");
+        let signature = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Tokens burned successfully for blog {}", blog_id);
+        
+        // Update balances after successful burn
+        match self.fetch_and_update_balances().await {
+            Ok(()) => log::info!("Successfully updated balances after burning for blog"),
+            Err(e) => {
+                log::error!("Failed to update balances after burning for blog: {}", e);
+                self.mark_balance_update_needed();
+            }
+        }
+
+        Ok(signature)
+    }
+
+    /// Mint tokens for a blog (post with mint)
+    /// 
+    /// # Parameters
+    /// * `blog_id` - The ID of the blog
+    /// * `message` - Post message (max 696 characters)
+    /// 
+    /// # Returns
+    /// Transaction signature on success
+    pub async fn mint_tokens_for_blog(
+        &mut self,
+        blog_id: u64,
+        message: &str,
+    ) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey_str = self.get_public_key()?;
+        let user_pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+
+        let rpc = RpcConnection::new();
+        let mut transaction = rpc.build_mint_tokens_for_blog_transaction(
+            &user_pubkey,
+            blog_id,
+            message,
+        ).await.map_err(|e| SessionError::InvalidData(format!("Build transaction failed: {}", e)))?;
+
+        log::info!("Signing mint for blog transaction...");
+        self.sign_transaction(&mut transaction).await?;
+        
+        log::info!("Sending signed transaction...");
+        let signature = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Tokens minted successfully for blog {}", blog_id);
+        
+        // Update balances after successful mint
+        match self.fetch_and_update_balances().await {
+            Ok(()) => log::info!("Successfully updated balances after minting for blog"),
+            Err(e) => {
+                log::error!("Failed to update balances after minting for blog: {}", e);
+                self.mark_balance_update_needed();
+            }
+        }
+
+        Ok(signature)
     }
 
     // fetch and cache user burn stats
