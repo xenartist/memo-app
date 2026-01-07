@@ -787,6 +787,48 @@ input:disabled {
   margin-top: 20px;
 }
 
+/* Wallet connect buttons container */
+.wallet-connect-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* X1 wallet button - black color scheme */
+.wallet-btn.x1-wallet {
+  background: linear-gradient(135deg, #1a1a1a 0%, #333333 100%);
+  color: white;
+  font-weight: 600;
+  padding: 1rem 1.5rem;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.wallet-btn.x1-wallet:hover {
+  background: linear-gradient(135deg, #2a2a2a 0%, #444444 100%);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.x1-icon {
+  font-size: 1.3rem;
+  font-weight: bold;
+}
+
+/* X1 icon image in button */
+.x1-icon-img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
 /* Backpack wallet button */
 .wallet-btn.backpack-wallet {
   background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
@@ -922,6 +964,109 @@ input:disabled {
   background: linear-gradient(135deg, #059669 0%, #047857 100%);
   box-shadow: 0 6px 12px rgba(16, 185, 129, 0.4);
   transform: translateY(-2px);
+}
+
+/* ====== X1 Wallet Styles ====== */
+
+/* X1 connect container */
+.x1-connect-container {
+  padding: 1rem 0;
+}
+
+.x1-info {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.x1-icon-large {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+  font-weight: bold;
+  color: #1a1a1a;
+}
+
+/* X1 large icon image on connect page */
+.x1-icon-large-img {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  margin-bottom: 1rem;
+}
+
+.x1-info h2 {
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+.x1-info .info-text {
+  color: var(--text-tertiary);
+  line-height: 1.6;
+  max-width: 450px;
+  margin: 0 auto;
+}
+
+/* X1 not installed warning */
+.x1-not-installed {
+  text-align: center;
+}
+
+/* X1 connect button */
+.wallet-btn.x1-connect-btn {
+  background: linear-gradient(135deg, #1a1a1a 0%, #333333 100%);
+  color: white;
+  font-weight: 600;
+  width: 100%;
+  padding: 1rem 1.5rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.wallet-btn.x1-connect-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2a2a2a 0%, #444444 100%);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.wallet-btn.x1-connect-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  border: none;
+}
+
+/* Install X1 button */
+.wallet-btn.install-x1-btn {
+  background: linear-gradient(135deg, #1a1a1a 0%, #333333 100%);
+  color: white;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem 1.5rem;
+  font-weight: 600;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.wallet-btn.install-x1-btn:hover {
+  background: linear-gradient(135deg, #2a2a2a 0%, #444444 100%);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* X1 wallet type badge */
+.wallet-type-badge.x1-wallet-badge {
+  background: linear-gradient(135deg, #1a1a1a 0%, #333333 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Dark mode adjustments for X1 */
+[data-theme="dark"] .x1-icon-large {
+  color: #ffffff;
 }
 
 /* Back button in corner */

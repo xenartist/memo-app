@@ -3,9 +3,11 @@ use crate::core::encrypt;
 use crate::core::rpc_base::RpcConnection;
 use crate::core::rpc_profile::UserProfile;
 use crate::core::rpc_project::{ProjectInfo, ProjectStatistics, ProjectBurnLeaderboardResponse};
+use crate::core::rpc_blog::BlogInfo;
 use crate::core::rpc_burn::{UserGlobalBurnStats};
 use crate::core::network_config::{NetworkType, clear_network};
 use crate::core::backpack::{BackpackWallet, BackpackError};
+use crate::core::x1::{X1Wallet, X1Error};
 use web_sys::js_sys::Date;
 use secrecy::{Secret, ExposeSecret};
 use zeroize::{Zeroize, Zeroizing};
@@ -25,6 +27,8 @@ pub enum WalletType {
     Internal,
     /// Backpack web wallet
     Backpack,
+    /// X1 web wallet
+    X1,
 }
 
 #[derive(Debug, Clone)]
@@ -36,6 +40,7 @@ pub enum SessionError {
     InvalidData(String),
     ProfileError(String),
     BackpackError(String),
+    X1Error(String),
 }
 
 impl fmt::Display for SessionError {
@@ -48,6 +53,7 @@ impl fmt::Display for SessionError {
             SessionError::InvalidData(msg) => write!(f, "Invalid data: {}", msg),
             SessionError::ProfileError(msg) => write!(f, "Profile error: {}", msg),
             SessionError::BackpackError(msg) => write!(f, "Backpack wallet error: {}", msg),
+            SessionError::X1Error(msg) => write!(f, "X1 wallet error: {}", msg),
         }
     }
 }
@@ -55,6 +61,12 @@ impl fmt::Display for SessionError {
 impl From<BackpackError> for SessionError {
     fn from(error: BackpackError) -> Self {
         SessionError::BackpackError(error.to_string())
+    }
+}
+
+impl From<X1Error> for SessionError {
+    fn from(error: X1Error) -> Self {
+        SessionError::X1Error(error.to_string())
     }
 }
 
@@ -81,7 +93,7 @@ pub struct Session {
     config: SessionConfig,
     // session start time
     start_time: f64,
-    // wallet type (Internal or Backpack)
+    // wallet type (Internal, Backpack, or X1)
     wallet_type: WalletType,
     // encrypted seed (only for Internal wallet)
     encrypted_seed: Option<String>,
@@ -89,6 +101,8 @@ pub struct Session {
     session_key: Option<Secret<String>>,
     // backpack public key (only for Backpack wallet)
     backpack_pubkey: Option<String>,
+    // X1 public key (only for X1 wallet)
+    x1_pubkey: Option<String>,
     // UI locked
     ui_locked: bool,
     // user profile
@@ -115,6 +129,7 @@ impl Session {
             encrypted_seed: None,
             session_key: None,
             backpack_pubkey: None,
+            x1_pubkey: None,
             ui_locked: false,
             user_profile: None,
             cached_pubkey: None,
@@ -136,6 +151,11 @@ impl Session {
         self.wallet_type == WalletType::Backpack
     }
     
+    /// Check if session is using X1 wallet
+    pub fn is_x1(&self) -> bool {
+        self.wallet_type == WalletType::X1
+    }
+    
     /// Check if session is using internal wallet
     pub fn is_internal_wallet(&self) -> bool {
         self.wallet_type == WalletType::Internal
@@ -154,14 +174,16 @@ impl Session {
     
     /// Logout and clear session
     pub fn logout(&mut self) {
-        // Check if Backpack wallet BEFORE clearing wallet_type
+        // Check wallet type BEFORE clearing wallet_type
         let is_backpack = self.is_backpack();
+        let is_x1 = self.is_x1();
         
         // Clear all session data
         self.wallet_type = WalletType::Internal; // Reset to default
         self.encrypted_seed = None;
         self.session_key = None;
         self.backpack_pubkey = None;
+        self.x1_pubkey = None;
         self.user_profile = None;
         self.cached_pubkey = None;
         self.sol_balance = 0.0;
@@ -175,6 +197,15 @@ impl Session {
             wasm_bindgen_futures::spawn_local(async {
                 if let Err(e) = BackpackWallet::disconnect().await {
                     log::warn!("Failed to disconnect Backpack wallet: {}", e);
+                }
+            });
+        }
+        
+        // If X1 wallet, disconnect
+        if is_x1 {
+            wasm_bindgen_futures::spawn_local(async {
+                if let Err(e) = X1Wallet::disconnect().await {
+                    log::warn!("Failed to disconnect X1 wallet: {}", e);
                 }
             });
         }
@@ -250,12 +281,49 @@ impl Session {
         // Save session info (Backpack wallet)
         self.wallet_type = WalletType::Backpack;
         self.backpack_pubkey = Some(pubkey.clone());
+        self.x1_pubkey = None;
         self.cached_pubkey = Some(pubkey.clone());
         self.encrypted_seed = None;
         self.session_key = None;
         self.start_time = Date::now();
 
         log::info!("Session initialized with Backpack wallet");
+        Ok(pubkey)
+    }
+
+    /// Initialize session with X1 wallet
+    /// 
+    /// This method connects to X1 wallet and initializes the session with the connected public key.
+    /// No private key or seed is stored - all signing is done through X1.
+    pub async fn initialize_with_x1(&mut self) -> Result<String, SessionError> {
+        log::info!("Initializing session with X1 wallet...");
+        
+        // Check if X1 is installed
+        if !X1Wallet::is_installed() {
+            return Err(SessionError::X1Error(
+                "X1 wallet is not installed. Please install it from https://x1.xyz".to_string()
+            ));
+        }
+
+        // Connect to X1 and get public key
+        let pubkey = X1Wallet::connect().await?;
+        
+        log::info!("Connected to X1 wallet: {}", &pubkey);
+
+        // Validate the public key
+        Pubkey::from_str(&pubkey)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid public key from X1: {}", e)))?;
+
+        // Save session info (X1 wallet)
+        self.wallet_type = WalletType::X1;
+        self.x1_pubkey = Some(pubkey.clone());
+        self.backpack_pubkey = None;
+        self.cached_pubkey = Some(pubkey.clone());
+        self.encrypted_seed = None;
+        self.session_key = None;
+        self.start_time = Date::now();
+
+        log::info!("Session initialized with X1 wallet");
         Ok(pubkey)
     }
 
@@ -299,6 +367,8 @@ impl Session {
         // clear sensitive data
         self.session_key = None; // Secret will be dropped automatically
         self.encrypted_seed = None;
+        self.backpack_pubkey = None;
+        self.x1_pubkey = None;
         self.cached_pubkey = None;
         self.user_profile = None;
         self.sol_balance = 0.0;
@@ -547,11 +617,12 @@ impl Session {
         Ok(keypair.to_bytes().to_vec())
     }
 
-    /// Sign a transaction using the appropriate wallet (Internal or Backpack)
+    /// Sign a transaction using the appropriate wallet (Internal, Backpack, or X1)
     /// 
     /// This method handles signing based on the wallet type:
     /// - **Internal wallet**: Uses secure in-memory signing with Zeroizing
     /// - **Backpack wallet**: Delegates to Backpack's signTransaction API
+    /// - **X1 wallet**: Delegates to X1's signTransaction API
     /// 
     /// # Parameters
     /// * `transaction` - Mutable reference to the transaction to sign
@@ -567,6 +638,10 @@ impl Session {
             WalletType::Backpack => {
                 // Backpack wallet: sign via JavaScript bridge
                 self.sign_transaction_backpack(transaction).await
+            },
+            WalletType::X1 => {
+                // X1 wallet: sign via JavaScript bridge
+                self.sign_transaction_x1(transaction).await
             }
         }
     }
@@ -627,6 +702,33 @@ impl Session {
         *transaction = signed_transaction;
         
         log::debug!("Transaction signed successfully with Backpack wallet");
+        
+        Ok(())
+    }
+
+    /// Sign a transaction using X1 wallet
+    async fn sign_transaction_x1(&self, transaction: &mut Transaction) -> Result<(), SessionError> {
+        // Serialize transaction to base64
+        let tx_bytes = bincode::serialize(&transaction)
+            .map_err(|e| SessionError::InvalidData(format!("Failed to serialize transaction: {}", e)))?;
+        let tx_base64 = base64::encode(&tx_bytes);
+        
+        log::debug!("Requesting signature from X1 wallet...");
+        
+        // Call X1 to sign the transaction
+        let signed_tx_base64 = X1Wallet::sign_transaction(&tx_base64).await?;
+        
+        // Decode the signed transaction
+        let signed_tx_bytes = base64::decode(&signed_tx_base64)
+            .map_err(|e| SessionError::InvalidData(format!("Failed to decode signed transaction: {}", e)))?;
+        
+        let signed_transaction: Transaction = bincode::deserialize(&signed_tx_bytes)
+            .map_err(|e| SessionError::InvalidData(format!("Failed to deserialize signed transaction: {}", e)))?;
+        
+        // Update the original transaction with the signed version
+        *transaction = signed_transaction;
+        
+        log::debug!("Transaction signed successfully with X1 wallet");
         
         Ok(())
     }
@@ -1135,6 +1237,289 @@ impl Session {
         let rpc = crate::core::rpc_base::RpcConnection::new();
         rpc.get_total_projects().await
             .map_err(|e| SessionError::InvalidData(format!("Get total projects failed: {}", e)))
+    }
+
+    // ============ Blog-related methods ============
+
+    /// Get information for a specific blog (doesn't require authentication)
+    /// 
+    /// # Parameters
+    /// * `blog_id` - The ID of the blog to fetch
+    /// 
+    /// # Returns
+    /// Blog information if it exists
+    pub async fn get_blog_info(&self, blog_id: u64) -> Result<BlogInfo, SessionError> {
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        rpc.get_blog_info(blog_id).await
+            .map_err(|e| SessionError::InvalidData(format!("Get blog info failed: {}", e)))
+    }
+
+    /// Get the total number of blogs
+    pub async fn get_total_blogs(&self) -> Result<u64, SessionError> {
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        rpc.get_total_blogs().await
+            .map_err(|e| SessionError::InvalidData(format!("Get total blogs failed: {}", e)))
+    }
+
+    /// Get all blogs created by a specific user
+    /// 
+    /// # Parameters
+    /// * `creator_pubkey` - The public key of the blog creator
+    /// * `limit` - Maximum number of blogs to return
+    /// 
+    /// # Returns
+    /// Vector of blogs created by the user, sorted by creation time (newest first)
+    pub async fn get_user_blogs(&self, creator_pubkey: &str, limit: usize) -> Result<Vec<BlogInfo>, SessionError> {
+        let rpc = crate::core::rpc_base::RpcConnection::new();
+        let total = rpc.get_total_blogs().await
+            .map_err(|e| SessionError::InvalidData(format!("Get total blogs failed: {}", e)))?;
+        
+        if total == 0 {
+            return Ok(vec![]);
+        }
+        
+        let mut user_blogs = Vec::new();
+        
+        // Iterate from newest to oldest
+        for blog_id in (0..total).rev() {
+            if user_blogs.len() >= limit {
+                break;
+            }
+            
+            match rpc.get_blog_info(blog_id).await {
+                Ok(blog) => {
+                    if blog.creator == creator_pubkey {
+                        user_blogs.push(blog);
+                    }
+                },
+                Err(_) => continue,
+            }
+        }
+        
+        Ok(user_blogs)
+    }
+
+    /// Create a new blog
+    /// 
+    /// # Parameters
+    /// * `name` - Blog name (1-64 characters)
+    /// * `description` - Blog description (optional, max 256 characters)
+    /// * `image` - Blog image data (optional, max 256 characters)
+    /// * `burn_amount` - Amount of tokens to burn (in tokens, minimum 1 MEMO)
+    /// 
+    /// # Returns
+    /// Transaction signature on success
+    pub async fn create_blog(
+        &mut self,
+        name: &str,
+        description: &str,
+        image: &str,
+        burn_amount: u64,
+    ) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey_str = self.get_public_key()?;
+        let user_pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+
+        // Convert tokens to lamports
+        let burn_amount_lamports = burn_amount * 1_000_000;
+
+        let rpc = RpcConnection::new();
+        let (mut transaction, blog_id) = rpc.build_create_blog_transaction(
+            &user_pubkey,
+            name,
+            description,
+            image,
+            burn_amount_lamports,
+        ).await.map_err(|e| SessionError::InvalidData(format!("Build transaction failed: {}", e)))?;
+
+        log::info!("Signing create blog transaction for blog_id {}...", blog_id);
+        self.sign_transaction(&mut transaction).await?;
+        
+        log::info!("Sending signed transaction...");
+        let signature = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Blog {} created successfully", blog_id);
+        
+        // Update balances after successful creation
+        match self.fetch_and_update_balances().await {
+            Ok(()) => log::info!("Successfully updated balances after creating blog"),
+            Err(e) => {
+                log::error!("Failed to update balances after creating blog: {}", e);
+                self.mark_balance_update_needed();
+            }
+        }
+
+        Ok(signature)
+    }
+
+    /// Update an existing blog
+    /// 
+    /// # Parameters
+    /// * `blog_id` - The ID of the blog to update
+    /// * `name` - New blog name (optional)
+    /// * `description` - New blog description (optional)
+    /// * `image` - New blog image data (optional)
+    /// * `burn_amount` - Amount of tokens to burn (in tokens, minimum 1 MEMO)
+    /// 
+    /// # Returns
+    /// Transaction signature on success
+    pub async fn update_blog(
+        &mut self,
+        blog_id: u64,
+        name: Option<String>,
+        description: Option<String>,
+        image: Option<String>,
+        burn_amount: u64,
+    ) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey_str = self.get_public_key()?;
+        let user_pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+
+        // Convert tokens to lamports
+        let burn_amount_lamports = burn_amount * 1_000_000;
+
+        let rpc = RpcConnection::new();
+        let mut transaction = rpc.build_update_blog_transaction(
+            &user_pubkey,
+            blog_id,
+            name,
+            description,
+            image,
+            burn_amount_lamports,
+        ).await.map_err(|e| SessionError::InvalidData(format!("Build transaction failed: {}", e)))?;
+
+        log::info!("Signing update blog transaction...");
+        self.sign_transaction(&mut transaction).await?;
+        
+        log::info!("Sending signed transaction...");
+        let signature = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Blog {} updated successfully", blog_id);
+        
+        // Update balances after successful update
+        match self.fetch_and_update_balances().await {
+            Ok(()) => log::info!("Successfully updated balances after updating blog"),
+            Err(e) => {
+                log::error!("Failed to update balances after updating blog: {}", e);
+                self.mark_balance_update_needed();
+            }
+        }
+
+        Ok(signature)
+    }
+
+    /// Burn tokens for a blog (post with burn)
+    /// 
+    /// # Parameters
+    /// * `blog_id` - The ID of the blog
+    /// * `amount` - Amount of tokens to burn (in tokens, minimum 1 MEMO)
+    /// * `message` - Post message (max 696 characters)
+    /// 
+    /// # Returns
+    /// Transaction signature on success
+    pub async fn burn_tokens_for_blog(
+        &mut self,
+        blog_id: u64,
+        amount: u64,
+        message: &str,
+    ) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey_str = self.get_public_key()?;
+        let user_pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+
+        // Convert tokens to lamports
+        let amount_lamports = amount * 1_000_000;
+
+        let rpc = RpcConnection::new();
+        let mut transaction = rpc.build_burn_tokens_for_blog_transaction(
+            &user_pubkey,
+            blog_id,
+            amount_lamports,
+            message,
+        ).await.map_err(|e| SessionError::InvalidData(format!("Build transaction failed: {}", e)))?;
+
+        log::info!("Signing burn for blog transaction...");
+        self.sign_transaction(&mut transaction).await?;
+        
+        log::info!("Sending signed transaction...");
+        let signature = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Tokens burned successfully for blog {}", blog_id);
+        
+        // Update balances after successful burn
+        match self.fetch_and_update_balances().await {
+            Ok(()) => log::info!("Successfully updated balances after burning for blog"),
+            Err(e) => {
+                log::error!("Failed to update balances after burning for blog: {}", e);
+                self.mark_balance_update_needed();
+            }
+        }
+
+        Ok(signature)
+    }
+
+    /// Mint tokens for a blog (post with mint)
+    /// 
+    /// # Parameters
+    /// * `blog_id` - The ID of the blog
+    /// * `message` - Post message (max 696 characters)
+    /// 
+    /// # Returns
+    /// Transaction signature on success
+    pub async fn mint_tokens_for_blog(
+        &mut self,
+        blog_id: u64,
+        message: &str,
+    ) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey_str = self.get_public_key()?;
+        let user_pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+
+        let rpc = RpcConnection::new();
+        let mut transaction = rpc.build_mint_tokens_for_blog_transaction(
+            &user_pubkey,
+            blog_id,
+            message,
+        ).await.map_err(|e| SessionError::InvalidData(format!("Build transaction failed: {}", e)))?;
+
+        log::info!("Signing mint for blog transaction...");
+        self.sign_transaction(&mut transaction).await?;
+        
+        log::info!("Sending signed transaction...");
+        let signature = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Tokens minted successfully for blog {}", blog_id);
+        
+        // Update balances after successful mint
+        match self.fetch_and_update_balances().await {
+            Ok(()) => log::info!("Successfully updated balances after minting for blog"),
+            Err(e) => {
+                log::error!("Failed to update balances after minting for blog: {}", e);
+                self.mark_balance_update_needed();
+            }
+        }
+
+        Ok(signature)
     }
 
     // fetch and cache user burn stats

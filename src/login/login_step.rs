@@ -391,6 +391,31 @@ pub fn LoginStep(
                                         </a>
                                     </div>
                                 </form>
+                                
+                                <div class="divider">
+                                    <span class="divider-text">"OR"</span>
+                                </div>
+                                
+                                <div class="button-group wallet-connect-buttons">
+                                    <button
+                                        class="wallet-btn x1-wallet"
+                                        on:click=move |_| {
+                                            set_current_step.set(CreateWalletStep::X1Connect);
+                                        }
+                                    >
+                                        <img src="https://x1logos.s3.us-east-1.amazonaws.com/128+-+wallet.png" alt="X1" class="x1-icon-img" />
+                                        " Connect X1 Wallet"
+                                    </button>
+                                    <button
+                                        class="wallet-btn backpack-wallet"
+                                        on:click=move |_| {
+                                            set_current_step.set(CreateWalletStep::BackpackConnect);
+                                        }
+                                    >
+                                        <span class="backpack-icon">"🎒"</span>
+                                        " Connect Backpack Wallet"
+                                    </button>
+                                </div>
                             </div>
                         }
                     }
