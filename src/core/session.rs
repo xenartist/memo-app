@@ -7,6 +7,7 @@ use crate::core::rpc_blog::BlogInfo;
 use crate::core::rpc_burn::{UserGlobalBurnStats};
 use crate::core::network_config::{NetworkType, clear_network};
 use crate::core::backpack::{BackpackWallet, BackpackError};
+use crate::core::x1::{X1Wallet, X1Error};
 use web_sys::js_sys::Date;
 use secrecy::{Secret, ExposeSecret};
 use zeroize::{Zeroize, Zeroizing};
@@ -26,6 +27,8 @@ pub enum WalletType {
     Internal,
     /// Backpack web wallet
     Backpack,
+    /// X1 web wallet
+    X1,
 }
 
 #[derive(Debug, Clone)]
@@ -37,6 +40,7 @@ pub enum SessionError {
     InvalidData(String),
     ProfileError(String),
     BackpackError(String),
+    X1Error(String),
 }
 
 impl fmt::Display for SessionError {
@@ -49,6 +53,7 @@ impl fmt::Display for SessionError {
             SessionError::InvalidData(msg) => write!(f, "Invalid data: {}", msg),
             SessionError::ProfileError(msg) => write!(f, "Profile error: {}", msg),
             SessionError::BackpackError(msg) => write!(f, "Backpack wallet error: {}", msg),
+            SessionError::X1Error(msg) => write!(f, "X1 wallet error: {}", msg),
         }
     }
 }
@@ -56,6 +61,12 @@ impl fmt::Display for SessionError {
 impl From<BackpackError> for SessionError {
     fn from(error: BackpackError) -> Self {
         SessionError::BackpackError(error.to_string())
+    }
+}
+
+impl From<X1Error> for SessionError {
+    fn from(error: X1Error) -> Self {
+        SessionError::X1Error(error.to_string())
     }
 }
 
@@ -82,7 +93,7 @@ pub struct Session {
     config: SessionConfig,
     // session start time
     start_time: f64,
-    // wallet type (Internal or Backpack)
+    // wallet type (Internal, Backpack, or X1)
     wallet_type: WalletType,
     // encrypted seed (only for Internal wallet)
     encrypted_seed: Option<String>,
@@ -90,6 +101,8 @@ pub struct Session {
     session_key: Option<Secret<String>>,
     // backpack public key (only for Backpack wallet)
     backpack_pubkey: Option<String>,
+    // X1 public key (only for X1 wallet)
+    x1_pubkey: Option<String>,
     // UI locked
     ui_locked: bool,
     // user profile
@@ -116,6 +129,7 @@ impl Session {
             encrypted_seed: None,
             session_key: None,
             backpack_pubkey: None,
+            x1_pubkey: None,
             ui_locked: false,
             user_profile: None,
             cached_pubkey: None,
@@ -137,6 +151,11 @@ impl Session {
         self.wallet_type == WalletType::Backpack
     }
     
+    /// Check if session is using X1 wallet
+    pub fn is_x1(&self) -> bool {
+        self.wallet_type == WalletType::X1
+    }
+    
     /// Check if session is using internal wallet
     pub fn is_internal_wallet(&self) -> bool {
         self.wallet_type == WalletType::Internal
@@ -155,14 +174,16 @@ impl Session {
     
     /// Logout and clear session
     pub fn logout(&mut self) {
-        // Check if Backpack wallet BEFORE clearing wallet_type
+        // Check wallet type BEFORE clearing wallet_type
         let is_backpack = self.is_backpack();
+        let is_x1 = self.is_x1();
         
         // Clear all session data
         self.wallet_type = WalletType::Internal; // Reset to default
         self.encrypted_seed = None;
         self.session_key = None;
         self.backpack_pubkey = None;
+        self.x1_pubkey = None;
         self.user_profile = None;
         self.cached_pubkey = None;
         self.sol_balance = 0.0;
@@ -176,6 +197,15 @@ impl Session {
             wasm_bindgen_futures::spawn_local(async {
                 if let Err(e) = BackpackWallet::disconnect().await {
                     log::warn!("Failed to disconnect Backpack wallet: {}", e);
+                }
+            });
+        }
+        
+        // If X1 wallet, disconnect
+        if is_x1 {
+            wasm_bindgen_futures::spawn_local(async {
+                if let Err(e) = X1Wallet::disconnect().await {
+                    log::warn!("Failed to disconnect X1 wallet: {}", e);
                 }
             });
         }
@@ -251,12 +281,49 @@ impl Session {
         // Save session info (Backpack wallet)
         self.wallet_type = WalletType::Backpack;
         self.backpack_pubkey = Some(pubkey.clone());
+        self.x1_pubkey = None;
         self.cached_pubkey = Some(pubkey.clone());
         self.encrypted_seed = None;
         self.session_key = None;
         self.start_time = Date::now();
 
         log::info!("Session initialized with Backpack wallet");
+        Ok(pubkey)
+    }
+
+    /// Initialize session with X1 wallet
+    /// 
+    /// This method connects to X1 wallet and initializes the session with the connected public key.
+    /// No private key or seed is stored - all signing is done through X1.
+    pub async fn initialize_with_x1(&mut self) -> Result<String, SessionError> {
+        log::info!("Initializing session with X1 wallet...");
+        
+        // Check if X1 is installed
+        if !X1Wallet::is_installed() {
+            return Err(SessionError::X1Error(
+                "X1 wallet is not installed. Please install it from https://x1.xyz".to_string()
+            ));
+        }
+
+        // Connect to X1 and get public key
+        let pubkey = X1Wallet::connect().await?;
+        
+        log::info!("Connected to X1 wallet: {}", &pubkey);
+
+        // Validate the public key
+        Pubkey::from_str(&pubkey)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid public key from X1: {}", e)))?;
+
+        // Save session info (X1 wallet)
+        self.wallet_type = WalletType::X1;
+        self.x1_pubkey = Some(pubkey.clone());
+        self.backpack_pubkey = None;
+        self.cached_pubkey = Some(pubkey.clone());
+        self.encrypted_seed = None;
+        self.session_key = None;
+        self.start_time = Date::now();
+
+        log::info!("Session initialized with X1 wallet");
         Ok(pubkey)
     }
 
@@ -300,6 +367,8 @@ impl Session {
         // clear sensitive data
         self.session_key = None; // Secret will be dropped automatically
         self.encrypted_seed = None;
+        self.backpack_pubkey = None;
+        self.x1_pubkey = None;
         self.cached_pubkey = None;
         self.user_profile = None;
         self.sol_balance = 0.0;
@@ -548,11 +617,12 @@ impl Session {
         Ok(keypair.to_bytes().to_vec())
     }
 
-    /// Sign a transaction using the appropriate wallet (Internal or Backpack)
+    /// Sign a transaction using the appropriate wallet (Internal, Backpack, or X1)
     /// 
     /// This method handles signing based on the wallet type:
     /// - **Internal wallet**: Uses secure in-memory signing with Zeroizing
     /// - **Backpack wallet**: Delegates to Backpack's signTransaction API
+    /// - **X1 wallet**: Delegates to X1's signTransaction API
     /// 
     /// # Parameters
     /// * `transaction` - Mutable reference to the transaction to sign
@@ -568,6 +638,10 @@ impl Session {
             WalletType::Backpack => {
                 // Backpack wallet: sign via JavaScript bridge
                 self.sign_transaction_backpack(transaction).await
+            },
+            WalletType::X1 => {
+                // X1 wallet: sign via JavaScript bridge
+                self.sign_transaction_x1(transaction).await
             }
         }
     }
@@ -628,6 +702,33 @@ impl Session {
         *transaction = signed_transaction;
         
         log::debug!("Transaction signed successfully with Backpack wallet");
+        
+        Ok(())
+    }
+
+    /// Sign a transaction using X1 wallet
+    async fn sign_transaction_x1(&self, transaction: &mut Transaction) -> Result<(), SessionError> {
+        // Serialize transaction to base64
+        let tx_bytes = bincode::serialize(&transaction)
+            .map_err(|e| SessionError::InvalidData(format!("Failed to serialize transaction: {}", e)))?;
+        let tx_base64 = base64::encode(&tx_bytes);
+        
+        log::debug!("Requesting signature from X1 wallet...");
+        
+        // Call X1 to sign the transaction
+        let signed_tx_base64 = X1Wallet::sign_transaction(&tx_base64).await?;
+        
+        // Decode the signed transaction
+        let signed_tx_bytes = base64::decode(&signed_tx_base64)
+            .map_err(|e| SessionError::InvalidData(format!("Failed to decode signed transaction: {}", e)))?;
+        
+        let signed_transaction: Transaction = bincode::deserialize(&signed_tx_bytes)
+            .map_err(|e| SessionError::InvalidData(format!("Failed to deserialize signed transaction: {}", e)))?;
+        
+        // Update the original transaction with the signed version
+        *transaction = signed_transaction;
+        
+        log::debug!("Transaction signed successfully with X1 wallet");
         
         Ok(())
     }

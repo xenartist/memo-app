@@ -1534,7 +1534,7 @@ fn CreateBlogForm(
     
     let handle_grid_size_change = move |ev: leptos::ev::Event| {
         if let Ok(size) = event_target_value(&ev).parse::<usize>() {
-            if size == 8 || size == 16 || size == 32 {
+            if size == 16 || size == 32 {
                 set_grid_size.set(size);
                 set_pixel_art.set(Pixel::new_with_size(size));
             }
@@ -1635,8 +1635,7 @@ fn CreateBlogForm(
                                         on:change=handle_grid_size_change
                                         prop:disabled=move || is_creating.get()
                                     >
-                                        <option value="8">"8×8 pixels"</option>
-                                        <option value="16" selected>"16×16 pixels"</option>
+                                        <option value="16">"16×16 pixels"</option>
                                         <option value="32">"32×32 pixels"</option>
                                     </select>
                                 </div>
@@ -1965,7 +1964,7 @@ fn UpdateBlogForm(
     
     let handle_grid_size_change = move |ev: leptos::ev::Event| {
         if let Ok(size) = event_target_value(&ev).parse::<usize>() {
-            if size == 8 || size == 16 || size == 32 {
+            if size == 16 || size == 32 {
                 set_grid_size.set(size);
                 set_pixel_art.set(Pixel::new_with_size(size));
             }
@@ -2084,7 +2083,6 @@ fn UpdateBlogForm(
                                                 on:change=handle_grid_size_change
                                                 prop:disabled=move || is_updating.get()
                                             >
-                                                <option value="8">"8×8 pixels"</option>
                                                 <option value="16">"16×16 pixels"</option>
                                                 <option value="32">"32×32 pixels"</option>
                                             </select>

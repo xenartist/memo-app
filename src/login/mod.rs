@@ -1,6 +1,7 @@
 mod login_step;
 mod login_initial_step;
 mod backpack_connect_step;
+mod x1_connect_step;
 mod import_mnemonic_step;
 mod show_mnemonic_step;
 mod verify_mnemonic_step;
@@ -11,6 +12,7 @@ mod lock_screen;
 pub use login_step::LoginStep;
 pub use login_initial_step::InitialStep;
 pub use backpack_connect_step::BackpackConnectStep;
+pub use x1_connect_step::X1ConnectStep;
 pub use import_mnemonic_step::ImportMnemonicStep;
 pub use show_mnemonic_step::ShowMnemonicStep;
 pub use verify_mnemonic_step::VerifyMnemonicStep;
