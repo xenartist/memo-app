@@ -8,8 +8,9 @@ use crate::pages::settings_page::SettingsPage;
 use crate::pages::mint_page::MintPage;
 use crate::pages::chat_page::ChatPage;
 use crate::pages::project_page::ProjectPage;
+use crate::pages::blog_page::BlogPage;
 use crate::pages::faucet_page::FaucetPage;
-use crate::pages::log_view::{LogView, add_log_entry};
+use crate::pages::log_view::add_log_entry;
 use crate::pages::pixel_view::LazyPixelView;
 
 use web_sys::window;
@@ -22,6 +23,7 @@ enum MenuItem {
     Mint,
     Project,
     Chat,
+    Blog,
     Faucet,
     Profile,
     Settings,
@@ -35,7 +37,7 @@ fn is_menu_available(menu_item: &MenuItem, network: Option<NetworkType>) -> bool
             true
         }
         Some(NetworkType::ProdStaging) | Some(NetworkType::Mainnet) => {
-            // Production and Staging: Mint, Project, Chat, Profile, and Settings available
+            // Production and Staging: Mint, Project, Chat, Profile, and Settings available (Blog temporarily disabled)
             matches!(menu_item, MenuItem::Mint | MenuItem::Project | MenuItem::Chat | MenuItem::Profile | MenuItem::Settings)
         }
         None => {
@@ -626,6 +628,18 @@ pub fn MainPage(
                         </div>
                     </Show>
                     
+                    // Blog - available in testnet, staging, and mainnet
+                    <Show when=move || is_menu_available(&MenuItem::Blog, current_network())>
+                        <div 
+                            class="menu-item"
+                            class:active=move || current_menu.get() == MenuItem::Blog
+                            on:click=move |_| set_current_menu.set(MenuItem::Blog)
+                        >
+                            <i class="fas fa-blog"></i>
+                            <span>"Blog"</span>
+                        </div>
+                    </Show>
+                    
                     // Faucet - only in testnet
                     <Show when=move || is_menu_available(&MenuItem::Faucet, current_network())>
                         <div 
@@ -712,6 +726,13 @@ pub fn MainPage(
                     <Show when=move || is_menu_available(&MenuItem::Chat, current_network())>
                         <div style=move || if current_menu.get() == MenuItem::Chat { "display: block;" } else { "display: none;" }>
                             <ChatPage session=session/>
+                        </div>
+                    </Show>
+                    
+                    // Blog - available in testnet, staging, and mainnet
+                    <Show when=move || is_menu_available(&MenuItem::Blog, current_network())>
+                        <div style=move || if current_menu.get() == MenuItem::Blog { "display: block;" } else { "display: none;" }>
+                            <BlogPage session=session/>
                         </div>
                     </Show>
                     
