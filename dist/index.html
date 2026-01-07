@@ -5,7 +5,7 @@
     <title>MEMO Engraves Memories Onchain</title>
     <!-- <link data-trunk rel="css" href="styles.css" /> -->
     <link rel="stylesheet" href="/global-a912538aebe398.css" integrity="sha384-31XZx8Ffe7QxNguY94gjk2KdSKAyEzPbCNEjUZjBmI1lLUqChK4FuZfN6+MAKHfd"/>
-    <link rel="stylesheet" href="/login-bd28fb15a098a7e6.css" integrity="sha384-1USmEWDV3UH9wV1XiJymr4wO9CXA+IdwWpZ+/j3C6cDjU2BiFpqyinkyMhpopIDP"/>
+    <link rel="stylesheet" href="/login-1de2dcc80303f77b.css" integrity="sha384-1ZJ2TIgMF5BemKDKrBfYqRtuPfA29JBaDqfRrETDOZkmxqIk/Mv8dsij/a/1bcWI"/>
     <link rel="stylesheet" href="/main_page-8dd136d7704b593d.css" integrity="sha384-An/wXXEgEkErEKKK1FQuFKVrxoVxl0lcOvBiRs8eKNuY5fV6FKsBO/bTtxY1pDrP"/>
     <link rel="stylesheet" href="/pixel_view-124c498dc3f1fb3a.css" integrity="sha384-mPrLa8YEbbx1TMDVXDRQQrFT4UJbHLgeZI//HT5e3bYrm7zJFUjSZOEi7Q6/Yxef"/>
     <link rel="stylesheet" href="/mint_page-15b5a755f43c7de4.css" integrity="sha384-dR689nWMxl38Qtn9ajTBE3EuS32I3LWo8bjl0WpWkb/wxDqi9vB8qL/4n5S6fIHH"/>
@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="/log_view-cde55dc4226cb326.css" integrity="sha384-EYp+NhDt9GR7wZLUAdMMVb6hr0BHPS9/iWj+IVhjWTZ8TTF+ejeyLXezbgN63J+F"/>
     <link rel="stylesheet" href="/profile_page-65c27a7c42349920.css" integrity="sha384-id9/a2gPbv8o4UWd++MfybDfL4Jk+UDMB9NHRoqco7O8UHquenfukuf8DmcVklJH"/>
     <link rel="stylesheet" href="/project_page-9cec82f1f5787148.css" integrity="sha384-P63/jTxqFcRuBmclPvoZA/iv/29ul3XiIra3780R3QyKQQueaWHsB79s5vEcWjOx"/>
+    <link rel="stylesheet" href="/blog_page-4c3619f1f181ded3.css" integrity="sha384-KyutOxoTRivKXEcLqifQ2empHgWBl8qTUC4wqNHiCMMRTik9mPw+b5gtkYuiRYlj"/>
     <link rel="stylesheet" href="/settings_page-38c4399734115f8f.css" integrity="sha384-N4W9emkn5/zCNXIH/3UDjCOO19q15DRdQptOlX5WH9W+l0l7IeJ1snK0STgr0NBH"/>
     <link rel="stylesheet" href="/chat_page-a476c603645557af.css" integrity="sha384-dxa4tEz+4ortfUhvrWr9leRn4HvYw4i5Lgsmr+cHaA/E9iaNQpbEMwXePwqIodwI"/>
     <link rel="stylesheet" href="/faucet_page-c33bac7df58f14a5.css" integrity="sha384-ui0YPdhY1CdDkCXQh1A8PIuXK8QQeQmJLwdkv4OA4sQyzCD601oWikEzwV+9ssLy"/>
@@ -20,8 +21,8 @@
     
     
 <script type="module">
-import init, * as bindings from '/memo-app-ui-f42af484fbc78952.js';
-const wasm = await init({ module_or_path: '/memo-app-ui-f42af484fbc78952_bg.wasm' });
+import init, * as bindings from '/memo-app-ui-96feefbd9aac9763.js';
+const wasm = await init({ module_or_path: '/memo-app-ui-96feefbd9aac9763_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -105,6 +106,6 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
         }
       };
     </script>
-  <link rel="modulepreload" href="/memo-app-ui-f42af484fbc78952.js" crossorigin="anonymous" integrity="sha384-YcyacbHSVEktWuS8ldeTgy5gXeBxtCR8FS3B78SO0hhzoP0S+DuwrpwTtAn5E3yi"><link rel="preload" href="/memo-app-ui-f42af484fbc78952_bg.wasm" crossorigin="anonymous" integrity="sha384-PQHagJZcpGaO1vgDr08rBCdvTJd7qFcLtPaXwZ0oJ1SfW5vvRfIfBrT7hwepaPa8" as="fetch" type="application/wasm"></head>
+  <link rel="modulepreload" href="/memo-app-ui-96feefbd9aac9763.js" crossorigin="anonymous" integrity="sha384-11kltFErQVF2UFOefZyFrv2x9YnV4JvwR+4bR8icIhMPxDAVjigkauLj/bXxn4+m"><link rel="preload" href="/memo-app-ui-96feefbd9aac9763_bg.wasm" crossorigin="anonymous" integrity="sha384-mgmOgHyLdBn7clTEnnRfXF8KedU62xAJ0oEkHAr/pZRfZse8lIkVU7Hv52KPQOWK" as="fetch" type="application/wasm"></head>
   <body></body>
 </html>
