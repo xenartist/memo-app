@@ -12,6 +12,9 @@ use wasm_bindgen_futures::spawn_local;
 use crate::pages::pixel_view::{LazyPixelView, PixelView};
 use gloo_timers::future::TimeoutFuture;
 use leptos::web_sys::window;
+use web_sys::{HtmlInputElement, FileReader, Event, ProgressEvent};
+use wasm_bindgen::{closure::Closure, JsCast};
+use js_sys::Uint8Array;
 
 /// Post type for New Post dialog
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1541,6 +1544,62 @@ fn CreateBlogForm(
         }
     };
     
+    // Handle image import
+    let handle_import = move |ev: web_sys::MouseEvent| {
+        ev.prevent_default();
+        
+        let window = web_sys::window().unwrap();
+        let document = window.document().unwrap();
+        let input: HtmlInputElement = document
+            .create_element("input")
+            .unwrap()
+            .dyn_into()
+            .unwrap();
+        
+        input.set_type("file");
+        input.set_accept("image/*");
+        
+        let pixel_art_write = set_pixel_art;
+        let error_signal = set_error_message;
+        let grid_size_signal = grid_size;
+        
+        let onchange = Closure::wrap(Box::new(move |event: Event| {
+            let input: HtmlInputElement = event.target().unwrap().dyn_into().unwrap();
+            if let Some(file) = input.files().unwrap().get(0) {
+                let reader = FileReader::new().unwrap();
+                let reader_clone = reader.clone();
+                let current_grid_size = grid_size_signal.get();
+                
+                let onload = Closure::wrap(Box::new(move |_: ProgressEvent| {
+                    if let Ok(buffer) = reader_clone.result() {
+                        let array = Uint8Array::new(&buffer);
+                        let data = array.to_vec();
+                        
+                        match Pixel::from_image_data_with_size(&data, current_grid_size) {
+                            Ok(new_art) => {
+                                pixel_art_write.set(new_art);
+                                error_signal.set(String::new());
+                            }
+                            Err(e) => {
+                                error_signal.set(format!("Failed to process image: {}", e));
+                            }
+                        }
+                    }
+                }) as Box<dyn FnMut(ProgressEvent)>);
+                
+                reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+                onload.forget();
+                
+                reader.read_as_array_buffer(&file).unwrap();
+            }
+        }) as Box<dyn FnMut(_)>);
+        
+        input.set_onchange(Some(onchange.as_ref().unchecked_ref()));
+        onchange.forget();
+        
+        input.click();
+    };
+    
     // Copy string state
     let (show_copied, set_show_copied) = create_signal(false);
     
@@ -1638,6 +1697,15 @@ fn CreateBlogForm(
                                         <option value="16">"16×16 pixels"</option>
                                         <option value="32">"32×32 pixels"</option>
                                     </select>
+                                    <button 
+                                        type="button"
+                                        class="import-btn"
+                                        on:click=handle_import
+                                        prop:disabled=move || is_creating.get()
+                                    >
+                                        <i class="fas fa-upload"></i>
+                                        "Import Image"
+                                    </button>
                                 </div>
                             </div>
                             
