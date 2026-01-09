@@ -303,10 +303,8 @@
     color: var(--text-secondary);
     margin: 0;
     line-height: 1.5;
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 .post-blog-info {
@@ -589,10 +587,8 @@
     font-size: 0.9rem;
     line-height: 1.5;
     margin: 0 0 8px 0;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 .blog-meta {
@@ -1970,6 +1966,8 @@
     color: var(--text-secondary);
     margin: 0 0 1rem 0;
     line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 .blog-stats-row {
@@ -2226,6 +2224,8 @@
     color: var(--text-primary);
     line-height: 1.5;
     flex: 1;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 .post-burn {

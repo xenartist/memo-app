@@ -66,35 +66,65 @@ fn format_burn_amount(amount: u64) -> String {
 }
 
 /// Parse post message - handles both JSON format and plain text
+/// Uses custom JSON parsing (like devlog) to preserve newlines and handle control characters
 /// Returns (title, content, image)
 fn parse_post_message(message: &str) -> (String, String, String) {
-    // Try to parse as JSON first
-    if message.starts_with('{') {
-        // New format: {"type":"post","title":"...","content":"...","image":"..."}
-        // Or old format: {"message":"...","image":"..."}
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(message) {
-            let title = json.get("title")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            
-            let content = json.get("content")
-                .or_else(|| json.get("message"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            
-            let image = json.get("image")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            
-            return (title, content, image);
-        }
+    // Clean NULL bytes but preserve newlines and other whitespace
+    let cleaned: String = message
+        .chars()
+        .filter(|c| *c != '\0')  // Only remove NULL bytes
+        .collect();
+    let cleaned = cleaned.trim();
+    
+    // Check if it looks like JSON
+    if cleaned.starts_with('{') {
+        // Use custom JSON field extraction (like devlog) to handle unescaped newlines
+        let title = extract_json_field(cleaned, "title").unwrap_or_default();
+        let content = extract_json_field(cleaned, "content")
+            .or_else(|| extract_json_field(cleaned, "message"))
+            .unwrap_or_default();
+        let image = extract_json_field(cleaned, "image").unwrap_or_default();
+        
+        return (title, content, image);
     }
     
     // Plain text message - no title, content is the message, no image
-    (String::new(), message.to_string(), String::new())
+    (String::new(), cleaned.to_string(), String::new())
+}
+
+/// Extract a field value from JSON string (handles unescaped newlines)
+/// Same approach as devlog parsing in project_page.rs
+fn extract_json_field(json: &str, field: &str) -> Option<String> {
+    let pattern = format!("\"{}\":\"", field);
+    let start = json.find(&pattern)? + pattern.len();
+    let remaining = &json[start..];
+    
+    // Find the closing quote, handling escaped quotes
+    let mut end = 0;
+    let mut escaped = false;
+    for (i, c) in remaining.chars().enumerate() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if c == '\\' {
+            escaped = true;
+            continue;
+        }
+        if c == '"' {
+            end = i;
+            break;
+        }
+    }
+    
+    let value = &remaining[..end];
+    // Unescape the string - handle escaped quotes and backslashes, and \n sequences
+    Some(value
+        .replace("\\n", "\n")
+        .replace("\\r", "\r")
+        .replace("\\t", "\t")
+        .replace("\\\"", "\"")
+        .replace("\\\\", "\\"))
 }
 
 /// Render a transaction card based on operation type
