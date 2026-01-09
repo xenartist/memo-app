@@ -633,8 +633,13 @@ pub fn BlogPage(
         let set_show_new_post = set_show_new_post_dialog;
         Rc::new(move || {
             set_show_new_post.set(false);
-            // Refresh transactions
+            // Refresh transactions immediately
             load_transactions.dispatch(());
+            // Also refresh after delay to catch confirmed transaction
+            spawn_local(async move {
+                TimeoutFuture::new(3_000).await;
+                load_transactions.dispatch(());
+            });
         })
     };
     
@@ -643,8 +648,13 @@ pub fn BlogPage(
         let set_show_create = set_show_create_blog_dialog;
         Rc::new(move |_signature: String| {
             set_show_create.set(false);
-            // Refresh to show new blog
+            // Refresh to show new blog immediately
             load_transactions.dispatch(());
+            // Also refresh after delay to catch confirmed transaction
+            spawn_local(async move {
+                TimeoutFuture::new(3_000).await;
+                load_transactions.dispatch(());
+            });
         })
     };
     
@@ -653,8 +663,13 @@ pub fn BlogPage(
         let set_show_update = set_show_update_blog_dialog;
         Rc::new(move |_signature: String| {
             set_show_update.set(false);
-            // Refresh to show updated blog
+            // Refresh to show updated blog immediately
             load_transactions.dispatch(());
+            // Also refresh after delay to catch confirmed transaction
+            spawn_local(async move {
+                TimeoutFuture::new(3_000).await;
+                load_transactions.dispatch(());
+            });
         })
     };
     
