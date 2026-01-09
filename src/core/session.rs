@@ -1241,65 +1241,56 @@ impl Session {
 
     // ============ Blog-related methods ============
 
-    /// Get information for a specific blog (doesn't require authentication)
+    /// Get user's blog (doesn't require authentication)
+    /// Each user can only have one blog, identified by their pubkey
     /// 
     /// # Parameters
-    /// * `blog_id` - The ID of the blog to fetch
+    /// * `user_pubkey` - The public key of the blog owner
     /// 
     /// # Returns
-    /// Blog information if it exists
-    pub async fn get_blog_info(&self, blog_id: u64) -> Result<BlogInfo, SessionError> {
+    /// Blog information if it exists, or error if no blog found
+    pub async fn get_user_blog(&self, user_pubkey: &str) -> Result<BlogInfo, SessionError> {
         let rpc = crate::core::rpc_base::RpcConnection::new();
-        rpc.get_blog_info(blog_id).await
-            .map_err(|e| SessionError::InvalidData(format!("Get blog info failed: {}", e)))
+        let pubkey = Pubkey::from_str(user_pubkey)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+        rpc.get_user_blog(&pubkey).await
+            .map_err(|e| SessionError::InvalidData(format!("Get user blog failed: {}", e)))
     }
 
-    /// Get the total number of blogs
-    pub async fn get_total_blogs(&self) -> Result<u64, SessionError> {
-        let rpc = crate::core::rpc_base::RpcConnection::new();
-        rpc.get_total_blogs().await
-            .map_err(|e| SessionError::InvalidData(format!("Get total blogs failed: {}", e)))
-    }
-
-    /// Get all blogs created by a specific user
+    /// Check if user has a blog
     /// 
     /// # Parameters
-    /// * `creator_pubkey` - The public key of the blog creator
-    /// * `limit` - Maximum number of blogs to return
+    /// * `user_pubkey` - The public key of the user to check
     /// 
     /// # Returns
-    /// Vector of blogs created by the user, sorted by creation time (newest first)
-    pub async fn get_user_blogs(&self, creator_pubkey: &str, limit: usize) -> Result<Vec<BlogInfo>, SessionError> {
+    /// true if the user has a blog, false otherwise
+    pub async fn user_has_blog(&self, user_pubkey: &str) -> Result<bool, SessionError> {
         let rpc = crate::core::rpc_base::RpcConnection::new();
-        let total = rpc.get_total_blogs().await
-            .map_err(|e| SessionError::InvalidData(format!("Get total blogs failed: {}", e)))?;
-        
-        if total == 0 {
-            return Ok(vec![]);
-        }
-        
-        let mut user_blogs = Vec::new();
-        
-        // Iterate from newest to oldest
-        for blog_id in (0..total).rev() {
-            if user_blogs.len() >= limit {
-                break;
-            }
-            
-            match rpc.get_blog_info(blog_id).await {
-                Ok(blog) => {
-                    if blog.creator == creator_pubkey {
-                        user_blogs.push(blog);
-                    }
-                },
-                Err(_) => continue,
+        let pubkey = Pubkey::from_str(user_pubkey)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+        rpc.user_has_blog(&pubkey).await
+            .map_err(|e| SessionError::InvalidData(format!("Check user blog failed: {}", e)))
+    }
+
+    /// Get current user's blog
+    /// Convenience method that uses the session's public key
+    pub async fn get_my_blog(&self) -> Result<Option<BlogInfo>, SessionError> {
+        let pubkey_str = self.get_public_key()?;
+        match self.get_user_blog(&pubkey_str).await {
+            Ok(blog) => Ok(Some(blog)),
+            Err(e) => {
+                // Check if it's a "not found" error
+                if e.to_string().contains("not found") {
+                    Ok(None)
+                } else {
+                    Err(e)
+                }
             }
         }
-        
-        Ok(user_blogs)
     }
 
     /// Create a new blog
+    /// Each user can only create one blog, bound to their pubkey
     /// 
     /// # Parameters
     /// * `name` - Blog name (1-64 characters)
@@ -1328,7 +1319,7 @@ impl Session {
         let burn_amount_lamports = burn_amount * 1_000_000;
 
         let rpc = RpcConnection::new();
-        let (mut transaction, blog_id) = rpc.build_create_blog_transaction(
+        let mut transaction = rpc.build_create_blog_transaction(
             &user_pubkey,
             name,
             description,
@@ -1336,14 +1327,14 @@ impl Session {
             burn_amount_lamports,
         ).await.map_err(|e| SessionError::InvalidData(format!("Build transaction failed: {}", e)))?;
 
-        log::info!("Signing create blog transaction for blog_id {}...", blog_id);
+        log::info!("Signing create blog transaction for user {}...", user_pubkey);
         self.sign_transaction(&mut transaction).await?;
         
         log::info!("Sending signed transaction...");
         let signature = rpc.send_signed_transaction(&transaction).await
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
-        log::info!("Blog {} created successfully", blog_id);
+        log::info!("Blog created successfully for user {}", user_pubkey);
         
         // Update balances after successful creation
         match self.fetch_and_update_balances().await {
@@ -1357,10 +1348,10 @@ impl Session {
         Ok(signature)
     }
 
-    /// Update an existing blog
+    /// Update the current user's blog
+    /// User can only update their own blog (identified by their pubkey)
     /// 
     /// # Parameters
-    /// * `blog_id` - The ID of the blog to update
     /// * `name` - New blog name (optional)
     /// * `description` - New blog description (optional)
     /// * `image` - New blog image data (optional)
@@ -1370,7 +1361,6 @@ impl Session {
     /// Transaction signature on success
     pub async fn update_blog(
         &mut self,
-        blog_id: u64,
         name: Option<String>,
         description: Option<String>,
         image: Option<String>,
@@ -1390,21 +1380,20 @@ impl Session {
         let rpc = RpcConnection::new();
         let mut transaction = rpc.build_update_blog_transaction(
             &user_pubkey,
-            blog_id,
             name,
             description,
             image,
             burn_amount_lamports,
         ).await.map_err(|e| SessionError::InvalidData(format!("Build transaction failed: {}", e)))?;
 
-        log::info!("Signing update blog transaction...");
+        log::info!("Signing update blog transaction for user {}...", user_pubkey);
         self.sign_transaction(&mut transaction).await?;
         
         log::info!("Sending signed transaction...");
         let signature = rpc.send_signed_transaction(&transaction).await
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
-        log::info!("Blog {} updated successfully", blog_id);
+        log::info!("Blog updated successfully for user {}", user_pubkey);
         
         // Update balances after successful update
         match self.fetch_and_update_balances().await {
@@ -1418,10 +1407,10 @@ impl Session {
         Ok(signature)
     }
 
-    /// Burn tokens for a blog (post with burn)
+    /// Burn tokens for current user's blog (post with burn)
+    /// User can only burn tokens for their own blog
     /// 
     /// # Parameters
-    /// * `blog_id` - The ID of the blog
     /// * `amount` - Amount of tokens to burn (in tokens, minimum 1 MEMO)
     /// * `message` - Post message (max 696 characters)
     /// 
@@ -1429,7 +1418,6 @@ impl Session {
     /// Transaction signature on success
     pub async fn burn_tokens_for_blog(
         &mut self,
-        blog_id: u64,
         amount: u64,
         message: &str,
     ) -> Result<String, SessionError> {
@@ -1447,19 +1435,18 @@ impl Session {
         let rpc = RpcConnection::new();
         let mut transaction = rpc.build_burn_tokens_for_blog_transaction(
             &user_pubkey,
-            blog_id,
             amount_lamports,
             message,
         ).await.map_err(|e| SessionError::InvalidData(format!("Build transaction failed: {}", e)))?;
 
-        log::info!("Signing burn for blog transaction...");
+        log::info!("Signing burn for blog transaction for user {}...", user_pubkey);
         self.sign_transaction(&mut transaction).await?;
         
         log::info!("Sending signed transaction...");
         let signature = rpc.send_signed_transaction(&transaction).await
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
-        log::info!("Tokens burned successfully for blog {}", blog_id);
+        log::info!("Tokens burned successfully for user {} blog", user_pubkey);
         
         // Update balances after successful burn
         match self.fetch_and_update_balances().await {
@@ -1473,17 +1460,16 @@ impl Session {
         Ok(signature)
     }
 
-    /// Mint tokens for a blog (post with mint)
+    /// Mint tokens for current user's blog (post with mint)
+    /// User can only mint tokens for their own blog
     /// 
     /// # Parameters
-    /// * `blog_id` - The ID of the blog
     /// * `message` - Post message (max 696 characters)
     /// 
     /// # Returns
     /// Transaction signature on success
     pub async fn mint_tokens_for_blog(
         &mut self,
-        blog_id: u64,
         message: &str,
     ) -> Result<String, SessionError> {
         if self.is_expired() {
@@ -1497,18 +1483,17 @@ impl Session {
         let rpc = RpcConnection::new();
         let mut transaction = rpc.build_mint_tokens_for_blog_transaction(
             &user_pubkey,
-            blog_id,
             message,
         ).await.map_err(|e| SessionError::InvalidData(format!("Build transaction failed: {}", e)))?;
 
-        log::info!("Signing mint for blog transaction...");
+        log::info!("Signing mint for blog transaction for user {}...", user_pubkey);
         self.sign_transaction(&mut transaction).await?;
         
         log::info!("Sending signed transaction...");
         let signature = rpc.send_signed_transaction(&transaction).await
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
-        log::info!("Tokens minted successfully for blog {}", blog_id);
+        log::info!("Tokens minted successfully for user {} blog", user_pubkey);
         
         // Update balances after successful mint
         match self.fetch_and_update_balances().await {

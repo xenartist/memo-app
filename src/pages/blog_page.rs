@@ -74,7 +74,7 @@ fn render_transaction_card(
     let time_display = format_relative_time(transaction.timestamp);
     
     match transaction.details {
-        BlogOperationDetails::Create { blog_id, name, description, image } => {
+        BlogOperationDetails::Create { creator, name, description, image } => {
             view! {
                 <div class="transaction-card transaction-create">
                     <div class="transaction-header">
@@ -112,13 +112,9 @@ fn render_transaction_card(
                                     view! { <div></div> }.into_view()
                                 }}
                                 <div class="blog-meta">
-                                    <span class="blog-id">
-                                        <i class="fas fa-hashtag"></i>
-                                        {blog_id}
-                                    </span>
                                     <span class="blog-creator">
                                         <i class="fas fa-user"></i>
-                                        {shorten_address(&transaction.user)}
+                                        {shorten_address(&creator)}
                                     </span>
                                 </div>
                             </div>
@@ -134,7 +130,7 @@ fn render_transaction_card(
                 </div>
             }.into_view()
         },
-        BlogOperationDetails::Update { blog_id, name, description, image } => {
+        BlogOperationDetails::Update { creator, name, description, image } => {
             view! {
                 <div class="transaction-card transaction-update">
                     <div class="transaction-header">
@@ -147,8 +143,8 @@ fn render_transaction_card(
                     <div class="transaction-body">
                         <div class="update-info">
                             <h3 class="blog-id-title">
-                                <i class="fas fa-hashtag"></i>
-                                "Blog "{blog_id}
+                                <i class="fas fa-user"></i>
+                                {shorten_address(&creator)}
                             </h3>
                             {if let Some(new_name) = name {
                                 view! {
@@ -207,16 +203,18 @@ fn render_transaction_card(
                 </div>
             }.into_view()
         },
-        BlogOperationDetails::Burn { blog_id, message } => {
+        BlogOperationDetails::Burn { burner, message } => {
             // Fetch blog info for display
             let (blog_info, set_blog_info) = create_signal(None::<(String, String)>);
+            let burner_clone = burner.clone();
             
             {
                 let session_clone = session;
                 create_effect(move |_| {
+                    let burner_for_effect = burner_clone.clone();
                     spawn_local(async move {
                         let session_read = session_clone.get_untracked();
-                        if let Ok(info) = session_read.get_blog_info(blog_id).await {
+                        if let Ok(info) = session_read.get_user_blog(&burner_for_effect).await {
                             set_blog_info.set(Some((
                                 info.name.clone(),
                                 info.image.clone(),
@@ -268,13 +266,13 @@ fn render_transaction_card(
                                             if let Some((name, _)) = blog_info.get() {
                                                 name
                                             } else {
-                                                format!("Blog #{}", blog_id)
+                                                "Blog".to_string()
                                             }
                                         }}
                                     </h4>
-                                    <span class="blog-id-small">
-                                        <i class="fas fa-hashtag"></i>
-                                        {blog_id}
+                                    <span class="blog-creator-small">
+                                        <i class="fas fa-user"></i>
+                                        {shorten_address(&burner)}
                                     </span>
                                 </div>
                             </div>
@@ -308,18 +306,20 @@ fn render_transaction_card(
                 </div>
             }.into_view()
         },
-        BlogOperationDetails::Mint { blog_id, message } => {
+        BlogOperationDetails::Mint { minter, message } => {
             // Fetch blog info for display
             let (blog_info, set_blog_info) = create_signal(None::<(String, String)>);
             // Fetch current mint reward based on supply
             let (mint_reward, set_mint_reward) = create_signal(None::<f64>);
+            let minter_clone = minter.clone();
             
             {
                 let session_clone = session;
                 create_effect(move |_| {
+                    let minter_for_effect = minter_clone.clone();
                     spawn_local(async move {
                         let session_read = session_clone.get_untracked();
-                        if let Ok(info) = session_read.get_blog_info(blog_id).await {
+                        if let Ok(info) = session_read.get_user_blog(&minter_for_effect).await {
                             set_blog_info.set(Some((
                                 info.name.clone(),
                                 info.image.clone(),
@@ -378,13 +378,13 @@ fn render_transaction_card(
                                             if let Some((name, _)) = blog_info.get() {
                                                 name
                                             } else {
-                                                format!("Blog #{}", blog_id)
+                                                "Blog".to_string()
                                             }
                                         }}
                                     </h4>
-                                    <span class="blog-id-small">
-                                        <i class="fas fa-hashtag"></i>
-                                        {blog_id}
+                                    <span class="blog-creator-small">
+                                        <i class="fas fa-user"></i>
+                                        {shorten_address(&minter)}
                                     </span>
                                 </div>
                             </div>
@@ -439,16 +439,19 @@ fn render_featured_card(
     
     // Only render burn operations in featured section
     match transaction.details {
-        BlogOperationDetails::Burn { blog_id, message } => {
+        BlogOperationDetails::Burn { burner, message } => {
             // Fetch blog info for display
             let (blog_info, set_blog_info) = create_signal(None::<(String, String)>);
+            let burner_clone = burner.clone();
+            let burner_for_display = burner.clone();
             
             {
                 let session_clone = session;
                 create_effect(move |_| {
+                    let burner_for_effect = burner_clone.clone();
                     spawn_local(async move {
                         let session_read = session_clone.get_untracked();
-                        if let Ok(info) = session_read.get_blog_info(blog_id).await {
+                        if let Ok(info) = session_read.get_user_blog(&burner_for_effect).await {
                             set_blog_info.set(Some((
                                 info.name.clone(),
                                 info.image.clone(),
@@ -499,11 +502,11 @@ fn render_featured_card(
                                             if let Some((name, _)) = blog_info.get() {
                                                 name
                                             } else {
-                                                format!("Blog #{}", blog_id)
+                                                "Blog".to_string()
                                             }
                                         }}
                                     </h3>
-                                    <span class="featured-blog-id">"ID: "{blog_id}</span>
+                                    <span class="featured-blog-creator">{shorten_address(&burner_for_display)}</span>
                                 </div>
                             </div>
                             
@@ -638,7 +641,7 @@ pub fn BlogPage(
     // Callback for when blog is created
     let on_create_blog_success = {
         let set_show_create = set_show_create_blog_dialog;
-        Rc::new(move |_signature: String, _blog_id: u64| {
+        Rc::new(move |_signature: String| {
             set_show_create.set(false);
             // Refresh to show new blog
             load_transactions.dispatch(());
@@ -856,19 +859,17 @@ fn NewPostForm(
     let (burn_amount, set_burn_amount) = create_signal(1u64); // Minimum 1 MEMO for blog
     let (is_posting, set_is_posting) = create_signal(false);
     let (error_message, set_error_message) = create_signal(String::new());
-    let (user_blog_id, set_user_blog_id) = create_signal::<Option<u64>>(None);
+    let (user_has_blog, set_user_has_blog) = create_signal(false);
     let (loading_blog, set_loading_blog) = create_signal(true);
     
-    // Load user's blog
+    // Load user's blog - check if user has a blog
     create_effect(move |_| {
         spawn_local(async move {
             set_loading_blog.set(true);
             let session_read = session.get_untracked();
             if let Ok(pubkey) = session_read.get_public_key() {
-                if let Ok(blogs) = session_read.get_user_blogs(&pubkey, 1).await {
-                    if let Some(blog) = blogs.first() {
-                        set_user_blog_id.set(Some(blog.blog_id));
-                    }
+                if let Ok(has_blog) = session_read.user_has_blog(&pubkey).await {
+                    set_user_has_blog.set(has_blog);
                 }
             }
             set_loading_blog.set(false);
@@ -890,13 +891,10 @@ fn NewPostForm(
             return;
         }
         
-        let blog_id = match user_blog_id.get() {
-            Some(id) => id,
-            None => {
-                set_error_message.set("❌ You need to create a blog first".to_string());
-                return;
-            }
-        };
+        if !user_has_blog.get() {
+            set_error_message.set("❌ You need to create a blog first".to_string());
+            return;
+        }
         
         let msg = message.get().trim().to_string();
         if msg.is_empty() {
@@ -923,10 +921,10 @@ fn NewPostForm(
         spawn_local(async move {
             let result = if post_type_val == PostType::Burn {
                 let mut session_update = session.get_untracked();
-                session_update.burn_tokens_for_blog(blog_id, amount, &msg).await
+                session_update.burn_tokens_for_blog(amount, &msg).await
             } else {
                 let mut session_update = session.get_untracked();
-                session_update.mint_tokens_for_blog(blog_id, &msg).await
+                session_update.mint_tokens_for_blog(&msg).await
             };
             
             match result {
@@ -973,7 +971,7 @@ fn NewPostForm(
                 }
             >
                 <Show
-                    when=move || user_blog_id.get().is_some()
+                    when=move || user_has_blog.get()
                     fallback=move || {
                         let handle_create = move |_| {
                             on_create_blog_signal.with_untracked(|cb_opt| {
@@ -1133,27 +1131,25 @@ fn MyBlogView(
             
             let session_read = session.get_untracked();
             if let Ok(pubkey) = session_read.get_public_key() {
-                // Find user's blog
-                if let Ok(blogs) = session_read.get_user_blogs(&pubkey, 1).await {
-                    if let Some(blog) = blogs.first() {
-                        set_user_blog.set(Some(blog.clone()));
-                        
-                        // Load recent posts for this blog
-                        let rpc = RpcConnection::new();
-                        if let Ok(response) = rpc.get_recent_blog_contract_transactions().await {
-                            let user_posts: Vec<BlogContractTransaction> = response.transactions
-                                .into_iter()
-                                .filter(|tx| {
-                                    match &tx.details {
-                                        BlogOperationDetails::Burn { blog_id, .. } |
-                                        BlogOperationDetails::Mint { blog_id, .. } => *blog_id == blog.blog_id,
-                                        _ => false,
-                                    }
-                                })
-                                .take(10)
-                                .collect();
-                            set_blog_posts.set(user_posts);
-                        }
+                // Find user's blog (now directly by pubkey)
+                if let Ok(blog) = session_read.get_user_blog(&pubkey).await {
+                    set_user_blog.set(Some(blog.clone()));
+                    
+                    // Load recent posts for this blog
+                    let rpc = RpcConnection::new();
+                    if let Ok(response) = rpc.get_recent_blog_contract_transactions().await {
+                        let user_posts: Vec<BlogContractTransaction> = response.transactions
+                            .into_iter()
+                            .filter(|tx| {
+                                match &tx.details {
+                                    BlogOperationDetails::Burn { burner, .. } |
+                                    BlogOperationDetails::Mint { minter: burner, .. } => *burner == blog.creator,
+                                    _ => false,
+                                }
+                            })
+                            .take(10)
+                            .collect();
+                        set_blog_posts.set(user_posts);
                     }
                 }
             } else {
@@ -1275,7 +1271,7 @@ fn MyBlogView(
                                             
                                             <div class="blog-meta">
                                                 <h4 class="blog-name">{blog.name.clone()}</h4>
-                                                <span class="blog-id">"ID: "{blog.blog_id}</span>
+                                                <span class="blog-creator">{shorten_address(&blog.creator)}</span>
                                             </div>
                                         </div>
                                         
@@ -1292,11 +1288,6 @@ fn MyBlogView(
                                                 <i class="fas fa-fire"></i>
                                                 <span>{format_burn_amount(blog.burned_amount)}</span>
                                                 <span class="stat-label">"Burned"</span>
-                                            </div>
-                                            <div class="blog-stat">
-                                                <i class="fas fa-coins"></i>
-                                                <span>{blog.minted_amount}</span>
-                                                <span class="stat-label">"Mints"</span>
                                             </div>
                                             <div class="blog-stat">
                                                 <i class="fas fa-comment"></i>
@@ -1408,7 +1399,7 @@ fn MyBlogView(
 fn CreateBlogForm(
     session: RwSignal<Session>,
     on_close: Rc<dyn Fn()>,
-    on_success: Rc<dyn Fn(String, u64)>,
+    on_success: Rc<dyn Fn(String)>,
 ) -> impl IntoView {
     let on_close_signal = create_rw_signal(Some(on_close));
     let on_success_signal = create_rw_signal(Some(on_success));
@@ -1434,8 +1425,8 @@ fn CreateBlogForm(
         let image_data = get_image_data();
         let amount = burn_amount.get() * 1_000_000; // lamports
         
-        // Use blog_id 0 for calculation (actual ID assigned by contract)
-        let blog_data = BlogCreationData::new(0, name, description, image_data);
+        // Use dummy creator pubkey for calculation
+        let blog_data = BlogCreationData::new("11111111111111111111111111111111".to_string(), name, description, image_data);
         
         match blog_data.calculate_final_memo_size(amount) {
             Ok(size) => {
@@ -1517,13 +1508,9 @@ fn CreateBlogForm(
                     set_creating_status.set("Blog created successfully!".to_string());
                     session.update(|s| s.mark_balance_update_needed());
                     
-                    // Get the blog_id (we don't have it directly, but we can approximate)
-                    let rpc = RpcConnection::new();
-                    let blog_id = rpc.get_total_blogs().await.unwrap_or(1) - 1;
-                    
                     on_success_signal.with_untracked(|cb_opt| {
                         if let Some(callback) = cb_opt.as_ref() {
-                            callback(signature, blog_id);
+                            callback(signature);
                         }
                     });
                 },
@@ -1929,19 +1916,17 @@ fn UpdateBlogForm(
             set_loading_blog.set(true);
             let session_read = session.get_untracked();
             if let Ok(pubkey) = session_read.get_public_key() {
-                if let Ok(blogs) = session_read.get_user_blogs(&pubkey, 1).await {
-                    if let Some(blog) = blogs.first() {
-                        set_current_blog.set(Some(blog.clone()));
-                        set_blog_name.set(blog.name.clone());
-                        set_blog_description.set(blog.description.clone());
-                        
-                        // Try to load existing pixel art
-                        if !blog.image.is_empty() {
-                            if let Some(pixel) = Pixel::from_optimal_string(&blog.image) {
-                                let (size, _) = pixel.dimensions();
-                                set_grid_size.set(size);
-                                set_pixel_art.set(pixel);
-                            }
+                if let Ok(blog) = session_read.get_user_blog(&pubkey).await {
+                    set_current_blog.set(Some(blog.clone()));
+                    set_blog_name.set(blog.name.clone());
+                    set_blog_description.set(blog.description.clone());
+                    
+                    // Try to load existing pixel art
+                    if !blog.image.is_empty() {
+                        if let Some(pixel) = Pixel::from_optimal_string(&blog.image) {
+                            let (size, _) = pixel.dimensions();
+                            set_grid_size.set(size);
+                            set_pixel_art.set(pixel);
                         }
                     }
                 }
@@ -1999,7 +1984,6 @@ fn UpdateBlogForm(
         }
         
         let image = get_image_data();
-        let blog_id = blog.blog_id;
         
         set_is_updating.set(true);
         set_error_message.set(String::new());
@@ -2008,7 +1992,6 @@ fn UpdateBlogForm(
             let mut session_update = session.get_untracked();
             
             match session_update.update_blog(
-                blog_id,
                 Some(name),
                 Some(description),
                 Some(image),

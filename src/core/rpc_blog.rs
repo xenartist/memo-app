@@ -33,7 +33,6 @@ impl BlogConfig {
     // Note: Program IDs and token mint are now retrieved dynamically from network configuration
     
     /// PDA Seeds for blog contract
-    pub const GLOBAL_BLOG_COUNTER_SEED: &'static [u8] = b"global_blog_counter";
     pub const BLOG_SEED: &'static [u8] = b"blog";
     
     /// Minimum burn amount required to create/update/burn for a blog (1 token = 1,000,000 lamports)
@@ -73,20 +72,12 @@ impl BlogConfig {
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid memo token mint: {}", e)))
     }
     
-    /// Calculate global blog counter PDA
-    pub fn get_global_blog_counter_pda() -> Result<(Pubkey, u8), RpcError> {
+    /// Calculate blog PDA for a specific user pubkey
+    /// Each user can only have one blog, bound to their pubkey
+    pub fn get_user_blog_pda(user_pubkey: &Pubkey) -> Result<(Pubkey, u8), RpcError> {
         let program_id = Self::get_program_id()?;
         Ok(Pubkey::find_program_address(
-            &[Self::GLOBAL_BLOG_COUNTER_SEED],
-            &program_id
-        ))
-    }
-    
-    /// Calculate blog PDA for a specific blog ID
-    pub fn get_blog_pda(blog_id: u64) -> Result<(Pubkey, u8), RpcError> {
-        let program_id = Self::get_program_id()?;
-        Ok(Pubkey::find_program_address(
-            &[Self::BLOG_SEED, &blog_id.to_le_bytes()],
+            &[Self::BLOG_SEED, user_pubkey.as_ref()],
             &program_id
         ))
     }
@@ -166,6 +157,7 @@ pub struct BurnMemo {
 }
 
 /// Blog creation data structure (stored in BurnMemo.payload)
+/// Updated to use creator pubkey instead of blog_id
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct BlogCreationData {
     /// Version of this structure (for future compatibility)
@@ -177,8 +169,8 @@ pub struct BlogCreationData {
     /// Operation type (must be "create_blog" for blog creation)
     pub operation: String,
     
-    /// Blog ID (must match expected_blog_id)
-    pub blog_id: u64,
+    /// Creator pubkey as string (must match the transaction signer)
+    pub creator: String,
     
     /// Blog name (required, 1-64 characters)
     pub name: String,
@@ -193,7 +185,7 @@ pub struct BlogCreationData {
 impl BlogCreationData {
     /// Create new blog creation data
     pub fn new(
-        blog_id: u64,
+        creator: String,
         name: String,
         description: String,
         image: String,
@@ -202,7 +194,7 @@ impl BlogCreationData {
             version: BLOG_CREATION_DATA_VERSION,
             category: "blog".to_string(),
             operation: "create_blog".to_string(),
-            blog_id,
+            creator,
             name,
             description,
             image,
@@ -210,7 +202,7 @@ impl BlogCreationData {
     }
     
     /// Validate the blog creation data
-    pub fn validate(&self, expected_blog_id: u64) -> Result<(), RpcError> {
+    pub fn validate(&self, expected_creator: &str) -> Result<(), RpcError> {
         // Validate version
         if self.version != BLOG_CREATION_DATA_VERSION {
             return Err(RpcError::InvalidParameter(format!(
@@ -233,11 +225,11 @@ impl BlogCreationData {
             )));
         }
         
-        // Validate blog ID
-        if self.blog_id != expected_blog_id {
+        // Validate creator pubkey matches expected creator
+        if self.creator != expected_creator {
             return Err(RpcError::InvalidParameter(format!(
-                "Blog ID mismatch: data contains {}, expected {}", 
-                self.blog_id, expected_blog_id
+                "Creator pubkey mismatch: data contains {}, expected {}", 
+                self.creator, expected_creator
             )));
         }
         
@@ -288,6 +280,7 @@ impl BlogCreationData {
 }
 
 /// Blog update data structure (stored in BurnMemo.payload)
+/// Updated to use creator pubkey instead of blog_id
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct BlogUpdateData {
     /// Version of this structure (for future compatibility)
@@ -299,8 +292,8 @@ pub struct BlogUpdateData {
     /// Operation type (must be "update_blog" for blog update)
     pub operation: String,
     
-    /// Blog ID (must match the target blog)
-    pub blog_id: u64,
+    /// Creator pubkey as string (must match the transaction signer / blog owner)
+    pub creator: String,
     
     /// Updated fields (all optional)
     pub name: Option<String>,
@@ -311,7 +304,7 @@ pub struct BlogUpdateData {
 impl BlogUpdateData {
     /// Create new blog update data
     pub fn new(
-        blog_id: u64,
+        creator: String,
         name: Option<String>,
         description: Option<String>,
         image: Option<String>,
@@ -320,7 +313,7 @@ impl BlogUpdateData {
             version: BLOG_UPDATE_DATA_VERSION,
             category: "blog".to_string(),
             operation: "update_blog".to_string(),
-            blog_id,
+            creator,
             name,
             description,
             image,
@@ -328,7 +321,7 @@ impl BlogUpdateData {
     }
     
     /// Validate the blog update data
-    pub fn validate(&self, expected_blog_id: u64) -> Result<(), RpcError> {
+    pub fn validate(&self, expected_creator: &str) -> Result<(), RpcError> {
         // Validate version
         if self.version != BLOG_UPDATE_DATA_VERSION {
             return Err(RpcError::InvalidParameter(format!(
@@ -351,11 +344,11 @@ impl BlogUpdateData {
             )));
         }
         
-        // Validate blog ID
-        if self.blog_id != expected_blog_id {
+        // Validate creator pubkey matches expected creator
+        if self.creator != expected_creator {
             return Err(RpcError::InvalidParameter(format!(
-                "Blog ID mismatch: data contains {}, expected {}", 
-                self.blog_id, expected_blog_id
+                "Creator pubkey mismatch: data contains {}, expected {}", 
+                self.creator, expected_creator
             )));
         }
         
@@ -389,6 +382,7 @@ impl BlogUpdateData {
 }
 
 /// Blog burn data structure (stored in BurnMemo.payload for burn_for_blog)
+/// Updated: removed blog_id as blog is identified by user pubkey
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct BlogBurnData {
     /// Version of this structure (for future compatibility)
@@ -400,10 +394,7 @@ pub struct BlogBurnData {
     /// Operation type (must be "burn_for_blog" for burning tokens)
     pub operation: String,
     
-    /// Blog ID (must match the target blog)
-    pub blog_id: u64,
-    
-    /// Burner pubkey as string (must match the transaction signer)
+    /// Burner pubkey as string (must match the transaction signer / blog creator)
     pub burner: String,
     
     /// Burn message (optional, max 696 characters)
@@ -413,7 +404,6 @@ pub struct BlogBurnData {
 impl BlogBurnData {
     /// Create new blog burn data
     pub fn new(
-        blog_id: u64,
         burner: String,
         message: String,
     ) -> Self {
@@ -421,14 +411,13 @@ impl BlogBurnData {
             version: BLOG_CREATION_DATA_VERSION,
             category: "blog".to_string(),
             operation: "burn_for_blog".to_string(),
-            blog_id,
             burner,
             message,
         }
     }
     
     /// Validate the blog burn data
-    pub fn validate(&self, expected_blog_id: u64, expected_burner: &str) -> Result<(), RpcError> {
+    pub fn validate(&self, expected_burner: &str) -> Result<(), RpcError> {
         // Validate version
         if self.version != BLOG_CREATION_DATA_VERSION {
             return Err(RpcError::InvalidParameter(format!(
@@ -448,14 +437,6 @@ impl BlogBurnData {
         if self.operation != "burn_for_blog" {
             return Err(RpcError::InvalidParameter(format!(
                 "Invalid operation: '{}' (expected: 'burn_for_blog')", self.operation
-            )));
-        }
-        
-        // Validate blog ID
-        if self.blog_id != expected_blog_id {
-            return Err(RpcError::InvalidParameter(format!(
-                "Blog ID mismatch: data contains {}, expected {}", 
-                self.blog_id, expected_blog_id
             )));
         }
         
@@ -480,6 +461,7 @@ impl BlogBurnData {
 
 /// Blog mint data structure (stored in BurnMemo.payload for mint_for_blog)
 /// Note: For mint operations, the burn_amount in BurnMemo should be 0
+/// Updated: removed blog_id as blog is identified by user pubkey
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct BlogMintData {
     /// Version of this structure (for future compatibility)
@@ -491,9 +473,6 @@ pub struct BlogMintData {
     /// Operation type (must be "mint_for_blog" for minting tokens)
     pub operation: String,
     
-    /// Blog ID (must match the target blog)
-    pub blog_id: u64,
-    
     /// Minter pubkey as string (must match the transaction signer / blog creator)
     pub minter: String,
     
@@ -504,7 +483,6 @@ pub struct BlogMintData {
 impl BlogMintData {
     /// Create new blog mint data
     pub fn new(
-        blog_id: u64,
         minter: String,
         message: String,
     ) -> Self {
@@ -512,14 +490,13 @@ impl BlogMintData {
             version: BLOG_CREATION_DATA_VERSION,
             category: "blog".to_string(),
             operation: "mint_for_blog".to_string(),
-            blog_id,
             minter,
             message,
         }
     }
     
     /// Validate the blog mint data
-    pub fn validate(&self, expected_blog_id: u64, expected_minter: &str) -> Result<(), RpcError> {
+    pub fn validate(&self, expected_minter: &str) -> Result<(), RpcError> {
         // Validate version
         if self.version != BLOG_CREATION_DATA_VERSION {
             return Err(RpcError::InvalidParameter(format!(
@@ -542,14 +519,6 @@ impl BlogMintData {
             )));
         }
         
-        // Validate blog ID
-        if self.blog_id != expected_blog_id {
-            return Err(RpcError::InvalidParameter(format!(
-                "Blog ID mismatch: data contains {}, expected {}", 
-                self.blog_id, expected_blog_id
-            )));
-        }
-        
         // Validate minter
         if self.minter != expected_minter {
             return Err(RpcError::InvalidParameter(format!(
@@ -569,17 +538,11 @@ impl BlogMintData {
     }
 }
 
-/// Represents global blog statistics from the memo-blog contract
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BlogGlobalStatistics {
-    pub total_blogs: u64,
-}
-
 /// Represents a blog's information
+/// Updated: removed blog_id as blog is identified by creator pubkey
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlogInfo {
-    pub blog_id: u64,
-    pub creator: String,  // Base58 encoded pubkey
+    pub creator: String,  // Base58 encoded pubkey (unique identifier for the blog)
     pub created_at: i64,
     pub last_updated: i64,
     pub name: String,
@@ -587,20 +550,8 @@ pub struct BlogInfo {
     pub image: String,
     pub memo_count: u64,
     pub burned_amount: u64,
-    pub minted_amount: u64,
     pub last_memo_time: i64,
     pub bump: u8,
-}
-
-/// Summary statistics for all blogs
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BlogStatistics {
-    pub total_blogs: u64,
-    pub valid_blogs: u64,
-    pub total_memos: u64,
-    pub total_burned_tokens: u64,
-    pub total_mint_operations: u64,
-    pub blogs: Vec<BlogInfo>,
 }
 
 /// Represents a single burn/mint action to a blog
@@ -618,7 +569,7 @@ pub struct BlogMemoMessage {
 /// Response containing memo messages for a blog
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlogMemoMessagesResponse {
-    pub blog_id: u64,
+    pub creator: String,       // Blog creator pubkey (unique identifier)
     pub messages: Vec<BlogMemoMessage>,
     pub total_found: usize,
     pub has_more: bool,        // Indicates if there are more messages available
@@ -634,30 +585,31 @@ pub enum BlogOperationType {
 }
 
 /// Detailed information for different operation types
+/// Updated: removed blog_id as blog is identified by creator pubkey
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BlogOperationDetails {
     /// Create blog operation with full blog details
     Create {
-        blog_id: u64,
+        creator: String,
         name: String,
         description: String,
         image: String,
     },
     /// Update blog operation with updated fields
     Update {
-        blog_id: u64,
+        creator: String,
         name: Option<String>,
         description: Option<String>,
         image: Option<String>,
     },
     /// Burn for blog operation with message
     Burn {
-        blog_id: u64,
+        burner: String,
         message: String,
     },
     /// Mint for blog operation with message
     Mint {
-        blog_id: u64,
+        minter: String,
         message: String,
     },
 }
@@ -759,10 +711,10 @@ fn parse_blog_operation_memo(memo_data: &[u8]) -> Option<(String, BlogOperationT
     if let Ok(creation_data) = BlogCreationData::try_from_slice(&burn_memo.payload) {
         if creation_data.category == "blog" && creation_data.operation == "create_blog" {
             return Some((
-                creation_data.name.clone(), // Use blog name as "user" identifier
+                creation_data.creator.clone(),
                 BlogOperationType::CreateBlog,
                 BlogOperationDetails::Create {
-                    blog_id: creation_data.blog_id,
+                    creator: creation_data.creator,
                     name: creation_data.name,
                     description: creation_data.description,
                     image: creation_data.image,
@@ -776,10 +728,10 @@ fn parse_blog_operation_memo(memo_data: &[u8]) -> Option<(String, BlogOperationT
     if let Ok(update_data) = BlogUpdateData::try_from_slice(&burn_memo.payload) {
         if update_data.category == "blog" && update_data.operation == "update_blog" {
             return Some((
-                update_data.name.clone().unwrap_or_else(|| "Blog Update".to_string()),
+                update_data.creator.clone(),
                 BlogOperationType::UpdateBlog,
                 BlogOperationDetails::Update {
-                    blog_id: update_data.blog_id,
+                    creator: update_data.creator,
                     name: update_data.name,
                     description: update_data.description,
                     image: update_data.image,
@@ -796,7 +748,7 @@ fn parse_blog_operation_memo(memo_data: &[u8]) -> Option<(String, BlogOperationT
                 burn_data.burner.clone(),
                 BlogOperationType::BurnForBlog,
                 BlogOperationDetails::Burn {
-                    blog_id: burn_data.blog_id,
+                    burner: burn_data.burner,
                     message: burn_data.message,
                 },
                 burn_amount,
@@ -811,7 +763,7 @@ fn parse_blog_operation_memo(memo_data: &[u8]) -> Option<(String, BlogOperationT
                 mint_data.minter.clone(),
                 BlogOperationType::MintForBlog,
                 BlogOperationDetails::Mint {
-                    blog_id: mint_data.blog_id,
+                    minter: mint_data.minter,
                     message: mint_data.message,
                 },
                 0, // Mint operations have 0 burn amount
@@ -839,6 +791,7 @@ fn parse_blog_memo_data(memo_data: &[u8]) -> Option<(String, String, String, u64
 
 impl RpcConnection {
     /// Build an unsigned transaction to create a blog
+    /// Each user can only have one blog, bound to their pubkey
     pub async fn build_create_blog_transaction(
         &self,
         user_pubkey: &Pubkey,
@@ -846,7 +799,7 @@ impl RpcConnection {
         description: &str,
         image: &str,
         burn_amount: u64,
-    ) -> Result<(Transaction, u64), RpcError> {
+    ) -> Result<Transaction, RpcError> {
         // Basic parameter validation
         if name.is_empty() || name.len() > 64 {
             return Err(RpcError::InvalidParameter(format!("Blog name must be 1-64 characters, got {}", name.len())));
@@ -864,26 +817,24 @@ impl RpcConnection {
             return Err(RpcError::InvalidParameter("Burn amount must be a whole number of tokens".to_string()));
         }
         
-        log::info!("Building create blog transaction '{}': {} tokens", name, burn_amount / 1_000_000);
-        
-        // Get next blog_id
-        let global_stats = self.get_blog_global_statistics().await?;
-        let expected_blog_id = global_stats.total_blogs;
+        log::info!("Building create blog transaction '{}' for user {}: {} tokens", name, user_pubkey, burn_amount / 1_000_000);
         
         let blog_program_id = BlogConfig::get_program_id()?;
         let memo_token_mint = BlogConfig::get_memo_token_mint()?;
         let token_2022_program_id = get_token_2022_program_id()?;
         let memo_burn_program_id = BlogConfig::get_memo_burn_program_id()?;
         
-        let (global_counter_pda, _) = BlogConfig::get_global_blog_counter_pda()?;
-        let (blog_pda, _) = BlogConfig::get_blog_pda(expected_blog_id)?;
+        // Calculate blog PDA using user's pubkey
+        let (blog_pda, _) = BlogConfig::get_user_blog_pda(user_pubkey)?;
         let (user_global_burn_stats_pda, _) = BlogConfig::get_user_global_burn_stats_pda(user_pubkey)?;
         let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
             user_pubkey, &memo_token_mint, &token_2022_program_id,
         );
         
         let blog_creation_data = BlogCreationData::new(
-            expected_blog_id, name.to_string(), description.to_string(), 
+            user_pubkey.to_string(),
+            name.to_string(),
+            description.to_string(), 
             image.to_string(),
         );
         
@@ -906,9 +857,8 @@ impl RpcConnection {
         // Add memo instruction
         base_instructions.push(spl_memo::build_memo(memo_data_base64.as_bytes(), &[user_pubkey]));
         
-        // Create blog instruction
+        // Create blog instruction - only burn_amount as parameter
         let mut instruction_data = BlogConfig::get_create_blog_discriminator().to_vec();
-        instruction_data.extend_from_slice(&expected_blog_id.to_le_bytes());
         instruction_data.extend_from_slice(&burn_amount.to_le_bytes());
         
         base_instructions.push(Instruction::new_with_bytes(
@@ -916,7 +866,6 @@ impl RpcConnection {
             &instruction_data,
             vec![
                 AccountMeta::new(*user_pubkey, true),
-                AccountMeta::new(global_counter_pda, false),
                 AccountMeta::new(blog_pda, false),
                 AccountMeta::new(memo_token_mint, false),
                 AccountMeta::new(user_token_account, false),
@@ -983,14 +932,14 @@ impl RpcConnection {
         let mut transaction = Transaction::new_unsigned(message);
         transaction.message.recent_blockhash = blockhash;
         
-        Ok((transaction, expected_blog_id))
+        Ok(transaction)
     }
 
     /// Build an unsigned transaction to update a blog
+    /// User can only update their own blog (identified by their pubkey)
     pub async fn build_update_blog_transaction(
         &self,
         user_pubkey: &Pubkey,
-        blog_id: u64,
         name: Option<String>,
         description: Option<String>,
         image: Option<String>,
@@ -1019,20 +968,21 @@ impl RpcConnection {
             return Err(RpcError::InvalidParameter("Burn amount must be a whole number of tokens".to_string()));
         }
         
-        log::info!("Building update blog transaction for blog {}: {} tokens", blog_id, burn_amount / 1_000_000);
+        log::info!("Building update blog transaction for user {}: {} tokens", user_pubkey, burn_amount / 1_000_000);
         
         let blog_program_id = BlogConfig::get_program_id()?;
         let memo_token_mint = BlogConfig::get_memo_token_mint()?;
         let token_2022_program_id = get_token_2022_program_id()?;
         let memo_burn_program_id = BlogConfig::get_memo_burn_program_id()?;
         
-        let (blog_pda, _) = BlogConfig::get_blog_pda(blog_id)?;
+        // Calculate blog PDA using user's pubkey
+        let (blog_pda, _) = BlogConfig::get_user_blog_pda(user_pubkey)?;
         let (user_global_burn_stats_pda, _) = BlogConfig::get_user_global_burn_stats_pda(user_pubkey)?;
         let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
             user_pubkey, &memo_token_mint, &token_2022_program_id,
         );
         
-        let blog_update_data = BlogUpdateData::new(blog_id, name, description, image);
+        let blog_update_data = BlogUpdateData::new(user_pubkey.to_string(), name, description, image);
         
         let burn_memo = BurnMemo {
             version: 1,
@@ -1053,9 +1003,8 @@ impl RpcConnection {
         // Add memo instruction
         base_instructions.push(spl_memo::build_memo(memo_data_base64.as_bytes(), &[user_pubkey]));
         
-        // Update blog instruction
+        // Update blog instruction - only burn_amount as parameter
         let mut instruction_data = BlogConfig::get_update_blog_discriminator().to_vec();
-        instruction_data.extend_from_slice(&blog_id.to_le_bytes());
         instruction_data.extend_from_slice(&burn_amount.to_le_bytes());
         
         base_instructions.push(Instruction::new_with_bytes(
@@ -1129,10 +1078,10 @@ impl RpcConnection {
     }
 
     /// Build an unsigned transaction to burn tokens for a blog
+    /// User can only burn tokens for their own blog (identified by their pubkey)
     pub async fn build_burn_tokens_for_blog_transaction(
         &self,
         user_pubkey: &Pubkey,
-        blog_id: u64,
         amount: u64,
         message: &str,
     ) -> Result<Transaction, RpcError> {
@@ -1157,15 +1106,16 @@ impl RpcConnection {
             ));
         }
         
-        log::info!("Building burn tokens for blog transaction: {} tokens for blog {}", 
-                  amount / 1_000_000, blog_id);
+        log::info!("Building burn tokens for blog transaction: {} tokens for user {}", 
+                  amount / 1_000_000, user_pubkey);
         
         let blog_program_id = BlogConfig::get_program_id()?;
         let memo_token_mint = BlogConfig::get_memo_token_mint()?;
         let token_2022_program_id = get_token_2022_program_id()?;
         let memo_burn_program_id = BlogConfig::get_memo_burn_program_id()?;
         
-        let (blog_pda, _) = BlogConfig::get_blog_pda(blog_id)?;
+        // Calculate blog PDA using user's pubkey
+        let (blog_pda, _) = BlogConfig::get_user_blog_pda(user_pubkey)?;
         let (user_global_burn_stats_pda, _) = BlogConfig::get_user_global_burn_stats_pda(user_pubkey)?;
         let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
             user_pubkey,
@@ -1173,8 +1123,8 @@ impl RpcConnection {
             &token_2022_program_id,
         );
         
-        let burn_data = BlogBurnData::new(blog_id, user_pubkey.to_string(), message.to_string());
-        burn_data.validate(blog_id, &user_pubkey.to_string())?;
+        let burn_data = BlogBurnData::new(user_pubkey.to_string(), message.to_string());
+        burn_data.validate(&user_pubkey.to_string())?;
         
         let burn_memo = BurnMemo {
             version: 1,
@@ -1195,9 +1145,8 @@ impl RpcConnection {
         // Add memo instruction
         base_instructions.push(spl_memo::build_memo(memo_data_base64.as_bytes(), &[user_pubkey]));
         
-        // Burn instruction
+        // Burn instruction - only amount as parameter
         let mut instruction_data = BlogConfig::get_burn_for_blog_discriminator().to_vec();
-        instruction_data.extend_from_slice(&blog_id.to_le_bytes());
         instruction_data.extend_from_slice(&amount.to_le_bytes());
         
         base_instructions.push(Instruction::new_with_bytes(
@@ -1269,10 +1218,10 @@ impl RpcConnection {
     }
 
     /// Build an unsigned transaction to mint tokens for a blog
+    /// User can only mint tokens for their own blog (identified by their pubkey)
     pub async fn build_mint_tokens_for_blog_transaction(
         &self,
         user_pubkey: &Pubkey,
-        blog_id: u64,
         message: &str,
     ) -> Result<Transaction, RpcError> {
         // Validate message length
@@ -1282,14 +1231,15 @@ impl RpcConnection {
             ));
         }
         
-        log::info!("Building mint tokens for blog transaction for blog {}", blog_id);
+        log::info!("Building mint tokens for blog transaction for user {}", user_pubkey);
         
         let blog_program_id = BlogConfig::get_program_id()?;
         let memo_token_mint = BlogConfig::get_memo_token_mint()?;
         let token_2022_program_id = get_token_2022_program_id()?;
         let memo_mint_program_id = BlogConfig::get_memo_mint_program_id()?;
         
-        let (blog_pda, _) = BlogConfig::get_blog_pda(blog_id)?;
+        // Calculate blog PDA using user's pubkey
+        let (blog_pda, _) = BlogConfig::get_user_blog_pda(user_pubkey)?;
         let (mint_authority_pda, _) = BlogConfig::get_mint_authority_pda()?;
         let user_token_account = spl_associated_token_account::get_associated_token_address_with_program_id(
             user_pubkey,
@@ -1297,8 +1247,8 @@ impl RpcConnection {
             &token_2022_program_id,
         );
         
-        let mint_data = BlogMintData::new(blog_id, user_pubkey.to_string(), message.to_string());
-        mint_data.validate(blog_id, &user_pubkey.to_string())?;
+        let mint_data = BlogMintData::new(user_pubkey.to_string(), message.to_string());
+        mint_data.validate(&user_pubkey.to_string())?;
         
         // For mint operations, burn_amount should be 0
         let burn_memo = BurnMemo {
@@ -1320,9 +1270,8 @@ impl RpcConnection {
         // Add memo instruction
         base_instructions.push(spl_memo::build_memo(memo_data_base64.as_bytes(), &[user_pubkey]));
         
-        // Mint instruction
-        let mut instruction_data = BlogConfig::get_mint_for_blog_discriminator().to_vec();
-        instruction_data.extend_from_slice(&blog_id.to_le_bytes());
+        // Mint instruction - no parameters needed, blog is identified by user's pubkey
+        let instruction_data = BlogConfig::get_mint_for_blog_discriminator().to_vec();
         
         base_instructions.push(Instruction::new_with_bytes(
             blog_program_id,
@@ -1392,79 +1341,25 @@ impl RpcConnection {
         Ok(transaction)
     }
 
-    /// Get global blog statistics from the memo-blog contract
-    /// 
-    /// # Returns
-    /// Global statistics including total number of blogs created
-    pub async fn get_blog_global_statistics(&self) -> Result<BlogGlobalStatistics, RpcError> {
-        let (global_counter_pda, _) = BlogConfig::get_global_blog_counter_pda()?;
-        
-        log::info!("Fetching global blog statistics from PDA: {}", global_counter_pda);
-        
-        let account_info = self.get_account_info(&global_counter_pda.to_string(), Some("base64")).await?;
-        let account_info: serde_json::Value = serde_json::from_str(&account_info)
-            .map_err(|e| RpcError::Other(format!("Failed to parse account info: {}", e)))?;
-        
-        if account_info["value"].is_null() {
-            return Err(RpcError::Other(
-                "Global blog counter not found. Please initialize the memo-blog system first.".to_string()
-            ));
-        }
-        
-        let account_data = account_info["value"]["data"][0]
-            .as_str()
-            .ok_or_else(|| RpcError::Other("Failed to get account data".to_string()))?;
-        
-        let data = base64::decode(account_data)
-            .map_err(|e| RpcError::Other(format!("Failed to decode account data: {}", e)))?;
-        
-        // Verify the account is owned by memo-blog program
-        let owner = account_info["value"]["owner"]
-            .as_str()
-            .ok_or_else(|| RpcError::Other("Failed to get account owner".to_string()))?;
-        
-        let expected_program_id = BlogConfig::get_program_id()?.to_string();
-        if owner != expected_program_id {
-            return Err(RpcError::Other(format!(
-                "Account not owned by memo-blog program. Expected: {}, Got: {}", 
-                expected_program_id, owner
-            )));
-        }
-        
-        // Parse total blogs count (skip 8-byte discriminator, read next 8 bytes)
-        if data.len() < 16 {
-            return Err(RpcError::Other("Invalid account data size".to_string()));
-        }
-        
-        let total_blogs_bytes = &data[8..16];
-        let total_blogs = u64::from_le_bytes(
-            total_blogs_bytes.try_into()
-                .map_err(|e| RpcError::Other(format!("Failed to parse total blogs: {:?}", e)))?
-        );
-        
-        log::info!("Global blog statistics: {} total blogs", total_blogs);
-        
-        Ok(BlogGlobalStatistics { total_blogs })
-    }
-    
-    /// Get information for a specific blog
+    /// Get information for a user's blog
+    /// Each user can only have one blog, identified by their pubkey
     /// 
     /// # Parameters
-    /// * `blog_id` - The ID of the blog to fetch
+    /// * `user_pubkey` - The public key of the blog owner
     /// 
     /// # Returns
-    /// Blog information if it exists
-    pub async fn get_blog_info(&self, blog_id: u64) -> Result<BlogInfo, RpcError> {
-        let (blog_pda, _) = BlogConfig::get_blog_pda(blog_id)?;
+    /// Blog information if it exists, or error if no blog found
+    pub async fn get_user_blog(&self, user_pubkey: &Pubkey) -> Result<BlogInfo, RpcError> {
+        let (blog_pda, _) = BlogConfig::get_user_blog_pda(user_pubkey)?;
         
-        log::info!("Fetching blog {} info from PDA: {}", blog_id, blog_pda);
+        log::info!("Fetching blog for user {} from PDA: {}", user_pubkey, blog_pda);
         
         let account_info = self.get_account_info(&blog_pda.to_string(), Some("base64")).await?;
         let account_info: serde_json::Value = serde_json::from_str(&account_info)
             .map_err(|e| RpcError::Other(format!("Failed to parse account info: {}", e)))?;
         
         if account_info["value"].is_null() {
-            return Err(RpcError::Other(format!("Blog {} not found", blog_id)));
+            return Err(RpcError::Other(format!("Blog not found for user {}", user_pubkey)));
         }
         
         let account_data = account_info["value"]["data"][0]
@@ -1491,23 +1386,35 @@ impl RpcConnection {
         self.parse_blog_data(&data)
     }
     
+    /// Check if a user has a blog
+    /// 
+    /// # Parameters
+    /// * `user_pubkey` - The public key of the user to check
+    /// 
+    /// # Returns
+    /// true if the user has a blog, false otherwise
+    pub async fn user_has_blog(&self, user_pubkey: &Pubkey) -> Result<bool, RpcError> {
+        match self.get_user_blog(user_pubkey).await {
+            Ok(_) => Ok(true),
+            Err(e) => {
+                // Check if it's a "not found" error
+                if e.to_string().contains("not found") {
+                    Ok(false)
+                } else {
+                    Err(e)
+                }
+            }
+        }
+    }
+    
     /// Parse Blog account data according to the contract's data structure
+    /// Updated: removed blog_id field since blog is identified by creator pubkey
     fn parse_blog_data(&self, data: &[u8]) -> Result<BlogInfo, RpcError> {
         if data.len() < 8 {
             return Err(RpcError::Other("Data too short for discriminator".to_string()));
         }
         
         let mut offset = 8; // Skip discriminator
-        
-        // Read blog_id (u64)
-        if data.len() < offset + 8 {
-            return Err(RpcError::Other("Data too short for blog_id".to_string()));
-        }
-        let blog_id = u64::from_le_bytes(
-            data[offset..offset + 8].try_into()
-                .map_err(|e| RpcError::Other(format!("Failed to parse blog_id: {:?}", e)))?
-        );
-        offset += 8;
         
         // Read creator (Pubkey = 32 bytes)
         if data.len() < offset + 32 {
@@ -1570,16 +1477,6 @@ impl RpcConnection {
         );
         offset += 8;
         
-        // Read minted_amount (u64)
-        if data.len() < offset + 8 {
-            return Err(RpcError::Other("Data too short for minted_amount".to_string()));
-        }
-        let minted_amount = u64::from_le_bytes(
-            data[offset..offset + 8].try_into()
-                .map_err(|e| RpcError::Other(format!("Failed to parse minted_amount: {:?}", e)))?
-        );
-        offset += 8;
-        
         // Read last_memo_time (i64)
         if data.len() < offset + 8 {
             return Err(RpcError::Other("Data too short for last_memo_time".to_string()));
@@ -1597,7 +1494,6 @@ impl RpcConnection {
         let bump = data[offset];
         
         Ok(BlogInfo {
-            blog_id,
             creator,
             created_at,
             last_updated,
@@ -1606,131 +1502,16 @@ impl RpcConnection {
             image,
             memo_count,
             burned_amount,
-            minted_amount,
             last_memo_time,
             bump,
         })
     }
-    
-    /// Get comprehensive statistics for all blogs
-    /// 
-    /// # Returns
-    /// Complete statistics including all blog information
-    pub async fn get_all_blog_statistics(&self) -> Result<BlogStatistics, RpcError> {
-        log::info!("Fetching comprehensive blog statistics...");
-        
-        // First get global statistics
-        let global_stats = self.get_blog_global_statistics().await?;
-        let total_blogs = global_stats.total_blogs;
-        
-        if total_blogs == 0 {
-            log::info!("No blogs found");
-            return Ok(BlogStatistics {
-                total_blogs: 0,
-                valid_blogs: 0,
-                total_memos: 0,
-                total_burned_tokens: 0,
-                total_mint_operations: 0,
-                blogs: vec![],
-            });
-        }
-        
-        let mut valid_blogs = 0;
-        let mut total_memos = 0;
-        let mut total_burned_tokens: u64 = 0;
-        let mut total_mint_operations: u64 = 0;
-        let mut blogs = Vec::new();
-        
-        // Iterate through all blogs
-        for blog_id in 0..total_blogs {
-            match self.get_blog_info(blog_id).await {
-                Ok(blog_info) => {
-                    valid_blogs += 1;
-                    total_memos += blog_info.memo_count;
-                    total_burned_tokens += blog_info.burned_amount;
-                    total_mint_operations += blog_info.minted_amount;
-                    blogs.push(blog_info);
-                    
-                    log::info!("Successfully fetched blog {}", blog_id);
-                },
-                Err(e) => {
-                    log::warn!("Failed to fetch blog {}: {}", blog_id, e);
-                }
-            }
-        }
-        
-        log::info!("Blog statistics summary: {}/{} valid blogs, {} total memos, {} total burned tokens, {} mint operations", 
-                  valid_blogs, total_blogs, total_memos, total_burned_tokens, total_mint_operations);
-        
-        Ok(BlogStatistics {
-            total_blogs,
-            valid_blogs,
-            total_memos,
-            total_burned_tokens,
-            total_mint_operations,
-            blogs,
-        })
-    }
 
-    /// Check if a specific blog exists
-    /// 
-    /// # Parameters
-    /// * `blog_id` - The ID of the blog to check
-    /// 
-    /// # Returns
-    /// True if the blog exists, false otherwise
-    pub async fn blog_exists(&self, blog_id: u64) -> Result<bool, RpcError> {
-        match self.get_blog_info(blog_id).await {
-            Ok(_) => Ok(true),
-            Err(RpcError::Other(msg)) if msg.contains("not found") => Ok(false),
-            Err(e) => Err(e),
-        }
-    }
     
-    /// Get the total number of blogs that have been created
-    /// 
-    /// # Returns
-    /// The total number of blogs from the global counter
-    pub async fn get_total_blogs(&self) -> Result<u64, RpcError> {
-        let stats = self.get_blog_global_statistics().await?;
-        Ok(stats.total_blogs)
-    }
-    
-    /// Get blogs within a specific range
+    /// Get memo messages for a user's blog with pagination support
     /// 
     /// # Parameters
-    /// * `start_id` - Starting blog ID (inclusive)
-    /// * `end_id` - Ending blog ID (exclusive)
-    /// 
-    /// # Returns
-    /// Vector of blog information for existing blogs in the range
-    pub async fn get_blogs_range(&self, start_id: u64, end_id: u64) -> Result<Vec<BlogInfo>, RpcError> {
-        if start_id >= end_id {
-            return Err(RpcError::InvalidParameter(format!("Invalid range: start_id {} >= end_id {}", start_id, end_id)));
-        }
-        
-        let mut blogs = Vec::new();
-        
-        for blog_id in start_id..end_id {
-            match self.get_blog_info(blog_id).await {
-                Ok(blog_info) => {
-                    blogs.push(blog_info);
-                },
-                Err(e) => {
-                    log::debug!("Failed to fetch blog {}: {}", blog_id, e);
-                    // Continue to next blog instead of failing
-                }
-            }
-        }
-        
-        log::info!("Fetched {} blogs from range {}-{}", blogs.len(), start_id, end_id);
-        Ok(blogs)
-    }
-
-    /// Get memo messages for a blog with pagination support
-    /// 
-    /// # Parameters
-    /// * `blog_id` - The ID of the blog to get messages for
+    /// * `user_pubkey` - The public key of the blog owner
     /// * `limit` - Maximum number of messages to retrieve (1-1000)
     /// * `before` - Optional signature to get messages before this transaction
     /// 
@@ -1738,7 +1519,7 @@ impl RpcConnection {
     /// Blog memo messages response with pagination info
     pub async fn get_blog_memo_messages(
         &self,
-        blog_id: u64,
+        user_pubkey: &Pubkey,
         limit: usize,
         before: Option<String>,
     ) -> Result<BlogMemoMessagesResponse, RpcError> {
@@ -1747,12 +1528,12 @@ impl RpcConnection {
             return Err(RpcError::InvalidParameter("Limit must be between 1 and 1000".to_string()));
         }
         
-        // Get blog PDA
-        let (blog_pda, _) = BlogConfig::get_blog_pda(blog_id)?;
+        // Get blog PDA using user's pubkey
+        let (blog_pda, _) = BlogConfig::get_user_blog_pda(user_pubkey)?;
         
         // Check if blog exists
-        if !self.blog_exists(blog_id).await? {
-            return Err(RpcError::Other(format!("Blog {} not found", blog_id)));
+        if !self.user_has_blog(user_pubkey).await? {
+            return Err(RpcError::Other(format!("Blog not found for user {}", user_pubkey)));
         }
         
         // Get signatures for the blog account
@@ -1769,14 +1550,14 @@ impl RpcConnection {
             params[1]["before"] = serde_json::Value::String(before_sig);
         }
         
-        log::info!("Fetching signatures for blog {}: {}", blog_id, blog_pda);
+        log::info!("Fetching signatures for user {} blog: {}", user_pubkey, blog_pda);
         
         // Get signatures for address
         let signatures_response: serde_json::Value = self.send_request("getSignaturesForAddress", params).await?;
         let signatures = signatures_response.as_array()
             .ok_or_else(|| RpcError::Other("Invalid signatures response format".to_string()))?;
         
-        log::info!("Found {} signatures for blog {}", signatures.len(), blog_id);
+        log::info!("Found {} signatures for user {} blog", signatures.len(), user_pubkey);
         
         let mut messages = Vec::new();
         
@@ -1831,10 +1612,10 @@ impl RpcConnection {
         let has_more = signatures.len() == limit;
         let total_found = messages.len();
         
-        log::info!("Found {} memo messages for blog {}", total_found, blog_id);
+        log::info!("Found {} memo messages for user {} blog", total_found, user_pubkey);
         
         Ok(BlogMemoMessagesResponse {
-            blog_id,
+            creator: user_pubkey.to_string(),
             messages,
             total_found,
             has_more,
