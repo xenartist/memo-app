@@ -1797,7 +1797,7 @@ fn DevlogForm(
                                         prop:disabled=move || is_posting.get()
                                     >
                                         <i class="fas fa-upload"></i>
-                                        "Import"
+                                        "Import Image"
                                     </button>
                                 </div>
                             </div>
@@ -2388,7 +2388,7 @@ fn UpdateProjectForm(
                                         prop:disabled=move || is_updating.get()
                                     >
                                         <i class="fas fa-upload"></i>
-                                        "Import"
+                                        "Import Image"
                                     </button>
                                 </div>
                             </div>
