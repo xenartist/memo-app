@@ -12,6 +12,9 @@ use wasm_bindgen_futures::spawn_local;
 use crate::pages::pixel_view::{LazyPixelView, PixelView};
 use gloo_timers::future::TimeoutFuture;
 use leptos::web_sys::window;
+use web_sys::{HtmlInputElement, FileReader, Event, ProgressEvent};
+use wasm_bindgen::{closure::Closure, JsCast};
+use js_sys::Uint8Array;
 
 /// Post type for New Post dialog
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -62,6 +65,68 @@ fn format_burn_amount(amount: u64) -> String {
     }
 }
 
+/// Parse post message - handles both JSON format and plain text
+/// Uses custom JSON parsing (like devlog) to preserve newlines and handle control characters
+/// Returns (title, content, image)
+fn parse_post_message(message: &str) -> (String, String, String) {
+    // Clean NULL bytes but preserve newlines and other whitespace
+    let cleaned: String = message
+        .chars()
+        .filter(|c| *c != '\0')  // Only remove NULL bytes
+        .collect();
+    let cleaned = cleaned.trim();
+    
+    // Check if it looks like JSON
+    if cleaned.starts_with('{') {
+        // Use custom JSON field extraction (like devlog) to handle unescaped newlines
+        let title = extract_json_field(cleaned, "title").unwrap_or_default();
+        let content = extract_json_field(cleaned, "content")
+            .or_else(|| extract_json_field(cleaned, "message"))
+            .unwrap_or_default();
+        let image = extract_json_field(cleaned, "image").unwrap_or_default();
+        
+        return (title, content, image);
+    }
+    
+    // Plain text message - no title, content is the message, no image
+    (String::new(), cleaned.to_string(), String::new())
+}
+
+/// Extract a field value from JSON string (handles unescaped newlines)
+/// Same approach as devlog parsing in project_page.rs
+fn extract_json_field(json: &str, field: &str) -> Option<String> {
+    let pattern = format!("\"{}\":\"", field);
+    let start = json.find(&pattern)? + pattern.len();
+    let remaining = &json[start..];
+    
+    // Find the closing quote, handling escaped quotes
+    let mut end = 0;
+    let mut escaped = false;
+    for (i, c) in remaining.chars().enumerate() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if c == '\\' {
+            escaped = true;
+            continue;
+        }
+        if c == '"' {
+            end = i;
+            break;
+        }
+    }
+    
+    let value = &remaining[..end];
+    // Unescape the string - handle escaped quotes and backslashes, and \n sequences
+    Some(value
+        .replace("\\n", "\n")
+        .replace("\\r", "\r")
+        .replace("\\t", "\t")
+        .replace("\\\"", "\"")
+        .replace("\\\\", "\\"))
+}
+
 /// Render a transaction card based on operation type
 fn render_transaction_card(
     transaction: BlogContractTransaction,
@@ -71,7 +136,7 @@ fn render_transaction_card(
     let time_display = format_relative_time(transaction.timestamp);
     
     match transaction.details {
-        BlogOperationDetails::Create { blog_id, name, description, image } => {
+        BlogOperationDetails::Create { creator, name, description, image } => {
             view! {
                 <div class="transaction-card transaction-create">
                     <div class="transaction-header">
@@ -109,13 +174,9 @@ fn render_transaction_card(
                                     view! { <div></div> }.into_view()
                                 }}
                                 <div class="blog-meta">
-                                    <span class="blog-id">
-                                        <i class="fas fa-hashtag"></i>
-                                        {blog_id}
-                                    </span>
                                     <span class="blog-creator">
                                         <i class="fas fa-user"></i>
-                                        {shorten_address(&transaction.user)}
+                                        {shorten_address(&creator)}
                                     </span>
                                 </div>
                             </div>
@@ -131,7 +192,11 @@ fn render_transaction_card(
                 </div>
             }.into_view()
         },
-        BlogOperationDetails::Update { blog_id, name, description, image } => {
+        BlogOperationDetails::Update { creator, name, description, image } => {
+            let name_display = name.unwrap_or_else(|| "Blog".to_string());
+            let description_str = description.unwrap_or_default();
+            let image_str = image.unwrap_or_default();
+            let has_valid_image = !image_str.is_empty() && (image_str.starts_with("c:") || image_str.starts_with("n:"));
             view! {
                 <div class="transaction-card transaction-update">
                     <div class="transaction-header">
@@ -142,55 +207,38 @@ fn render_transaction_card(
                         <div class="transaction-time">{time_display}</div>
                     </div>
                     <div class="transaction-body">
-                        <div class="update-info">
-                            <h3 class="blog-id-title">
-                                <i class="fas fa-hashtag"></i>
-                                "Blog "{blog_id}
-                            </h3>
-                            {if let Some(new_name) = name {
+                        <div class="blog-info-horizontal">
+                            {if has_valid_image {
                                 view! {
-                                    <div class="update-field">
-                                        <strong>"Name: "</strong>
-                                        <span>{new_name}</span>
+                                    <div class="blog-image">
+                                        <LazyPixelView
+                                            art={image_str}
+                                            size=64
+                                        />
                                     </div>
                                 }.into_view()
                             } else {
-                                view! { <div></div> }.into_view()
-                            }}
-                            {if let Some(new_desc) = description {
                                 view! {
-                                    <div class="update-field">
-                                        <strong>"Description: "</strong>
-                                        <span>{new_desc}</span>
+                                    <div class="blog-image-placeholder">
+                                        <i class="fas fa-image"></i>
                                     </div>
                                 }.into_view()
-                            } else {
-                                view! { <div></div> }.into_view()
                             }}
-                            {if let Some(new_img) = image {
-                                if !new_img.is_empty() && (new_img.starts_with("c:") || new_img.starts_with("n:")) {
+                            <div class="blog-content">
+                                <h3 class="blog-name">{name_display}</h3>
+                                {if !description_str.is_empty() {
                                     view! {
-                                        <div class="update-field">
-                                            <strong>"New Image:"</strong>
-                                            <div class="update-image">
-                                                <LazyPixelView
-                                                    art={new_img}
-                                                    size=48
-                                                />
-                                            </div>
-                                        </div>
+                                        <p class="blog-description">{description_str}</p>
                                     }.into_view()
                                 } else {
                                     view! { <div></div> }.into_view()
-                                }
-                            } else {
-                                view! { <div></div> }.into_view()
-                            }}
-                            <div class="update-meta">
-                                <span class="updater">
-                                    <i class="fas fa-user"></i>
-                                    {shorten_address(&transaction.user)}
-                                </span>
+                                }}
+                                <div class="blog-meta">
+                                    <span class="blog-creator">
+                                        <i class="fas fa-user"></i>
+                                        {shorten_address(&creator)}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -204,16 +252,23 @@ fn render_transaction_card(
                 </div>
             }.into_view()
         },
-        BlogOperationDetails::Burn { blog_id, message } => {
+        BlogOperationDetails::Burn { burner, message } => {
+            // Parse message JSON
+            let (post_title, post_content, post_image) = parse_post_message(&message);
+            let has_post_image = !post_image.is_empty() && post_image != "n:";
+            
             // Fetch blog info for display
             let (blog_info, set_blog_info) = create_signal(None::<(String, String)>);
+            let burner_clone = burner.clone();
+            let burner_display = shorten_address(&burner);
             
             {
                 let session_clone = session;
                 create_effect(move |_| {
+                    let burner_for_effect = burner_clone.clone();
                     spawn_local(async move {
                         let session_read = session_clone.get_untracked();
-                        if let Ok(info) = session_read.get_blog_info(blog_id).await {
+                        if let Ok(info) = session_read.get_user_blog(&burner_for_effect).await {
                             set_blog_info.set(Some((
                                 info.name.clone(),
                                 info.image.clone(),
@@ -233,65 +288,70 @@ fn render_transaction_card(
                         <div class="transaction-time">{time_display}</div>
                     </div>
                     <div class="transaction-body">
-                        <div class="burn-info">
-                            <div class="blog-header-small">
-                                {move || {
-                                    let img = if let Some((_, blog_image)) = blog_info.get() {
-                                        blog_image
-                                    } else {
-                                        String::new()
-                                    };
-                                    
-                                    if !img.is_empty() && (img.starts_with("c:") || img.starts_with("n:")) {
-                                        view! {
-                                            <div class="blog-logo-small">
-                                                <LazyPixelView
-                                                    art={img}
-                                                    size=48
-                                                />
-                                            </div>
-                                        }.into_view()
-                                    } else {
-                                        view! {
-                                            <div class="blog-logo-placeholder-small">
-                                                <i class="fas fa-image"></i>
-                                            </div>
-                                        }.into_view()
-                                    }
-                                }}
-                                <div class="blog-meta-small">
-                                    <h4 class="blog-name-small">
+                        <div class="blog-info-horizontal">
+                            {
+                                // Show post image if available, otherwise show blog avatar
+                                if has_post_image {
+                                    view! {
+                                        <div class="blog-image">
+                                            <LazyPixelView
+                                                art={post_image.clone()}
+                                                size=64
+                                            />
+                                        </div>
+                                    }.into_view()
+                                } else {
+                                    view! {
                                         {move || {
-                                            if let Some((name, _)) = blog_info.get() {
-                                                name
+                                            let img = if let Some((_, blog_image)) = blog_info.get() {
+                                                blog_image
                                             } else {
-                                                format!("Blog #{}", blog_id)
+                                                String::new()
+                                            };
+                                            
+                                            if !img.is_empty() && (img.starts_with("c:") || img.starts_with("n:")) {
+                                                view! {
+                                                    <div class="blog-image">
+                                                        <LazyPixelView
+                                                            art={img}
+                                                            size=64
+                                                        />
+                                                    </div>
+                                                }.into_view()
+                                            } else {
+                                                view! {
+                                                    <div class="blog-image-placeholder">
+                                                        <i class="fas fa-image"></i>
+                                                    </div>
+                                                }.into_view()
                                             }
                                         }}
-                                    </h4>
-                                    <span class="blog-id-small">
-                                        <i class="fas fa-hashtag"></i>
-                                        {blog_id}
+                                    }.into_view()
+                                }
+                            }
+                            <div class="blog-content">
+                                // Post title or blog name
+                                <h3 class="blog-name">
+                                    {if !post_title.is_empty() {
+                                        post_title.clone()
+                                    } else {
+                                        "".to_string()
+                                    }}
+                                </h3>
+                                // Post content
+                                {if !post_content.is_empty() {
+                                    view! {
+                                        <p class="blog-description">{post_content.clone()}</p>
+                                    }.into_view()
+                                } else {
+                                    view! { <div></div> }.into_view()
+                                }}
+                                <div class="blog-meta">
+                                    <span class="blog-creator">
+                                        <i class="fas fa-user"></i>
+                                        {burner_display}
                                     </span>
                                 </div>
-                            </div>
-                            
-                            {if !message.is_empty() {
-                                view! {
-                                    <div class="burn-message">
-                                        <i class="fas fa-comment"></i>
-                                        <span>{message}</span>
-                                    </div>
-                                }.into_view()
-                            } else {
-                                view! { <div></div> }.into_view()
-                            }}
-                            
-                            <div class="burn-meta">
-                                <span class="burner">
-                                    <i class="fas fa-user"></i>
-                                    {shorten_address(&transaction.user)}
-                                </span>
                             </div>
                         </div>
                     </div>
@@ -305,18 +365,25 @@ fn render_transaction_card(
                 </div>
             }.into_view()
         },
-        BlogOperationDetails::Mint { blog_id, message } => {
+        BlogOperationDetails::Mint { minter, message } => {
+            // Parse message JSON
+            let (post_title, post_content, post_image) = parse_post_message(&message);
+            let has_post_image = !post_image.is_empty() && post_image != "n:";
+            
             // Fetch blog info for display
             let (blog_info, set_blog_info) = create_signal(None::<(String, String)>);
             // Fetch current mint reward based on supply
             let (mint_reward, set_mint_reward) = create_signal(None::<f64>);
+            let minter_clone = minter.clone();
+            let minter_display = shorten_address(&minter);
             
             {
                 let session_clone = session;
                 create_effect(move |_| {
+                    let minter_for_effect = minter_clone.clone();
                     spawn_local(async move {
                         let session_read = session_clone.get_untracked();
-                        if let Ok(info) = session_read.get_blog_info(blog_id).await {
+                        if let Ok(info) = session_read.get_user_blog(&minter_for_effect).await {
                             set_blog_info.set(Some((
                                 info.name.clone(),
                                 info.image.clone(),
@@ -343,65 +410,70 @@ fn render_transaction_card(
                         <div class="transaction-time">{time_display}</div>
                     </div>
                     <div class="transaction-body">
-                        <div class="mint-info">
-                            <div class="blog-header-small">
-                                {move || {
-                                    let img = if let Some((_, blog_image)) = blog_info.get() {
-                                        blog_image
-                                    } else {
-                                        String::new()
-                                    };
-                                    
-                                    if !img.is_empty() && (img.starts_with("c:") || img.starts_with("n:")) {
-                                        view! {
-                                            <div class="blog-logo-small">
-                                                <LazyPixelView
-                                                    art={img}
-                                                    size=48
-                                                />
-                                            </div>
-                                        }.into_view()
-                                    } else {
-                                        view! {
-                                            <div class="blog-logo-placeholder-small">
-                                                <i class="fas fa-image"></i>
-                                            </div>
-                                        }.into_view()
-                                    }
-                                }}
-                                <div class="blog-meta-small">
-                                    <h4 class="blog-name-small">
+                        <div class="blog-info-horizontal">
+                            {
+                                // Show post image if available, otherwise show blog avatar
+                                if has_post_image {
+                                    view! {
+                                        <div class="blog-image">
+                                            <LazyPixelView
+                                                art={post_image.clone()}
+                                                size=64
+                                            />
+                                        </div>
+                                    }.into_view()
+                                } else {
+                                    view! {
                                         {move || {
-                                            if let Some((name, _)) = blog_info.get() {
-                                                name
+                                            let img = if let Some((_, blog_image)) = blog_info.get() {
+                                                blog_image
                                             } else {
-                                                format!("Blog #{}", blog_id)
+                                                String::new()
+                                            };
+                                            
+                                            if !img.is_empty() && (img.starts_with("c:") || img.starts_with("n:")) {
+                                                view! {
+                                                    <div class="blog-image">
+                                                        <LazyPixelView
+                                                            art={img}
+                                                            size=64
+                                                        />
+                                                    </div>
+                                                }.into_view()
+                                            } else {
+                                                view! {
+                                                    <div class="blog-image-placeholder">
+                                                        <i class="fas fa-image"></i>
+                                                    </div>
+                                                }.into_view()
                                             }
                                         }}
-                                    </h4>
-                                    <span class="blog-id-small">
-                                        <i class="fas fa-hashtag"></i>
-                                        {blog_id}
+                                    }.into_view()
+                                }
+                            }
+                            <div class="blog-content">
+                                // Post title or blog name
+                                <h3 class="blog-name">
+                                    {if !post_title.is_empty() {
+                                        post_title.clone()
+                                    } else {
+                                        "".to_string()
+                                    }}
+                                </h3>
+                                // Post content
+                                {if !post_content.is_empty() {
+                                    view! {
+                                        <p class="blog-description">{post_content.clone()}</p>
+                                    }.into_view()
+                                } else {
+                                    view! { <div></div> }.into_view()
+                                }}
+                                <div class="blog-meta">
+                                    <span class="blog-creator">
+                                        <i class="fas fa-user"></i>
+                                        {minter_display}
                                     </span>
                                 </div>
-                            </div>
-                            
-                            {if !message.is_empty() {
-                                view! {
-                                    <div class="mint-message">
-                                        <i class="fas fa-comment"></i>
-                                        <span>{message}</span>
-                                    </div>
-                                }.into_view()
-                            } else {
-                                view! { <div></div> }.into_view()
-                            }}
-                            
-                            <div class="mint-meta">
-                                <span class="minter">
-                                    <i class="fas fa-user"></i>
-                                    {shorten_address(&transaction.user)}
-                                </span>
                             </div>
                         </div>
                     </div>
@@ -426,7 +498,8 @@ fn render_transaction_card(
     }
 }
 
-/// Render featured activity card (burn operations only)
+/// Render featured activity card (all operations with burn amount > 0)
+/// Layout follows memo project's featured card design
 fn render_featured_card(
     transaction: BlogContractTransaction,
     session: RwSignal<Session>,
@@ -434,22 +507,25 @@ fn render_featured_card(
     let burn_amount_display = format_burn_amount(transaction.burn_amount);
     let time_display = format_relative_time(transaction.timestamp);
     
-    // Only render burn operations in featured section
+    // Render different cards based on operation type
     match transaction.details {
-        BlogOperationDetails::Burn { blog_id, message } => {
-            // Fetch blog info for display
-            let (blog_info, set_blog_info) = create_signal(None::<(String, String)>);
+        BlogOperationDetails::Burn { burner, message } => {
+            // Parse message JSON
+            let (post_title, post_content, post_image) = parse_post_message(&message);
+            let has_post_image = !post_image.is_empty() && post_image != "n:";
+            let burner_display = shorten_address(&burner);
+            let burner_clone = burner.clone();
             
+            // Fetch blog name for display
+            let (blog_name, set_blog_name) = create_signal("Blog".to_string());
             {
                 let session_clone = session;
                 create_effect(move |_| {
+                    let burner_for_effect = burner_clone.clone();
                     spawn_local(async move {
                         let session_read = session_clone.get_untracked();
-                        if let Ok(info) = session_read.get_blog_info(blog_id).await {
-                            set_blog_info.set(Some((
-                                info.name.clone(),
-                                info.image.clone(),
-                            )));
+                        if let Ok(info) = session_read.get_user_blog(&burner_for_effect).await {
+                            set_blog_name.set(info.name.clone());
                         }
                     });
                 });
@@ -460,68 +536,61 @@ fn render_featured_card(
                     <div class="featured-card-content featured-burn">
                         <div class="featured-badge burn-badge">
                             <i class="fas fa-fire"></i>
-                            "Featured Burn Activity"
+                            "Blog Post"
                         </div>
                         
-                        <div class="featured-burn-content">
-                            <div class="featured-blog-header">
-                                {move || {
-                                    let img = if let Some((_, blog_image)) = blog_info.get() {
-                                        blog_image
-                                    } else {
-                                        String::new()
-                                    };
-                                    
-                                    if !img.is_empty() && (img.starts_with("c:") || img.starts_with("n:")) {
-                                        view! {
-                                            <div class="featured-logo">
-                                                <LazyPixelView
-                                                    art={img}
-                                                    size=80
-                                                />
-                                            </div>
-                                        }.into_view()
-                                    } else {
-                                        view! {
-                                            <div class="featured-logo-placeholder">
-                                                <i class="fas fa-image"></i>
-                                            </div>
-                                        }.into_view()
-                                    }
+                        // Main content - horizontal layout like devlog
+                        <div class="featured-post">
+                            <div class="post-layout-horizontal">
+                                // Image on the left
+                                {if has_post_image {
+                                    view! {
+                                        <div class="post-image">
+                                            <LazyPixelView
+                                                art={post_image}
+                                                size=100
+                                            />
+                                        </div>
+                                    }.into_view()
+                                } else {
+                                    view! { <div></div> }.into_view()
                                 }}
                                 
-                                <div class="featured-blog-meta">
-                                    <h3 class="featured-blog-name">
-                                        {move || {
-                                            if let Some((name, _)) = blog_info.get() {
-                                                name
-                                            } else {
-                                                format!("Blog #{}", blog_id)
-                                            }
-                                        }}
-                                    </h3>
-                                    <span class="featured-blog-id">"ID: "{blog_id}</span>
+                                // Content on the right
+                                <div class="post-content-wrapper">
+                                    {if !post_title.is_empty() {
+                                        view! {
+                                            <h3 class="post-title">{post_title}</h3>
+                                        }.into_view()
+                                    } else {
+                                        view! { <div></div> }.into_view()
+                                    }}
+                                    
+                                    {if !post_content.is_empty() {
+                                        view! {
+                                            <p class="post-content">{post_content}</p>
+                                        }.into_view()
+                                    } else {
+                                        view! { <div></div> }.into_view()
+                                    }}
+                                    
+                                    <div class="post-blog-info">
+                                        <span>"Blog: "</span>
+                                        <strong>{move || blog_name.get()}</strong>
+                                    </div>
                                 </div>
                             </div>
-                            
-                            {if !message.is_empty() {
-                                view! {
-                                    <p class="featured-message">{message}</p>
-                                }.into_view()
-                            } else {
-                                view! { <div></div> }.into_view()
-                            }}
                         </div>
                         
+                        // Stats at bottom
                         <div class="featured-stats">
                             <div class="featured-stat">
                                 <i class="fas fa-fire"></i>
                                 <span class="stat-value">{burn_amount_display}</span>
-                                <span class="stat-label">" MEMO Burned"</span>
                             </div>
                             <div class="featured-stat">
                                 <i class="fas fa-user"></i>
-                                <span class="stat-value">{shorten_address(&transaction.user)}</span>
+                                <span class="stat-value">{burner_display}</span>
                             </div>
                             <div class="featured-stat">
                                 <i class="fas fa-clock"></i>
@@ -532,7 +601,148 @@ fn render_featured_card(
                 </div>
             }.into_view()
         },
-        _ => view! { <div></div> }.into_view(), // Skip non-burn operations in featured section
+        BlogOperationDetails::Create { creator, name, description, image } => {
+            let creator_display = shorten_address(&creator);
+            let has_image = !image.is_empty() && (image.starts_with("c:") || image.starts_with("n:"));
+            
+            view! {
+                <div class="featured-card">
+                    <div class="featured-card-content featured-create">
+                        <div class="featured-badge create-badge">
+                            <i class="fas fa-blog"></i>
+                            "New Blog"
+                        </div>
+                        
+                        // Main content - horizontal layout
+                        <div class="featured-post">
+                            <div class="post-layout-horizontal">
+                                // Image on the left
+                                {if has_image {
+                                    view! {
+                                        <div class="post-image">
+                                            <LazyPixelView
+                                                art={image}
+                                                size=100
+                                            />
+                                        </div>
+                                    }.into_view()
+                                } else {
+                                    view! {
+                                        <div class="post-image-placeholder">
+                                            <i class="fas fa-blog"></i>
+                                        </div>
+                                    }.into_view()
+                                }}
+                                
+                                // Content on the right
+                                <div class="post-content-wrapper">
+                                    <h3 class="post-title">{name}</h3>
+                                    
+                                    {if !description.is_empty() {
+                                        view! {
+                                            <p class="post-content">{description}</p>
+                                        }.into_view()
+                                    } else {
+                                        view! { <div></div> }.into_view()
+                                    }}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        // Stats at bottom
+                        <div class="featured-stats">
+                            <div class="featured-stat">
+                                <i class="fas fa-fire"></i>
+                                <span class="stat-value">{burn_amount_display}</span>
+                            </div>
+                            <div class="featured-stat">
+                                <i class="fas fa-user"></i>
+                                <span class="stat-value">{creator_display}</span>
+                            </div>
+                            <div class="featured-stat">
+                                <i class="fas fa-clock"></i>
+                                <span class="stat-value">{time_display}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }.into_view()
+        },
+        BlogOperationDetails::Update { creator, name, description, image } => {
+            let creator_display = shorten_address(&creator);
+            let name_display = name.unwrap_or_else(|| "Blog".to_string());
+            let description_str = description.unwrap_or_default();
+            let image_str = image.unwrap_or_default();
+            let has_valid_image = !image_str.is_empty() && (image_str.starts_with("c:") || image_str.starts_with("n:"));
+            
+            view! {
+                <div class="featured-card">
+                    <div class="featured-card-content featured-update">
+                        <div class="featured-badge update-badge">
+                            <i class="fas fa-edit"></i>
+                            "Blog Updated"
+                        </div>
+                        
+                        // Main content - horizontal layout
+                        <div class="featured-post">
+                            <div class="post-layout-horizontal">
+                                // Image on the left
+                                {if has_valid_image {
+                                    view! {
+                                        <div class="post-image">
+                                            <LazyPixelView
+                                                art={image_str}
+                                                size=100
+                                            />
+                                        </div>
+                                    }.into_view()
+                                } else {
+                                    view! {
+                                        <div class="post-image-placeholder">
+                                            <i class="fas fa-edit"></i>
+                                        </div>
+                                    }.into_view()
+                                }}
+                                
+                                // Content on the right
+                                <div class="post-content-wrapper">
+                                    <h3 class="post-title">{name_display}</h3>
+                                    
+                                    {if !description_str.is_empty() {
+                                        view! {
+                                            <p class="post-content">{description_str}</p>
+                                        }.into_view()
+                                    } else {
+                                        view! { <div></div> }.into_view()
+                                    }}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        // Stats at bottom
+                        <div class="featured-stats">
+                            <div class="featured-stat">
+                                <i class="fas fa-fire"></i>
+                                <span class="stat-value">{burn_amount_display}</span>
+                            </div>
+                            <div class="featured-stat">
+                                <i class="fas fa-user"></i>
+                                <span class="stat-value">{creator_display}</span>
+                            </div>
+                            <div class="featured-stat">
+                                <i class="fas fa-clock"></i>
+                                <span class="stat-value">{time_display}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }.into_view()
+        },
+        BlogOperationDetails::Mint { minter: _, message: _ } => {
+            // Mint operations should not appear in featured (burn_amount = 0)
+            // but handle the case anyway
+            view! { <div class="featured-card-empty"></div> }.into_view()
+        },
     }
 }
 
@@ -568,14 +778,15 @@ pub fn BlogPage(
                 Ok(response) => {
                     log::info!("Loaded {} blog transactions", response.transactions.len());
                     
-                    // Filter burn operations and sort by burn amount (descending)
+                    // Filter all operations with burn amount > 0 (create, update, burn)
+                    // and sort by timestamp (newest first) for featured section
                     let mut burn_transactions: Vec<BlogContractTransaction> = response.transactions.iter()
-                        .filter(|tx| matches!(tx.operation_type, BlogOperationType::BurnForBlog))
+                        .filter(|tx| tx.burn_amount > 0)
                         .cloned()
                         .collect();
                     
-                    // Sort by burn amount (highest first)
-                    burn_transactions.sort_by(|a, b| b.burn_amount.cmp(&a.burn_amount));
+                    // Sort by timestamp (newest first) to show latest activity
+                    burn_transactions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
                     
                     // Take top 3 for featured section
                     let featured: Vec<BlogContractTransaction> = burn_transactions.iter()
@@ -627,18 +838,28 @@ pub fn BlogPage(
         let set_show_new_post = set_show_new_post_dialog;
         Rc::new(move || {
             set_show_new_post.set(false);
-            // Refresh transactions
+            // Refresh transactions immediately
             load_transactions.dispatch(());
+            // Also refresh after delay to catch confirmed transaction
+            spawn_local(async move {
+                TimeoutFuture::new(3_000).await;
+                load_transactions.dispatch(());
+            });
         })
     };
     
     // Callback for when blog is created
     let on_create_blog_success = {
         let set_show_create = set_show_create_blog_dialog;
-        Rc::new(move |_signature: String, _blog_id: u64| {
+        Rc::new(move |_signature: String| {
             set_show_create.set(false);
-            // Refresh to show new blog
+            // Refresh to show new blog immediately
             load_transactions.dispatch(());
+            // Also refresh after delay to catch confirmed transaction
+            spawn_local(async move {
+                TimeoutFuture::new(3_000).await;
+                load_transactions.dispatch(());
+            });
         })
     };
     
@@ -647,8 +868,13 @@ pub fn BlogPage(
         let set_show_update = set_show_update_blog_dialog;
         Rc::new(move |_signature: String| {
             set_show_update.set(false);
-            // Refresh to show updated blog
+            // Refresh to show updated blog immediately
             load_transactions.dispatch(());
+            // Also refresh after delay to catch confirmed transaction
+            spawn_local(async move {
+                TimeoutFuture::new(3_000).await;
+                load_transactions.dispatch(());
+            });
         })
     };
     
@@ -684,39 +910,68 @@ pub fn BlogPage(
                 </button>
             </div>
             
-            // Featured Activity Section (top 3 burn operations)
+            // Featured Activity Section (with 3D carousel effect)
             <Show when=move || !featured_burns.get().is_empty()>
-                <div class="featured-section">
+                <div class="blog-featured-section">
                     <h2 class="section-title">
                         <i class="fas fa-star"></i>
                         "Featured Activity"
                     </h2>
-                    <div class="featured-carousel">
-                        <div class="carousel-track">
-                            <Show
-                                when=move || !featured_burns.get().is_empty()
-                                fallback=|| view! { <div class="empty-featured"></div> }
-                            >
-                                {move || {
-                                    let featured = featured_burns.get();
-                                    let idx = current_featured_index.get();
-                                    let transaction = featured[idx].clone();
-                                    render_featured_card(transaction, session)
-                                }}
-                            </Show>
+                    <div class="blog-carousel-container">
+                        <div class="blog-carousel-track">
+                            {move || {
+                                let featured = featured_burns.get();
+                                let idx = current_featured_index.get();
+                                
+                                if featured.is_empty() {
+                                    return view! { <div class="empty-featured"></div> }.into_view();
+                                }
+                                
+                                let len = featured.len();
+                                let prev_idx = if idx == 0 { len - 1 } else { idx - 1 };
+                                let next_idx = (idx + 1) % len;
+                                
+                                view! {
+                                    // Back card (prev) - clickable
+                                    <div 
+                                        class="blog-featured-card blog-featured-card-back"
+                                        on:click=move |_| {
+                                            set_current_featured_index.set(prev_idx);
+                                        }
+                                    >
+                                        {render_featured_card(featured[prev_idx].clone(), session)}
+                                    </div>
+                                    
+                                    // Front card (current) - not clickable
+                                    <div class="blog-featured-card blog-featured-card-front">
+                                        {render_featured_card(featured[idx].clone(), session)}
+                                    </div>
+                                    
+                                    // Forward card (next) - clickable
+                                    <div 
+                                        class="blog-featured-card blog-featured-card-next"
+                                        on:click=move |_| {
+                                            set_current_featured_index.set(next_idx);
+                                        }
+                                    >
+                                        {render_featured_card(featured[next_idx].clone(), session)}
+                                    </div>
+                                }.into_view()
+                            }}
                         </div>
                     </div>
                     
                     // Carousel indicators
                     <Show when=move || { featured_burns.get().len() > 1 }>
-                        <div class="carousel-indicators">
+                        <div class="blog-carousel-indicators">
                             {move || {
                                 let featured = featured_burns.get();
+                                let idx = current_featured_index.get();
                                 (0..featured.len()).map(|i| {
                                     view! {
                                         <div 
-                                            class="indicator"
-                                            class:active=move || current_featured_index.get() == i
+                                            class="blog-indicator"
+                                            class:active=move || idx == i
                                             on:click=move |_| set_current_featured_index.set(i)
                                         ></div>
                                     }
@@ -835,7 +1090,8 @@ pub fn BlogPage(
     }
 }
 
-/// New Post Form - for creating burn or mint posts
+/// New Post Form - for creating burn or mint posts with pixel art support
+/// Layout follows New Devlog dialog design
 #[component]
 fn NewPostForm(
     session: RwSignal<Session>,
@@ -848,24 +1104,69 @@ fn NewPostForm(
     let on_create_blog_signal = create_rw_signal(Some(on_create_blog));
     
     // Form state
-    let (post_type, set_post_type) = create_signal(PostType::Burn);
+    let (post_type, set_post_type) = create_signal(PostType::Mint); // Default to Mint
+    let (post_title, set_post_title) = create_signal(String::new());
     let (message, set_message) = create_signal(String::new());
     let (burn_amount, set_burn_amount) = create_signal(1u64); // Minimum 1 MEMO for blog
+    let (pixel_art, set_pixel_art) = create_signal(Pixel::new_with_size(16));
+    let (grid_size, set_grid_size) = create_signal(16usize);
     let (is_posting, set_is_posting) = create_signal(false);
     let (error_message, set_error_message) = create_signal(String::new());
-    let (user_blog_id, set_user_blog_id) = create_signal::<Option<u64>>(None);
+    let (user_has_blog, set_user_has_blog) = create_signal(false);
     let (loading_blog, set_loading_blog) = create_signal(true);
+    let (show_copied, set_show_copied) = create_signal(false);
     
-    // Load user's blog
+    // Get image data
+    let get_image_data = move || -> String {
+        pixel_art.get().to_optimal_string()
+    };
+    
+    // Get burner pubkey
+    let get_burner_pubkey = move || -> String {
+        session.with(|s| s.get_public_key().unwrap_or_default())
+    };
+    
+    // Build final message JSON (same format as devlog)
+    // Format: {"type":"post","title":"...","content":"...","image":"..."}
+    let build_final_message = move || -> String {
+        let title = post_title.get().trim().to_string();
+        let content = message.get().trim().to_string();
+        let image = get_image_data();
+        
+        // Always include image field (consistent with devlog format)
+        format!(r#"{{"type":"post","title":"{}","content":"{}","image":"{}"}}"#,
+            title.replace('\\', "\\\\").replace('"', "\\\""),
+            content.replace('\\', "\\\\").replace('"', "\\\""),
+            image.replace('\\', "\\\\").replace('"', "\\\""))
+    };
+    
+    // Calculate memo size in real time
+    let calculate_memo_size = move || -> (usize, bool, String) {
+        let final_message = build_final_message();
+        
+        // Estimate memo size (simplified calculation)
+        // BurnMemo structure: category(4) + operation(~12) + burner(44) + message + amount(8) + base64 overhead
+        let estimated_size = 80 + final_message.len() + (final_message.len() / 3);
+        
+        let is_valid = estimated_size >= 69 && estimated_size <= 800;
+        let status = if is_valid {
+            "✅ Valid".to_string()
+        } else if estimated_size < 69 {
+            "❌ Too short".to_string()
+        } else {
+            "❌ Too long".to_string()
+        };
+        (estimated_size, is_valid, status)
+    };
+    
+    // Load user's blog - check if user has a blog
     create_effect(move |_| {
         spawn_local(async move {
             set_loading_blog.set(true);
             let session_read = session.get_untracked();
             if let Ok(pubkey) = session_read.get_public_key() {
-                if let Ok(blogs) = session_read.get_user_blogs(&pubkey, 1).await {
-                    if let Some(blog) = blogs.first() {
-                        set_user_blog_id.set(Some(blog.blog_id));
-                    }
+                if let Ok(has_blog) = session_read.user_has_blog(&pubkey).await {
+                    set_user_has_blog.set(has_blog);
                 }
             }
             set_loading_blog.set(false);
@@ -887,22 +1188,29 @@ fn NewPostForm(
             return;
         }
         
-        let blog_id = match user_blog_id.get() {
-            Some(id) => id,
-            None => {
-                set_error_message.set("❌ You need to create a blog first".to_string());
-                return;
-            }
-        };
-        
-        let msg = message.get().trim().to_string();
-        if msg.is_empty() {
-            set_error_message.set("❌ Message cannot be empty".to_string());
+        if !user_has_blog.get() {
+            set_error_message.set("❌ You need to create a blog first".to_string());
             return;
         }
         
-        if msg.len() > 696 {
-            set_error_message.set(format!("❌ Message too long ({}/696 characters)", msg.len()));
+        let title = post_title.get().trim().to_string();
+        if title.is_empty() || title.len() > 64 {
+            set_error_message.set(format!("❌ Title must be 1-64 characters, got {}", title.len()));
+            return;
+        }
+        
+        let content = message.get().trim().to_string();
+        if content.len() > 500 {
+            set_error_message.set(format!("❌ Content must be at most 500 characters, got {}", content.len()));
+            return;
+        }
+        
+        let final_message = build_final_message();
+        
+        // Check memo size
+        let (memo_size, is_valid, _) = calculate_memo_size();
+        if !is_valid {
+            set_error_message.set(format!("❌ Memo size ({} bytes) must be between 69-800 bytes", memo_size));
             return;
         }
         
@@ -914,16 +1222,25 @@ fn NewPostForm(
             return;
         }
         
+        // Check balance for burn
+        if post_type_val == PostType::Burn {
+            let token_balance = session.with_untracked(|s| s.get_token_balance());
+            if token_balance < amount as f64 {
+                set_error_message.set(format!("❌ Insufficient balance. Required: {} MEMO, Available: {:.2} MEMO", amount, token_balance));
+                return;
+            }
+        }
+        
         set_is_posting.set(true);
         set_error_message.set(String::new());
         
         spawn_local(async move {
             let result = if post_type_val == PostType::Burn {
                 let mut session_update = session.get_untracked();
-                session_update.burn_tokens_for_blog(blog_id, amount, &msg).await
+                session_update.burn_tokens_for_blog(amount, &final_message).await
             } else {
                 let mut session_update = session.get_untracked();
-                session_update.mint_tokens_for_blog(blog_id, &msg).await
+                session_update.mint_tokens_for_blog(&final_message).await
             };
             
             match result {
@@ -941,6 +1258,80 @@ fn NewPostForm(
                 }
             }
         });
+    };
+    
+    // Handle image import
+    let handle_import = move |ev: web_sys::MouseEvent| {
+        ev.prevent_default();
+        
+        let window_obj = web_sys::window().unwrap();
+        let document = window_obj.document().unwrap();
+        let input: HtmlInputElement = document
+            .create_element("input")
+            .unwrap()
+            .dyn_into()
+            .unwrap();
+        
+        input.set_type("file");
+        input.set_accept("image/*");
+        
+        let pixel_art_write = set_pixel_art;
+        let error_signal = set_error_message;
+        let grid_size_signal = grid_size;
+        
+        let onchange = Closure::wrap(Box::new(move |event: Event| {
+            let input: HtmlInputElement = event.target().unwrap().dyn_into().unwrap();
+            if let Some(file) = input.files().unwrap().get(0) {
+                let reader = FileReader::new().unwrap();
+                let reader_clone = reader.clone();
+                let current_grid_size = grid_size_signal.get();
+                
+                let onload = Closure::wrap(Box::new(move |_: ProgressEvent| {
+                    if let Ok(buffer) = reader_clone.result() {
+                        let array = Uint8Array::new(&buffer);
+                        let data = array.to_vec();
+                        
+                        match Pixel::from_image_data_with_size(&data, current_grid_size) {
+                            Ok(new_art) => {
+                                pixel_art_write.set(new_art);
+                                error_signal.set(String::new());
+                            }
+                            Err(e) => {
+                                error_signal.set(format!("Failed to process image: {}", e));
+                            }
+                        }
+                    }
+                }) as Box<dyn FnMut(ProgressEvent)>);
+                
+                reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+                onload.forget();
+                
+                reader.read_as_array_buffer(&file).unwrap();
+            }
+        }) as Box<dyn FnMut(_)>);
+        
+        input.set_onchange(Some(onchange.as_ref().unchecked_ref()));
+        onchange.forget();
+        
+        input.click();
+    };
+    
+    // Handle copy pixel art string
+    let copy_string = move |ev: web_sys::MouseEvent| {
+        ev.prevent_default();
+        ev.stop_propagation();
+        
+        let art_string = pixel_art.get().to_optimal_string();
+        if let Some(window_obj) = window() {
+            let clipboard = window_obj.navigator().clipboard();
+            let _ = clipboard.write_text(&art_string);
+            set_show_copied.set(true);
+            
+            spawn_local(async move {
+                TimeoutFuture::new(3000).await;
+                set_show_copied.set(false);
+            });
+        }
     };
     
     view! {
@@ -970,7 +1361,7 @@ fn NewPostForm(
                 }
             >
                 <Show
-                    when=move || user_blog_id.get().is_some()
+                    when=move || user_has_blog.get()
                     fallback=move || {
                         let handle_create = move |_| {
                             on_create_blog_signal.with_untracked(|cb_opt| {
@@ -997,81 +1388,218 @@ fn NewPostForm(
                         }
                     }
                 >
-                    <form class="post-form" on:submit=handle_submit>
-                        // Post Type Toggle
-                        <div class="form-group">
-                            <label>"Post Type"</label>
-                            <div class="post-type-toggle">
-                                <button
-                                    type="button"
-                                    class="toggle-btn"
-                                    class:active=move || post_type.get() == PostType::Burn
-                                    on:click=move |_| set_post_type.set(PostType::Burn)
-                                >
-                                    <i class="fas fa-fire"></i>
-                                    "Burn"
-                                </button>
-                                <button
-                                    type="button"
-                                    class="toggle-btn"
-                                    class:active=move || post_type.get() == PostType::Mint
-                                    on:click=move |_| set_post_type.set(PostType::Mint)
-                                >
-                                    <i class="fas fa-coins"></i>
-                                    "Mint"
-                                </button>
+                    <form class="blog-form" on:submit=handle_submit>
+                        <div class="form-layout">
+                            // Left side: Title and Content
+                            <div class="form-left">
+                                // Post Title
+                                <div class="form-group">
+                                    <label for="post-title">
+                                        <i class="fas fa-heading"></i>
+                                        "Post Title"
+                                        <span class="required">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="post-title"
+                                        prop:value=post_title
+                                        on:input=move |ev| set_post_title.set(event_target_value(&ev))
+                                        placeholder="Enter post title (1-64 characters)..."
+                                        maxlength="64"
+                                        prop:disabled=move || is_posting.get()
+                                    />
+                                    <small class="char-count">
+                                        {move || format!("{}/64 characters", post_title.get().len())}
+                                    </small>
+                                </div>
+                                
+                                // Post Content
+                                <div class="form-group">
+                                    <label for="post-content">
+                                        <i class="fas fa-align-left"></i>
+                                        "Content"
+                                    </label>
+                                    <textarea
+                                        id="post-content"
+                                        prop:value=message
+                                        on:input=move |ev| set_message.set(event_target_value(&ev))
+                                        placeholder="Write your post content here (max 500 characters)..."
+                                        maxlength="500"
+                                        rows="6"
+                                        prop:disabled=move || is_posting.get()
+                                    ></textarea>
+                                    <small class="char-count">
+                                        {move || format!("{}/500 characters", message.get().len())}
+                                    </small>
+                                </div>
                             </div>
-                        </div>
-                        
-                        // Message
-                        <div class="form-group">
-                            <label for="post-message">
-                                <i class="fas fa-comment"></i>
-                                "Message"
-                                <span class="char-count">
-                                    {move || format!("{}/696", message.get().len())}
-                                </span>
-                            </label>
-                            <textarea
-                                id="post-message"
-                                prop:value=message
-                                on:input=move |ev| set_message.set(event_target_value(&ev))
-                                placeholder="Write your post message..."
-                                maxlength="696"
-                                rows="5"
-                                prop:disabled=move || is_posting.get()
-                            ></textarea>
-                        </div>
-                        
-                        // Burn Amount (only for burn type)
-                        <Show when=move || post_type.get() == PostType::Burn>
-                            <div class="form-group">
-                                <label for="burn-amount">
-                                    <i class="fas fa-fire"></i>
-                                    "Burn Amount (MEMO)"
-                                </label>
-                                <input
-                                    type="number"
-                                    id="burn-amount"
-                                    prop:value=move || burn_amount.get().to_string()
-                                    on:input=move |ev| {
-                                        if let Ok(val) = event_target_value(&ev).parse::<u64>() {
-                                            set_burn_amount.set(val);
+                            
+                            // Right side: Image and Burn Amount
+                            <div class="form-right">
+                                <div class="pixel-art-editor">
+                                    <div class="pixel-art-header">
+                                        <label>
+                                            <i class="fas fa-image"></i>
+                                            "Post Image (Optional)"
+                                        </label>
+                                        <div class="pixel-art-controls">
+                                            <select
+                                                class="size-selector"
+                                                prop:value=move || grid_size.get().to_string()
+                                                on:change=move |ev| {
+                                                    let value = event_target_value(&ev);
+                                                    if let Ok(size) = value.parse::<usize>() {
+                                                        set_grid_size.set(size);
+                                                        set_pixel_art.set(Pixel::new_with_size(size));
+                                                    }
+                                                }
+                                                prop:disabled=move || is_posting.get()
+                                            >
+                                                <option value="16">"16×16 pixels"</option>
+                                                <option value="32">"32×32 pixels"</option>
+                                            </select>
+                                            <button
+                                                type="button"
+                                                class="import-btn"
+                                                on:click=handle_import
+                                                prop:disabled=move || is_posting.get()
+                                            >
+                                                <i class="fas fa-upload"></i>
+                                                "Import Image"
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    // Pixel Art Canvas
+                                    {move || {
+                                        let art_string = pixel_art.get().to_optimal_string();
+                                        let click_handler = Box::new(move |row, col| {
+                                            let mut new_art = pixel_art.get();
+                                            new_art.toggle_pixel(row, col);
+                                            set_pixel_art.set(new_art);
+                                        });
+                                        
+                                        view! {
+                                            <PixelView
+                                                art=art_string
+                                                size=180
+                                                editable=true
+                                                show_grid=true
+                                                on_click=click_handler
+                                            />
                                         }
-                                    }
-                                    min="1"
-                                    prop:disabled=move || is_posting.get()
-                                />
+                                    }}
+                                    
+                                    // Pixel art info
+                                    <div class="pixel-string-info">
+                                        <div class="string-display">
+                                            <span class="label">
+                                                <i class="fas fa-code"></i>
+                                                "Encoded: "
+                                            </span>
+                                            <span class="value">
+                                                {move || {
+                                                    let art_string = pixel_art.get().to_optimal_string();
+                                                    if art_string.len() <= 16 {
+                                                        art_string
+                                                    } else {
+                                                        format!("{}...{}", &art_string[..8], &art_string[art_string.len()-6..])
+                                                    }
+                                                }}
+                                            </span>
+                                            <div class="copy-container">
+                                                <button
+                                                    type="button"
+                                                    class="copy-button"
+                                                    on:click=copy_string
+                                                    title="Copy"
+                                                >
+                                                    <i class="fas fa-copy"></i>
+                                                </button>
+                                                <div class="copy-tooltip" class:show=move || show_copied.get()>
+                                                    "Copied!"
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                // Burn Amount (only for burn type)
+                                <Show when=move || post_type.get() == PostType::Burn>
+                                    <div class="form-group" style="margin-top: 16px;">
+                                        <label for="burn-amount">
+                                            <i class="fas fa-fire"></i>
+                                            "Burn Amount (MEMO)"
+                                        </label>
+                                        <input
+                                            type="number"
+                                            id="burn-amount"
+                                            prop:value=move || burn_amount.get().to_string()
+                                            on:input=move |ev| {
+                                                if let Ok(val) = event_target_value(&ev).parse::<u64>() {
+                                                    set_burn_amount.set(val.max(1));
+                                                }
+                                            }
+                                            min="1"
+                                            prop:disabled=move || is_posting.get()
+                                        />
+                                        <small class="form-hint">
+                                            <i class="fas fa-wallet"></i>
+                                            {move || {
+                                                let balance = session.with(|s| s.get_token_balance());
+                                                view! {
+                                                    "Minimum: 1 MEMO (Available: "
+                                                    <span class={if balance >= 1.0 { "balance-sufficient" } else { "balance-insufficient" }}>
+                                                        {format!("{:.2} MEMO", balance)}
+                                                    </span>
+                                                    ")"
+                                                }
+                                            }}
+                                        </small>
+                                    </div>
+                                </Show>
                             </div>
-                        </Show>
+                        </div>
                         
-                        // Mint info hint
-                        <Show when=move || post_type.get() == PostType::Mint>
-                            <div class="mint-info-hint">
-                                <i class="fas fa-info-circle"></i>
-                                "Mint amount is determined by the current supply tier"
+                        // Memo size indicator
+                        <div class="memo-size-indicator post">
+                            <div class="size-info">
+                                <span class="size-label">
+                                    <i class="fas fa-database"></i>
+                                    "Memo Size: "
+                                </span>
+                                {move || {
+                                    let (size, is_valid, status) = calculate_memo_size();
+                                    view! {
+                                        <span class="size-value" class:valid=is_valid class:invalid=move || !is_valid>
+                                            {format!("{} bytes", size)}
+                                        </span>
+                                        <span class="size-range">"(Required: 69-800 bytes)"</span>
+                                        <span class="size-status" class:valid=is_valid class:invalid=move || !is_valid>
+                                            {status}
+                                        </span>
+                                    }
+                                }}
                             </div>
-                        </Show>
+                            <div class="size-progress">
+                                {move || {
+                                    let (size, is_valid, _) = calculate_memo_size();
+                                    let percentage = ((size as f64 / 800.0) * 100.0).min(100.0);
+                                    view! {
+                                        <div class="progress-bar">
+                                            <div class="progress-track">
+                                                <div 
+                                                    class="progress-fill"
+                                                    class:valid=is_valid
+                                                    class:invalid=move || !is_valid
+                                                    style:width=move || format!("{}%", percentage)
+                                                ></div>
+                                            </div>
+                                        </div>
+                                    }
+                                }}
+                            </div>
+                        </div>
                         
                         // Error message
                         <Show when=move || !error_message.get().is_empty()>
@@ -1080,11 +1608,34 @@ fn NewPostForm(
                             </div>
                         </Show>
                         
-                        // Submit button
+                        // Submit button with mode toggle
                         <div class="form-actions">
+                            // Mode toggle
+                            <div class="action-mode-toggle">
+                                <button
+                                    type="button"
+                                    class="mode-btn"
+                                    class:active=move || post_type.get() == PostType::Mint
+                                    on:click=move |_| set_post_type.set(PostType::Mint)
+                                    title="Mint Mode"
+                                >
+                                    <i class="fas fa-coins"></i>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="mode-btn burn-mode"
+                                    class:active=move || post_type.get() == PostType::Burn
+                                    on:click=move |_| set_post_type.set(PostType::Burn)
+                                    title="Burn Mode"
+                                >
+                                    <i class="fas fa-fire"></i>
+                                </button>
+                            </div>
                             <button
                                 type="submit"
                                 class="submit-btn"
+                                class:burn-submit=move || post_type.get() == PostType::Burn
+                                class:mint-submit=move || post_type.get() == PostType::Mint
                                 prop:disabled=move || is_posting.get()
                             >
                                 {move || if is_posting.get() {
@@ -1130,27 +1681,25 @@ fn MyBlogView(
             
             let session_read = session.get_untracked();
             if let Ok(pubkey) = session_read.get_public_key() {
-                // Find user's blog
-                if let Ok(blogs) = session_read.get_user_blogs(&pubkey, 1).await {
-                    if let Some(blog) = blogs.first() {
-                        set_user_blog.set(Some(blog.clone()));
-                        
-                        // Load recent posts for this blog
-                        let rpc = RpcConnection::new();
-                        if let Ok(response) = rpc.get_recent_blog_contract_transactions().await {
-                            let user_posts: Vec<BlogContractTransaction> = response.transactions
-                                .into_iter()
-                                .filter(|tx| {
-                                    match &tx.details {
-                                        BlogOperationDetails::Burn { blog_id, .. } |
-                                        BlogOperationDetails::Mint { blog_id, .. } => *blog_id == blog.blog_id,
-                                        _ => false,
-                                    }
-                                })
-                                .take(10)
-                                .collect();
-                            set_blog_posts.set(user_posts);
-                        }
+                // Find user's blog (now directly by pubkey)
+                if let Ok(blog) = session_read.get_user_blog(&pubkey).await {
+                    set_user_blog.set(Some(blog.clone()));
+                    
+                    // Load recent posts for this blog
+                    let rpc = RpcConnection::new();
+                    if let Ok(response) = rpc.get_recent_blog_contract_transactions().await {
+                        let user_posts: Vec<BlogContractTransaction> = response.transactions
+                            .into_iter()
+                            .filter(|tx| {
+                                match &tx.details {
+                                    BlogOperationDetails::Burn { burner, .. } |
+                                    BlogOperationDetails::Mint { minter: burner, .. } => *burner == blog.creator,
+                                    _ => false,
+                                }
+                            })
+                            .take(10)
+                            .collect();
+                        set_blog_posts.set(user_posts);
                     }
                 }
             } else {
@@ -1272,7 +1821,7 @@ fn MyBlogView(
                                             
                                             <div class="blog-meta">
                                                 <h4 class="blog-name">{blog.name.clone()}</h4>
-                                                <span class="blog-id">"ID: "{blog.blog_id}</span>
+                                                <span class="blog-creator">{shorten_address(&blog.creator)}</span>
                                             </div>
                                         </div>
                                         
@@ -1289,11 +1838,6 @@ fn MyBlogView(
                                                 <i class="fas fa-fire"></i>
                                                 <span>{format_burn_amount(blog.burned_amount)}</span>
                                                 <span class="stat-label">"Burned"</span>
-                                            </div>
-                                            <div class="blog-stat">
-                                                <i class="fas fa-coins"></i>
-                                                <span>{blog.minted_amount}</span>
-                                                <span class="stat-label">"Mints"</span>
                                             </div>
                                             <div class="blog-stat">
                                                 <i class="fas fa-comment"></i>
@@ -1338,6 +1882,18 @@ fn MyBlogView(
                                 <div class="posts-list">
                                     {move || {
                                         blog_posts.get().into_iter().map(|tx| {
+                                            // Parse message content - handle both JSON and plain text
+                                            let (title, content, image) = match &tx.details {
+                                                BlogOperationDetails::Burn { message, .. } |
+                                                BlogOperationDetails::Mint { message, .. } => {
+                                                    parse_post_message(message)
+                                                },
+                                                _ => (String::new(), String::new(), String::new())
+                                            };
+                                            
+                                            let has_image = !image.is_empty() && image != "n:";
+                                            let image_clone = image.clone();
+                                            
                                             view! {
                                                 <div class="post-card">
                                                     <div class="post-header">
@@ -1361,19 +1917,41 @@ fn MyBlogView(
                                                         </span>
                                                     </div>
                                                     
-                                                    {match &tx.details {
-                                                        BlogOperationDetails::Burn { message, .. } |
-                                                        BlogOperationDetails::Mint { message, .. } => {
-                                                            if !message.is_empty() {
-                                                                view! {
-                                                                    <p class="post-message">{message.clone()}</p>
-                                                                }.into_view()
-                                                            } else {
-                                                                view! { <div></div> }.into_view()
-                                                            }
-                                                        },
-                                                        _ => view! { <div></div> }.into_view()
+                                                    // Post title
+                                                    {if !title.is_empty() {
+                                                        view! {
+                                                            <h4 class="post-title">{title.clone()}</h4>
+                                                        }.into_view()
+                                                    } else {
+                                                        view! { <div></div> }.into_view()
                                                     }}
+                                                    
+                                                    // Post content and image
+                                                    <div class="post-body">
+                                                        {if has_image {
+                                                            view! {
+                                                                <div class="post-image">
+                                                                    <PixelView
+                                                                        art=image_clone
+                                                                        size=64
+                                                                        editable=false
+                                                                        show_grid=false
+                                                                        on_click=Box::new(|_, _| {})
+                                                                    />
+                                                                </div>
+                                                            }.into_view()
+                                                        } else {
+                                                            view! { <div></div> }.into_view()
+                                                        }}
+                                                        
+                                                        {if !content.is_empty() {
+                                                            view! {
+                                                                <p class="post-message">{content.clone()}</p>
+                                                            }.into_view()
+                                                        } else {
+                                                            view! { <div></div> }.into_view()
+                                                        }}
+                                                    </div>
                                                     
                                                     {if tx.burn_amount > 0 {
                                                         view! {
@@ -1405,7 +1983,7 @@ fn MyBlogView(
 fn CreateBlogForm(
     session: RwSignal<Session>,
     on_close: Rc<dyn Fn()>,
-    on_success: Rc<dyn Fn(String, u64)>,
+    on_success: Rc<dyn Fn(String)>,
 ) -> impl IntoView {
     let on_close_signal = create_rw_signal(Some(on_close));
     let on_success_signal = create_rw_signal(Some(on_success));
@@ -1431,8 +2009,8 @@ fn CreateBlogForm(
         let image_data = get_image_data();
         let amount = burn_amount.get() * 1_000_000; // lamports
         
-        // Use blog_id 0 for calculation (actual ID assigned by contract)
-        let blog_data = BlogCreationData::new(0, name, description, image_data);
+        // Use dummy creator pubkey for calculation
+        let blog_data = BlogCreationData::new("11111111111111111111111111111111".to_string(), name, description, image_data);
         
         match blog_data.calculate_final_memo_size(amount) {
             Ok(size) => {
@@ -1514,13 +2092,9 @@ fn CreateBlogForm(
                     set_creating_status.set("Blog created successfully!".to_string());
                     session.update(|s| s.mark_balance_update_needed());
                     
-                    // Get the blog_id (we don't have it directly, but we can approximate)
-                    let rpc = RpcConnection::new();
-                    let blog_id = rpc.get_total_blogs().await.unwrap_or(1) - 1;
-                    
                     on_success_signal.with_untracked(|cb_opt| {
                         if let Some(callback) = cb_opt.as_ref() {
-                            callback(signature, blog_id);
+                            callback(signature);
                         }
                     });
                 },
@@ -1539,6 +2113,62 @@ fn CreateBlogForm(
                 set_pixel_art.set(Pixel::new_with_size(size));
             }
         }
+    };
+    
+    // Handle image import
+    let handle_import = move |ev: web_sys::MouseEvent| {
+        ev.prevent_default();
+        
+        let window = web_sys::window().unwrap();
+        let document = window.document().unwrap();
+        let input: HtmlInputElement = document
+            .create_element("input")
+            .unwrap()
+            .dyn_into()
+            .unwrap();
+        
+        input.set_type("file");
+        input.set_accept("image/*");
+        
+        let pixel_art_write = set_pixel_art;
+        let error_signal = set_error_message;
+        let grid_size_signal = grid_size;
+        
+        let onchange = Closure::wrap(Box::new(move |event: Event| {
+            let input: HtmlInputElement = event.target().unwrap().dyn_into().unwrap();
+            if let Some(file) = input.files().unwrap().get(0) {
+                let reader = FileReader::new().unwrap();
+                let reader_clone = reader.clone();
+                let current_grid_size = grid_size_signal.get();
+                
+                let onload = Closure::wrap(Box::new(move |_: ProgressEvent| {
+                    if let Ok(buffer) = reader_clone.result() {
+                        let array = Uint8Array::new(&buffer);
+                        let data = array.to_vec();
+                        
+                        match Pixel::from_image_data_with_size(&data, current_grid_size) {
+                            Ok(new_art) => {
+                                pixel_art_write.set(new_art);
+                                error_signal.set(String::new());
+                            }
+                            Err(e) => {
+                                error_signal.set(format!("Failed to process image: {}", e));
+                            }
+                        }
+                    }
+                }) as Box<dyn FnMut(ProgressEvent)>);
+                
+                reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+                onload.forget();
+                
+                reader.read_as_array_buffer(&file).unwrap();
+            }
+        }) as Box<dyn FnMut(_)>);
+        
+        input.set_onchange(Some(onchange.as_ref().unchecked_ref()));
+        onchange.forget();
+        
+        input.click();
     };
     
     // Copy string state
@@ -1638,6 +2268,15 @@ fn CreateBlogForm(
                                         <option value="16">"16×16 pixels"</option>
                                         <option value="32">"32×32 pixels"</option>
                                     </select>
+                                    <button 
+                                        type="button"
+                                        class="import-btn"
+                                        on:click=handle_import
+                                        prop:disabled=move || is_creating.get()
+                                    >
+                                        <i class="fas fa-upload"></i>
+                                        "Import Image"
+                                    </button>
                                 </div>
                             </div>
                             
@@ -1861,19 +2500,17 @@ fn UpdateBlogForm(
             set_loading_blog.set(true);
             let session_read = session.get_untracked();
             if let Ok(pubkey) = session_read.get_public_key() {
-                if let Ok(blogs) = session_read.get_user_blogs(&pubkey, 1).await {
-                    if let Some(blog) = blogs.first() {
-                        set_current_blog.set(Some(blog.clone()));
-                        set_blog_name.set(blog.name.clone());
-                        set_blog_description.set(blog.description.clone());
-                        
-                        // Try to load existing pixel art
-                        if !blog.image.is_empty() {
-                            if let Some(pixel) = Pixel::from_optimal_string(&blog.image) {
-                                let (size, _) = pixel.dimensions();
-                                set_grid_size.set(size);
-                                set_pixel_art.set(pixel);
-                            }
+                if let Ok(blog) = session_read.get_user_blog(&pubkey).await {
+                    set_current_blog.set(Some(blog.clone()));
+                    set_blog_name.set(blog.name.clone());
+                    set_blog_description.set(blog.description.clone());
+                    
+                    // Try to load existing pixel art
+                    if !blog.image.is_empty() {
+                        if let Some(pixel) = Pixel::from_optimal_string(&blog.image) {
+                            let (size, _) = pixel.dimensions();
+                            set_grid_size.set(size);
+                            set_pixel_art.set(pixel);
                         }
                     }
                 }
@@ -1931,7 +2568,6 @@ fn UpdateBlogForm(
         }
         
         let image = get_image_data();
-        let blog_id = blog.blog_id;
         
         set_is_updating.set(true);
         set_error_message.set(String::new());
@@ -1940,7 +2576,6 @@ fn UpdateBlogForm(
             let mut session_update = session.get_untracked();
             
             match session_update.update_blog(
-                blog_id,
                 Some(name),
                 Some(description),
                 Some(image),
