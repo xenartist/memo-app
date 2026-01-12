@@ -1507,6 +1507,164 @@ impl Session {
         Ok(signature)
     }
 
+    // ============ Forum-related methods ============
+
+    /// Create a new forum post
+    /// 
+    /// # Parameters
+    /// * `title` - Post title (1-128 characters)
+    /// * `content` - Post content (1-512 characters)
+    /// * `image` - Post image data (optional, max 256 characters)
+    /// * `burn_amount` - Amount of tokens to burn in lamports (minimum 1 MEMO = 1,000,000)
+    /// 
+    /// # Returns
+    /// Transaction signature and post ID on success
+    pub async fn create_forum_post(
+        &mut self,
+        title: &str,
+        content: &str,
+        image: &str,
+        burn_amount: u64,
+    ) -> Result<(String, u64), SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey_str = self.get_public_key()?;
+        let user_pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+
+        let rpc = RpcConnection::new();
+        let (mut transaction, post_id) = rpc.build_create_post_transaction(
+            &user_pubkey,
+            title,
+            content,
+            image,
+            burn_amount,
+        ).await.map_err(|e| SessionError::InvalidData(format!("Build transaction failed: {}", e)))?;
+
+        log::info!("Signing create forum post transaction for user {}...", user_pubkey);
+        self.sign_transaction(&mut transaction).await?;
+        
+        log::info!("Sending signed transaction...");
+        let signature = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Forum post created successfully for user {}, post_id: {}", user_pubkey, post_id);
+        
+        // Update balances after successful creation
+        match self.fetch_and_update_balances().await {
+            Ok(()) => log::info!("Successfully updated balances after creating forum post"),
+            Err(e) => {
+                log::error!("Failed to update balances after creating forum post: {}", e);
+                self.mark_balance_update_needed();
+            }
+        }
+
+        Ok((signature, post_id))
+    }
+
+    /// Burn tokens to reply to a forum post
+    /// 
+    /// # Parameters
+    /// * `post_id` - The ID of the post to reply to
+    /// * `amount` - Amount of tokens to burn in lamports (minimum 1 MEMO = 1,000,000)
+    /// * `message` - Reply message (optional, max 512 characters)
+    /// 
+    /// # Returns
+    /// Transaction signature on success
+    pub async fn burn_for_forum_post(
+        &mut self,
+        post_id: u64,
+        amount: u64,
+        message: &str,
+    ) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey_str = self.get_public_key()?;
+        let user_pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+
+        let rpc = RpcConnection::new();
+        let mut transaction = rpc.build_burn_for_post_transaction(
+            &user_pubkey,
+            post_id,
+            amount,
+            message,
+        ).await.map_err(|e| SessionError::InvalidData(format!("Build transaction failed: {}", e)))?;
+
+        log::info!("Signing burn for forum post transaction for user {}...", user_pubkey);
+        self.sign_transaction(&mut transaction).await?;
+        
+        log::info!("Sending signed transaction...");
+        let signature = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Burn for forum post {} completed successfully for user {}", post_id, user_pubkey);
+        
+        // Update balances after successful burn
+        match self.fetch_and_update_balances().await {
+            Ok(()) => log::info!("Successfully updated balances after burning for forum post"),
+            Err(e) => {
+                log::error!("Failed to update balances after burning for forum post: {}", e);
+                self.mark_balance_update_needed();
+            }
+        }
+
+        Ok(signature)
+    }
+
+    /// Mint tokens to reply to a forum post
+    /// 
+    /// # Parameters
+    /// * `post_id` - The ID of the post to reply to
+    /// * `message` - Reply message (optional, max 512 characters)
+    /// 
+    /// # Returns
+    /// Transaction signature on success
+    pub async fn mint_for_forum_post(
+        &mut self,
+        post_id: u64,
+        message: &str,
+    ) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey_str = self.get_public_key()?;
+        let user_pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+
+        let rpc = RpcConnection::new();
+        let mut transaction = rpc.build_mint_for_post_transaction(
+            &user_pubkey,
+            post_id,
+            message,
+        ).await.map_err(|e| SessionError::InvalidData(format!("Build transaction failed: {}", e)))?;
+
+        log::info!("Signing mint for forum post transaction for user {}...", user_pubkey);
+        self.sign_transaction(&mut transaction).await?;
+        
+        log::info!("Sending signed transaction...");
+        let signature = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
+        
+        log::info!("Mint for forum post {} completed successfully for user {}", post_id, user_pubkey);
+        
+        // Update balances after successful mint
+        match self.fetch_and_update_balances().await {
+            Ok(()) => log::info!("Successfully updated balances after minting for forum post"),
+            Err(e) => {
+                log::error!("Failed to update balances after minting for forum post: {}", e);
+                self.mark_balance_update_needed();
+            }
+        }
+
+        Ok(signature)
+    }
+
     // fetch and cache user burn stats
     pub async fn fetch_and_cache_user_burn_stats(&mut self) -> Result<Option<UserGlobalBurnStats>, SessionError> {
         if self.is_expired() {
