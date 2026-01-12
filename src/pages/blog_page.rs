@@ -143,7 +143,6 @@ fn render_transaction_card(
                         <div class="transaction-icon">
                             <i class="fas fa-plus-circle"></i>
                         </div>
-                        <div class="transaction-type">"Blog Created"</div>
                         <div class="transaction-time">{time_display}</div>
                     </div>
                     <div class="transaction-body">
@@ -203,7 +202,6 @@ fn render_transaction_card(
                         <div class="transaction-icon">
                             <i class="fas fa-edit"></i>
                         </div>
-                        <div class="transaction-type">"Blog Updated"</div>
                         <div class="transaction-time">{time_display}</div>
                     </div>
                     <div class="transaction-body">
@@ -284,7 +282,6 @@ fn render_transaction_card(
                         <div class="transaction-icon">
                             <i class="fas fa-fire"></i>
                         </div>
-                        <div class="transaction-type">"Tokens Burned for Blog"</div>
                         <div class="transaction-time">{time_display}</div>
                     </div>
                     <div class="transaction-body">
@@ -406,7 +403,6 @@ fn render_transaction_card(
                         <div class="transaction-icon">
                             <i class="fas fa-coins"></i>
                         </div>
-                        <div class="transaction-type">"Tokens Minted for Blog"</div>
                         <div class="transaction-time">{time_display}</div>
                     </div>
                     <div class="transaction-body">
