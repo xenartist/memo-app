@@ -972,7 +972,7 @@ pub fn MintPage(
                                         use crate::core::session::WalletType;
                                         let current_session = session.get();
                                         if *current_session.get_wallet_type() == WalletType::Backpack {
-                                            "(Not supported for Backpack wallet)"
+                                            "(Not supported for X1/Backpack wallet)"
                                         } else {
                                             "(Automatically mint multiple times)"
                                         }
