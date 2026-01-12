@@ -721,6 +721,28 @@ pub fn MintPage(
         }
     };
 
+    // Helper function to check burn requirement for auto mint (at least 69 MEMO burned)
+    let check_burn_requirement = move || -> Result<(), String> {
+        let current_session = session.get();
+        
+        // Get user burn stats
+        if let Some(burn_stats) = current_session.get_user_burn_stats() {
+            // Convert to tokens (divide by 1,000,000)
+            let burned_tokens = burn_stats.total_burned as f64 / 1_000_000.0;
+            
+            // Require at least 69 MEMO burned
+            if burned_tokens < 69.0 {
+                return Err(format!(
+                    "Auto mint requires at least 69 MEMO burned. You have burned {:.2} MEMO. Please burn more tokens to unlock auto mint feature.",
+                    burned_tokens
+                ));
+            }
+            Ok(())
+        } else {
+            Err("Auto mint requires burn statistics. Please initialize your burn stats first and burn at least 69 MEMO to unlock this feature.".to_string())
+        }
+    };
+
     let start_minting = create_action(move |_: &()| {
         async move {
             // Generate random memo
@@ -974,7 +996,7 @@ pub fn MintPage(
                                         if *current_session.get_wallet_type() == WalletType::Backpack {
                                             "(Not supported for X1/Backpack wallet)"
                                         } else {
-                                            "(Automatically mint multiple times)"
+                                            "(Automatically mint multiple times - requires 69+ MEMO burned)"
                                         }
                                     }}
                                 </span>
@@ -987,6 +1009,38 @@ pub fn MintPage(
                         if mint_mode.get() == MintMode::Auto {
                             view! {
                                 <div class="auto-mint-settings">
+                                    // Burn requirement notice
+                                    <div class="auto-mint-burn-notice">
+                                        {move || {
+                                            let current_session = session.get();
+                                            if let Some(burn_stats) = current_session.get_user_burn_stats() {
+                                                let burned_tokens = burn_stats.total_burned as f64 / 1_000_000.0;
+                                                if burned_tokens >= 69.0 {
+                                                    view! {
+                                                        <div class="burn-status-ok">
+                                                            <i class="fas fa-check-circle"></i>
+                                                            <span>{format!("✓ You have burned {:.2} MEMO (requirement: 69 MEMO)", burned_tokens)}</span>
+                                                        </div>
+                                                    }.into_view()
+                                                } else {
+                                                    view! {
+                                                        <div class="burn-status-insufficient">
+                                                            <i class="fas fa-exclamation-triangle"></i>
+                                                            <span>{format!("⚠ You have burned {:.2} MEMO. Auto mint requires at least 69 MEMO burned.", burned_tokens)}</span>
+                                                        </div>
+                                                    }.into_view()
+                                                }
+                                            } else {
+                                                view! {
+                                                    <div class="burn-status-none">
+                                                        <i class="fas fa-info-circle"></i>
+                                                        <span>"ℹ Auto mint requires burn stats initialized and at least 69 MEMO burned."</span>
+                                                    </div>
+                                                }.into_view()
+                                            }
+                                        }}
+                                    </div>
+                                    
                                     <div class="auto-count-line">
                                         <input 
                                             type="number"
@@ -1091,6 +1145,12 @@ pub fn MintPage(
                                                 set_auto_mint_running.set(false);
                                                 set_minting_status.set(String::new());
                                             } else {
+                                                // Check burn requirement first (at least 69 MEMO burned)
+                                                if let Err(error_msg) = check_burn_requirement() {
+                                                    set_error_message.set(Some(error_msg));
+                                                    return;
+                                                }
+                                                
                                                 // Check balance before starting auto minting
                                                 if let Err(error_msg) = check_balance_before_mint() {
                                                     set_error_message.set(Some(error_msg));
