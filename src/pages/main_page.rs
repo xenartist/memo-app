@@ -9,6 +9,7 @@ use crate::pages::mint_page::MintPage;
 use crate::pages::chat_page::ChatPage;
 use crate::pages::project_page::ProjectPage;
 use crate::pages::blog_page::BlogPage;
+use crate::pages::forum_page::ForumPage;
 use crate::pages::faucet_page::FaucetPage;
 use crate::pages::log_view::add_log_entry;
 use crate::pages::pixel_view::LazyPixelView;
@@ -22,6 +23,7 @@ use gloo_timers::future::TimeoutFuture;
 enum MenuItem {
     Mint,
     Project,
+    Forum,
     Chat,
     Blog,
     Faucet,
@@ -37,8 +39,8 @@ fn is_menu_available(menu_item: &MenuItem, network: Option<NetworkType>) -> bool
             true
         }
         Some(NetworkType::ProdStaging) | Some(NetworkType::Mainnet) => {
-            // Production and Staging: Mint, Project, Chat, Blog, Profile, and Settings available
-            matches!(menu_item, MenuItem::Mint | MenuItem::Project | MenuItem::Chat | MenuItem::Blog | MenuItem::Profile | MenuItem::Settings)
+            // Production and Staging: Mint, Project, Forum, Chat, Blog, Profile, and Settings available
+            matches!(menu_item, MenuItem::Mint | MenuItem::Project | MenuItem::Forum | MenuItem::Chat | MenuItem::Blog | MenuItem::Profile | MenuItem::Settings)
         }
         None => {
             // If network not set (shouldn't happen), default to restricted mode
@@ -628,6 +630,18 @@ pub fn MainPage(
                         </div>
                     </Show>
                     
+                    // Forum - available in testnet, staging, and mainnet
+                    <Show when=move || is_menu_available(&MenuItem::Forum, current_network())>
+                        <div 
+                            class="menu-item"
+                            class:active=move || current_menu.get() == MenuItem::Forum
+                            on:click=move |_| set_current_menu.set(MenuItem::Forum)
+                        >
+                            <i class="fas fa-users"></i>
+                            <span>"Forum"</span>
+                        </div>
+                    </Show>
+                    
                     // Blog - available in testnet, staging, and mainnet
                     <Show when=move || is_menu_available(&MenuItem::Blog, current_network())>
                         <div 
@@ -729,6 +743,13 @@ pub fn MainPage(
                         </div>
                     </Show>
                     
+                    // Forum - available in testnet, staging, and mainnet
+                    <Show when=move || is_menu_available(&MenuItem::Forum, current_network())>
+                        <div style=move || if current_menu.get() == MenuItem::Forum { "display: block;" } else { "display: none;" }>
+                            <ForumPage session=session/>
+                        </div>
+                    </Show>
+
                     // Blog - available in testnet, staging, and mainnet
                     <Show when=move || is_menu_available(&MenuItem::Blog, current_network())>
                         <div style=move || if current_menu.get() == MenuItem::Blog { "display: block;" } else { "display: none;" }>
