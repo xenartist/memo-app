@@ -737,6 +737,68 @@
     transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
+/* Auto Mint Burn Notice */
+.auto-mint-burn-notice {
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.burn-status-ok {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+    padding: 0.75rem;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.burn-status-ok i {
+    color: #28a745;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.burn-status-insufficient {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeaa7;
+    padding: 0.75rem;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.burn-status-insufficient i {
+    color: #ff9800;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.burn-status-none {
+    background: #d1ecf1;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
+    padding: 0.75rem;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.burn-status-none i {
+    color: #17a2b8;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
 /* Auto count line layout */
 .auto-count-line {
     display: flex;
