@@ -826,8 +826,10 @@ fn PostDetailsView(
                                                                     view! { <p class="no-message">"(No message)"</p> }.into_view()
                                                                 } else {
                                                                     let (title, content, image) = parse_message_content(&msg);
-                                                                    let display_content = if content.is_empty() { msg.clone() } else { content };
+                                                                    // Don't fallback to raw message - if content is empty, show empty
+                                                                    // The title and image are displayed separately
                                                                     let has_title = !title.is_empty();
+                                                                    let has_content = !content.is_empty();
                                                                     let has_image = !image.is_empty() && image != "n:" && image != "n:16";
                                                                     
                                                                     view! {
@@ -862,7 +864,13 @@ fn PostDetailsView(
                                                                                 } else {
                                                                                     view! { <span></span> }.into_view()
                                                                                 }}
-                                                                                <p inner_html={display_content.replace('\n', "<br>")}></p>
+                                                                                {if has_content {
+                                                                                    view! {
+                                                                                        <p inner_html={content.replace('\n', "<br>")}></p>
+                                                                                    }.into_view()
+                                                                                } else {
+                                                                                    view! { <span></span> }.into_view()
+                                                                                }}
                                                                             </div>
                                                                         </div>
                                                                     }.into_view()
