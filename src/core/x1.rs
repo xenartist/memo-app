@@ -1,4 +1,5 @@
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use js_sys::Promise;
 use web_sys::window;
@@ -181,7 +182,85 @@ impl X1Wallet {
         let result = JsFuture::from(promise).await
             .map_err(|e| X1Error::SigningFailed(format!("{:?}", e)))?;
         
-        result.as_string()
-            .ok_or(X1Error::SigningFailed("Signed transaction is not a string".to_string()))
+        // Try result as string directly (base64 encoded)
+        if let Some(signed_tx_str) = result.as_string() {
+            return Ok(signed_tx_str);
+        }
+        
+        // Try to handle _signedBytes property (X1 wallet specific format)
+        if let Ok(signed_bytes_val) = js_sys::Reflect::get(&result, &JsValue::from_str("_signedBytes")) {
+            // Get the length by iterating until we can't find a key
+            let mut bytes = Vec::new();
+            let mut index = 0;
+            
+            loop {
+                let key = JsValue::from_str(&index.to_string());
+                match js_sys::Reflect::get(&signed_bytes_val, &key) {
+                    Ok(val) if !val.is_undefined() => {
+                        if let Some(byte_num) = val.as_f64() {
+                            bytes.push(byte_num as u8);
+                            index += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    _ => break,
+                }
+            }
+            
+            if !bytes.is_empty() {
+                let base64_str = base64::encode(&bytes);
+                return Ok(base64_str);
+            }
+        }
+        
+        // Try to handle Uint8Array or byte array
+        if let Ok(array) = js_sys::Uint8Array::new(&result).dyn_into::<js_sys::Uint8Array>() {
+            let bytes = array.to_vec();
+            let base64_str = base64::encode(&bytes);
+            return Ok(base64_str);
+        }
+        
+        // Try to get transaction property which might be Uint8Array
+        if let Ok(tx_val) = js_sys::Reflect::get(&result, &JsValue::from_str("transaction")) {
+            // Check if it's a string
+            if let Some(tx_str) = tx_val.as_string() {
+                return Ok(tx_str);
+            }
+            // Check if it's a Uint8Array
+            if let Ok(array) = js_sys::Uint8Array::new(&tx_val).dyn_into::<js_sys::Uint8Array>() {
+                let bytes = array.to_vec();
+                let base64_str = base64::encode(&bytes);
+                return Ok(base64_str);
+            }
+        }
+        
+        // Try to get signedTransaction property
+        if let Ok(signed_tx_val) = js_sys::Reflect::get(&result, &JsValue::from_str("signedTransaction")) {
+            // Check if it's a string
+            if let Some(tx_str) = signed_tx_val.as_string() {
+                return Ok(tx_str);
+            }
+            // Check if it's a Uint8Array
+            if let Ok(array) = js_sys::Uint8Array::new(&signed_tx_val).dyn_into::<js_sys::Uint8Array>() {
+                let bytes = array.to_vec();
+                let base64_str = base64::encode(&bytes);
+                return Ok(base64_str);
+            }
+        }
+        
+        // Try result.toString()
+        if let Ok(to_string_func) = js_sys::Reflect::get(&result, &JsValue::from_str("toString")) {
+            if to_string_func.is_function() {
+                let func = js_sys::Function::from(to_string_func);
+                if let Ok(str_result) = func.call0(&result) {
+                    if let Some(tx_str) = str_result.as_string() {
+                        return Ok(tx_str);
+                    }
+                }
+            }
+        }
+        
+        Err(X1Error::SigningFailed("Signed transaction is not a string or Uint8Array".to_string()))
     }
 }

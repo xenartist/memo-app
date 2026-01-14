@@ -3090,7 +3090,8 @@
     flex-shrink: 0;
 }
 
-.devlog-content {
+/* Featured card devlog content - limit to 3 lines for featured display */
+.featured-devlog .devlog-content {
     color: var(--text-secondary);
     font-size: 0.9rem;
     line-height: 1.5;
@@ -3222,7 +3223,8 @@
         font-size: 1rem;
     }
     
-    .devlog-content {
+    /* Featured devlog content on mobile - limit to 4 lines */
+    .featured-devlog .devlog-content {
         font-size: 0.85rem;
         -webkit-line-clamp: 4;
     }
