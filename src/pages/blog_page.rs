@@ -100,24 +100,27 @@ fn extract_json_field(json: &str, field: &str) -> Option<String> {
     let remaining = &json[start..];
     
     // Find the closing quote, handling escaped quotes
-    let mut end = 0;
+    // Use byte offset instead of char index to avoid UTF-8 boundary issues
+    let mut end_byte = 0;
     let mut escaped = false;
-    for (i, c) in remaining.chars().enumerate() {
+    for c in remaining.chars() {
         if escaped {
             escaped = false;
+            end_byte += c.len_utf8();
             continue;
         }
         if c == '\\' {
             escaped = true;
+            end_byte += c.len_utf8();
             continue;
         }
         if c == '"' {
-            end = i;
             break;
         }
+        end_byte += c.len_utf8();
     }
     
-    let value = &remaining[..end];
+    let value = &remaining[..end_byte];
     // Unescape the string - handle escaped quotes and backslashes, and \n sequences
     Some(value
         .replace("\\n", "\n")
@@ -808,7 +811,7 @@ pub fn BlogPage(
         load_transactions.dispatch(());
     });
     
-    // Auto-rotate featured cards every 10 seconds
+    // Auto-rotate featured cards every 30 seconds
     {
         let interval_handle = set_interval_with_handle(
             move || {
@@ -819,7 +822,7 @@ pub fn BlogPage(
                     });
                 }
             },
-            std::time::Duration::from_secs(10),
+            std::time::Duration::from_secs(30),
         );
         
         on_cleanup(move || {
