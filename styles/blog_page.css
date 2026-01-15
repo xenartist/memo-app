@@ -1047,6 +1047,20 @@
     transform: translateY(-2px);
 }
 
+/* Refresh Button - Secondary style (similar to My Blog) */
+.refresh-btn {
+    background: transparent;
+    color: var(--text-secondary);
+    border-color: var(--border-secondary, var(--border-primary));
+}
+
+.refresh-btn:hover:not(:disabled) {
+    background: var(--bg-hover, var(--bg-secondary));
+    color: var(--text-primary);
+    border-color: var(--text-primary);
+    transform: translateY(-2px);
+}
+
 /* Light mode adjustments for action buttons */
 [data-theme="light"] .create-blog-action-btn {
     background: rgba(16, 185, 129, 0.1);
@@ -1060,6 +1074,10 @@
     background: rgba(0, 0, 0, 0.05);
 }
 
+[data-theme="light"] .refresh-btn {
+    background: rgba(0, 0, 0, 0.05);
+}
+
 /* Dark mode adjustments for action buttons */
 [data-theme="dark"] .create-blog-action-btn {
     background: rgba(16, 185, 129, 0.15);
@@ -1070,6 +1088,10 @@
 }
 
 [data-theme="dark"] .my-blog-btn {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .refresh-btn {
     background: rgba(255, 255, 255, 0.05);
 }
 
