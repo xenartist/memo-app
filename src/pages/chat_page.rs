@@ -3,7 +3,7 @@ use leptos::html::Div;
 use wasm_bindgen::JsCast;
 use crate::core::session::Session;
 use crate::core::rpc_base::RpcConnection;
-use crate::core::rpc_chat::{ChatStatistics, ChatGroupInfo, LocalChatMessage, MessageStatus, BurnLeaderboardResponse, LeaderboardEntry};
+use crate::core::rpc_chat::{ChatStatistics, ChatGroupInfo, LocalChatMessage, MessageStatus, BurnLeaderboardResponse, LeaderboardEntry, ChatContractTransaction};
 use crate::core::rpc_profile::{UserDisplayInfo};
 use crate::pages::log_view::add_log_entry;
 use crate::pages::pixel_view::{PixelView, LazyPixelView};
@@ -16,6 +16,7 @@ use js_sys::Uint8Array;
 use std::rc::Rc;
 use std::collections::HashMap;
 use futures;
+use gloo_timers::callback::Interval;
 
 // Chat page view mode
 #[derive(Clone, PartialEq)]
@@ -51,6 +52,10 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     let (loading, set_loading) = create_signal(true);
     let (error_message, set_error_message) = create_signal::<Option<String>>(None);
     let (current_view, set_current_view) = create_signal(ChatView::GroupsList);
+    
+    // Featured Activity state
+    let (featured_burns, set_featured_burns) = create_signal::<Vec<ChatContractTransaction>>(vec![]);
+    let (current_featured_index, set_current_featured_index) = create_signal(0_usize);
     
     // pagination state
     let (current_page, set_current_page) = create_signal(1usize);
@@ -136,26 +141,45 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
         leaderboard
     };
 
-    // Load burn leaderboard and global stats on component mount
+    // Load burn leaderboard, global stats, and featured burns on component mount
     spawn_local(async move {
         set_loading.set(true);
         set_error_message.set(None);
         
-        add_log_entry("INFO", "Loading burn leaderboard and global stats...");
+        add_log_entry("INFO", "Loading burn leaderboard, global stats, and featured burns...");
         
         let rpc = RpcConnection::new();
         
-        // parallel get leaderboard data and global stats
+        // parallel get leaderboard data, global stats, and recent transactions
         let leaderboard_future = rpc.get_burn_leaderboard();
         let global_stats_future = rpc.get_chat_global_statistics();
+        let transactions_future = rpc.get_recent_chat_contract_transactions();
         
-        match futures::join!(leaderboard_future, global_stats_future) {
-            (Ok(leaderboard), Ok(global_stats)) => {
+        match futures::join!(leaderboard_future, global_stats_future, transactions_future) {
+            (Ok(leaderboard), Ok(global_stats), Ok(transactions_response)) => {
                 // Sort leaderboard by burned_amount
                 let sorted_leaderboard = sort_leaderboard(leaderboard);
                 
-                add_log_entry("INFO", &format!("Loaded {} groups in burn leaderboard, {} total groups", 
-                             sorted_leaderboard.entries.len(), global_stats.total_groups));
+                add_log_entry("INFO", &format!("Loaded {} groups in burn leaderboard, {} total groups, {} recent transactions", 
+                             sorted_leaderboard.entries.len(), global_stats.total_groups, transactions_response.transactions.len()));
+                
+                // Filter and sort burn transactions by burn_amount (descending) to get top burns
+                let mut burn_transactions: Vec<ChatContractTransaction> = transactions_response.transactions.iter()
+                    .filter(|tx| tx.burn_amount > 0)
+                    .cloned()
+                    .collect();
+                
+                // Sort by burn_amount (descending) to show biggest burns first
+                burn_transactions.sort_by(|a, b| b.burn_amount.cmp(&a.burn_amount));
+                
+                // Take top 3 for featured section
+                let featured: Vec<ChatContractTransaction> = burn_transactions.iter()
+                    .take(3)
+                    .cloned()
+                    .collect();
+                
+                add_log_entry("INFO", &format!("Featured {} burn transactions with highest amounts", featured.len()));
+                set_featured_burns.set(featured);
                 
                 // parallel get all group infos in leaderboard
                 let mut group_info_futures = vec![];
@@ -176,16 +200,13 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                     }
                 }
                 
-                let total_messages: u64 = all_group_infos.values().map(|info| info.memo_count).sum();
-                add_log_entry("INFO", &format!("Calculated total messages in leaderboard: {}", total_messages));
-                
                 // set all data
                 set_leaderboard_data.set(Some(sorted_leaderboard));
                 set_total_groups.set(global_stats.total_groups);
                 set_leaderboard_group_infos.set(all_group_infos);
                 set_error_message.set(None);
             },
-            (Err(e), _) | (_, Err(e)) => {
+            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
                 let error_msg = format!("Failed to load data: {}", e);
                 add_log_entry("ERROR", &error_msg);
                 set_error_message.set(Some(error_msg));
@@ -209,6 +230,21 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
             }
         }
     });
+
+    // Auto-rotate featured cards every 30 seconds
+    {
+        let interval_handle = Interval::new(30_000, move || {
+            let current_len = featured_burns.get().len();
+            if current_len > 0 {
+                set_current_featured_index.update(|idx| {
+                    *idx = (*idx + 1) % current_len;
+                });
+            }
+        });
+        
+        // Keep interval alive
+        std::mem::forget(interval_handle);
+    }
 
     // Function to enter a chat room
     let enter_chat_room = move |group_id: u64| {
@@ -1553,30 +1589,40 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                 // Groups List View
                 <div class="groups-list-container">
                     <div class="page-header">
-                        <div class="header-buttons">
-                            <button 
-                                class="create-group-button"
-                                on:click=open_create_dialog
-                                disabled=move || loading.get()
-                                title=move || {
-                                    if !session.with(|s| s.has_user_profile()) {
-                                        "Please create your profile first".to_string()
-                                    } else {
-                                        "Create new chat group".to_string()
+                        <div class="header-content">
+                            <div class="header-text">
+                                <h1>
+                                    <i class="fas fa-comments"></i>
+                                    "Chat Groups"
+                                </h1>
+                                <p class="page-subtitle">"Connect and communicate on X1 Blockchain"</p>
+                            </div>
+                            <div class="header-actions">
+                                <button 
+                                    class="create-group-button"
+                                    on:click=open_create_dialog
+                                    disabled=move || loading.get()
+                                    title=move || {
+                                        if !session.with(|s| s.has_user_profile()) {
+                                            "Please create your profile first".to_string()
+                                        } else {
+                                            "Create new chat group".to_string()
+                                        }
                                     }
-                                }
-                            >
-                                <i class="fas fa-plus"></i>
-                                "Create Group"
-                            </button>
-                            <button 
-                                class="refresh-button"
-                                on:click=refresh_groups_data
-                                disabled=move || loading.get()
-                            >
-                                <i class="fas fa-sync-alt"></i>
-                                {move || if loading.get() { "Loading..." } else { "Refresh" }}
-                            </button>
+                                >
+                                    <i class="fas fa-plus"></i>
+                                    "Create Group"
+                                </button>
+                                <button 
+                                    class="refresh-button"
+                                    on:click=refresh_groups_data
+                                    disabled=move || loading.get()
+                                    title="Refresh chat groups"
+                                >
+                                    <i class="fas fa-sync-alt" class:fa-spin=move || loading.get()></i>
+                                    "Refresh"
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -1621,11 +1667,72 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                             leaderboard_data.get().map(|leaderboard| {
                                 view! {
                                     <div class="leaderboard-overview">
-                                        <LeaderboardOverviewStats 
-                                            leaderboard=leaderboard.clone()
-                                            total_groups=total_groups.get()
-                                            leaderboard_total_messages=leaderboard_total_messages
-                                        />
+                                        // Featured Activity Section (with 3D carousel effect)
+                                        <Show when=move || !featured_burns.get().is_empty()>
+                                            <div class="chat-featured-section">
+                                                <h2 class="section-title">
+                                                    <i class="fas fa-star"></i>
+                                                    "Featured Activity"
+                                                </h2>
+                                                <div class="chat-carousel-container">
+                                                    <div class="chat-carousel-track">
+                                                        {move || {
+                                                            let featured = featured_burns.get();
+                                                            let idx = current_featured_index.get();
+                                                            
+                                                            if featured.is_empty() {
+                                                                return view! { <div class="empty-featured"></div> }.into_view();
+                                                            }
+                                                            
+                                                            let len = featured.len();
+                                                            let prev_idx = if idx == 0 { len - 1 } else { idx - 1 };
+                                                            let next_idx = (idx + 1) % len;
+                                                            
+                                                            view! {
+                                                                // Back card (prev) - clickable
+                                                                <div class="carousel-card back" on:click=move |_| {
+                                                                    set_current_featured_index.update(|i| *i = prev_idx);
+                                                                }>
+                                                                    {render_chat_featured_card(featured[prev_idx].clone(), session, leaderboard_group_infos)}
+                                                                </div>
+                                                                
+                                                                // Front card (current) - main focus
+                                                                <div class="carousel-card front">
+                                                                    {render_chat_featured_card(featured[idx].clone(), session, leaderboard_group_infos)}
+                                                                </div>
+                                                                
+                                                                // Next card - clickable
+                                                                <div class="carousel-card next" on:click=move |_| {
+                                                                    set_current_featured_index.update(|i| *i = next_idx);
+                                                                }>
+                                                                    {render_chat_featured_card(featured[next_idx].clone(), session, leaderboard_group_infos)}
+                                                                </div>
+                                                            }.into_view()
+                                                        }}
+                                                    </div>
+                                                    
+                                                    // Carousel indicators
+                                                    <div class="carousel-indicators">
+                                                        {move || {
+                                                            let featured = featured_burns.get();
+                                                            let idx = current_featured_index.get();
+                                                            
+                                                            featured.iter().enumerate().map(|(i, _)| {
+                                                                view! {
+                                                                    <button
+                                                                        class="indicator"
+                                                                        class:active=move || i == idx
+                                                                        on:click=move |_| set_current_featured_index.set(i)
+                                                                    >
+                                                                    </button>
+                                                                }
+                                                            }).collect::<Vec<_>>()
+                                                        }}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </Show>
+                                        
                                         <div class="display-mode-selector">
                                             <label for="display-mode">
                                                 <i class="fas fa-filter"></i>
@@ -2903,41 +3010,202 @@ fn CreateChatGroupForm(
 
 #[component]
 fn LeaderboardOverviewStats(leaderboard: BurnLeaderboardResponse, total_groups: u64, leaderboard_total_messages: Memo<u64>) -> impl IntoView {
-    view! {
-        <div class="overview-stats">
-            <h2>"Chat Overview"</h2>
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-users"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3>{total_groups}</h3>
-                        <p>"Groups in Total"</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon">
+    // This component is no longer used - replaced by Featured Activity section
+    view! { <div></div> }
+}
+
+/// Render featured activity card for chat burns
+fn render_chat_featured_card(
+    transaction: ChatContractTransaction,
+    session: RwSignal<Session>,
+    leaderboard_group_infos: ReadSignal<std::collections::HashMap<u64, ChatGroupInfo>>,
+) -> impl IntoView {
+    use crate::core::rpc_chat::ChatOperationDetails;
+    
+    let burn_amount_display = format!("{} MEMO", transaction.burn_amount / 1_000_000);
+    let time_display = format_relative_time(transaction.timestamp);
+    
+    // Render different cards based on operation type
+    match transaction.details {
+        ChatOperationDetails::BurnForGroup { burner, group_id, message } => {
+            let burner_display = shorten_address(&burner);
+            let group_infos = leaderboard_group_infos.get();
+            let group_info = group_infos.get(&group_id).cloned();
+            
+            view! {
+                <div class="featured-card-content featured-burn">
+                    <div class="featured-badge burn-badge">
                         <i class="fas fa-fire"></i>
+                        "Chat Burn Activity"
                     </div>
-                    <div class="stat-content">
-                        <h3>{format!("{}", leaderboard.total_burned_tokens / 1_000_000)}</h3>
-                        <p>"MEMO Burned (Top 100)"</p>
+                    
+                    <div class="featured-burn-info">
+                        {if let Some(info) = group_info {
+                            view! {
+                                <div class="group-info-section">
+                                    {if !info.image.is_empty() && (info.image.starts_with("c:") || info.image.starts_with("n:")) {
+                                        view! {
+                                            <div class="group-image">
+                                                <LazyPixelView
+                                                    art={info.image}
+                                                    size=60
+                                                />
+                                            </div>
+                                        }.into_view()
+                                    } else {
+                                        view! { <div></div> }.into_view()
+                                    }}
+                                    <h3 class="group-name">{info.name}</h3>
+                                </div>
+                            }.into_view()
+                        } else {
+                            view! {
+                                <h3 class="group-name">{format!("Group #{}", group_id)}</h3>
+                            }.into_view()
+                        }}
+                        
+                        {if !message.is_empty() {
+                            view! {
+                                <p class="burn-message">{message}</p>
+                            }.into_view()
+                        } else {
+                            view! { <div></div> }.into_view()
+                        }}
+                        
+                        <div class="featured-meta">
+                            <div class="meta-item">
+                                <i class="fas fa-user"></i>
+                                <span>{burner_display}</span>
+                            </div>
+                            <div class="meta-item burn-amount">
+                                <i class="fas fa-fire"></i>
+                                <span class="amount-highlight">{burn_amount_display}</span>
+                            </div>
+                            <div class="meta-item">
+                                <i class="fas fa-clock"></i>
+                                <span>{time_display}</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-comments"></i>
+            }
+        },
+        ChatOperationDetails::CreateGroup { group_id, name, description, image, .. } => {
+            view! {
+                <div class="featured-card-content featured-create">
+                    <div class="featured-badge create-badge">
+                        <i class="fas fa-plus-circle"></i>
+                        "New Group Created"
                     </div>
-                    <div class="stat-content">
-                        <h3>{move || leaderboard_total_messages.get()}</h3>
-                        <p>"Messages (Top 100)"</p>
+                    
+                    <div class="featured-create-info">
+                        {if !image.is_empty() && (image.starts_with("c:") || image.starts_with("n:")) {
+                            view! {
+                                <div class="group-image">
+                                    <LazyPixelView
+                                        art={image}
+                                        size=80
+                                    />
+                                </div>
+                            }.into_view()
+                        } else {
+                            view! { <div></div> }.into_view()
+                        }}
+                        
+                        <h3 class="group-name">{name}</h3>
+                        
+                        {if !description.is_empty() {
+                            view! {
+                                <p class="group-description">{description}</p>
+                            }.into_view()
+                        } else {
+                            view! { <div></div> }.into_view()
+                        }}
+                        
+                        <div class="featured-meta">
+                            <div class="meta-item burn-amount">
+                                <i class="fas fa-fire"></i>
+                                <span class="amount-highlight">{burn_amount_display}</span>
+                            </div>
+                            <div class="meta-item">
+                                <i class="fas fa-clock"></i>
+                                <span>{time_display}</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
-            </div>
-        </div>
+            }
+        },
+        ChatOperationDetails::SendMemo { sender, group_id, message } => {
+            let sender_display = shorten_address(&sender);
+            let group_infos = leaderboard_group_infos.get();
+            let group_info = group_infos.get(&group_id).cloned();
+            
+            view! {
+                <div class="featured-card-content featured-message">
+                    <div class="featured-badge message-badge">
+                        <i class="fas fa-comment"></i>
+                        "Chat Message"
+                    </div>
+                    
+                    <div class="featured-message-info">
+                        {if let Some(info) = group_info {
+                            view! {
+                                <h3 class="group-name">{info.name}</h3>
+                            }.into_view()
+                        } else {
+                            view! {
+                                <h3 class="group-name">{format!("Group #{}", group_id)}</h3>
+                            }.into_view()
+                        }}
+                        
+                        <p class="message-content">{message}</p>
+                        
+                        <div class="featured-meta">
+                            <div class="meta-item">
+                                <i class="fas fa-user"></i>
+                                <span>{sender_display}</span>
+                            </div>
+                            <div class="meta-item">
+                                <i class="fas fa-clock"></i>
+                                <span>{time_display}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    }
+}
+
+/// Format relative time from Unix timestamp
+fn format_relative_time(timestamp: i64) -> String {
+    let now = js_sys::Date::new_0().get_time() as i64 / 1000;
+    let diff = now - timestamp;
+    
+    if diff < 60 {
+        "Just now".to_string()
+    } else if diff < 3600 {
+        let minutes = diff / 60;
+        format!("{} minute{} ago", minutes, if minutes > 1 { "s" } else { "" })
+    } else if diff < 86400 {
+        let hours = diff / 3600;
+        format!("{} hour{} ago", hours, if hours > 1 { "s" } else { "" })
+    } else if diff < 2592000 {
+        let days = diff / 86400;
+        format!("{} day{} ago", days, if days > 1 { "s" } else { "" })
+    } else {
+        let months = diff / 2592000;
+        format!("{} month{} ago", months, if months > 1 { "s" } else { "" })
+    }
+}
+
+/// Shorten address for display
+fn shorten_address(address: &str) -> String {
+    if address.len() > 8 {
+        format!("{}...{}", &address[..4], &address[address.len()-4..])
+    } else {
+        address.to_string()
     }
 }
 
