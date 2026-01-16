@@ -63,7 +63,7 @@ pub fn SettingsPage() -> impl IntoView {
     let initial_compute_buffer = stored
         .as_ref()
         .map(|s| s.compute_unit_buffer_percentage.min(100))
-        .unwrap_or(0);
+        .unwrap_or(1);
 
     let initial_compute_price = stored
         .as_ref()

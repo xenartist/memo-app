@@ -182,6 +182,15 @@ pub fn ForumPage(
                                                 <i class="fas fa-plus"></i>
                                                 "New Post"
                                             </button>
+                                            <button 
+                                                class="refresh-button"
+                                                on:click=move |_| load_posts_data.dispatch(())
+                                                disabled=move || loading.get()
+                                                title="Refresh posts"
+                                            >
+                                                <i class="fas fa-sync-alt" class:fa-spin=move || loading.get()></i>
+                                                "Refresh"
+                                            </button>
                                         </div>
                                     </div>
                                 </div>

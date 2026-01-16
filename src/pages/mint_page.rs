@@ -302,17 +302,11 @@ pub fn TokenHoldersLeaderboard() -> impl IntoView {
     let (holders, set_holders) = create_signal::<Vec<(String, f64)>>(Vec::new());
     let (loading, set_loading) = create_signal(true);
     let (error, set_error) = create_signal::<Option<String>>(None);
-    let (is_loaded, set_is_loaded) = create_signal(false);
     
     const MAX_DISPLAY: usize = 100;
     
-    // Fetch holders data (only once when component mounts)
+    // Fetch holders data
     let fetch_holders = move || {
-        // Only fetch if not already loaded
-        if is_loaded.get() {
-            return;
-        }
-        
         spawn_local(async move {
             set_loading.set(true);
             set_error.set(None);
@@ -323,7 +317,6 @@ pub fn TokenHoldersLeaderboard() -> impl IntoView {
                 Ok(all_holders) => {
                     set_holders.set(all_holders);
                     set_loading.set(false);
-                    set_is_loaded.set(true);
                     log::info!("Token holders leaderboard loaded successfully");
                 },
                 Err(e) => {
@@ -375,11 +368,22 @@ pub fn TokenHoldersLeaderboard() -> impl IntoView {
     view! {
         <div class="token-holders-leaderboard">
             <div class="leaderboard-header">
-                <h3>
-                    <i class="fas fa-trophy"></i>
-                    "MEMO Token Holders - Top 100"
-                </h3>
-                <p>"Ranked by token balance"</p>
+                <div>
+                    <h3>
+                        <i class="fas fa-trophy"></i>
+                        "MEMO Token Holders - Top 100"
+                    </h3>
+                    <p>"Ranked by token balance"</p>
+                </div>
+                <button 
+                    class="refresh-button"
+                    on:click=move |_| fetch_holders()
+                    disabled=move || loading.get()
+                    title="Refresh holders"
+                >
+                    <i class="fas fa-sync-alt" class:fa-spin=move || loading.get()></i>
+                    "Refresh"
+                </button>
             </div>
             
             {move || {
@@ -460,19 +464,13 @@ pub fn BurnerLeaderboard() -> impl IntoView {
     let (burners, set_burners) = create_signal::<Vec<(String, f64, u64)>>(Vec::new());
     let (loading, set_loading) = create_signal(true);
     let (error, set_error) = create_signal::<Option<String>>(None);
-    let (is_loaded, set_is_loaded) = create_signal(false);
     let (user_display_cache, set_user_display_cache) = create_signal::<HashMap<String, UserDisplayInfo>>(HashMap::new());
     
     const MAX_DISPLAY: usize = 100;
     const TOP_N_DISPLAY_INFO: usize = 10; // Get profile info for top 10
     
-    // Fetch burners data (only once when component mounts)
+    // Fetch burners data
     let fetch_burners = move || {
-        // Only fetch if not already loaded
-        if is_loaded.get() {
-            return;
-        }
-        
         spawn_local(async move {
             set_loading.set(true);
             set_error.set(None);
@@ -483,7 +481,6 @@ pub fn BurnerLeaderboard() -> impl IntoView {
                 Ok(all_burners) => {
                     set_burners.set(all_burners.clone());
                     set_loading.set(false);
-                    set_is_loaded.set(true);
                     log::info!("Token burners leaderboard loaded successfully");
                     
                     // Fetch profile info for top 10 burners
@@ -560,11 +557,22 @@ pub fn BurnerLeaderboard() -> impl IntoView {
     view! {
         <div class="token-burners-leaderboard">
             <div class="leaderboard-header">
-                <h3>
-                    <i class="fas fa-fire"></i>
-                    "MEMO Token Burners - Top 100"
-                </h3>
-                <p>"Ranked by total burned tokens"</p>
+                <div>
+                    <h3>
+                        <i class="fas fa-fire"></i>
+                        "MEMO Token Burners - Top 100"
+                    </h3>
+                    <p>"Ranked by total burned tokens"</p>
+                </div>
+                <button 
+                    class="refresh-button"
+                    on:click=move |_| fetch_burners()
+                    disabled=move || loading.get()
+                    title="Refresh burners"
+                >
+                    <i class="fas fa-sync-alt" class:fa-spin=move || loading.get()></i>
+                    "Refresh"
+                </button>
             </div>
             
             {move || {
