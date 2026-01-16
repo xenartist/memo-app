@@ -50,6 +50,9 @@
 
 .header-actions {
     flex-shrink: 0;
+    display: flex;
+    gap: 1rem;
+    align-items: center;
 }
 
 /* New Project Button */
@@ -83,6 +86,38 @@
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
+}
+
+/* Refresh Button */
+.header-actions .refresh-button {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 2px solid var(--border-primary);
+    border-radius: 12px;
+    padding: 16px 24px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.header-actions .refresh-button:hover:not(:disabled) {
+    background: var(--bg-hover);
+    border-color: var(--accent-primary);
+    transform: translateY(-2px);
+}
+
+.header-actions .refresh-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.header-actions .refresh-button i {
+    font-size: 16px;
 }
 
 /* Countdown Banner */
