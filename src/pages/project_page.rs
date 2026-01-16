@@ -350,6 +350,15 @@ pub fn ProjectPage(
                                                 <i class="fas fa-plus"></i>
                                                 "New Project"
                                             </button>
+                                            <button 
+                                                class="refresh-button"
+                                                on:click=move |_| load_projects_data.dispatch(())
+                                                disabled=move || loading.get()
+                                                title="Refresh projects"
+                                            >
+                                                <i class="fas fa-sync-alt" class:fa-spin=move || loading.get()></i>
+                                                "Refresh"
+                                            </button>
                                         </div>
                                     </div>
                                 </div>

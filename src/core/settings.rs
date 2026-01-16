@@ -27,7 +27,7 @@ impl Default for UserSettings {
         Self {
             rpc_selection: RpcSelection::Default,
             custom_rpc_url: String::new(),
-            compute_unit_buffer_percentage: 0,
+            compute_unit_buffer_percentage: 1,
             compute_unit_price_micro_lamports: 0,
         }
     }

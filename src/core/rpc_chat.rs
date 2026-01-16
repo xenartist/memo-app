@@ -1909,6 +1909,92 @@ impl RpcConnection {
         
         Ok(None)
     }
+
+    /// Get recent transactions for the chat contract
+    /// 
+    /// Fetches the 20 most recent transactions to the chat contract address.
+    /// 
+    /// # Returns
+    /// Recent transactions response with up to 20 transactions
+    pub async fn get_recent_chat_contract_transactions(
+        &self,
+    ) -> Result<ChatContractTransactionsResponse, RpcError> {
+        // Get chat program address (the contract address)
+        let program_id = ChatConfig::get_program_id()?;
+        
+        // Get signatures for the contract address (limit to 20 most recent)
+        let params = serde_json::json!([
+            program_id.to_string(),
+            {
+                "limit": 20,
+                "commitment": "confirmed"
+            }
+        ]);
+        
+        log::info!("Fetching recent transactions for chat contract: {}", program_id);
+        
+        // Get signatures for address
+        let signatures_response: serde_json::Value = self.send_request("getSignaturesForAddress", params).await?;
+        let signatures = signatures_response.as_array()
+            .ok_or_else(|| RpcError::Other("Invalid signatures response format".to_string()))?;
+        
+        log::info!("Found {} recent signatures for chat contract", signatures.len());
+        
+        let mut transactions = Vec::new();
+        
+        // Process each signature
+        for sig_info in signatures {
+            let signature = sig_info["signature"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+            
+            if signature.is_empty() {
+                continue;
+            }
+            
+            // Extract timestamp and slot
+            let block_time = sig_info["blockTime"].as_i64().unwrap_or(0);
+            let slot = sig_info["slot"].as_u64().unwrap_or(0);
+            
+            // Extract memo field from signature info
+            if let Some(memo_str) = sig_info["memo"].as_str() {
+                // The memo field format is "[length] base64_data"
+                let memo_data = if let Some(space_pos) = memo_str.find(' ') {
+                    &memo_str[space_pos + 1..]
+                } else {
+                    memo_str
+                };
+                
+                let memo_bytes = memo_data.as_bytes();
+                
+                // Parse memo data for all chat operations
+                if let Some((user, operation_type, details, burn_amount)) = parse_chat_operation_memo(memo_bytes) {
+                    transactions.push(ChatContractTransaction {
+                        signature: signature.clone(),
+                        user,
+                        timestamp: block_time,
+                        slot,
+                        burn_amount,
+                        operation_type,
+                        details,
+                    });
+                }
+            }
+        }
+        
+        // Sort by timestamp from newest to oldest (descending order)
+        transactions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        
+        let total_found = transactions.len();
+        
+        log::info!("Found {} recent transactions for chat contract", total_found);
+        
+        Ok(ChatContractTransactionsResponse {
+            transactions,
+            total_found,
+        })
+    }
 }
 
 /// Chat group creation data structure (stored in BurnMemo.payload for create_chat_group)
@@ -2008,4 +2094,119 @@ pub struct LeaderboardEntry {
 pub struct BurnLeaderboardResponse {
     pub entries: Vec<LeaderboardEntry>,
     pub total_burned_tokens: u64, // total burned amount of all leaderboard entries
+}
+
+/// Chat burn operation types
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ChatOperationType {
+    CreateGroup,
+    BurnForGroup,
+    SendMemo,
+}
+
+/// Chat burn operation details
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ChatOperationDetails {
+    CreateGroup {
+        creator: String,
+        group_id: u64,
+        name: String,
+        description: String,
+        image: String,
+    },
+    BurnForGroup {
+        burner: String,
+        group_id: u64,
+        message: String,
+    },
+    SendMemo {
+        sender: String,
+        group_id: u64,
+        message: String,
+    },
+}
+
+/// Chat contract transaction
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatContractTransaction {
+    pub signature: String,          // Transaction signature
+    pub user: String,               // User's public key (creator/burner/sender)
+    pub timestamp: i64,             // Block time
+    pub slot: u64,                  // Slot number
+    pub burn_amount: u64,           // Amount burned (in lamports)
+    pub operation_type: ChatOperationType,  // Type of operation
+    pub details: ChatOperationDetails,      // Operation-specific details
+}
+
+/// Response containing recent transactions for chat contract
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatContractTransactionsResponse {
+    pub transactions: Vec<ChatContractTransaction>,
+    pub total_found: usize,
+}
+
+/// Parse memo data for all chat operations (create_group, burn_for_group, send_memo)
+/// Returns (user, operation_type, details, burn_amount)
+fn parse_chat_operation_memo(memo_data: &[u8]) -> Option<(String, ChatOperationType, ChatOperationDetails, u64)> {
+    // Convert bytes to UTF-8 string (should be Base64)
+    let memo_str = std::str::from_utf8(memo_data).ok()?;
+    
+    // Decode Base64 to get original Borsh binary data
+    let borsh_bytes = base64::decode(memo_str).ok()?;
+    
+    // Deserialize Borsh binary data to BurnMemo
+    let burn_memo = BurnMemo::try_from_slice(&borsh_bytes).ok()?;
+    let burn_amount = burn_memo.burn_amount;
+    
+    // Try to parse as ChatGroupCreationData
+    if let Ok(creation_data) = ChatGroupCreationData::try_from_slice(&burn_memo.payload) {
+        if creation_data.category == "chat" && creation_data.operation == "create_group" {
+            return Some((
+                String::new(), // Creator not in ChatGroupCreationData
+                ChatOperationType::CreateGroup,
+                ChatOperationDetails::CreateGroup {
+                    creator: String::new(),
+                    group_id: creation_data.group_id,
+                    name: creation_data.name,
+                    description: creation_data.description,
+                    image: creation_data.image,
+                },
+                burn_amount,
+            ));
+        }
+    }
+    
+    // Try to parse as ChatGroupBurnData
+    if let Ok(burn_data) = ChatGroupBurnData::try_from_slice(&burn_memo.payload) {
+        if burn_data.category == "chat" && burn_data.operation == "burn_for_group" {
+            return Some((
+                burn_data.burner.clone(),
+                ChatOperationType::BurnForGroup,
+                ChatOperationDetails::BurnForGroup {
+                    burner: burn_data.burner,
+                    group_id: burn_data.group_id,
+                    message: burn_data.message,
+                },
+                burn_amount,
+            ));
+        }
+    }
+    
+    // Try to parse as ChatMessageData
+    if let Ok(message_data) = ChatMessageData::try_from_slice(&burn_memo.payload) {
+        if message_data.category == "chat" && message_data.operation == "send_memo_to_group" {
+            return Some((
+                message_data.sender.clone(),
+                ChatOperationType::SendMemo,
+                ChatOperationDetails::SendMemo {
+                    sender: message_data.sender,
+                    group_id: message_data.group_id,
+                    message: message_data.message,
+                },
+                burn_amount,
+            ));
+        }
+    }
+    
+    None
 }

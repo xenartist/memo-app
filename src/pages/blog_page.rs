@@ -907,6 +907,16 @@ pub fn BlogPage(
                     <i class="fas fa-user"></i>
                     "My Blog"
                 </button>
+                
+                <button
+                    class="blog-action-btn refresh-btn"
+                    on:click=move |_| load_transactions.dispatch(())
+                    disabled=move || loading.get()
+                    title="Refresh transactions"
+                >
+                    <i class="fas fa-sync-alt" class:fa-spin=move || loading.get()></i>
+                    "Refresh"
+                </button>
             </div>
             
             // Featured Activity Section (with 3D carousel effect)
