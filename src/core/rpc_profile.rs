@@ -586,10 +586,32 @@ impl RpcConnection {
         }
     }
 
-    /// get user profile
+    /// get user profile (with caching support)
     pub async fn get_profile(&self, user_pubkey: &str) -> Result<Option<UserProfile>, RpcError> {
         log::info!("Fetching profile for user: {}", user_pubkey);
         
+        // Load cache from localStorage
+        let mut cache = crate::core::profile_cache::ProfileCache::load_from_storage();
+        
+        // Check cache first
+        let (cached_info, needs_refresh) = cache.get(user_pubkey);
+        
+        // If we have cached data and it doesn't need refresh, check if it has a profile
+        if let Some(cached) = cached_info {
+            if !needs_refresh {
+                // Cache hit and fresh - return based on has_profile flag
+                if cached.has_profile {
+                    log::debug!("Profile cache hit for {}", user_pubkey);
+                    // Need to fetch full profile from RPC since cache only stores display info
+                    // But we know it exists, so we can proceed with RPC call
+                } else {
+                    log::debug!("Profile cache indicates no profile for {}", user_pubkey);
+                    return Ok(None);
+                }
+            }
+        }
+        
+        // Cache miss or needs refresh - fetch from RPC
         let pubkey = Pubkey::from_str(user_pubkey)
             .map_err(|e| RpcError::InvalidAddress(format!("Invalid pubkey: {}", e)))?;
         
@@ -601,8 +623,36 @@ impl RpcConnection {
         
         // parse account data
         match self.parse_profile_account(&account_info) {
-            Ok(profile) => Ok(Some(profile)),
-            Err(RpcError::Other(msg)) if msg.contains("null") => Ok(None), // account not found
+            Ok(profile) => {
+                // Update cache with profile info
+                let display_info = UserDisplayInfo {
+                    pubkey: user_pubkey.to_string(),
+                    username: profile.username.clone(),
+                    has_profile: true,
+                    image: profile.image.clone(),
+                };
+                cache.set(user_pubkey.to_string(), display_info);
+                log::debug!("Cached profile for {}", user_pubkey);
+                
+                Ok(Some(profile))
+            },
+            Err(RpcError::Other(msg)) if msg.contains("null") => {
+                // Account not found - cache this negative result
+                let display_info = UserDisplayInfo {
+                    pubkey: user_pubkey.to_string(),
+                    username: if user_pubkey.len() > 8 {
+                        format!("{}...{}", &user_pubkey[..4], &user_pubkey[user_pubkey.len()-4..])
+                    } else {
+                        user_pubkey.to_string()
+                    },
+                    has_profile: false,
+                    image: String::new(),
+                };
+                cache.set(user_pubkey.to_string(), display_info);
+                log::debug!("Cached negative result (no profile) for {}", user_pubkey);
+                
+                Ok(None)
+            },
             Err(e) => Err(e),
         }
     }
@@ -724,40 +774,98 @@ impl RpcConnection {
         }
     }
 
-    /// batch get user display info for chat
+    /// batch get user display info for chat (with caching support)
     pub async fn get_user_display_info_batch(&self, user_pubkeys: &[&str]) -> Result<Vec<UserDisplayInfo>, RpcError> {
         log::info!("Batch fetching display info for {} users", user_pubkeys.len());
         
-        let mut results = Vec::new();
+        // Load cache from localStorage
+        let mut cache = crate::core::profile_cache::ProfileCache::load_from_storage();
         
+        // Get cached results and list of pubkeys that need fetching
+        let (cached_results, needs_fetch) = cache.get_batch(user_pubkeys);
+        
+        log::info!("Cache hit: {}, need fetch: {}", cached_results.len(), needs_fetch.len());
+        
+        // Collect all results
+        let mut all_results = Vec::new();
+        
+        // Add cached results first
         for pubkey in user_pubkeys {
-            // Try to get full profile
+            if let Some(cached_info) = cached_results.get(*pubkey) {
+                all_results.push(cached_info.clone());
+            }
+        }
+        
+        // If no pubkeys need fetching, return cached results
+        if needs_fetch.is_empty() {
+            log::info!("All {} profiles loaded from cache", all_results.len());
+            return Ok(all_results);
+        }
+        
+        // Fetch profiles for pubkeys not in cache or needing refresh
+        let mut newly_fetched = Vec::new();
+        
+        for pubkey in &needs_fetch {
+            // Try to get full profile from blockchain
             match self.get_profile(pubkey).await {
                 Ok(Some(profile)) => {
-                    results.push(UserDisplayInfo {
-                        pubkey: pubkey.to_string(),
+                    let display_info = UserDisplayInfo {
+                        pubkey: pubkey.clone(),
                         username: profile.username,
                         has_profile: true,
                         image: profile.image,
-                    });
+                    };
+                    newly_fetched.push(display_info.clone());
+                    
+                    // Only add to results if this pubkey was requested
+                    if user_pubkeys.contains(&pubkey.as_str()) && !cached_results.contains_key(pubkey) {
+                        all_results.push(display_info);
+                    }
                 },
                 _ => {
                     // No profile found, use default values
-                    results.push(UserDisplayInfo {
-                        pubkey: pubkey.to_string(),
+                    let display_info = UserDisplayInfo {
+                        pubkey: pubkey.clone(),
                         username: if pubkey.len() > 8 {
                             format!("{}...{}", &pubkey[..4], &pubkey[pubkey.len()-4..])
                         } else {
-                            pubkey.to_string()
+                            pubkey.clone()
                         },
                         has_profile: false,
                         image: String::new(), // Empty string for no avatar
-                    });
+                    };
+                    newly_fetched.push(display_info.clone());
+                    
+                    // Only add to results if this pubkey was requested and not already cached
+                    if user_pubkeys.contains(&pubkey.as_str()) && !cached_results.contains_key(pubkey) {
+                        all_results.push(display_info);
+                    }
                 }
             }
         }
         
-        Ok(results)
+        // Batch update cache with newly fetched profiles
+        if !newly_fetched.is_empty() {
+            cache.set_batch(newly_fetched);
+            log::info!("Cached {} newly fetched profiles", needs_fetch.len());
+        }
+        
+        // Cleanup expired cache entries (async, non-blocking)
+        let cleanup_count = cache.cleanup_expired();
+        if cleanup_count > 0 {
+            log::info!("Cleaned up {} expired cache entries", cleanup_count);
+        }
+        
+        Ok(all_results)
+    }
+    
+    /// Get user display info for a single user (with caching support)
+    pub async fn get_user_display_info(&self, user_pubkey: &str) -> Result<UserDisplayInfo, RpcError> {
+        // Use batch method with single pubkey for consistent caching
+        let results = self.get_user_display_info_batch(&[user_pubkey]).await?;
+        
+        results.into_iter().next()
+            .ok_or_else(|| RpcError::Other("Failed to get user display info".to_string()))
     }
 }
 
