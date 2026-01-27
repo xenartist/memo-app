@@ -79,15 +79,68 @@ pub fn ForumPage(
                         }
                     }).collect();
                     
-                    // Sort posts:
-                    // 1. By burned_amount descending (more burns first)
-                    // 2. If equal, by last_reply_time descending (newer first)
+                    // New sorting logic:
+                    // 1. Top 3 by burned_amount stay at the top
+                    // 2. Posts with activity in last 48 hours come next (sorted by recency)
+                    // 3. Posts older than 48 hours sorted by burned_amount
+                    
+                    // First, sort all posts by burned_amount to identify top 3
                     post_rows.sort_by(|a, b| {
                         match b.burned_amount.cmp(&a.burned_amount) {
                             std::cmp::Ordering::Equal => b.last_reply_time.cmp(&a.last_reply_time),
                             other => other,
                         }
                     });
+                    
+                    // Get current timestamp
+                    let now = web_sys::js_sys::Date::now() / 1000.0; // Convert to seconds
+                    let forty_eight_hours = 48 * 60 * 60; // 48 hours in seconds
+                    
+                    // Split posts into categories
+                    let mut top_3: Vec<PostRow> = Vec::new();
+                    let mut recent_posts: Vec<PostRow> = Vec::new(); // Within 48 hours
+                    let mut old_posts: Vec<PostRow> = Vec::new(); // Older than 48 hours
+                    
+                    for (index, post) in post_rows.into_iter().enumerate() {
+                        if index < 3 {
+                            // Top 3 by burn amount
+                            top_3.push(post);
+                        } else {
+                            // Get last activity time
+                            let last_activity = if post.last_reply_time > 0 {
+                                post.last_reply_time
+                            } else {
+                                post.created_at
+                            };
+                            
+                            // Check if within 48 hours
+                            if (now as i64 - last_activity) < forty_eight_hours {
+                                recent_posts.push(post);
+                            } else {
+                                old_posts.push(post);
+                            }
+                        }
+                    }
+                    
+                    // Sort recent posts by last activity (most recent first)
+                    recent_posts.sort_by(|a, b| {
+                        let a_activity = if a.last_reply_time > 0 { a.last_reply_time } else { a.created_at };
+                        let b_activity = if b.last_reply_time > 0 { b.last_reply_time } else { b.created_at };
+                        b_activity.cmp(&a_activity)
+                    });
+                    
+                    // Sort old posts by burned amount (already sorted, but for clarity)
+                    old_posts.sort_by(|a, b| {
+                        match b.burned_amount.cmp(&a.burned_amount) {
+                            std::cmp::Ordering::Equal => b.last_reply_time.cmp(&a.last_reply_time),
+                            other => other,
+                        }
+                    });
+                    
+                    // Combine: top 3 + recent + old
+                    post_rows = top_3;
+                    post_rows.extend(recent_posts);
+                    post_rows.extend(old_posts);
                     
                     set_posts.set(post_rows);
                 },
@@ -258,6 +311,16 @@ pub fn ForumPage(
                                                                         format_timestamp(post.created_at)
                                                                     };
                                                                     
+                                                                    // Check if post is within 48 hours
+                                                                    let now = web_sys::js_sys::Date::now() / 1000.0;
+                                                                    let forty_eight_hours = 48 * 60 * 60;
+                                                                    let post_activity = if post.last_reply_time > 0 { 
+                                                                        post.last_reply_time 
+                                                                    } else { 
+                                                                        post.created_at 
+                                                                    };
+                                                                    let is_new = (now as i64 - post_activity) < forty_eight_hours;
+                                                                    
                                                                     view! {
                                                                         <tr class="post-row">
                                                                             <td class="rank-cell">
@@ -314,6 +377,13 @@ pub fn ForumPage(
                                                                                         }.into_view()
                                                                                     }}
                                                                                     <span class="post-title">{post.title}</span>
+                                                                                    {if is_new {
+                                                                                        view! {
+                                                                                            <span class="new-badge">"NEW"</span>
+                                                                                        }.into_view()
+                                                                                    } else {
+                                                                                        view! { <span></span> }.into_view()
+                                                                                    }}
                                                                                 </div>
                                                                             </td>
                                                                             <td class="burned-cell">
