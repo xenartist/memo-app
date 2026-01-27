@@ -1,5 +1,6 @@
 /* Forum Page Styles */
 
+/* Base Layout */
 .forum-page {
     min-height: 100vh;
     background: var(--bg-primary);
