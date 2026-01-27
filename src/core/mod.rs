@@ -17,6 +17,7 @@ pub mod rpc_transfer;
 pub mod rpc_domain;
 pub mod rpc_forum;
 pub mod settings;
+pub mod profile_cache;
 
 // Re-export commonly used network types
 pub use network_config::{NetworkType, initialize_network};

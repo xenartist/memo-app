@@ -271,7 +271,7 @@ pub fn SupplyProgressBar() -> impl IntoView {
 pub fn SwapBridgeLink() -> impl IntoView {
     let handle_click = move |_| {
         if let Some(window) = window() {
-            let bridge_url = "https://app-dev.bridge.x1.xyz/";
+            let bridge_url = "https://app.bridge.x1.xyz/";
             let _ = window.open_with_url_and_target(bridge_url, "_blank");
         }
     };
