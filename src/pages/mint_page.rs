@@ -287,7 +287,7 @@ pub fn SwapBridgeLink() -> impl IntoView {
                 </div>
                 <div class="swap-bridge-content">
                     <h4 class="swap-bridge-title">"Official X1 Swap Bridge"</h4>
-                    <p class="swap-bridge-description">"Atomic cross-chain swap of USDC → XNT"</p>
+                    <p class="swap-bridge-description">"Cross-chain token bridge between Solana and X1"</p>
                 </div>
                 <div class="swap-bridge-arrow">
                     <i class="fas fa-external-link-alt"></i>
