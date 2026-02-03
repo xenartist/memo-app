@@ -11,6 +11,7 @@ use crate::pages::project_page::ProjectPage;
 use crate::pages::blog_page::BlogPage;
 use crate::pages::forum_page::ForumPage;
 use crate::pages::faucet_page::FaucetPage;
+use crate::pages::trade_page::TradePage;
 use crate::pages::log_view::add_log_entry;
 use crate::pages::pixel_view::LazyPixelView;
 
@@ -22,6 +23,7 @@ use gloo_timers::future::TimeoutFuture;
 #[derive(Clone, PartialEq)]
 enum MenuItem {
     Mint,
+    Trade,
     Project,
     Forum,
     Chat,
@@ -39,8 +41,8 @@ fn is_menu_available(menu_item: &MenuItem, network: Option<NetworkType>) -> bool
             true
         }
         Some(NetworkType::ProdStaging) | Some(NetworkType::Mainnet) => {
-            // Production and Staging: Mint, Project, Forum, Chat, Blog, Profile, and Settings available
-            matches!(menu_item, MenuItem::Mint | MenuItem::Project | MenuItem::Forum | MenuItem::Chat | MenuItem::Blog | MenuItem::Profile | MenuItem::Settings)
+            // Production and Staging: Mint, Trade, Project, Forum, Chat, Blog, Profile, and Settings available
+            matches!(menu_item, MenuItem::Mint | MenuItem::Trade | MenuItem::Project | MenuItem::Forum | MenuItem::Chat | MenuItem::Blog | MenuItem::Profile | MenuItem::Settings)
         }
         None => {
             // If network not set (shouldn't happen), default to restricted mode
@@ -176,27 +178,53 @@ pub fn MainPage(
         session.with(|s| s.get_network())
     };
     
-    // listen to balance update needed in session
+    // Track the last processed transaction signature to detect changes
+    let last_processed_sig = create_rw_signal::<Option<String>>(None);
+    // Throttle flag to prevent too many concurrent balance updates (important for auto mint)
+    let balance_update_in_progress = create_rw_signal(false);
+    
     create_effect(move |_| {
-        let needs_update = session.with(|s| s.is_balance_update_needed());
-        if needs_update {
-            log::info!("Balance update needed, fetching latest balances...");
-            let session_clone = session;
-            spawn_local(async move {
-                let mut session_update = session_clone.get_untracked();
-                match session_update.fetch_and_update_balances().await {
-                    Ok(()) => {
-                        log::info!("Successfully updated balances");
-                        // update balance info in session
-                        session_clone.update(|s| {
-                            s.set_balances(session_update.get_sol_balance(), session_update.get_token_balance());
-                        });
-                    },
-                    Err(e) => {
-                        log::error!("Failed to update balances: {}", e);
-                    }
+        // Read the current transaction signature (this creates a reactive dependency)
+        let current_sig = session.with(|s| s.get_last_tx_signature());
+        let last_sig = last_processed_sig.get_untracked();
+        
+        // Only process if we have a new signature that differs from the last processed one
+        if let Some(ref sig) = current_sig {
+            if last_sig.as_ref() != Some(sig) {
+                // Throttle: skip if a balance update is already in progress
+                if balance_update_in_progress.get_untracked() {
+                    // Still mark as processed to avoid re-processing
+                    last_processed_sig.set(current_sig.clone());
+                    return;
                 }
-            });
+                
+                let signature = sig.clone();
+                let session_clone = session;
+                balance_update_in_progress.set(true);
+                last_processed_sig.set(current_sig.clone());
+                
+                spawn_local(async move {
+                    let mut session_update = session_clone.get_untracked();
+                    
+                    // Wait a short time for transaction to be confirmed (2 seconds)
+                    TimeoutFuture::new(2000).await;
+                    
+                    match session_update.update_balances_from_tx(&signature).await {
+                        Ok(()) => {
+                            // Successfully got balances from transaction
+                            session_clone.update(|s| {
+                                s.set_balances(session_update.get_sol_balance(), session_update.get_token_balance());
+                            });
+                        }
+                        Err(e) => {
+                            // Failed to get from tx, log the error
+                            log::warn!("Failed to get balances from tx {}: {}", signature, e);
+                        }
+                    }
+                    
+                    balance_update_in_progress.set(false);
+                });
+            }
         }
     });
     
@@ -606,6 +634,18 @@ pub fn MainPage(
                         <span>"Mint"</span>
                     </div>
                     
+                    // Trade - available in testnet, staging, and mainnet
+                    <Show when=move || is_menu_available(&MenuItem::Trade, current_network())>
+                        <div 
+                            class="menu-item"
+                            class:active=move || current_menu.get() == MenuItem::Trade
+                            on:click=move |_| set_current_menu.set(MenuItem::Trade)
+                        >
+                            <i class="fas fa-exchange-alt"></i>
+                            <span>"Trade"</span>
+                        </div>
+                    </Show>
+                    
                     // Project - only in testnet
                     <Show when=move || is_menu_available(&MenuItem::Project, current_network())>
                         <div 
@@ -728,6 +768,13 @@ pub fn MainPage(
                     <div style=move || if current_menu.get() == MenuItem::Mint { "display: block;" } else { "display: none;" }>
                         <MintPage session=session/>
                     </div>
+                    
+                    // Trade - available in testnet, staging, and mainnet
+                    <Show when=move || is_menu_available(&MenuItem::Trade, current_network())>
+                        <div style=move || if current_menu.get() == MenuItem::Trade { "display: block;" } else { "display: none;" }>
+                            <TradePage _session=session/>
+                        </div>
+                    </Show>
                     
                     // Project - only in testnet
                     <Show when=move || is_menu_available(&MenuItem::Project, current_network())>
