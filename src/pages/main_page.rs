@@ -11,6 +11,7 @@ use crate::pages::project_page::ProjectPage;
 use crate::pages::blog_page::BlogPage;
 use crate::pages::forum_page::ForumPage;
 use crate::pages::faucet_page::FaucetPage;
+use crate::pages::trade_page::TradePage;
 use crate::pages::log_view::add_log_entry;
 use crate::pages::pixel_view::LazyPixelView;
 
@@ -22,6 +23,7 @@ use gloo_timers::future::TimeoutFuture;
 #[derive(Clone, PartialEq)]
 enum MenuItem {
     Mint,
+    Trade,
     Project,
     Forum,
     Chat,
@@ -39,8 +41,8 @@ fn is_menu_available(menu_item: &MenuItem, network: Option<NetworkType>) -> bool
             true
         }
         Some(NetworkType::ProdStaging) | Some(NetworkType::Mainnet) => {
-            // Production and Staging: Mint, Project, Forum, Chat, Blog, Profile, and Settings available
-            matches!(menu_item, MenuItem::Mint | MenuItem::Project | MenuItem::Forum | MenuItem::Chat | MenuItem::Blog | MenuItem::Profile | MenuItem::Settings)
+            // Production and Staging: Mint, Trade, Project, Forum, Chat, Blog, Profile, and Settings available
+            matches!(menu_item, MenuItem::Mint | MenuItem::Trade | MenuItem::Project | MenuItem::Forum | MenuItem::Chat | MenuItem::Blog | MenuItem::Profile | MenuItem::Settings)
         }
         None => {
             // If network not set (shouldn't happen), default to restricted mode
@@ -606,6 +608,18 @@ pub fn MainPage(
                         <span>"Mint"</span>
                     </div>
                     
+                    // Trade - available in testnet, staging, and mainnet
+                    <Show when=move || is_menu_available(&MenuItem::Trade, current_network())>
+                        <div 
+                            class="menu-item"
+                            class:active=move || current_menu.get() == MenuItem::Trade
+                            on:click=move |_| set_current_menu.set(MenuItem::Trade)
+                        >
+                            <i class="fas fa-exchange-alt"></i>
+                            <span>"Trade"</span>
+                        </div>
+                    </Show>
+                    
                     // Project - only in testnet
                     <Show when=move || is_menu_available(&MenuItem::Project, current_network())>
                         <div 
@@ -728,6 +742,13 @@ pub fn MainPage(
                     <div style=move || if current_menu.get() == MenuItem::Mint { "display: block;" } else { "display: none;" }>
                         <MintPage session=session/>
                     </div>
+                    
+                    // Trade - available in testnet, staging, and mainnet
+                    <Show when=move || is_menu_available(&MenuItem::Trade, current_network())>
+                        <div style=move || if current_menu.get() == MenuItem::Trade { "display: block;" } else { "display: none;" }>
+                            <TradePage _session=session/>
+                        </div>
+                    </Show>
                     
                     // Project - only in testnet
                     <Show when=move || is_menu_available(&MenuItem::Project, current_network())>

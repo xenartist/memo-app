@@ -3,3 +3,4 @@
 /Cargo.lock
 /test-keypair/memo-test-keypair.json
 .DS_Store
+/src/idl

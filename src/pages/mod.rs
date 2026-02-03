@@ -10,5 +10,6 @@ pub mod faucet_page;
 pub mod project_page;
 pub mod blog_page;
 pub mod forum_page;
+pub mod trade_page;
 
  

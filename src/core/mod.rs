@@ -18,6 +18,7 @@ pub mod rpc_domain;
 pub mod rpc_forum;
 pub mod settings;
 pub mod profile_cache;
+pub mod rpc_xdex;
 
 // Re-export commonly used network types
 pub use network_config::{NetworkType, initialize_network};

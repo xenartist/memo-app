@@ -8,6 +8,7 @@ use crate::core::rpc_burn::{UserGlobalBurnStats};
 use crate::core::network_config::{NetworkType, clear_network};
 use crate::core::backpack::{BackpackWallet, BackpackError};
 use crate::core::x1::{X1Wallet, X1Error};
+use crate::core::rpc_xdex::XDexConnection;
 use web_sys::js_sys::Date;
 use secrecy::{Secret, ExposeSecret};
 use zeroize::{Zeroize, Zeroizing};
@@ -1806,6 +1807,156 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Token transfer successful: {}", tx_hash);
+        self.balance_update_needed = true;
+        
+        Ok(tx_hash)
+    }
+    
+    /// Swap tokens on xDEX
+    /// 
+    /// # Parameters
+    /// * `pool_address` - Pool address to swap in
+    /// * `input_mint` - Input token mint address
+    /// * `output_mint` - Output token mint address
+    /// * `amount_in_lamports` - Amount to swap (in lamports)
+    /// * `slippage_pct` - Slippage tolerance percentage (e.g., 1.0 for 1%)
+    /// * `input_decimals` - Input token decimals
+    /// * `output_decimals` - Output token decimals
+    /// 
+    /// # Returns
+    /// Transaction signature on success
+    pub async fn swap_tokens(
+        &mut self,
+        pool_address: &str,
+        input_mint: &str,
+        output_mint: &str,
+        amount_in_lamports: u64,
+        slippage_pct: f64,
+        input_decimals: u8,
+        output_decimals: u8,
+    ) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+        
+        log::info!("Building swap transaction...");
+        let xdex = XDexConnection::new();
+        let mut transaction = xdex.build_swap_transaction(
+            pool_address,
+            &pubkey,
+            input_mint,
+            output_mint,
+            amount_in_lamports,
+            slippage_pct,
+            input_decimals,
+            output_decimals,
+        ).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to build swap transaction: {}", e)))?;
+        
+        log::info!("Signing swap transaction...");
+        self.sign_transaction(&mut transaction).await?;
+        
+        log::info!("Sending signed swap transaction...");
+        let rpc = RpcConnection::new();
+        let tx_hash = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send swap transaction: {}", e)))?;
+        
+        log::info!("Swap successful: {}", tx_hash);
+        self.balance_update_needed = true;
+        
+        Ok(tx_hash)
+    }
+    
+    /// Wrap native XNT to WXNT
+    /// 
+    /// # Parameters
+    /// * `amount_lamports` - Amount to wrap (in lamports)
+    /// 
+    /// # Returns
+    /// Transaction signature on success
+    pub async fn wrap_xnt(
+        &mut self,
+        amount_lamports: u64,
+    ) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+        
+        log::info!("Building wrap XNT transaction...");
+        let xdex = XDexConnection::new();
+        let mut transaction = xdex.build_wrap_xnt_transaction(&pubkey, amount_lamports).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to build wrap transaction: {}", e)))?;
+        
+        log::info!("Signing wrap transaction...");
+        self.sign_transaction(&mut transaction).await?;
+        
+        log::info!("Sending signed wrap transaction...");
+        let rpc = RpcConnection::new();
+        let tx_hash = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send wrap transaction: {}", e)))?;
+        
+        log::info!("Wrap successful: {}", tx_hash);
+        self.balance_update_needed = true;
+        
+        Ok(tx_hash)
+    }
+    
+    /// Wrap native XNT and swap to another token in one transaction
+    /// 
+    /// # Parameters
+    /// * `pool_address` - Pool address
+    /// * `amount_xnt_lamports` - Amount of native XNT (in lamports)
+    /// * `slippage_pct` - Slippage tolerance percentage
+    /// * `output_mint` - Output token mint
+    /// * `output_decimals` - Output token decimals
+    /// 
+    /// # Returns
+    /// Transaction signature on success
+    pub async fn wrap_and_swap(
+        &mut self,
+        pool_address: &str,
+        amount_xnt_lamports: u64,
+        slippage_pct: f64,
+        output_mint: &str,
+        output_decimals: u8,
+    ) -> Result<String, SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey_str = self.get_public_key()?;
+        let pubkey = Pubkey::from_str(&pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid pubkey: {}", e)))?;
+        
+        log::info!("Building wrap + swap transaction...");
+        let xdex = XDexConnection::new();
+        let mut transaction = xdex.build_wrap_and_swap_transaction(
+            pool_address,
+            &pubkey,
+            amount_xnt_lamports,
+            slippage_pct,
+            output_mint,
+            output_decimals,
+        ).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to build wrap+swap transaction: {}", e)))?;
+        
+        log::info!("Signing wrap + swap transaction...");
+        self.sign_transaction(&mut transaction).await?;
+        
+        log::info!("Sending signed wrap + swap transaction...");
+        let rpc = RpcConnection::new();
+        let tx_hash = rpc.send_signed_transaction(&transaction).await
+            .map_err(|e| SessionError::InvalidData(format!("Failed to send wrap+swap transaction: {}", e)))?;
+        
+        log::info!("Wrap + Swap successful: {}", tx_hash);
         self.balance_update_needed = true;
         
         Ok(tx_hash)
