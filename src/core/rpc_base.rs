@@ -373,6 +373,76 @@ impl RpcConnection {
         Ok(result.to_string())
     }
 
+    /// Get post balances from a transaction signature
+    /// 
+    /// Returns (sol_balance, memo_balance) for the specified user
+    /// This is more efficient than separate getBalance calls and provides immediate results
+    pub async fn get_post_balances_from_tx(
+        &self, 
+        signature: &str, 
+        user_pubkey: &str,
+        memo_mint: &str,
+    ) -> Result<(f64, f64), RpcError> {
+        let params = serde_json::json!([
+            signature,
+            {
+                "encoding": "jsonParsed",
+                "maxSupportedTransactionVersion": 0
+            }
+        ]);
+        
+        let result: serde_json::Value = self.send_request("getTransaction", params).await?;
+        
+        // Check if transaction exists
+        if result.is_null() {
+            return Err(RpcError::Other("Transaction not found or not yet confirmed".to_string()));
+        }
+        
+        // Get account keys to find user's index
+        let account_keys = result["transaction"]["message"]["accountKeys"]
+            .as_array()
+            .ok_or_else(|| RpcError::Other("Failed to get account keys".to_string()))?;
+        
+        // Find user's account index
+        let user_account_index = account_keys.iter().position(|key| {
+            key["pubkey"].as_str() == Some(user_pubkey) || 
+            key.as_str() == Some(user_pubkey)
+        });
+        
+        // Get post balances
+        let post_balances = result["meta"]["postBalances"]
+            .as_array()
+            .ok_or_else(|| RpcError::Other("Failed to get post balances".to_string()))?;
+        
+        // Get SOL balance from postBalances using user's account index
+        let sol_balance = if let Some(idx) = user_account_index {
+            post_balances.get(idx)
+                .and_then(|v| v.as_u64())
+                .map(|lamports| lamports as f64 / 1_000_000_000.0)
+                .unwrap_or(0.0)
+        } else {
+            0.0
+        };
+        
+        // Get MEMO balance from postTokenBalances
+        let post_token_balances = result["meta"]["postTokenBalances"]
+            .as_array();
+        
+        let memo_balance = if let Some(token_balances) = post_token_balances {
+            token_balances.iter()
+                .find(|tb| {
+                    tb["mint"].as_str() == Some(memo_mint) &&
+                    tb["owner"].as_str() == Some(user_pubkey)
+                })
+                .and_then(|tb| tb["uiTokenAmount"]["uiAmount"].as_f64())
+                .unwrap_or(0.0)
+        } else {
+            0.0
+        };
+        
+        Ok((sol_balance, memo_balance))
+    }
+
     // ============ Common Transaction Utilities ============
 
     /// Get the latest blockhash from the network

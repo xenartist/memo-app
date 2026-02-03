@@ -178,27 +178,53 @@ pub fn MainPage(
         session.with(|s| s.get_network())
     };
     
-    // listen to balance update needed in session
+    // Track the last processed transaction signature to detect changes
+    let last_processed_sig = create_rw_signal::<Option<String>>(None);
+    // Throttle flag to prevent too many concurrent balance updates (important for auto mint)
+    let balance_update_in_progress = create_rw_signal(false);
+    
     create_effect(move |_| {
-        let needs_update = session.with(|s| s.is_balance_update_needed());
-        if needs_update {
-            log::info!("Balance update needed, fetching latest balances...");
-            let session_clone = session;
-            spawn_local(async move {
-                let mut session_update = session_clone.get_untracked();
-                match session_update.fetch_and_update_balances().await {
-                    Ok(()) => {
-                        log::info!("Successfully updated balances");
-                        // update balance info in session
-                        session_clone.update(|s| {
-                            s.set_balances(session_update.get_sol_balance(), session_update.get_token_balance());
-                        });
-                    },
-                    Err(e) => {
-                        log::error!("Failed to update balances: {}", e);
-                    }
+        // Read the current transaction signature (this creates a reactive dependency)
+        let current_sig = session.with(|s| s.get_last_tx_signature());
+        let last_sig = last_processed_sig.get_untracked();
+        
+        // Only process if we have a new signature that differs from the last processed one
+        if let Some(ref sig) = current_sig {
+            if last_sig.as_ref() != Some(sig) {
+                // Throttle: skip if a balance update is already in progress
+                if balance_update_in_progress.get_untracked() {
+                    // Still mark as processed to avoid re-processing
+                    last_processed_sig.set(current_sig.clone());
+                    return;
                 }
-            });
+                
+                let signature = sig.clone();
+                let session_clone = session;
+                balance_update_in_progress.set(true);
+                last_processed_sig.set(current_sig.clone());
+                
+                spawn_local(async move {
+                    let mut session_update = session_clone.get_untracked();
+                    
+                    // Wait a short time for transaction to be confirmed (2 seconds)
+                    TimeoutFuture::new(2000).await;
+                    
+                    match session_update.update_balances_from_tx(&signature).await {
+                        Ok(()) => {
+                            // Successfully got balances from transaction
+                            session_clone.update(|s| {
+                                s.set_balances(session_update.get_sol_balance(), session_update.get_token_balance());
+                            });
+                        }
+                        Err(e) => {
+                            // Failed to get from tx, log the error
+                            log::warn!("Failed to get balances from tx {}: {}", signature, e);
+                        }
+                    }
+                    
+                    balance_update_in_progress.set(false);
+                });
+            }
         }
     });
     

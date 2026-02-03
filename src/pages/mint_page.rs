@@ -764,18 +764,10 @@ pub fn MintPage(
             match result {
                 Ok(signature) => {
                     log::info!("Mint successful: {}", signature);
-                    set_last_result.set(Some(signature));
-                    
-                    // Wait for blockchain confirmation before updating balance
-                    let session_clone = session;
-                    spawn_local(async move {
-                        log::info!("Waiting 20 seconds for transaction confirmation...");
-                        TimeoutFuture::new(20000).await; // Wait 20 seconds
-                        
-                        log::info!("Triggering balance refresh after mint");
-                        session_clone.update(|s| {
-                            s.mark_balance_update_needed();
-                        });
+                    set_last_result.set(Some(signature.clone()));
+                    // Trigger balance update from transaction for single mint
+                    session.update(|s| {
+                        s.set_last_tx_signature(signature);
                     });
                 },
                 Err(e) => {
@@ -797,33 +789,10 @@ pub fn MintPage(
             let mut current_count = 0u32;
             let mut should_continue = true;
             const MAX_RETRIES: u32 = 3; // Maximum retry attempts
+            const BALANCE_UPDATE_INTERVAL: u32 = 20; // Update balance every N mints
             
-            // Start balance refresh timer (every 20 seconds)
-            let session_for_timer = session;
-            let auto_mint_running_for_timer = auto_mint_running;
-            spawn_local(async move {
-                log::info!("Starting balance refresh timer for auto mint (every 20 seconds)");
-                loop {
-                    // Wait 20 seconds
-                    TimeoutFuture::new(20000).await;
-                    
-                    // Check if auto mint is still running
-                    if auto_mint_running_for_timer.get() {
-                        log::info!("Auto mint balance refresh timer triggered");
-                        session_for_timer.update(|s| {
-                            s.mark_balance_update_needed();
-                        });
-                    } else {
-                        // Auto mint stopped, do one final refresh and exit
-                        log::info!("Auto mint stopped, performing final balance refresh");
-                        session_for_timer.update(|s| {
-                            s.mark_balance_update_needed();
-                        });
-                        break;
-                    }
-                }
-                log::info!("Balance refresh timer for auto mint stopped");
-            });
+            // Track the last successful signature for balance updates
+            let mut last_successful_signature: Option<String> = None;
             
             while should_continue {
                 // Check if we should stop
@@ -872,9 +841,20 @@ pub fn MintPage(
                             log::info!("Auto mint #{} successful: {}", current_count + 1, signature);
                             set_last_result.set(Some(format!("#{}: {}", current_count + 1, signature)));
                             
+                            // Save the signature for potential balance update
+                            last_successful_signature = Some(signature.clone());
+                            
                             current_count += 1;
                             set_auto_mint_current.set(current_count);
                             mint_successful = true;
+                            
+                            // Update balance every N mints (e.g., every 20 mints)
+                            if current_count % BALANCE_UPDATE_INTERVAL == 0 {
+                                log::info!("Auto mint: Updating balance after {} mints", current_count);
+                                session.update(|s| {
+                                    s.set_last_tx_signature(signature);
+                                });
+                            }
                             
                             // Check if we've reached the target count (if not infinite)
                             if target_count > 0 && current_count >= target_count {
@@ -906,6 +886,14 @@ pub fn MintPage(
                         }
                     }
                 }
+            }
+            
+            // Final balance update from last successful transaction
+            if let Some(signature) = last_successful_signature {
+                log::info!("Auto mint: Final balance update from last successful tx");
+                session.update(|s| {
+                    s.set_last_tx_signature(signature);
+                });
             }
             
             set_auto_mint_running.set(false);

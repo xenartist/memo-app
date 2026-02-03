@@ -1236,7 +1236,13 @@ fn SwapForm(
                 Ok(signature) => {
                     set_swap_status.set(Some(format!("✅ Success! Tx: {}", signature)));
                     
-                    // Trigger balance refresh from RPC (wait a bit for transaction to finalize)
+                    // Trigger main page balance update from transaction
+                    let sig_for_session = signature.clone();
+                    session.update(|s| {
+                        s.set_last_tx_signature(sig_for_session);
+                    });
+                    
+                    // Trigger swap page balance refresh
                     spawn_local(async move {
                         // Small delay to let transaction finalize
                         gloo_timers::future::TimeoutFuture::new(1500).await;

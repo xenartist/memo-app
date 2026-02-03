@@ -113,8 +113,8 @@ pub struct Session {
     // balance information
     sol_balance: f64,
     token_balance: f64,
-    // balance update trigger
-    balance_update_needed: bool,
+    // last transaction signature (triggers balance update when set)
+    last_tx_signature: Option<String>,
     // user global burn stats
     user_burn_stats: Option<UserGlobalBurnStats>,
     // network type for this session (set during login, immutable after that)
@@ -136,7 +136,7 @@ impl Session {
             cached_pubkey: None,
             sol_balance: 0.0,
             token_balance: 0.0,
-            balance_update_needed: false,
+            last_tx_signature: None,
             user_burn_stats: None,
             network: None,
         }
@@ -189,7 +189,7 @@ impl Session {
         self.cached_pubkey = None;
         self.sol_balance = 0.0;
         self.token_balance = 0.0;
-        self.balance_update_needed = false;
+        self.last_tx_signature = None;
         self.user_burn_stats = None;
         self.network = None;
         
@@ -374,7 +374,7 @@ impl Session {
         self.user_profile = None;
         self.sol_balance = 0.0;
         self.token_balance = 0.0;
-        self.balance_update_needed = false;
+        self.last_tx_signature = None;
         self.ui_locked = false;
         self.user_burn_stats = None;
     }
@@ -773,7 +773,8 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Mint transaction sent successfully: {}", tx_hash);
-        self.balance_update_needed = true;
+        // Note: Balance update is NOT automatically triggered here.
+        // Caller should decide when to update (e.g., immediately for single mint, or every N mints for auto mint)
         
         Ok(tx_hash)
     }
@@ -795,15 +796,30 @@ impl Session {
     pub fn set_balances(&mut self, sol_balance: f64, token_balance: f64) {
         self.sol_balance = sol_balance;
         self.token_balance = token_balance;
-        self.balance_update_needed = false;
     }
 
+    /// Set the last transaction signature to trigger a balance update
+    /// The signature will be used to extract post-balances directly from the transaction
+    pub fn set_last_tx_signature(&mut self, signature: String) {
+        self.last_tx_signature = Some(signature);
+    }
+    
+    /// Get the last transaction signature for balance update
+    pub fn get_last_tx_signature(&self) -> Option<String> {
+        self.last_tx_signature.clone()
+    }
+    
+    /// Clear the last transaction signature (after processing)
+    pub fn clear_last_tx_signature(&mut self) {
+        self.last_tx_signature = None;
+    }
+    
+    /// Legacy method - kept for compatibility
+    /// Balance updates now happen automatically when last_tx_signature is set
+    #[allow(dead_code)]
     pub fn mark_balance_update_needed(&mut self) {
-        self.balance_update_needed = true;
-    }
-
-    pub fn is_balance_update_needed(&self) -> bool {
-        self.balance_update_needed
+        // No-op: balance updates are now triggered by set_last_tx_signature
+        // This method is kept for backward compatibility
     }
 
     // fetch and update balances
@@ -858,8 +874,53 @@ impl Session {
             }
         }
 
-        self.balance_update_needed = false;
         Ok(())
+    }
+
+    /// Update balances from transaction signature
+    /// 
+    /// This is more efficient than fetching balances separately, as it extracts
+    /// post-transaction balances directly from the transaction metadata.
+    /// 
+    /// Will retry a few times if transaction is not yet confirmed.
+    pub async fn update_balances_from_tx(&mut self, signature: &str) -> Result<(), SessionError> {
+        if self.is_expired() {
+            return Err(SessionError::Expired);
+        }
+
+        let pubkey = self.get_public_key()?;
+        let rpc = RpcConnection::new();
+        
+        // Get MEMO mint from config
+        let memo_mint = crate::core::rpc_base::get_token_mint()
+            .map_err(|e| SessionError::InvalidData(format!("Failed to get token mint: {}", e)))?
+            .to_string();
+        
+        // Retry a few times (transaction might not be confirmed yet)
+        let mut last_error = None;
+        for attempt in 0..5 {
+            if attempt > 0 {
+                // Wait before retry (1s, 2s, 3s, 4s)
+                gloo_timers::future::TimeoutFuture::new((attempt * 1000) as u32).await;
+            }
+            
+            match rpc.get_post_balances_from_tx(signature, &pubkey, &memo_mint).await {
+                Ok((sol_balance, memo_balance)) => {
+                    self.sol_balance = sol_balance;
+                    self.token_balance = memo_balance;
+                    return Ok(());
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                }
+            }
+        }
+        
+        // If all retries failed, return the last error
+        Err(SessionError::InvalidData(format!(
+            "Failed to get balances from transaction after retries: {:?}", 
+            last_error
+        )))
     }
 
     /// Send chat message to group - internal handle all key operations
@@ -891,7 +952,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Chat message sent successfully: {}", tx_hash);
-        self.balance_update_needed = true;
+        self.set_last_tx_signature(tx_hash.clone());
         
         Ok(tx_hash)
     }
@@ -1768,7 +1829,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Native transfer successful: {}", tx_hash);
-        self.balance_update_needed = true;
+        self.set_last_tx_signature(tx_hash.clone());
         
         Ok(tx_hash)
     }
@@ -1807,7 +1868,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Token transfer successful: {}", tx_hash);
-        self.balance_update_needed = true;
+        self.set_last_tx_signature(tx_hash.clone());
         
         Ok(tx_hash)
     }
@@ -1866,7 +1927,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send swap transaction: {}", e)))?;
         
         log::info!("Swap successful: {}", tx_hash);
-        self.balance_update_needed = true;
+        self.set_last_tx_signature(tx_hash.clone());
         
         Ok(tx_hash)
     }
@@ -1904,7 +1965,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send wrap transaction: {}", e)))?;
         
         log::info!("Wrap successful: {}", tx_hash);
-        self.balance_update_needed = true;
+        self.set_last_tx_signature(tx_hash.clone());
         
         Ok(tx_hash)
     }
@@ -1957,7 +2018,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send wrap+swap transaction: {}", e)))?;
         
         log::info!("Wrap + Swap successful: {}", tx_hash);
-        self.balance_update_needed = true;
+        self.set_last_tx_signature(tx_hash.clone());
         
         Ok(tx_hash)
     }
