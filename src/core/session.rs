@@ -503,6 +503,7 @@ impl Session {
             .map_err(|e| SessionError::ProfileError(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Profile created successfully: {}", tx_hash);
+        self.set_last_tx_signature(tx_hash.clone());
         let _ = self.fetch_and_cache_user_profile().await;
         
         Ok(tx_hash)
@@ -544,6 +545,7 @@ impl Session {
             .map_err(|e| SessionError::ProfileError(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Profile updated successfully: {}", tx_hash);
+        self.set_last_tx_signature(tx_hash.clone());
         let _ = self.fetch_and_cache_user_profile().await;
         
         Ok(tx_hash)
@@ -572,6 +574,7 @@ impl Session {
             .map_err(|e| SessionError::ProfileError(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Profile deleted successfully: {}", tx_hash);
+        self.set_last_tx_signature(tx_hash.clone());
         self.user_profile = None;
         
         Ok(tx_hash)
@@ -1009,7 +1012,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Session: Chat group '{}' created successfully with ID {}", name, group_id);
-        self.mark_balance_update_needed();
+        self.set_last_tx_signature(tx_hash.clone());
         
         Ok((tx_hash, group_id))
     }
@@ -1053,17 +1056,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Tokens burned successfully for group {}", group_id);
-        
-        // Update balances after successful burn
-        match self.fetch_and_update_balances().await {
-            Ok(()) => {
-                log::info!("Successfully updated balances after burning tokens for group");
-            },
-            Err(e) => {
-                log::error!("Failed to update balances after burning tokens for group: {}", e);
-                self.mark_balance_update_needed();
-            }
-        }
+        self.set_last_tx_signature(signature.clone());
 
         Ok(signature)
     }
@@ -1117,7 +1110,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Session: Project '{}' created successfully with ID {}", name, project_id);
-        self.mark_balance_update_needed();
+        self.set_last_tx_signature(tx_hash.clone());
         
         Ok((tx_hash, project_id))
     }
@@ -1173,7 +1166,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Session: Project {} updated successfully", project_id);
-        self.mark_balance_update_needed();
+        self.set_last_tx_signature(signature.clone());
         
         Ok(signature)
     }
@@ -1217,17 +1210,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Tokens burned successfully for project {}", project_id);
-        
-        // Update balances after successful burn
-        match self.fetch_and_update_balances().await {
-            Ok(()) => {
-                log::info!("Successfully updated balances after burning tokens for project");
-            },
-            Err(e) => {
-                log::error!("Failed to update balances after burning tokens for project: {}", e);
-                self.mark_balance_update_needed();
-            }
-        }
+        self.set_last_tx_signature(signature.clone());
 
         Ok(signature)
     }
@@ -1397,15 +1380,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Blog created successfully for user {}", user_pubkey);
-        
-        // Update balances after successful creation
-        match self.fetch_and_update_balances().await {
-            Ok(()) => log::info!("Successfully updated balances after creating blog"),
-            Err(e) => {
-                log::error!("Failed to update balances after creating blog: {}", e);
-                self.mark_balance_update_needed();
-            }
-        }
+        self.set_last_tx_signature(signature.clone());
 
         Ok(signature)
     }
@@ -1456,15 +1431,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Blog updated successfully for user {}", user_pubkey);
-        
-        // Update balances after successful update
-        match self.fetch_and_update_balances().await {
-            Ok(()) => log::info!("Successfully updated balances after updating blog"),
-            Err(e) => {
-                log::error!("Failed to update balances after updating blog: {}", e);
-                self.mark_balance_update_needed();
-            }
-        }
+        self.set_last_tx_signature(signature.clone());
 
         Ok(signature)
     }
@@ -1509,15 +1476,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Tokens burned successfully for user {} blog", user_pubkey);
-        
-        // Update balances after successful burn
-        match self.fetch_and_update_balances().await {
-            Ok(()) => log::info!("Successfully updated balances after burning for blog"),
-            Err(e) => {
-                log::error!("Failed to update balances after burning for blog: {}", e);
-                self.mark_balance_update_needed();
-            }
-        }
+        self.set_last_tx_signature(signature.clone());
 
         Ok(signature)
     }
@@ -1556,15 +1515,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Tokens minted successfully for user {} blog", user_pubkey);
-        
-        // Update balances after successful mint
-        match self.fetch_and_update_balances().await {
-            Ok(()) => log::info!("Successfully updated balances after minting for blog"),
-            Err(e) => {
-                log::error!("Failed to update balances after minting for blog: {}", e);
-                self.mark_balance_update_needed();
-            }
-        }
+        self.set_last_tx_signature(signature.clone());
 
         Ok(signature)
     }
@@ -1613,15 +1564,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Forum post created successfully for user {}, post_id: {}", user_pubkey, post_id);
-        
-        // Update balances after successful creation
-        match self.fetch_and_update_balances().await {
-            Ok(()) => log::info!("Successfully updated balances after creating forum post"),
-            Err(e) => {
-                log::error!("Failed to update balances after creating forum post: {}", e);
-                self.mark_balance_update_needed();
-            }
-        }
+        self.set_last_tx_signature(signature.clone());
 
         Ok((signature, post_id))
     }
@@ -1665,15 +1608,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Burn for forum post {} completed successfully for user {}", post_id, user_pubkey);
-        
-        // Update balances after successful burn
-        match self.fetch_and_update_balances().await {
-            Ok(()) => log::info!("Successfully updated balances after burning for forum post"),
-            Err(e) => {
-                log::error!("Failed to update balances after burning for forum post: {}", e);
-                self.mark_balance_update_needed();
-            }
-        }
+        self.set_last_tx_signature(signature.clone());
 
         Ok(signature)
     }
@@ -1714,15 +1649,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send transaction: {}", e)))?;
         
         log::info!("Mint for forum post {} completed successfully for user {}", post_id, user_pubkey);
-        
-        // Update balances after successful mint
-        match self.fetch_and_update_balances().await {
-            Ok(()) => log::info!("Successfully updated balances after minting for forum post"),
-            Err(e) => {
-                log::error!("Failed to update balances after minting for forum post: {}", e);
-                self.mark_balance_update_needed();
-            }
-        }
+        self.set_last_tx_signature(signature.clone());
 
         Ok(signature)
     }
@@ -1777,6 +1704,7 @@ impl Session {
             .map_err(|e| SessionError::InvalidData(format!("Failed to send initialize transaction: {}", e)))?;
         
         log::info!("User burn stats initialized successfully: {}", tx_hash);
+        self.set_last_tx_signature(tx_hash.clone());
         let _ = self.fetch_and_cache_user_burn_stats().await;
         Ok(tx_hash)
     }
