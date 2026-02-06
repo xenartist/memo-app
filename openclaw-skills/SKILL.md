@@ -1,6 +1,6 @@
 ---
 name: openclaw-x1-memo-protocol
-description: Interact with the MEMO Protocol on X1 blockchain via free public JSON-RPC. Covers the full MEMO ecosystem including token minting, burning, transfers, user profiles, chat groups, projects, blogs, forums, and xDEX trading. Use when querying on-chain data (balances, token holders, burn stats, profiles, DEX pools) or building transactions against X1 mainnet/testnet.
+description: Interact with the MEMO Protocol on X1 blockchain via free public JSON-RPC. Covers the full MEMO ecosystem including token minting, burning, transfers, user profiles, chat groups, projects, blogs, and forums. Use when querying on-chain data (balances, token holders, burn stats, profiles) or building transactions against X1 mainnet/testnet.
 ---
 
 # OpenClaw X1 MEMO Protocol Skill
@@ -39,7 +39,6 @@ Profile Program:    2BY8vPpQRFFwAqK3HqU5qL3qsGMH3VnX9Gv9bud3vzH8
 Project Program:    6Vavot6ybhWBG3rjNXnLfNRPVTz7Garf6E4EZk3byp3a
 Blog Program:       3EKdp88FgyPC41bxRDzFAtCDUMV2g9SVt5UiytE8wdzM
 Forum Program:      6gzhG5BveTkJfTi466toX4qmN3BtU9qp1Grnk61GvmXD
-xDEX Program:       sEsYH97wqmfnkzHedjNcw3zyJdPvUmsa9AixhS4b4fN
 
 MEMO Token Mint:    memoX1sJsBY6od7CfQ58XooRALwnocAZen4L7mW1ick   (Token-2022, 6 decimals)
 Token-2022 Program: TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb
@@ -48,8 +47,6 @@ ATA Program:        ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL
 Memo Program (SPL): MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr
 
 Native XNT:         So11111111111111111111111111111111111111111    (9 decimals)
-Wrapped XNT (WXNT): So11111111111111111111111111111111111111112
-USDC.X:             B69chRzqzDCmdB5WYB8NRu5Yv5ZA95ABiZcdzCgGm9Tq
 ```
 
 ### MEMO Supply Tiers (Mint Reward Schedule)
@@ -264,62 +261,6 @@ curl -s https://rpc.mainnet.x1.xyz -X POST -H "Content-Type: application/json" -
 
 ---
 
-## xDEX (DEX) Operations
-
-### Get All Pools
-
-```bash
-curl -s https://rpc.mainnet.x1.xyz -X POST -H "Content-Type: application/json" -d '{
-  "jsonrpc": "2.0", "id": 1,
-  "method": "getProgramAccounts",
-  "params": ["sEsYH97wqmfnkzHedjNcw3zyJdPvUmsa9AixhS4b4fN", {"encoding": "base64"}]
-}'
-```
-
-Parse pool state (filter accounts with data length >= 400 bytes):
-
-```
-Offset  Size  Field
-0       8     Discriminator
-8       32    AMM Config
-40      32    Pool Creator
-72      32    Token 0 Vault
-104     32    Token 1 Vault
-136     32    LP Mint
-168     32    Token 0 Mint
-200     32    Token 1 Mint
-232     32    Token 0 Program
-264     32    Token 1 Program
-296     32    Observation Key
-328     1     Auth Bump
-329     1     Status (0=all enabled, 1=deposit disabled, 2=withdraw disabled, 4=swap disabled)
-330     1     LP Mint Decimals
-331     1     Mint 0 Decimals
-332     1     Mint 1 Decimals
-333     8     LP Supply (u64 LE)
-```
-
-### Get Pool Price
-
-1. Parse pool to get `token_0_vault` and `token_1_vault` addresses
-2. Query each vault with `getAccountInfo` (`jsonParsed` encoding)
-3. Extract `data.parsed.info.tokenAmount.amount` from each vault
-4. `price = reserve_0 / reserve_1` (adjust for decimals)
-5. If one token is USDC.X (`B69chRzqzDCmdB5WYB8NRu5Yv5ZA95ABiZcdzCgGm9Tq`), you can derive USD prices
-
-### Well-Known Tokens on xDEX
-
-| Mint | Symbol | Name |
-|---|---|---|
-| `So11111111111111111111111111111111111111111` | XNT | X1 Native Token |
-| `So11111111111111111111111111111111111111112` | WXNT | Wrapped XNT |
-| `B69chRzqzDCmdB5WYB8NRu5Yv5ZA95ABiZcdzCgGm9Tq` | USDC.X | USDC on X1 |
-| `memoX1sJsBY6od7CfQ58XooRALwnocAZen4L7mW1ick` | MEMO | Memo Token |
-| `pXNTyoqQsskHdZ7Q1rnP25FEyHHjissbs7n6RRN2nP5` | pXNT | Pooled XNT |
-| `XBLKLmxhADMVX3DsdwymvHyYbBBfKa5eKhtpiQ2kj7T` | XBLK | XenBlocks |
-
----
-
 ## Account Data Parsing Guide
 
 ### Borsh Encoding (used by all X1 programs)
@@ -339,7 +280,6 @@ Examples:
 - `process_mint` → SHA256("global:process_mint")[..8]
 - `create_profile` → SHA256("global:create_profile")[..8]
 - `initialize_user_global_burn_stats` → SHA256("global:initialize_user_global_burn_stats")[..8]
-- xDEX `swapBaseInput` discriminator: `[143, 190, 90, 218, 196, 30, 51, 222]`
 
 ### PDA Derivation Patterns
 
@@ -348,7 +288,6 @@ Examples:
 | Mint Authority | `[b"mint_authority"]` | Mint Program |
 | User Profile | `[b"profile", user_pubkey]` | Profile Program |
 | User Burn Stats | `[b"user_global_burn_stats", user_pubkey]` | Burn Program |
-| xDEX Authority | `[b"vault_and_lp_mint_auth_seed"]` | xDEX Program |
 | Token ATA | `[owner, token_program, mint]` | ATA Program |
 
 ---
@@ -1066,44 +1005,6 @@ Burns MEMO tokens for a group with an optional message.
 
 No memo required.
 
-### W11. xDEX Swap (swapBaseInput)
-
-Swap tokens on the xDEX DEX.
-
-**Discriminator**: `[143, 190, 90, 218, 196, 30, 51, 222]` (fixed)
-
-**Instruction Data**: discriminator (8 bytes) + amount_in (u64 LE) + minimum_amount_out (u64 LE)
-
-**Accounts** (in order):
-
-| # | Account | Signer | Writable | Description |
-|---|---------|--------|----------|-------------|
-| 0 | user | yes | no | User (signer) |
-| 1 | authority | no | no | PDA: `[b"vault_and_lp_mint_auth_seed"]` from xDEX Program |
-| 2 | amm_config | no | no | AMM config (from pool data offset 8) |
-| 3 | pool_state | no | yes | Pool account address |
-| 4 | input_token_account | no | yes | User's input ATA |
-| 5 | output_token_account | no | yes | User's output ATA |
-| 6 | input_vault | no | yes | Pool's input vault |
-| 7 | output_vault | no | yes | Pool's output vault |
-| 8 | input_token_program | no | no | Token program for input |
-| 9 | output_token_program | no | no | Token program for output |
-| 10 | input_mint | no | no | Input token mint |
-| 11 | output_mint | no | no | Output token mint |
-| 12 | observation_state | no | yes | Observation account (from pool data offset 296) |
-
-Create input/output ATAs if they don't exist. For native XNT swaps, wrap to WXNT first (see W12).
-
-### W12. Wrap Native XNT to WXNT
-
-Wrap native XNT into SPL Token WXNT for DEX trading.
-
-**Instructions** (3 steps):
-
-1. **Create WXNT ATA** (if not exists): ATA program, mint = `So11111111111111111111111111111111111111112`, token program = `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA` (standard SPL Token, NOT Token-2022)
-2. **Transfer native XNT**: `SystemProgram.transfer(user, wxnt_ata, amount_lamports)`
-3. **SyncNative**: Instruction to standard SPL Token program, account = wxnt_ata, data = `[17]`
-
 ### Transaction Building Example (Python with solders)
 
 ```python
@@ -1217,6 +1118,4 @@ Extract specific error messages from `data.logs` entries containing `"Error Mess
 | Top burners | `getProgramAccounts` | Burn program + dataSize:65 |
 | Tx history | `getSignaturesForAddress` | address + limit |
 | Tx details | `getTransaction` | signature |
-| DEX pools | `getProgramAccounts` | xDEX program |
-| Pool price | `getAccountInfo` on vaults | vault addresses |
 | Health check | `getVersion` | (none) |
