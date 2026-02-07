@@ -2114,6 +2114,80 @@ async function initializeBurnStats(connection, keypair) {
 }
 ```
 
+### W10b. Direct Core Burn (process_burn)
+
+Directly calls the core `BURN_PROGRAM.process_burn()` to burn MEMO tokens **without** going through any upper-layer program. This is the simplest burn path — no business logic, no state changes, just pure token destruction with a Borsh+Base64 memo.
+
+Use this when you want maximum control, lowest complexity, and easiest debugging. The upper-layer burn operations (W4, W5, W8, W9, W12, W16, W20) internally CPI-call this same `process_burn` instruction.
+
+**Requirements:**
+- Burn stats must be initialized first (see W10)
+- Amount must be ≥ 1 token (1,000,000 units) and a whole number of tokens
+- SPL Memo instruction MUST be at index 0 (Borsh+Base64 encoded `BurnMemo`)
+- The `burn_amount` in the memo MUST exactly match the `amount` argument
+
+```javascript
+async function directCoreBurn(connection, keypair, burnAmountTokens, payload = Buffer.alloc(0)) {
+  const user = keypair.publicKey;
+  const burnAmountLamports = BigInt(burnAmountTokens) * BigInt(1_000_000);
+
+  // Derive PDAs
+  const { ata: userAta } = await ensureATA(connection, user, MEMO_MINT, user);
+  const [burnStatsPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('user_global_burn_stats'), user.toBuffer()], BURN_PROGRAM
+  );
+
+  // Build BurnMemo (Borsh-serialized → Base64-encoded)
+  // Structure: version (u8) + burn_amount (u64) + payload (Vec<u8>)
+  const burnMemo = Buffer.concat([
+    encodeBorshU8(1),                            // version = 1
+    encodeBorshU64(Number(burnAmountLamports)),   // burn_amount in lamports
+    encodeBorshVecU8(payload),                    // application payload (can be empty)
+  ]);
+  const memoBase64 = burnMemo.toString('base64');
+
+  const instructions = [];
+
+  // 1. SPL Memo instruction (MUST be at index 0)
+  //    Contains Borsh+Base64 encoded BurnMemo data
+  instructions.push(createMemoInstruction(memoBase64, user));
+
+  // 2. Core burn instruction
+  const ixData = Buffer.concat([
+    anchorDiscriminator('process_burn'),
+    encodeBorshU64(Number(burnAmountLamports)),   // amount argument (must match memo)
+  ]);
+  instructions.push(new TransactionInstruction({
+    keys: [
+      { pubkey: user,              isSigner: true,  isWritable: true  },  // user (signer)
+      { pubkey: MEMO_MINT,         isSigner: false, isWritable: true  },  // mint
+      { pubkey: userAta,           isSigner: false, isWritable: true  },  // token_account
+      { pubkey: burnStatsPda,      isSigner: false, isWritable: true  },  // user_global_burn_stats
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },  // token_program
+      { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },  // instructions sysvar
+    ],
+    programId: BURN_PROGRAM,
+    data: ixData,
+  }));
+
+  return await buildAndSendTransaction(connection, keypair, instructions);
+}
+
+// Usage: burn 10 MEMO tokens with empty payload
+const sig = await directCoreBurn(connection, keypair, 10);
+
+// Usage: burn 5 MEMO tokens with a custom Borsh payload (e.g. from encodeChatGroupBurn)
+const customPayload = encodeChatGroupBurn(groupId, burnerPubkey, 'Support message');
+const sig2 = await directCoreBurn(connection, keypair, 5, customPayload);
+```
+
+**Key differences from upper-layer burns (W12, W16, W20):**
+- Calls `BURN_PROGRAM` directly — no CPI, no intermediate program
+- No business-logic side effects (no post/blog/project state updates)
+- You construct the `BurnMemo` yourself and place it at index 0
+- The `amount` argument and the `burn_amount` field in the memo **must match exactly**, or the contract rejects with `BurnAmountMismatch`
+- Burn stats (`user_global_burn_stats`) are still updated (total_burned, burn_count, last_burn_time)
+
 ### W11. Create Forum Post
 
 Burns MEMO tokens (minimum 1) to create a forum post.
@@ -2729,6 +2803,7 @@ try {
 | Instruction | Name for SHA256 |
 |---|---|
 | Mint MEMO | `process_mint` |
+| Direct Core Burn | `process_burn` |
 | Create Profile | `create_profile` |
 | Update Profile | `update_profile` |
 | Delete Profile | `delete_profile` |
