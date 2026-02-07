@@ -1487,7 +1487,7 @@ async function buildAndSendTransaction(connection, keypair, instructions, cuBuff
 ```
 
 **Why simulate first?**
-- Default CU limit on Solana/X1 is 200,000 per instruction. If you hardcode a large value like 400,000, you pay fees for unused CU.
+- Default CU limit on X1 is 400,000 per instruction. If you hardcode a large value like 400,000, you pay fees for unused CU.
 - Simulation runs the transaction without signing or committing, returning `unitsConsumed` — the exact CU the transaction will use.
 - Set `sigVerify: false` and `replaceRecentBlockhash: true` so you don't need to sign the simulation transaction.
 - Add a small buffer (~1.01x) because actual execution may vary slightly from simulation.
