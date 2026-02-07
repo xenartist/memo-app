@@ -1415,8 +1415,11 @@ All write operations follow this pattern:
 
 1. **Build instructions** (SPL Memo instruction MUST be at index 0 when required)
 2. **Get latest blockhash**
-3. **Build, sign, and send transaction**
-4. **Optionally simulate first** to estimate compute units
+3. **Simulate transaction** to estimate actual compute units consumed
+4. **Set precise compute budget** based on simulation result (with small buffer)
+5. **Sign and send** the final transaction
+
+> **STRONGLY RECOMMENDED on X1**: Always simulate first to determine the exact CU needed, then set `ComputeUnitLimit` accordingly. This saves CU and reduces transaction fees. Do NOT hardcode a large CU value like 400,000 — use simulation to get the real number and add a ~1% buffer.
 
 ### SPL Memo Instruction Helper
 
@@ -1430,21 +1433,48 @@ function createMemoInstruction(memoData, signer) {
 }
 ```
 
-### Transaction Sending Helper
+### Transaction Sending Helper (with Simulation-based CU)
 
 ```javascript
-async function buildAndSendTransaction(connection, keypair, instructions, computeUnits = 400_000) {
+async function buildAndSendTransaction(connection, keypair, instructions, cuBufferMultiplier = 1.01) {
+  const { blockhash } = await connection.getLatestBlockhash('confirmed');
+
+  // ── Step 1: Simulate to estimate compute units ──
+  // Build a simulation transaction with a high CU limit (unsigned, sigVerify: false)
+  const simTx = new Transaction();
+  for (const ix of instructions) {
+    simTx.add(ix);
+  }
+  // Use a large CU limit for simulation so it won't fail due to CU exhaustion
+  simTx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }));
+  simTx.recentBlockhash = blockhash;
+  simTx.feePayer = keypair.publicKey;
+
+  const simResult = await connection.simulateTransaction(simTx, {
+    sigVerify: false,               // skip signature verification (unsigned tx)
+    replaceRecentBlockhash: true,   // auto-replace blockhash for freshness
+    commitment: 'confirmed',
+  });
+
+  if (simResult.value.err) {
+    throw new Error(`Simulation failed: ${JSON.stringify(simResult.value.err)}\nLogs: ${simResult.value.logs?.join('\n')}`);
+  }
+
+  const simulatedCU = simResult.value.unitsConsumed;
+  // Apply buffer (default 1.4x = 40% buffer for safety)
+  const finalCU = Math.ceil(simulatedCU * cuBufferMultiplier);
+
+  console.log(`Simulated: ${simulatedCU} CU → Final: ${finalCU} CU (${cuBufferMultiplier}x buffer)`);
+
+  // ── Step 2: Build final transaction with precise CU limit ──
   const tx = new Transaction();
-
-  // Add compute budget
-  tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: computeUnits }));
-
-  // Add all instructions
   for (const ix of instructions) {
     tx.add(ix);
   }
+  tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: finalCU }));
+  // Optional: set priority fee (uncomment if needed)
+  // tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1000 }));
 
-  const { blockhash } = await connection.getLatestBlockhash('confirmed');
   tx.recentBlockhash = blockhash;
   tx.feePayer = keypair.publicKey;
 
@@ -1455,6 +1485,12 @@ async function buildAndSendTransaction(connection, keypair, instructions, comput
   return signature;
 }
 ```
+
+**Why simulate first?**
+- Default CU limit on Solana/X1 is 200,000 per instruction. If you hardcode a large value like 400,000, you pay fees for unused CU.
+- Simulation runs the transaction without signing or committing, returning `unitsConsumed` — the exact CU the transaction will use.
+- Set `sigVerify: false` and `replaceRecentBlockhash: true` so you don't need to sign the simulation transaction.
+- Add a small buffer (~1.01x) because actual execution may vary slightly from simulation.
 
 ### ATA Helper (Create if Needed)
 
@@ -1531,7 +1567,7 @@ async function transferXNT(connection, keypair, toAddress, amountXNT) {
     toPubkey: new PublicKey(toAddress),
     lamports,
   });
-  return await buildAndSendTransaction(connection, keypair, [ix], 200_000);
+  return await buildAndSendTransaction(connection, keypair, [ix]);
 }
 ```
 
@@ -1683,7 +1719,7 @@ async function deleteProfile(connection, keypair) {
     data: anchorDiscriminator('delete_profile'),
   });
 
-  return await buildAndSendTransaction(connection, keypair, [ix], 200_000);
+  return await buildAndSendTransaction(connection, keypair, [ix]);
 }
 ```
 
@@ -1877,7 +1913,7 @@ async function initializeBurnStats(connection, keypair) {
     data: anchorDiscriminator('initialize_user_global_burn_stats'),
   });
 
-  return await buildAndSendTransaction(connection, keypair, [ix], 200_000);
+  return await buildAndSendTransaction(connection, keypair, [ix]);
 }
 ```
 
