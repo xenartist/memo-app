@@ -1,52 +1,61 @@
 ---
 name: openclaw-x1-memo-protocol
-description: Interact with the MEMO Protocol on X1 blockchain via free public JSON-RPC. Covers the full MEMO ecosystem including token minting, burning, transfers, user profiles, chat groups, projects, blogs, and forums. Use when querying on-chain data (balances, token holders, burn stats, profiles) or building transactions against X1 mainnet/testnet.
+description: Interact with the MEMO Protocol on X1 blockchain via @solana/web3.js. Covers the full MEMO ecosystem including token minting, burning, transfers, user profiles, chat groups, forum posts, projects, and blogs. Use when querying on-chain data (balances, token holders, burn stats, profiles, posts, blogs, projects) or building transactions against X1 mainnet/testnet.
 ---
 
 # OpenClaw X1 MEMO Protocol Skill
 
-Direct interaction with the MEMO Protocol on X1 blockchain via Solana-compatible JSON-RPC. No API keys needed.
+Direct interaction with the MEMO Protocol on X1 blockchain using `@solana/web3.js`. The X1 RPC is public and free — no API keys needed.
 
-## RPC Endpoint
-
-```
-Mainnet: https://rpc.mainnet.x1.xyz
-Testnet: https://rpc.testnet.x1.xyz
-```
-
-All requests: `POST`, `Content-Type: application/json`, JSON-RPC 2.0 format.
-
-## Request Template
+## Setup & Dependencies
 
 ```bash
-curl -s https://rpc.mainnet.x1.xyz -X POST -H "Content-Type: application/json" -d '{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "<METHOD>",
-  "params": [<PARAMS>]
-}'
+npm install @solana/web3.js @solana/spl-token
+```
+
+```javascript
+import {
+  Connection, PublicKey, Keypair, Transaction,
+  TransactionInstruction, SystemProgram, ComputeBudgetProgram,
+  sendAndConfirmTransaction
+} from '@solana/web3.js';
+import {
+  getAssociatedTokenAddress, createAssociatedTokenAccountInstruction,
+  createTransferCheckedInstruction, TOKEN_2022_PROGRAM_ID
+} from '@solana/spl-token';
+import { createHash } from 'crypto';
+
+const connection = new Connection('https://rpc.mainnet.x1.xyz', 'confirmed');
 ```
 
 ---
 
-## Mainnet Program IDs & Token Addresses
+## Program IDs & Token Addresses
+
+```javascript
+// MEMO Protocol Programs
+const MINT_PROGRAM       = new PublicKey('8iq6zqaEVcfaym2u8t939PAN5jmfPVc6Z333RuxKTTZX');
+const BURN_PROGRAM       = new PublicKey('2sb3gz5Cmr2g1ia5si2rmCZqPACxgaZXEmiS5k6Htcvh');
+const CHAT_PROGRAM       = new PublicKey('Hni4qE8GGW5uwBWzUEkpPBDRwXvKCWhM96teieAReRyd');
+const PROFILE_PROGRAM    = new PublicKey('2BY8vPpQRFFwAqK3HqU5qL3qsGMH3VnX9Gv9bud3vzH8');
+const PROJECT_PROGRAM    = new PublicKey('6Vavot6ybhWBG3rjNXnLfNRPVTz7Garf6E4EZk3byp3a');
+const BLOG_PROGRAM       = new PublicKey('3EKdp88FgyPC41bxRDzFAtCDUMV2g9SVt5UiytE8wdzM');
+const FORUM_PROGRAM      = new PublicKey('6gzhG5BveTkJfTi466toX4qmN3BtU9qp1Grnk61GvmXD');
+
+// Token Addresses
+const MEMO_MINT          = new PublicKey('memoX1sJsBY6od7CfQ58XooRALwnocAZen4L7mW1ick');   // Token-2022, 6 decimals
+const SPL_MEMO_PROGRAM   = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
+const ATA_PROGRAM        = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+const INSTRUCTIONS_SYSVAR = new PublicKey('Sysvar1nstructions1111111111111111111111111');
+
+// XNT (native token): 9 decimals
+// MEMO token: 6 decimals (1 MEMO = 1_000_000 lamports)
+```
+
+### RPC Endpoints
 
 ```
-Mint Program:       8iq6zqaEVcfaym2u8t939PAN5jmfPVc6Z333RuxKTTZX
-Burn Program:       2sb3gz5Cmr2g1ia5si2rmCZqPACxgaZXEmiS5k6Htcvh
-Chat Program:       Hni4qE8GGW5uwBWzUEkpPBDRwXvKCWhM96teieAReRyd
-Profile Program:    2BY8vPpQRFFwAqK3HqU5qL3qsGMH3VnX9Gv9bud3vzH8
-Project Program:    6Vavot6ybhWBG3rjNXnLfNRPVTz7Garf6E4EZk3byp3a
-Blog Program:       3EKdp88FgyPC41bxRDzFAtCDUMV2g9SVt5UiytE8wdzM
-Forum Program:      6gzhG5BveTkJfTi466toX4qmN3BtU9qp1Grnk61GvmXD
-
-MEMO Token Mint:    memoX1sJsBY6od7CfQ58XooRALwnocAZen4L7mW1ick   (Token-2022, 6 decimals)
-Token-2022 Program: TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb
-SPL Token Program:  TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-ATA Program:        ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL
-Memo Program (SPL): MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr
-
-Native XNT:         So11111111111111111111111111111111111111111    (9 decimals)
+Mainnet: https://rpc.mainnet.x1.xyz
 ```
 
 ### MEMO Supply Tiers (Mint Reward Schedule)
@@ -62,245 +71,509 @@ Native XNT:         So11111111111111111111111111111111111111111    (9 decimals)
 
 ---
 
-## Read Operations (No Signing Required)
+## Utility Functions
+
+### Borsh Encoding/Decoding Helpers
+
+```javascript
+// ── Encoding ──
+
+function encodeBorshU8(value) {
+  return Buffer.from([value]);
+}
+
+function encodeBorshU64(value) {
+  const buf = Buffer.alloc(8);
+  buf.writeBigUInt64LE(BigInt(value));
+  return buf;
+}
+
+function encodeBorshI64(value) {
+  const buf = Buffer.alloc(8);
+  buf.writeBigInt64LE(BigInt(value));
+  return buf;
+}
+
+function encodeBorshString(str) {
+  const bytes = Buffer.from(str, 'utf-8');
+  const len = Buffer.alloc(4);
+  len.writeUInt32LE(bytes.length);
+  return Buffer.concat([len, bytes]);
+}
+
+function encodeBorshOptionString(value) {
+  if (value === null || value === undefined) return Buffer.from([0]);
+  return Buffer.concat([Buffer.from([1]), encodeBorshString(value)]);
+}
+
+function encodeBorshOptionI64(value) {
+  if (value === null || value === undefined) return Buffer.from([0]);
+  return Buffer.concat([Buffer.from([1]), encodeBorshI64(value)]);
+}
+
+function encodeBorshVecString(arr) {
+  const len = Buffer.alloc(4);
+  len.writeUInt32LE(arr.length);
+  return Buffer.concat([len, ...arr.map(encodeBorshString)]);
+}
+
+function encodeBorshVecU8(data) {
+  const len = Buffer.alloc(4);
+  len.writeUInt32LE(data.length);
+  return Buffer.concat([len, data]);
+}
+
+// ── Decoding ──
+
+function decodeBorshU8(data, offset) {
+  return [data[offset], offset + 1];
+}
+
+function decodeBorshU64(data, offset) {
+  const value = data.readBigUInt64LE(offset);
+  return [Number(value), offset + 8];
+}
+
+function decodeBorshI64(data, offset) {
+  const value = data.readBigInt64LE(offset);
+  return [Number(value), offset + 8];
+}
+
+function decodeBorshString(data, offset) {
+  const len = data.readUInt32LE(offset);
+  offset += 4;
+  const str = data.slice(offset, offset + len).toString('utf-8');
+  return [str, offset + len];
+}
+
+function decodeBorshOptionString(data, offset) {
+  const flag = data[offset]; offset += 1;
+  if (flag === 0) return [null, offset];
+  return decodeBorshString(data, offset);
+}
+
+function decodeBorshVecString(data, offset) {
+  const count = data.readUInt32LE(offset); offset += 4;
+  const arr = [];
+  for (let i = 0; i < count; i++) {
+    const [str, newOffset] = decodeBorshString(data, offset);
+    arr.push(str); offset = newOffset;
+  }
+  return [arr, offset];
+}
+```
+
+### Anchor Instruction Discriminator
+
+```javascript
+function anchorDiscriminator(instructionName) {
+  const hash = createHash('sha256')
+    .update(`global:${instructionName}`)
+    .digest();
+  return hash.slice(0, 8);
+}
+```
+
+### PDA Derivation Patterns
+
+```javascript
+// Mint Authority
+const [mintAuthority] = PublicKey.findProgramAddressSync(
+  [Buffer.from('mint_authority')], MINT_PROGRAM
+);
+
+// User Profile
+const [profilePda] = PublicKey.findProgramAddressSync(
+  [Buffer.from('profile'), userPubkey.toBuffer()], PROFILE_PROGRAM
+);
+
+// User Burn Stats
+const [burnStatsPda] = PublicKey.findProgramAddressSync(
+  [Buffer.from('user_global_burn_stats'), userPubkey.toBuffer()], BURN_PROGRAM
+);
+
+// Chat Group
+const groupIdBuf = Buffer.alloc(8); groupIdBuf.writeBigUInt64LE(BigInt(groupId));
+const [chatGroupPda] = PublicKey.findProgramAddressSync(
+  [Buffer.from('chat_group'), groupIdBuf], CHAT_PROGRAM
+);
+
+// Chat Global Counter
+const [chatGlobalCounter] = PublicKey.findProgramAddressSync(
+  [Buffer.from('global_counter')], CHAT_PROGRAM
+);
+
+// Chat Burn Leaderboard
+const [chatBurnLeaderboard] = PublicKey.findProgramAddressSync(
+  [Buffer.from('burn_leaderboard')], CHAT_PROGRAM
+);
+
+// Forum Post
+const postIdBuf = Buffer.alloc(8); postIdBuf.writeBigUInt64LE(BigInt(postId));
+const [postPda] = PublicKey.findProgramAddressSync(
+  [Buffer.from('post'), postIdBuf], FORUM_PROGRAM
+);
+
+// Forum Global Counter
+const [forumGlobalCounter] = PublicKey.findProgramAddressSync(
+  [Buffer.from('global_counter')], FORUM_PROGRAM
+);
+
+// Blog (one per user)
+const [blogPda] = PublicKey.findProgramAddressSync(
+  [Buffer.from('blog'), userPubkey.toBuffer()], BLOG_PROGRAM
+);
+
+// Project
+const projectIdBuf = Buffer.alloc(8); projectIdBuf.writeBigUInt64LE(BigInt(projectId));
+const [projectPda] = PublicKey.findProgramAddressSync(
+  [Buffer.from('project'), projectIdBuf], PROJECT_PROGRAM
+);
+
+// Project Global Counter
+const [projectGlobalCounter] = PublicKey.findProgramAddressSync(
+  [Buffer.from('global_counter')], PROJECT_PROGRAM
+);
+
+// Project Burn Leaderboard
+const [projectBurnLeaderboard] = PublicKey.findProgramAddressSync(
+  [Buffer.from('burn_leaderboard')], PROJECT_PROGRAM
+);
+
+// Token ATA (Token-2022)
+const userAta = await getAssociatedTokenAddress(
+  MEMO_MINT, userPubkey, false, TOKEN_2022_PROGRAM_ID
+);
+```
+
+### PDA Quick Reference Table
+
+| Account Type | Seeds | Program |
+|---|---|---|
+| Mint Authority | `["mint_authority"]` | Mint Program |
+| User Profile | `["profile", user_pubkey]` | Profile Program |
+| User Burn Stats | `["user_global_burn_stats", user_pubkey]` | Burn Program |
+| Chat Group | `["chat_group", group_id (u64 LE)]` | Chat Program |
+| Chat Global Counter | `["global_counter"]` | Chat Program |
+| Chat Burn Leaderboard | `["burn_leaderboard"]` | Chat Program |
+| Forum Post | `["post", post_id (u64 LE)]` | Forum Program |
+| Forum Global Counter | `["global_counter"]` | Forum Program |
+| Blog | `["blog", user_pubkey]` | Blog Program |
+| Project | `["project", project_id (u64 LE)]` | Project Program |
+| Project Global Counter | `["global_counter"]` | Project Program |
+| Project Burn Leaderboard | `["burn_leaderboard"]` | Project Program |
+| Token ATA | `[owner, token_program, mint]` | ATA Program |
+
+---
+
+## Read Operations
 
 ### 1. Get XNT Balance
 
-```bash
-curl -s https://rpc.mainnet.x1.xyz -X POST -H "Content-Type: application/json" -d '{
-  "jsonrpc": "2.0", "id": 1,
-  "method": "getBalance",
-  "params": ["<PUBKEY>"]
-}'
+```javascript
+const balance = await connection.getBalance(new PublicKey(address));
+const xnt = balance / 1_000_000_000;  // 9 decimals
 ```
-
-Response: `result.value` is balance in lamports. Divide by `1_000_000_000` for XNT.
 
 ### 2. Get MEMO Token Balance
 
-```bash
-curl -s https://rpc.mainnet.x1.xyz -X POST -H "Content-Type: application/json" -d '{
-  "jsonrpc": "2.0", "id": 1,
-  "method": "getTokenAccountsByOwner",
-  "params": [
-    "<OWNER_PUBKEY>",
-    {"mint": "memoX1sJsBY6od7CfQ58XooRALwnocAZen4L7mW1ick"},
-    {"encoding": "jsonParsed"}
-  ]
-}'
+```javascript
+const accounts = await connection.getTokenAccountsByOwner(
+  new PublicKey(ownerAddress),
+  { mint: MEMO_MINT },
+  { encoding: 'jsonParsed' }
+);
+if (accounts.value.length > 0) {
+  const balance = accounts.value[0].account.data.parsed.info.tokenAmount.uiAmount;
+}
 ```
-
-Response: `result.value[0].account.data.parsed.info.tokenAmount.uiAmount` is the human-readable balance.
 
 ### 3. Get MEMO Token Supply
 
-```bash
-curl -s https://rpc.mainnet.x1.xyz -X POST -H "Content-Type: application/json" -d '{
-  "jsonrpc": "2.0", "id": 1,
-  "method": "getTokenSupply",
-  "params": ["memoX1sJsBY6od7CfQ58XooRALwnocAZen4L7mW1ick", {"commitment": "confirmed"}]
-}'
+```javascript
+const supply = await connection.getTokenSupply(MEMO_MINT);
+// supply.value.uiAmount → human-readable (6 decimals)
+// supply.value.amount   → raw lamports string
 ```
-
-Response: `result.value.amount` (raw), `result.value.uiAmount` (human-readable, 6 decimals).
 
 ### 4. Get Account Info
 
-```bash
-curl -s https://rpc.mainnet.x1.xyz -X POST -H "Content-Type: application/json" -d '{
-  "jsonrpc": "2.0", "id": 1,
-  "method": "getAccountInfo",
-  "params": ["<PUBKEY>", {"encoding": "base64"}]
-}'
+```javascript
+const accountInfo = await connection.getAccountInfo(new PublicKey(address));
+// accountInfo.data → Buffer containing account data
 ```
-
-Use `"encoding": "jsonParsed"` for token accounts to get parsed data automatically.
 
 ### 5. Get Transaction Details
 
-```bash
-curl -s https://rpc.mainnet.x1.xyz -X POST -H "Content-Type: application/json" -d '{
-  "jsonrpc": "2.0", "id": 1,
-  "method": "getTransaction",
-  "params": ["<TX_SIGNATURE>", {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}]
-}'
+```javascript
+const tx = await connection.getTransaction(signature, {
+  maxSupportedTransactionVersion: 0,
+  commitment: 'confirmed'
+});
+// tx.meta.logMessages → program logs
+// tx.transaction.message.instructions → instructions
 ```
 
 ### 6. Get Transaction History
 
-```bash
-curl -s https://rpc.mainnet.x1.xyz -X POST -H "Content-Type: application/json" -d '{
-  "jsonrpc": "2.0", "id": 1,
-  "method": "getSignaturesForAddress",
-  "params": ["<ADDRESS>", {"limit": 20}]
-}'
+```javascript
+const signatures = await connection.getSignaturesForAddress(
+  new PublicKey(address),
+  { limit: 20 }
+);
+// signatures[i].signature → transaction signature
+// signatures[i].memo → memo field (if SPL Memo was used)
 ```
-
-Options: `limit`, `before` (signature), `until` (signature), `commitment`.
 
 ### 7. Get Top MEMO Token Holders
 
-```bash
-curl -s https://rpc.mainnet.x1.xyz -X POST -H "Content-Type: application/json" -d '{
-  "jsonrpc": "2.0", "id": 1,
-  "method": "getProgramAccounts",
-  "params": [
-    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-    {
-      "encoding": "jsonParsed",
-      "filters": [
-        {"memcmp": {"offset": 0, "bytes": "memoX1sJsBY6od7CfQ58XooRALwnocAZen4L7mW1ick"}}
-      ]
-    }
+```javascript
+const accounts = await connection.getProgramAccounts(TOKEN_2022_PROGRAM_ID, {
+  encoding: 'jsonParsed',
+  filters: [
+    { memcmp: { offset: 0, bytes: MEMO_MINT.toBase58() } }
   ]
-}'
-```
+});
 
-Each result: `account.data.parsed.info.owner` = holder address, `account.data.parsed.info.tokenAmount.uiAmount` = balance. Sort client-side by balance descending.
+const holders = accounts.map(a => ({
+  owner: a.account.data.parsed.info.owner,
+  balance: a.account.data.parsed.info.tokenAmount.uiAmount
+})).sort((a, b) => b.balance - a.balance);
+```
 
 ### 8. Get Top Burners
 
-```bash
-curl -s https://rpc.mainnet.x1.xyz -X POST -H "Content-Type: application/json" -d '{
-  "jsonrpc": "2.0", "id": 1,
-  "method": "getProgramAccounts",
-  "params": [
-    "2sb3gz5Cmr2g1ia5si2rmCZqPACxgaZXEmiS5k6Htcvh",
-    {
-      "encoding": "base64",
-      "filters": [{"dataSize": 65}]
-    }
-  ]
-}'
-```
+```javascript
+const accounts = await connection.getProgramAccounts(BURN_PROGRAM, {
+  encoding: 'base64',
+  filters: [{ dataSize: 65 }]
+});
 
-Parse each `UserGlobalBurnStats` account (65 bytes):
-
-```
-Offset  Size  Field
-0       8     Discriminator (skip)
-8       32    User pubkey
-40      8     total_burned (u64 LE, divide by 1_000_000 for tokens)
-48      8     burn_count (u64 LE)
-56      8     last_burn_time (i64 LE, Unix timestamp)
-64      1     bump
+const burners = accounts.map(({ account }) => {
+  const data = Buffer.from(account.data[0], 'base64');
+  // Skip 8-byte discriminator
+  const user = new PublicKey(data.slice(8, 40)).toBase58();
+  const totalBurned = Number(data.readBigUInt64LE(40)) / 1_000_000;
+  const burnCount = Number(data.readBigUInt64LE(48));
+  const lastBurnTime = Number(data.readBigInt64LE(56));
+  return { user, totalBurned, burnCount, lastBurnTime };
+}).sort((a, b) => b.totalBurned - a.totalBurned);
 ```
 
 ### 9. Get User Profile
 
-Derive Profile PDA: `findProgramAddress([b"profile", user_pubkey_bytes], profile_program_id)`.
+```javascript
+function parseProfile(data) {
+  let offset = 8; // skip discriminator
+  const user = new PublicKey(data.slice(offset, offset + 32)).toBase58(); offset += 32;
+  let username; [username, offset] = decodeBorshString(data, offset);
+  let image;    [image, offset]    = decodeBorshString(data, offset);
+  let createdAt;  [createdAt, offset]  = decodeBorshI64(data, offset);
+  let lastUpdated; [lastUpdated, offset] = decodeBorshI64(data, offset);
+  let aboutMe;  [aboutMe, offset]  = decodeBorshOptionString(data, offset);
+  const bump = data[offset];
+  return { user, username, image, createdAt, lastUpdated, aboutMe, bump };
+}
 
-```bash
-curl -s https://rpc.mainnet.x1.xyz -X POST -H "Content-Type: application/json" -d '{
-  "jsonrpc": "2.0", "id": 1,
-  "method": "getAccountInfo",
-  "params": ["<PROFILE_PDA_ADDRESS>", {"encoding": "base64"}]
-}'
+const [profilePda] = PublicKey.findProgramAddressSync(
+  [Buffer.from('profile'), userPubkey.toBuffer()], PROFILE_PROGRAM
+);
+const accountInfo = await connection.getAccountInfo(profilePda);
+if (accountInfo) {
+  const profile = parseProfile(Buffer.from(accountInfo.data));
+  // profile.image → pixel art string (see Pixel Art section)
+}
 ```
 
-Parse profile data:
+### 10. Get Forum Post
 
-```
-Offset  Size      Field
-0       8         Discriminator (skip)
-8       32        User pubkey
-40      4+N       Username (Borsh string: 4-byte LE length + UTF-8 bytes)
-?       4+N       Image (Borsh string: hex-encoded avatar data)
-?       8         created_at (i64 LE, Unix timestamp)
-?       8         last_updated (i64 LE, Unix timestamp)
-?       1+[4+N]   about_me (Borsh Option<String>: 0=None, 1+string=Some)
-?       1         bump
-```
+```javascript
+function parseForumPost(data) {
+  let offset = 8; // skip discriminator
+  let postId;     [postId, offset]     = decodeBorshU64(data, offset);
+  const creator = new PublicKey(data.slice(offset, offset + 32)).toBase58(); offset += 32;
+  let createdAt;  [createdAt, offset]  = decodeBorshI64(data, offset);
+  let lastUpdated; [lastUpdated, offset] = decodeBorshI64(data, offset);
+  let title;      [title, offset]      = decodeBorshString(data, offset);
+  let content;    [content, offset]    = decodeBorshString(data, offset);
+  let image;      [image, offset]      = decodeBorshString(data, offset);
+  let replyCount; [replyCount, offset] = decodeBorshU64(data, offset);
+  let burnedAmount; [burnedAmount, offset] = decodeBorshU64(data, offset);
+  let lastReplyTime; [lastReplyTime, offset] = decodeBorshI64(data, offset);
+  const bump = data[offset];
+  return { postId, creator, createdAt, lastUpdated, title, content, image,
+           replyCount, burnedAmount: burnedAmount / 1_000_000, lastReplyTime, bump };
+}
 
-### 10. Get RPC Version / Health Check
-
-```bash
-curl -s https://rpc.mainnet.x1.xyz -X POST -H "Content-Type: application/json" -d '{
-  "jsonrpc": "2.0", "id": 1,
-  "method": "getVersion",
-  "params": []
-}'
-```
-
-### 11. Get Latest Blockhash
-
-```bash
-curl -s https://rpc.mainnet.x1.xyz -X POST -H "Content-Type: application/json" -d '{
-  "jsonrpc": "2.0", "id": 1,
-  "method": "getLatestBlockhash",
-  "params": [{"commitment": "confirmed", "minContextSlot": 0}]
-}'
+const postIdBuf = Buffer.alloc(8); postIdBuf.writeBigUInt64LE(BigInt(postId));
+const [postPda] = PublicKey.findProgramAddressSync(
+  [Buffer.from('post'), postIdBuf], FORUM_PROGRAM
+);
+const accountInfo = await connection.getAccountInfo(postPda);
+if (accountInfo) {
+  const post = parseForumPost(Buffer.from(accountInfo.data));
+}
 ```
 
-Response: `result.value.blockhash`.
+### 11. Get Blog
 
-### 12. Simulate Transaction
+```javascript
+function parseBlog(data) {
+  let offset = 8; // skip discriminator
+  const creator = new PublicKey(data.slice(offset, offset + 32)).toBase58(); offset += 32;
+  let createdAt;  [createdAt, offset]  = decodeBorshI64(data, offset);
+  let lastUpdated; [lastUpdated, offset] = decodeBorshI64(data, offset);
+  let name;       [name, offset]       = decodeBorshString(data, offset);
+  let description; [description, offset] = decodeBorshString(data, offset);
+  let image;      [image, offset]      = decodeBorshString(data, offset);
+  let memoCount;  [memoCount, offset]  = decodeBorshU64(data, offset);
+  let burnedAmount; [burnedAmount, offset] = decodeBorshU64(data, offset);
+  let lastMemoTime; [lastMemoTime, offset] = decodeBorshI64(data, offset);
+  const bump = data[offset];
+  return { creator, createdAt, lastUpdated, name, description, image,
+           memoCount, burnedAmount: burnedAmount / 1_000_000, lastMemoTime, bump };
+}
 
-```bash
-curl -s https://rpc.mainnet.x1.xyz -X POST -H "Content-Type: application/json" -d '{
-  "jsonrpc": "2.0", "id": 1,
-  "method": "simulateTransaction",
-  "params": [
-    "<BASE64_ENCODED_TX>",
-    {"encoding": "base64", "commitment": "confirmed", "replaceRecentBlockhash": true, "sigVerify": false}
-  ]
-}'
+const [blogPda] = PublicKey.findProgramAddressSync(
+  [Buffer.from('blog'), userPubkey.toBuffer()], BLOG_PROGRAM
+);
+const accountInfo = await connection.getAccountInfo(blogPda);
+if (accountInfo) {
+  const blog = parseBlog(Buffer.from(accountInfo.data));
+}
 ```
 
-Response: `result.value.unitsConsumed` = compute units used, `result.value.err` = error (null if success).
+### 12. Get Project
 
-### 13. Get Multiple Accounts (Batch)
+```javascript
+function parseProject(data) {
+  let offset = 8; // skip discriminator
+  let projectId;  [projectId, offset]  = decodeBorshU64(data, offset);
+  const creator = new PublicKey(data.slice(offset, offset + 32)).toBase58(); offset += 32;
+  let createdAt;  [createdAt, offset]  = decodeBorshI64(data, offset);
+  let lastUpdated; [lastUpdated, offset] = decodeBorshI64(data, offset);
+  let name;       [name, offset]       = decodeBorshString(data, offset);
+  let description; [description, offset] = decodeBorshString(data, offset);
+  let image;      [image, offset]      = decodeBorshString(data, offset);
+  let website;    [website, offset]    = decodeBorshString(data, offset);
+  let tags;       [tags, offset]       = decodeBorshVecString(data, offset);
+  let memoCount;  [memoCount, offset]  = decodeBorshU64(data, offset);
+  let burnedAmount; [burnedAmount, offset] = decodeBorshU64(data, offset);
+  let lastMemoTime; [lastMemoTime, offset] = decodeBorshI64(data, offset);
+  const bump = data[offset];
+  return { projectId, creator, createdAt, lastUpdated, name, description, image,
+           website, tags, memoCount, burnedAmount: burnedAmount / 1_000_000, lastMemoTime, bump };
+}
 
-```bash
-curl -s https://rpc.mainnet.x1.xyz -X POST -H "Content-Type: application/json" -d '{
-  "jsonrpc": "2.0", "id": 1,
-  "method": "getMultipleAccounts",
-  "params": [["<PUBKEY1>", "<PUBKEY2>"], {"encoding": "base64"}]
-}'
+const projectIdBuf = Buffer.alloc(8); projectIdBuf.writeBigUInt64LE(BigInt(projectId));
+const [projectPda] = PublicKey.findProgramAddressSync(
+  [Buffer.from('project'), projectIdBuf], PROJECT_PROGRAM
+);
+const accountInfo = await connection.getAccountInfo(projectPda);
+if (accountInfo) {
+  const project = parseProject(Buffer.from(accountInfo.data));
+}
 ```
 
----
+### 13. Get Chat Group
 
-## Account Data Parsing Guide
+```javascript
+function parseChatGroup(data) {
+  let offset = 8; // skip discriminator
+  let groupId;    [groupId, offset]    = decodeBorshU64(data, offset);
+  const creator = new PublicKey(data.slice(offset, offset + 32)).toBase58(); offset += 32;
+  let createdAt;  [createdAt, offset]  = decodeBorshI64(data, offset);
+  let name;       [name, offset]       = decodeBorshString(data, offset);
+  let description; [description, offset] = decodeBorshString(data, offset);
+  let image;      [image, offset]      = decodeBorshString(data, offset);
+  let tags;       [tags, offset]       = decodeBorshVecString(data, offset);
+  let memoCount;  [memoCount, offset]  = decodeBorshU64(data, offset);
+  let burnedAmount; [burnedAmount, offset] = decodeBorshU64(data, offset);
+  let minMemoInterval; [minMemoInterval, offset] = decodeBorshI64(data, offset);
+  let lastMemoTime; [lastMemoTime, offset] = decodeBorshI64(data, offset);
+  const bump = data[offset];
+  return { groupId, creator, createdAt, name, description, image, tags,
+           memoCount, burnedAmount: burnedAmount / 1_000_000, minMemoInterval, lastMemoTime, bump };
+}
 
-### Borsh Encoding (used by all X1 programs)
+const groupIdBuf = Buffer.alloc(8); groupIdBuf.writeBigUInt64LE(BigInt(groupId));
+const [chatGroupPda] = PublicKey.findProgramAddressSync(
+  [Buffer.from('chat_group'), groupIdBuf], CHAT_PROGRAM
+);
+const accountInfo = await connection.getAccountInfo(chatGroupPda);
+if (accountInfo) {
+  const group = parseChatGroup(Buffer.from(accountInfo.data));
+}
+```
 
-- **u8/u16/u32/u64/i64**: Little-endian bytes
-- **String**: 4-byte LE length prefix + UTF-8 bytes
-- **Vec<T>**: 4-byte LE length prefix + N items
-- **Option<T>**: 1 byte flag (0=None, 1=Some) + optional T
-- **Pubkey**: 32 bytes (Base58 when displayed)
-- **Discriminator**: First 8 bytes of account data (Anchor uses SHA256 of `"account:<StructName>"`)
+### 14. Get Global Counter (Forum/Project/Chat)
 
-### Instruction Discriminator (Anchor convention)
+```javascript
+function parseGlobalCounter(data) {
+  // Offset 0-7: discriminator, Offset 8-15: count (u64 LE)
+  return Number(data.readBigUInt64LE(8));
+}
 
-Compute as: first 8 bytes of `SHA256("global:<instruction_name>")`.
+// Forum total posts
+const [forumCounter] = PublicKey.findProgramAddressSync(
+  [Buffer.from('global_counter')], FORUM_PROGRAM
+);
+const forumInfo = await connection.getAccountInfo(forumCounter);
+const totalPosts = parseGlobalCounter(Buffer.from(forumInfo.data));
 
-Examples:
-- `process_mint` → SHA256("global:process_mint")[..8]
-- `create_profile` → SHA256("global:create_profile")[..8]
-- `initialize_user_global_burn_stats` → SHA256("global:initialize_user_global_burn_stats")[..8]
+// Project total projects — same pattern with PROJECT_PROGRAM
+// Chat total groups — same pattern with CHAT_PROGRAM
+```
 
-### PDA Derivation Patterns
+### 15. Get Chat Messages (from Transaction History)
 
-| Account Type | Seeds | Program |
-|---|---|---|
-| Mint Authority | `[b"mint_authority"]` | Mint Program |
-| User Profile | `[b"profile", user_pubkey]` | Profile Program |
-| User Burn Stats | `[b"user_global_burn_stats", user_pubkey]` | Burn Program |
-| Token ATA | `[owner, token_program, mint]` | ATA Program |
+```javascript
+async function getChatMessages(groupId, limit = 20) {
+  const groupIdBuf = Buffer.alloc(8); groupIdBuf.writeBigUInt64LE(BigInt(groupId));
+  const [chatGroupPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('chat_group'), groupIdBuf], CHAT_PROGRAM
+  );
+
+  const sigs = await connection.getSignaturesForAddress(chatGroupPda, { limit });
+  const messages = [];
+
+  for (const sig of sigs) {
+    if (!sig.memo) continue;
+
+    // Strip "[length] " prefix from memo field
+    const memoStr = sig.memo.includes(' ') ? sig.memo.split(' ').slice(1).join(' ') : sig.memo;
+    const borshBytes = Buffer.from(memoStr, 'base64');
+
+    try {
+      // Try parsing as ChatMessageData (direct Borsh+Base64)
+      const parsed = decodeChatMessage(borshBytes);
+      if (parsed) messages.push({ ...parsed, signature: sig.signature, blockTime: sig.blockTime });
+    } catch (e) {
+      // Try parsing as BurnMemo (for burn operations)
+      try {
+        const parsed = decodeBurnMemo(borshBytes);
+        if (parsed) messages.push({ ...parsed, signature: sig.signature, blockTime: sig.blockTime });
+      } catch (e2) { /* skip unparseable */ }
+    }
+  }
+  return messages;
+}
+```
+
+### 16. RPC Health Check
+
+```javascript
+const version = await connection.getVersion();
+// version['solana-core'] → node version
+```
 
 ---
 
 ## Memo Serialization & Deserialization
 
-All MEMO Protocol operations encode structured data into SPL Memo instructions. Understanding the encoding pipeline is critical for reading and writing on-chain data.
+All MEMO Protocol operations encode structured data into SPL Memo instructions. There are two encoding patterns:
 
-### Encoding Pipeline (Write)
-
-There are two patterns depending on whether the operation involves burning:
-
-**Pattern A: Chat messages (no burn)**
+### Pattern A: Chat Messages (no burn, direct Borsh+Base64)
 
 ```
 ChatMessageData struct
@@ -309,10 +582,10 @@ ChatMessageData struct
 Binary bytes
     │ Base64 encode
     ▼
-Base64 string (UTF-8 bytes → memo instruction data)
+UTF-8 string → SPL Memo instruction data
 ```
 
-**Pattern B: Burn operations (profile, chat burn, group creation, etc.)**
+### Pattern B: Burn Operations (profile, group, forum, blog, project)
 
 ```
 Payload struct (e.g. ProfileCreationData)
@@ -326,290 +599,492 @@ BurnMemo { version: 1, burn_amount: N, payload: [...] }
 Binary bytes
     │ Base64 encode
     ▼
-Base64 string (UTF-8 bytes → memo instruction data)
-```
-
-### Decoding Pipeline (Read)
-
-When reading memo data from a transaction:
-
-```
-Transaction memo field: "[length] base64_data"
-    │ Strip "[length] " prefix (everything before first space)
-    ▼
-Base64 string
-    │ Base64 decode
-    ▼
-Borsh binary bytes
-    │ Borsh deserialize (try ChatMessageData or BurnMemo)
-    ▼
-Structured data
-```
-
-### Borsh Serialization Reference
-
-All types are serialized with Borsh (Binary Object Representation Serializer for Hashing):
-
-| Rust Type | Borsh Binary Layout | Example |
-|---|---|---|
-| `u8` | 1 byte | `0x01` → 1 |
-| `u64` | 8 bytes, little-endian | `0x40420F0000000000` → 1_000_000 |
-| `i64` | 8 bytes, little-endian, signed | same as u64 but signed |
-| `String` | 4-byte LE length + UTF-8 bytes | `0x05000000` + `"hello"` → "hello" |
-| `Vec<u8>` | 4-byte LE length + raw bytes | `0x03000000` + `0xAABBCC` |
-| `Vec<String>` | 4-byte LE count + N strings | `0x02000000` + string1 + string2 |
-| `Option<T>` | `0x00` (None) or `0x01` + T (Some) | `0x00` → None, `0x01` + data → Some(data) |
-| `bool` | 1 byte | `0x00` → false, `0x01` → true |
-
-### Data Structures
-
-#### ChatMessageData (Pattern A — direct Borsh+Base64)
-
-```
-Field          Type            Borsh Bytes
-version        u8              01
-category       String          04000000 63686174                ("chat")
-operation      String          0C000000 73656E645F6D657373616765 ("send_message")
-group_id       u64             8 bytes LE
-sender         String          4+N bytes (pubkey string)
-message        String          4+N bytes (1-512 chars)
-receiver       Option<String>  00 or 01+String
-reply_to_sig   Option<String>  00 or 01+String
-```
-
-#### BurnMemo (Pattern B — outer wrapper)
-
-```
-Field          Type            Borsh Bytes
-version        u8              01
-burn_amount    u64             8 bytes LE (in lamports, ÷1_000_000 for tokens)
-payload        Vec<u8>         4-byte LE length + raw bytes (inner Borsh-encoded struct)
-```
-
-#### ProfileCreationData (BurnMemo payload)
-
-```
-Field          Type            Values
-version        u8              1
-category       String          "profile"
-operation      String          "create_profile" or "update_profile"
-user_pubkey    String          Base58 pubkey string
-username       String          1-32 chars
-image          String          max 256 chars (hex-encoded avatar)
-about_me       Option<String>  max 128 chars
-```
-
-#### ChatGroupBurnData (BurnMemo payload)
-
-```
-Field          Type            Values
-version        u8              1
-category       String          "chat"
-operation      String          "burn_for_group"
-group_id       u64             target group ID
-burner         String          Base58 pubkey string
-message        String          max 512 chars
-```
-
-#### ChatGroupCreationData (BurnMemo payload)
-
-```
-Field              Type            Values
-version            u8              1
-category           String          "chat"
-operation          String          "create_group"
-group_id           u64             expected group ID
-name               String          1-64 chars
-description        String          max 128 chars
-image              String          max 256 chars
-tags               Vec<String>     max 4 tags, each max 32 chars
-min_memo_interval  Option<i64>     seconds (default 60)
-```
-
-### Example: Serializing a Chat Message
-
-Suppose we want to encode a chat message: group_id=1, sender="ABC...XYZ", message="Hello!"
-
-**Step 1: Borsh serialize ChatMessageData**
-
-```
-01                                          # version: u8 = 1
-04000000 63686174                           # category: String = "chat" (len=4)
-0C000000 73656E645F6D657373616765           # operation: String = "send_message" (len=12)
-0100000000000000                            # group_id: u64 = 1
-2C000000 414243...58595A                    # sender: String = "ABC...XYZ" (len=44, typical Base58 pubkey)
-06000000 48656C6C6F21                       # message: String = "Hello!" (len=6)
-00                                          # receiver: Option<String> = None
-00                                          # reply_to_sig: Option<String> = None
-```
-
-**Step 2: Base64 encode the binary**
-
-```python
-import base64
-memo_base64 = base64.b64encode(borsh_bytes).decode('utf-8')
-# Result: "AQQAAABjaGF0DAAAAHN..."
-```
-
-**Step 3: Use as memo instruction data** (the Base64 string's UTF-8 bytes)
-
-### Example: Serializing a Profile Burn
-
-Create profile with burn_amount=420 MEMO, username="alice", image="ff00ff..."
-
-**Step 1: Borsh serialize ProfileCreationData → payload bytes**
-
-```
-01                                          # version: u8 = 1
-07000000 70726F66696C65                     # category: "profile" (len=7)
-0E000000 6372656174655F70726F66696C65       # operation: "create_profile" (len=14)
-2C000000 <pubkey_string_bytes>              # user_pubkey: Base58 string
-05000000 616C696365                         # username: "alice" (len=5)
-08000000 6666303066662E2E2E                 # image: "ff00ff..." (len=8)
-00                                          # about_me: None
-```
-
-**Step 2: Wrap in BurnMemo and Borsh serialize**
-
-```
-01                                          # version: u8 = 1
-00C2EB0B00000000                            # burn_amount: u64 = 420_000_000 (420 × 1_000_000)
-<4-byte LE length> <payload_bytes>          # payload: Vec<u8>
-```
-
-**Step 3: Base64 encode → memo instruction data**
-
-### Example: Decoding Memo from a Transaction (Python)
-
-```python
-import base64, struct
-
-def decode_borsh_string(data, offset):
-    """Decode a Borsh string: 4-byte LE length + UTF-8 bytes"""
-    length = struct.unpack_from('<I', data, offset)[0]
-    offset += 4
-    value = data[offset:offset + length].decode('utf-8')
-    return value, offset + length
-
-def decode_chat_message(memo_field):
-    """Decode a chat message from transaction memo field"""
-    # Step 1: Strip "[length] " prefix from memo field
-    if ' ' in memo_field:
-        memo_b64 = memo_field.split(' ', 1)[1]
-    else:
-        memo_b64 = memo_field
-
-    # Step 2: Base64 decode
-    borsh_bytes = base64.b64decode(memo_b64)
-
-    # Step 3: Borsh deserialize ChatMessageData
-    offset = 0
-    version = borsh_bytes[offset]; offset += 1
-    category, offset = decode_borsh_string(borsh_bytes, offset)
-    operation, offset = decode_borsh_string(borsh_bytes, offset)
-
-    if category == "chat" and operation == "send_message":
-        group_id = struct.unpack_from('<Q', borsh_bytes, offset)[0]; offset += 8
-        sender, offset = decode_borsh_string(borsh_bytes, offset)
-        message, offset = decode_borsh_string(borsh_bytes, offset)
-        return {"type": "chat", "sender": sender, "message": message, "group_id": group_id}
-
-    return None
-
-def decode_burn_memo(memo_field):
-    """Decode a burn memo from transaction memo field"""
-    if ' ' in memo_field:
-        memo_b64 = memo_field.split(' ', 1)[1]
-    else:
-        memo_b64 = memo_field
-
-    borsh_bytes = base64.b64decode(memo_b64)
-
-    # Outer BurnMemo structure
-    offset = 0
-    version = borsh_bytes[offset]; offset += 1
-    burn_amount = struct.unpack_from('<Q', borsh_bytes, offset)[0]; offset += 8
-    payload_len = struct.unpack_from('<I', borsh_bytes, offset)[0]; offset += 4
-    payload = borsh_bytes[offset:offset + payload_len]
-
-    # Try to parse payload
-    p_offset = 0
-    p_version = payload[p_offset]; p_offset += 1
-    p_category, p_offset = decode_borsh_string(payload, p_offset)
-    p_operation, p_offset = decode_borsh_string(payload, p_offset)
-
-    if p_category == "profile":
-        user_pubkey, p_offset = decode_borsh_string(payload, p_offset)
-        username, p_offset = decode_borsh_string(payload, p_offset)
-        image, p_offset = decode_borsh_string(payload, p_offset)
-        return {
-            "type": "profile", "operation": p_operation,
-            "burn_tokens": burn_amount // 1_000_000,
-            "user": user_pubkey, "username": username, "image": image
-        }
-    elif p_category == "chat" and p_operation == "burn_for_group":
-        group_id = struct.unpack_from('<Q', payload, p_offset)[0]; p_offset += 8
-        burner, p_offset = decode_borsh_string(payload, p_offset)
-        message, p_offset = decode_borsh_string(payload, p_offset)
-        return {
-            "type": "chat_burn", "burn_tokens": burn_amount // 1_000_000,
-            "group_id": group_id, "burner": burner, "message": message
-        }
-
-    return {"type": "unknown", "category": p_category, "operation": p_operation}
-```
-
-### Example: Encoding a Chat Message (Python)
-
-```python
-import base64, struct
-
-def encode_borsh_string(s):
-    """Encode a string as Borsh: 4-byte LE length + UTF-8 bytes"""
-    encoded = s.encode('utf-8')
-    return struct.pack('<I', len(encoded)) + encoded
-
-def encode_borsh_option_string(value):
-    """Encode Option<String>: 0x00 for None, 0x01 + string for Some"""
-    if value is None:
-        return b'\x00'
-    return b'\x01' + encode_borsh_string(value)
-
-def encode_chat_message(group_id, sender_pubkey, message, receiver=None, reply_to=None):
-    """Encode a ChatMessageData as Base64 for memo instruction"""
-    data = b''
-    data += struct.pack('B', 1)                       # version: u8 = 1
-    data += encode_borsh_string("chat")               # category
-    data += encode_borsh_string("send_message")       # operation
-    data += struct.pack('<Q', group_id)                # group_id: u64
-    data += encode_borsh_string(sender_pubkey)         # sender
-    data += encode_borsh_string(message)               # message
-    data += encode_borsh_option_string(receiver)       # receiver: Option<String>
-    data += encode_borsh_option_string(reply_to)       # reply_to_sig: Option<String>
-    return base64.b64encode(data).decode('utf-8')
-
-# Usage:
-memo_b64 = encode_chat_message(1, "ABC...XYZ", "Hello world!")
-# This string becomes the memo instruction data
+UTF-8 string → SPL Memo instruction data
 ```
 
 ### Memo Constraints
+
 - Minimum memo length: 69 bytes (Base64 string length)
 - Maximum memo length: 800 bytes (Base64 string length)
-- Minimum burn for profile creation: 420 MEMO tokens
-- Minimum burn for chat group creation: 42,069 MEMO tokens
-- Minimum burn for group burn: 1 MEMO token
-- Message max length: 512 characters
+- SPL Memo instruction must be at **index 0** in the transaction
+
+### Borsh Encoding Reference
+
+| Type | Borsh Binary Layout | Example |
+|---|---|---|
+| `u8` | 1 byte | `0x01` → 1 |
+| `u64` | 8 bytes, little-endian | `0x40420F0000000000` → 1,000,000 |
+| `i64` | 8 bytes, little-endian, signed | same as u64 but signed |
+| `String` | 4-byte LE length + UTF-8 bytes | `0x05000000` + `hello` |
+| `Vec<T>` | 4-byte LE count + N items | `0x02000000` + item1 + item2 |
+| `Option<T>` | `0x00` (None) or `0x01` + T (Some) | `0x00` → None |
+| `bool` | 1 byte | `0x00` → false, `0x01` → true |
 
 ---
 
-## Pixel Art Encoding (Profile & Chat Images)
+## Data Structures (Borsh Field Order)
 
-The `image` field in profiles and chat groups stores a **1-bit pixel art** encoded as a compact ASCII string. Each pixel is either black (1) or white (0).
+### BurnMemo (outer wrapper for Pattern B)
+
+```
+Field          Type       Notes
+version        u8         always 1
+burn_amount    u64        in lamports (÷ 1_000_000 for MEMO tokens)
+payload        Vec<u8>    inner Borsh-serialized struct
+```
+
+### ChatMessageData (Pattern A — direct Borsh+Base64)
+
+```
+Field          Type              Values
+version        u8                1
+category       String            "chat"
+operation      String            "send_message"
+group_id       u64               target group ID
+sender         String            Base58 pubkey string
+message        String            1-512 chars
+receiver       Option<String>    Base58 pubkey or null
+reply_to_sig   Option<String>    tx signature or null
+```
+
+### ProfileCreationData (BurnMemo payload)
+
+```
+Field          Type              Values
+version        u8                1
+category       String            "profile"
+operation      String            "create_profile"
+user_pubkey    String            Base58 pubkey string
+username       String            1-32 chars
+image          String            max 256 chars (pixel art)
+about_me       Option<String>    max 128 chars
+```
+
+### ProfileUpdateData (BurnMemo payload)
+
+```
+Field          Type                    Values
+version        u8                      1
+category       String                  "profile"
+operation      String                  "update_profile"
+user_pubkey    String                  Base58 pubkey string
+username       Option<String>          1-32 chars
+image          Option<String>          max 256 chars (pixel art)
+about_me       Option<Option<String>>  nested Option (for clearing)
+```
+
+### ChatGroupCreationData (BurnMemo payload)
+
+```
+Field              Type              Values
+version            u8                1
+category           String            "chat"
+operation          String            "create_group"
+creator            String            Base58 pubkey string
+group_id           u64               expected group ID
+name               String            1-64 chars
+description        String            max 256 chars
+image              String            max 256 chars (pixel art)
+tags               Vec<String>       max 4 tags, each max 32 chars
+min_memo_interval  Option<i64>       seconds (contract defaults to 60)
+```
+
+### ChatGroupBurnData (BurnMemo payload)
+
+```
+Field          Type       Values
+version        u8         1
+category       String     "chat"
+operation      String     "burn_for_group"
+group_id       u64        target group ID
+burner         String     Base58 pubkey string
+message        String     max 512 chars
+```
+
+### PostCreationData (BurnMemo payload — Forum)
+
+```
+Field          Type       Values
+version        u8         1
+category       String     "forum"
+operation      String     "create_post"
+creator        String     Base58 pubkey string
+post_id        u64        expected post ID
+title          String     1-128 chars
+content        String     1-512 chars
+image          String     max 256 chars (pixel art)
+```
+
+### PostBurnData (BurnMemo payload — Forum)
+
+```
+Field          Type       Values
+version        u8         1
+category       String     "forum"
+operation      String     "burn_for_post"
+user           String     Base58 pubkey string
+post_id        u64        target post ID
+message        String     max 512 chars
+```
+
+### PostMintData (BurnMemo payload — Forum)
+
+```
+Field          Type       Values
+version        u8         1
+category       String     "forum"
+operation      String     "mint_for_post"
+user           String     Base58 pubkey string
+post_id        u64        target post ID
+message        String     max 512 chars
+```
+
+### BlogCreationData (BurnMemo payload)
+
+```
+Field          Type       Values
+version        u8         1
+category       String     "blog"
+operation      String     "create_blog"
+creator        String     Base58 pubkey string
+name           String     1-64 chars
+description    String     max 256 chars
+image          String     max 256 chars (pixel art)
+```
+
+### BlogUpdateData (BurnMemo payload)
+
+```
+Field          Type              Values
+version        u8                1
+category       String            "blog"
+operation      String            "update_blog"
+creator        String            Base58 pubkey string
+name           Option<String>    1-64 chars
+description    Option<String>    max 256 chars
+image          Option<String>    max 256 chars (pixel art)
+```
+
+### BlogBurnData (BurnMemo payload)
+
+```
+Field          Type       Values
+version        u8         1
+category       String     "blog"
+operation      String     "burn_for_blog"
+burner         String     Base58 pubkey string
+message        String     max 696 chars
+```
+
+### BlogMintData (BurnMemo payload)
+
+```
+Field          Type       Values
+version        u8         1
+category       String     "blog"
+operation      String     "mint_for_blog"
+minter         String     Base58 pubkey string
+message        String     max 696 chars
+```
+
+### ProjectCreationData (BurnMemo payload)
+
+```
+Field          Type           Values
+version        u8             1
+category       String         "project"
+operation      String         "create_project"
+project_id     u64            expected project ID
+name           String         1-64 chars
+description    String         max 256 chars
+image          String         max 256 chars (pixel art)
+website        String         max 128 chars
+tags           Vec<String>    max 4 tags, each 1-32 chars
+```
+
+### ProjectUpdateData (BurnMemo payload)
+
+```
+Field          Type                Values
+version        u8                  1
+category       String              "project"
+operation      String              "update_project"
+project_id     u64                 target project ID
+name           Option<String>      1-64 chars
+description    Option<String>      max 256 chars
+image          Option<String>      max 256 chars (pixel art)
+website        Option<String>      max 128 chars
+tags           Option<Vec<String>> max 4 tags, each 1-32 chars
+```
+
+### ProjectBurnData (BurnMemo payload)
+
+```
+Field          Type       Values
+version        u8         1
+category       String     "project"
+operation      String     "burn_for_project"
+project_id     u64        target project ID
+burner         String     Base58 pubkey string
+message        String     max 696 chars
+```
+
+---
+
+## Memo Encoding & Decoding Examples
+
+### Encode a Chat Message (Pattern A)
+
+```javascript
+function encodeChatMessage(groupId, senderPubkey, message, receiver = null, replyToSig = null) {
+  const data = Buffer.concat([
+    encodeBorshU8(1),                          // version
+    encodeBorshString('chat'),                 // category
+    encodeBorshString('send_message'),         // operation
+    encodeBorshU64(groupId),                   // group_id
+    encodeBorshString(senderPubkey),           // sender
+    encodeBorshString(message),                // message
+    encodeBorshOptionString(receiver),         // receiver
+    encodeBorshOptionString(replyToSig),       // reply_to_sig
+  ]);
+  return Buffer.from(data).toString('base64');
+}
+
+// Usage:
+const memoBase64 = encodeChatMessage(1, keypair.publicKey.toBase58(), 'Hello world!');
+```
+
+### Encode a BurnMemo (Pattern B)
+
+```javascript
+function encodeBurnMemo(burnAmount, payloadBytes) {
+  const memoBytes = Buffer.concat([
+    encodeBorshU8(1),                          // version
+    encodeBorshU64(burnAmount),                // burn_amount in lamports
+    encodeBorshVecU8(payloadBytes),            // payload
+  ]);
+  return memoBytes.toString('base64');
+}
+
+// Example: Encode ProfileCreationData payload
+function encodeProfileCreation(userPubkey, username, image, aboutMe = null) {
+  return Buffer.concat([
+    encodeBorshU8(1),                          // version
+    encodeBorshString('profile'),              // category
+    encodeBorshString('create_profile'),       // operation
+    encodeBorshString(userPubkey),             // user_pubkey
+    encodeBorshString(username),               // username
+    encodeBorshString(image),                  // image (pixel art string)
+    encodeBorshOptionString(aboutMe),          // about_me
+  ]);
+}
+
+// Build full memo for profile creation (burn 420 MEMO)
+const payload = encodeProfileCreation(
+  keypair.publicKey.toBase58(), 'alice', 'n:32x32:###...', 'Hello, MEMO!'
+);
+const burnAmountLamports = 420 * 1_000_000; // 420 MEMO tokens
+const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
+```
+
+### Encode Forum Post Creation
+
+```javascript
+function encodePostCreation(creator, postId, title, content, image) {
+  return Buffer.concat([
+    encodeBorshU8(1),
+    encodeBorshString('forum'),
+    encodeBorshString('create_post'),
+    encodeBorshString(creator),
+    encodeBorshU64(postId),
+    encodeBorshString(title),
+    encodeBorshString(content),
+    encodeBorshString(image),
+  ]);
+}
+
+const payload = encodePostCreation(
+  keypair.publicKey.toBase58(), nextPostId, 'My Post Title', 'Post content here...', 'n:32x32:###...'
+);
+const memoBase64 = encodeBurnMemo(1_000_000, payload); // burn 1 MEMO
+```
+
+### Encode Blog Creation
+
+```javascript
+function encodeBlogCreation(creator, name, description, image) {
+  return Buffer.concat([
+    encodeBorshU8(1),
+    encodeBorshString('blog'),
+    encodeBorshString('create_blog'),
+    encodeBorshString(creator),
+    encodeBorshString(name),
+    encodeBorshString(description),
+    encodeBorshString(image),
+  ]);
+}
+```
+
+### Encode Project Creation
+
+```javascript
+function encodeProjectCreation(projectId, name, description, image, website, tags) {
+  return Buffer.concat([
+    encodeBorshU8(1),
+    encodeBorshString('project'),
+    encodeBorshString('create_project'),
+    encodeBorshU64(projectId),
+    encodeBorshString(name),
+    encodeBorshString(description),
+    encodeBorshString(image),
+    encodeBorshString(website),
+    encodeBorshVecString(tags),
+  ]);
+}
+```
+
+### Encode Chat Group Creation
+
+```javascript
+function encodeChatGroupCreation(creator, groupId, name, description, image, tags, minMemoInterval = null) {
+  return Buffer.concat([
+    encodeBorshU8(1),
+    encodeBorshString('chat'),
+    encodeBorshString('create_group'),
+    encodeBorshString(creator),
+    encodeBorshU64(groupId),
+    encodeBorshString(name),
+    encodeBorshString(description),
+    encodeBorshString(image),
+    encodeBorshVecString(tags),
+    encodeBorshOptionI64(minMemoInterval),
+  ]);
+}
+```
+
+### Decode a Chat Message
+
+```javascript
+function decodeChatMessage(data) {
+  let offset = 0;
+  let version;   [version, offset]  = decodeBorshU8(data, offset);
+  let category;  [category, offset] = decodeBorshString(data, offset);
+  let operation; [operation, offset] = decodeBorshString(data, offset);
+
+  if (category !== 'chat' || operation !== 'send_message') return null;
+
+  let groupId;   [groupId, offset]  = decodeBorshU64(data, offset);
+  let sender;    [sender, offset]   = decodeBorshString(data, offset);
+  let message;   [message, offset]  = decodeBorshString(data, offset);
+  let receiver;  [receiver, offset] = decodeBorshOptionString(data, offset);
+  let replyTo;   [replyTo, offset]  = decodeBorshOptionString(data, offset);
+
+  return { type: 'chat_message', groupId, sender, message, receiver, replyTo };
+}
+```
+
+### Decode a BurnMemo
+
+```javascript
+function decodeBurnMemo(data) {
+  let offset = 0;
+  let version;     [version, offset]     = decodeBorshU8(data, offset);
+  let burnAmount;  [burnAmount, offset]  = decodeBorshU64(data, offset);
+  const payloadLen = data.readUInt32LE(offset); offset += 4;
+  const payload = data.slice(offset, offset + payloadLen);
+
+  // Parse inner payload
+  let pOffset = 0;
+  let pVersion;   [pVersion, pOffset]   = decodeBorshU8(payload, pOffset);
+  let pCategory;  [pCategory, pOffset]  = decodeBorshString(payload, pOffset);
+  let pOperation; [pOperation, pOffset] = decodeBorshString(payload, pOffset);
+
+  const result = {
+    burnAmount,
+    burnTokens: burnAmount / 1_000_000,
+    category: pCategory,
+    operation: pOperation,
+  };
+
+  if (pCategory === 'profile') {
+    let userPubkey; [userPubkey, pOffset] = decodeBorshString(payload, pOffset);
+    let username;   [username, pOffset]   = decodeBorshString(payload, pOffset);
+    let image;      [image, pOffset]      = decodeBorshString(payload, pOffset);
+    let aboutMe;    [aboutMe, pOffset]    = decodeBorshOptionString(payload, pOffset);
+    Object.assign(result, { type: 'profile', userPubkey, username, image, aboutMe });
+  }
+  else if (pCategory === 'chat' && pOperation === 'burn_for_group') {
+    let groupId; [groupId, pOffset] = decodeBorshU64(payload, pOffset);
+    let burner;  [burner, pOffset]  = decodeBorshString(payload, pOffset);
+    let message; [message, pOffset] = decodeBorshString(payload, pOffset);
+    Object.assign(result, { type: 'chat_burn', groupId, burner, message });
+  }
+  else if (pCategory === 'chat' && pOperation === 'create_group') {
+    let creator; [creator, pOffset] = decodeBorshString(payload, pOffset);
+    let groupId; [groupId, pOffset] = decodeBorshU64(payload, pOffset);
+    let name;    [name, pOffset]    = decodeBorshString(payload, pOffset);
+    Object.assign(result, { type: 'chat_group_creation', creator, groupId, name });
+  }
+  else if (pCategory === 'forum' && pOperation === 'create_post') {
+    let creator; [creator, pOffset] = decodeBorshString(payload, pOffset);
+    let postId;  [postId, pOffset]  = decodeBorshU64(payload, pOffset);
+    let title;   [title, pOffset]   = decodeBorshString(payload, pOffset);
+    let content; [content, pOffset] = decodeBorshString(payload, pOffset);
+    let image;   [image, pOffset]   = decodeBorshString(payload, pOffset);
+    Object.assign(result, { type: 'forum_post', creator, postId, title, content, image });
+  }
+  else if (pCategory === 'blog') {
+    let user; [user, pOffset] = decodeBorshString(payload, pOffset);
+    let message; [message, pOffset] = decodeBorshString(payload, pOffset);
+    Object.assign(result, { type: 'blog_' + pOperation, user, message });
+  }
+  else if (pCategory === 'project' && pOperation === 'burn_for_project') {
+    let projectId; [projectId, pOffset] = decodeBorshU64(payload, pOffset);
+    let burner;    [burner, pOffset]    = decodeBorshString(payload, pOffset);
+    let message;   [message, pOffset]   = decodeBorshString(payload, pOffset);
+    Object.assign(result, { type: 'project_burn', projectId, burner, message });
+  }
+  else {
+    Object.assign(result, { type: 'unknown' });
+  }
+
+  return result;
+}
+```
+
+### Decode Memo from Transaction History
+
+```javascript
+function decodeMemoFromSignature(memoField) {
+  if (!memoField) return null;
+
+  // Strip "[length] " prefix
+  const memoStr = memoField.includes(' ') ? memoField.split(' ').slice(1).join(' ') : memoField;
+  const borshBytes = Buffer.from(memoStr, 'base64');
+
+  // Try Pattern A (ChatMessageData)
+  try {
+    const msg = decodeChatMessage(borshBytes);
+    if (msg) return msg;
+  } catch (e) {}
+
+  // Try Pattern B (BurnMemo)
+  try {
+    const burn = decodeBurnMemo(borshBytes);
+    if (burn) return burn;
+  } catch (e) {}
+
+  return null;
+}
+```
+
+---
+
+## Pixel Art Encoding (Profile & Entity Images)
+
+The `image` field in profiles, chat groups, forum posts, blogs, and projects stores a **1-bit pixel art** encoded as a compact ASCII string. Each pixel is either black (1) or white (0).
 
 ### Storage Format
-
-The on-chain string uses one of two formats:
 
 ```
 Normal:     "n:WxH:DATA"       e.g. "n:32x32:#####..."
@@ -617,505 +1092,1250 @@ Compressed: "c:WxH:BASE64"     e.g. "c:32x32:eJztwTEBAAAA..."
 ```
 
 - `n` = normal (uncompressed safe-string)
-- `c` = compressed (Deflate-compressed safe-string, then Base64-encoded)
-- `WxH` = width x height (e.g. `32x32`, `64x64`, `96x96`)
+- `c` = compressed (Deflate → Base64)
+- `WxH` = width × height (e.g. `32x32`, `64x64`, `96x96`)
 - Compression is only used when it produces a shorter result
 
-Legacy format (backward compatible): `"n:DATA"` or `"c:BASE64"` (without WxH, assumes 32x32 and auto-detects from string length).
+Legacy format (backward compatible): `"n:DATA"` or `"c:BASE64"` (without WxH, auto-detects size from string length).
 
 ### Supported Sizes
 
 | Size | Pixels | Safe String Chars |
 |---|---|---|
-| 8x8 | 64 | 11 |
-| 16x16 | 256 | 43 |
-| 32x32 | 1024 | 171 |
-| 64x64 | 4096 | 683 |
-| 96x96 | 9216 | 1536 |
-| 128x128 | 16384 | 2731 |
+| 8×8 | 64 | 11 |
+| 16×16 | 256 | 43 |
+| 32×32 | 1,024 | 171 |
+| 64×64 | 4,096 | 683 |
+| 96×96 | 9,216 | 1,536 |
+| 128×128 | 16,384 | 2,731 |
 
-### Safe String Encoding Algorithm
+### Safe String Character Mapping
 
-Pixels are stored as a flat array in **row-major order** (left→right, top→bottom). Each pixel is 1 bit (true=black, false=white).
+Pixels are stored as a flat array in **row-major order** (left→right, top→bottom). 6 bits are packed per character.
 
-**Encoding (pixels → string):**
+**Encoding** (6-bit value → ASCII character):
 
-1. Read pixel bits sequentially, 6 bits at a time
-2. Map each 6-bit value (0-63) to a safe ASCII character
-3. If remaining bits < 6, left-shift and pad with zeros
-
-**Character mapping** (`value` → ASCII):
-```
-ascii = 35 + value
-if ascii >= 58: ascii += 1    (skip ':')
-if ascii >= 92: ascii += 1    (skip '\')
-```
-
-This produces characters in range `#` (35) to `~` (126), avoiding `:`, `\`, and `"`.
-
-**Decoding (string → pixels):**
-
-1. For each character, reverse the mapping to get 6-bit value
-2. Extract bits from MSB to LSB (bit 5 down to bit 0)
-3. Each bit → one pixel (1=black, 0=white)
-
-**Reverse character mapping** (`char` → value):
-```
-if char is ':' or '\' or '"': invalid
-value = ascii - 35
-if ascii > 92: value -= 1    (adjust for skipped '\')
-if ascii > 58: value -= 1    (adjust for skipped ':')
+```javascript
+function encodePixelChar(value) {
+  // value: 0-63
+  let ascii = 35 + value;
+  if (ascii >= 58) ascii += 1;  // skip ':' (ASCII 58)
+  if (ascii >= 92) ascii += 1;  // skip '\' (ASCII 92)
+  return String.fromCharCode(ascii);
+}
 ```
 
-### Compression (Optimal String)
+**Decoding** (ASCII character → 6-bit value):
 
-When encoding for storage:
-
-1. Generate the safe string from pixels
-2. Deflate-compress the safe string bytes
-3. Base64-encode the compressed bytes
-4. If `"c:WxH:" + base64` is shorter than `"n:WxH:" + safe_string`, use compressed format
-
-### Example: Decoding a Pixel Art Image (Python)
-
-```python
-import base64, zlib
-
-def decode_pixel_char(c):
-    """Reverse map a safe ASCII char to 6-bit value"""
-    if c in (':', '\\', '"'):
-        return None
-    ascii_val = ord(c)
-    if ascii_val < 35 or ascii_val > 126:
-        return None
-    value = ascii_val - 35
-    if ascii_val > 92: value -= 1  # adjust for '\'
-    if ascii_val > 58: value -= 1  # adjust for ':'
-    return value if value < 64 else None
-
-def decode_pixel_art(image_string):
-    """Decode pixel art from on-chain image string → 2D boolean grid"""
-    # Parse format
-    parts = image_string.split(':', 2)
-
-    if len(parts) == 3:
-        fmt, size_str, data = parts
-        w, h = map(int, size_str.split('x'))
-    elif len(parts) == 2:
-        fmt, data = parts
-        w, h = 32, 32  # legacy default
-    else:
-        return None
-
-    # Decompress if needed
-    if fmt == 'c':
-        compressed = base64.b64decode(data)
-        safe_string = zlib.decompress(compressed, -15).decode('ascii')  # raw Deflate
-    elif fmt == 'n':
-        safe_string = data
-    else:
-        return None
-
-    # Decode safe string to pixels
-    pixels = []
-    for c in safe_string:
-        value = decode_pixel_char(c)
-        if value is None:
-            return None
-        for i in range(5, -1, -1):  # bits 5 down to 0
-            pixels.append(bool(value & (1 << i)))
-
-    # Trim to exact pixel count and reshape to 2D grid
-    pixels = pixels[:w * h]
-    grid = [pixels[y * w:(y + 1) * w] for y in range(h)]
-    return grid  # grid[row][col] = True (black) / False (white)
-
-# Usage:
-grid = decode_pixel_art("n:32x32:####$#$#$...")
-# grid[0][0] = top-left pixel, True=black, False=white
+```javascript
+function decodePixelChar(c) {
+  const ascii = c.charCodeAt(0);
+  if (ascii < 35 || ascii > 126) return null;
+  if (c === ':' || c === '\\' || c === '"') return null;
+  let value = ascii - 35;
+  if (ascii > 92) value -= 1;  // adjust for skipped '\'
+  if (ascii > 58) value -= 1;  // adjust for skipped ':'
+  return value < 64 ? value : null;
+}
 ```
 
-### Example: Encoding a Pixel Art Image (Python)
+### Complete Pixel Art Decoder (JavaScript)
 
-```python
-import base64, zlib
+```javascript
+import { inflateRawSync } from 'zlib';
 
-def encode_pixel_char(value):
-    """Map 6-bit value (0-63) to safe ASCII char"""
-    ascii_val = 35 + value
-    if ascii_val >= 58: ascii_val += 1  # skip ':'
-    if ascii_val >= 92: ascii_val += 1  # skip '\'
-    return chr(ascii_val)
+function decodePixelArt(imageString) {
+  const parts = imageString.split(':');
+  let fmt, width, height, data;
 
-def encode_pixel_art(grid, width, height):
-    """Encode 2D boolean grid → on-chain image string"""
-    # Flatten grid to bit stream
-    bits = [pixel for row in grid for pixel in row]
+  if (parts.length === 3) {
+    // New format: "n:WxH:data" or "c:WxH:data"
+    fmt = parts[0];
+    const [w, h] = parts[1].split('x').map(Number);
+    width = w; height = h;
+    data = parts[2];
+  } else if (parts.length === 2) {
+    // Legacy format: "n:data" or "c:data" (assume 32x32, auto-detect)
+    fmt = parts[0];
+    data = parts[1];
+    width = 32; height = 32; // will auto-detect from string length
+  } else {
+    return null;
+  }
 
-    # Encode 6 bits at a time
-    safe_chars = []
-    for i in range(0, len(bits), 6):
-        chunk = bits[i:i+6]
-        value = 0
-        for bit in chunk:
-            value = (value << 1) | int(bit)
-        # Pad if chunk < 6 bits
-        if len(chunk) < 6:
-            value <<= (6 - len(chunk))
-        safe_chars.append(encode_pixel_char(value))
+  // Decompress if needed
+  let safeString;
+  if (fmt === 'c') {
+    const compressed = Buffer.from(data, 'base64');
+    safeString = inflateRawSync(compressed).toString('ascii');
+  } else if (fmt === 'n') {
+    safeString = data;
+  } else {
+    return null;
+  }
 
-    safe_string = ''.join(safe_chars)
+  // Auto-detect size from string length if legacy format
+  if (parts.length === 2) {
+    const len = safeString.length;
+    const SIZES = [8, 16, 32, 64, 96, 128, 256, 512, 1024];
+    for (const s of SIZES) {
+      if (Math.ceil(s * s / 6) === len) { width = s; height = s; break; }
+    }
+  }
 
-    # Try compression
-    compressed = zlib.compress(safe_string.encode('ascii'), 9)[2:-4]  # raw Deflate
-    compressed_b64 = base64.b64encode(compressed).decode('ascii')
+  // Decode safe string to pixel bits
+  const pixels = [];
+  for (const c of safeString) {
+    const value = decodePixelChar(c);
+    if (value === null) return null;
+    for (let i = 5; i >= 0; i--) {
+      pixels.push(Boolean(value & (1 << i)));
+    }
+  }
 
-    normal_result = f"n:{width}x{height}:{safe_string}"
-    compressed_result = f"c:{width}x{height}:{compressed_b64}"
+  // Trim to exact pixel count and reshape to 2D grid
+  const grid = [];
+  for (let y = 0; y < height; y++) {
+    grid.push(pixels.slice(y * width, (y + 1) * width));
+  }
+  return { width, height, grid }; // grid[row][col] = true (black) / false (white)
+}
+```
 
-    return compressed_result if len(compressed_result) < len(normal_result) else normal_result
+### Complete Pixel Art Encoder (JavaScript)
 
-# Usage: Create a 32x32 checkerboard
-grid = [[(x + y) % 2 == 0 for x in range(32)] for y in range(32)]
-image_string = encode_pixel_art(grid, 32, 32)
-# Store this string in the 'image' field of ProfileCreationData
+```javascript
+import { deflateRawSync } from 'zlib';
+
+function encodePixelArt(grid, width, height) {
+  // Flatten grid to bit stream
+  const bits = grid.flat();
+
+  // Encode 6 bits at a time
+  const chars = [];
+  for (let i = 0; i < bits.length; i += 6) {
+    const chunk = bits.slice(i, i + 6);
+    let value = 0;
+    for (const bit of chunk) {
+      value = (value << 1) | (bit ? 1 : 0);
+    }
+    // Pad if chunk < 6 bits
+    if (chunk.length < 6) {
+      value <<= (6 - chunk.length);
+    }
+    chars.push(encodePixelChar(value));
+  }
+
+  const safeString = chars.join('');
+
+  // Try compression
+  const compressed = deflateRawSync(Buffer.from(safeString, 'ascii'));
+  const compressedB64 = compressed.toString('base64');
+
+  const normalResult = `n:${width}x${height}:${safeString}`;
+  const compressedResult = `c:${width}x${height}:${compressedB64}`;
+
+  return compressedResult.length < normalResult.length ? compressedResult : normalResult;
+}
+
+// Example: Create a 32x32 checkerboard
+const grid = [];
+for (let y = 0; y < 32; y++) {
+  const row = [];
+  for (let x = 0; x < 32; x++) {
+    row.push((x + y) % 2 === 0);
+  }
+  grid.push(row);
+}
+const imageString = encodePixelArt(grid, 32, 32);
+// Use this string in the 'image' field of ProfileCreationData, PostCreationData, etc.
 ```
 
 ### Rendering Pixel Art
 
-To display the decoded pixel art:
-- Each `True` value = black pixel (filled)
-- Each `False` value = white pixel (empty)
-- Render as a square grid at the decoded `width x height`
-- Common display: HTML canvas, SVG, or terminal block characters
+- Each `true` = black pixel (filled), each `false` = white pixel (empty)
+- Render as a square grid at the decoded `width × height`
+- Display options: HTML Canvas, SVG, terminal block characters (`█` / ` `)
 
 ---
 
-## Write Operations (Transaction Building & Sending)
+## Write Operations (Transaction Building)
 
-All write operations follow the same pattern:
+All write operations follow this pattern:
 
-1. **Build instructions** (memo instruction MUST be at index 0 if required by contract)
-2. **Get latest blockhash** → `getLatestBlockhash`
-3. **Simulate** with dummy compute budget (400k-1.4M CU) + `sigVerify: false, replaceRecentBlockhash: true`
-4. **Extract** `unitsConsumed` from simulation
-5. **Build final transaction** with real compute budget
-6. **Sign** with user's keypair (Ed25519)
-7. **Send** → `sendTransaction` with `{"encoding": "base64", "preflightCommitment": "confirmed", "maxRetries": 3}`
+1. **Build instructions** (SPL Memo instruction MUST be at index 0 when required)
+2. **Get latest blockhash**
+3. **Build, sign, and send transaction**
+4. **Optionally simulate first** to estimate compute units
 
-Transaction format: Bincode serialize → Base64 encode.
+### SPL Memo Instruction Helper
 
-Use `solders` (Python) or `@solana/web3.js` (JS) to build and sign transactions.
+```javascript
+function createMemoInstruction(memoData, signer) {
+  return new TransactionInstruction({
+    keys: [{ pubkey: signer, isSigner: true, isWritable: true }],
+    programId: SPL_MEMO_PROGRAM,
+    data: Buffer.from(memoData, 'utf-8'),
+  });
+}
+```
+
+### Transaction Sending Helper
+
+```javascript
+async function buildAndSendTransaction(connection, keypair, instructions, computeUnits = 400_000) {
+  const tx = new Transaction();
+
+  // Add compute budget
+  tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: computeUnits }));
+
+  // Add all instructions
+  for (const ix of instructions) {
+    tx.add(ix);
+  }
+
+  const { blockhash } = await connection.getLatestBlockhash('confirmed');
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = keypair.publicKey;
+
+  const signature = await sendAndConfirmTransaction(connection, tx, [keypair], {
+    commitment: 'confirmed',
+    maxRetries: 3,
+  });
+  return signature;
+}
+```
+
+### ATA Helper (Create if Needed)
+
+```javascript
+async function ensureATA(connection, payer, mint, owner, tokenProgram = TOKEN_2022_PROGRAM_ID) {
+  const ata = await getAssociatedTokenAddress(mint, owner, false, tokenProgram);
+  const account = await connection.getAccountInfo(ata);
+  const instructions = [];
+  if (!account) {
+    instructions.push(
+      createAssociatedTokenAccountInstruction(payer, ata, owner, mint, tokenProgram)
+    );
+  }
+  return { ata, instructions };
+}
+```
+
+---
 
 ### W1. Mint MEMO Token
 
-Mint rewards user with MEMO tokens for writing a memo on-chain. Requires a memo instruction (69-800 bytes) at index 0.
+Writes a memo on-chain and earns MEMO token rewards.
 
-**Discriminator**: `SHA256("global:process_mint")[..8]`
+```javascript
+async function mintMemo(connection, keypair, memoText) {
+  const user = keypair.publicKey;
 
-**Instruction Data**: discriminator only (8 bytes)
+  // Derive PDAs
+  const [mintAuthority] = PublicKey.findProgramAddressSync(
+    [Buffer.from('mint_authority')], MINT_PROGRAM
+  );
+  const { ata: userAta, instructions: ataIxs } = await ensureATA(
+    connection, user, MEMO_MINT, user
+  );
 
-**Accounts** (in order):
+  const instructions = [];
 
-| # | Account | Signer | Writable | Description |
-|---|---------|--------|----------|-------------|
-| 0 | user | yes | yes | User's wallet (fee payer) |
-| 1 | mint | no | yes | MEMO token mint (`memoX1sJsBY6od7CfQ58XooRALwnocAZen4L7mW1ick`) |
-| 2 | mint_authority | no | no | PDA: `[b"mint_authority"]` from Mint Program |
-| 3 | token_account | no | yes | User's MEMO ATA (create if not exists) |
-| 4 | token_2022_program | no | no | `TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb` |
-| 5 | instructions_sysvar | no | no | `Sysvar1nstructions1111111111111111111111111` |
+  // 1. SPL Memo instruction (MUST be at index 0)
+  instructions.push(createMemoInstruction(memoText, user));
 
-**Instructions order**: [SPL Memo, (Create ATA if needed), Mint Instruction, ComputeBudget]
+  // 2. Create ATA if needed
+  instructions.push(...ataIxs);
 
-**Memo content**: Plain text (69-800 bytes). The user writes anything they want — this is the "memo" that gets engraved on-chain.
+  // 3. Mint instruction
+  instructions.push(new TransactionInstruction({
+    keys: [
+      { pubkey: user,              isSigner: true,  isWritable: true  },
+      { pubkey: MEMO_MINT,         isSigner: false, isWritable: true  },
+      { pubkey: mintAuthority,     isSigner: false, isWritable: false },
+      { pubkey: userAta,           isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+    ],
+    programId: MINT_PROGRAM,
+    data: anchorDiscriminator('process_mint'),
+  }));
+
+  return await buildAndSendTransaction(connection, keypair, instructions);
+}
+
+// Usage:
+const sig = await mintMemo(connection, keypair, 'Hello, MEMO Protocol! This is my first memo on X1.');
+```
+
+**Memo content**: Plain text, 69-800 bytes. The user writes anything they want.
 
 ### W2. Transfer Native XNT
 
-**Instructions**: Use Solana `SystemProgram.transfer(from, to, lamports)`.
-
-1 XNT = 1,000,000,000 lamports.
+```javascript
+async function transferXNT(connection, keypair, toAddress, amountXNT) {
+  const lamports = Math.round(amountXNT * 1_000_000_000);
+  const ix = SystemProgram.transfer({
+    fromPubkey: keypair.publicKey,
+    toPubkey: new PublicKey(toAddress),
+    lamports,
+  });
+  return await buildAndSendTransaction(connection, keypair, [ix], 200_000);
+}
+```
 
 ### W3. Transfer MEMO Token (SPL Token-2022)
 
-**Instructions**: Use `spl-token-2022` `transfer_checked` instruction.
+```javascript
+async function transferMemo(connection, keypair, toAddress, amountMemo) {
+  const user = keypair.publicKey;
+  const destination = new PublicKey(toAddress);
+  const amount = BigInt(Math.round(amountMemo * 1_000_000));
 
-| Field | Value |
-|---|---|
-| Token Program | `TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb` |
-| Mint | `memoX1sJsBY6od7CfQ58XooRALwnocAZen4L7mW1ick` |
-| Decimals | 6 |
+  const sourceAta = await getAssociatedTokenAddress(MEMO_MINT, user, false, TOKEN_2022_PROGRAM_ID);
+  const { ata: destAta, instructions: ataIxs } = await ensureATA(
+    connection, user, MEMO_MINT, destination
+  );
 
-If destination ATA doesn't exist, prepend a `CreateAssociatedTokenAccount` instruction.
+  const instructions = [...ataIxs];
+  instructions.push(createTransferCheckedInstruction(
+    sourceAta, MEMO_MINT, destAta, user, amount, 6, [], TOKEN_2022_PROGRAM_ID
+  ));
+
+  return await buildAndSendTransaction(connection, keypair, instructions);
+}
+```
 
 ### W4. Create User Profile
 
-Burns MEMO tokens to create an on-chain profile with username and pixel art avatar.
+Burns MEMO tokens (minimum 420) to create an on-chain profile.
 
-**Discriminator**: `SHA256("global:create_profile")[..8]`
+```javascript
+async function createProfile(connection, keypair, username, image, aboutMe = null, burnAmount = 420) {
+  const user = keypair.publicKey;
+  const burnAmountLamports = burnAmount * 1_000_000;
 
-**Instruction Data**: discriminator (8 bytes) + burn_amount_units (u64 LE)
+  // Derive PDAs
+  const [profilePda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('profile'), user.toBuffer()], PROFILE_PROGRAM
+  );
+  const [burnStatsPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('user_global_burn_stats'), user.toBuffer()], BURN_PROGRAM
+  );
+  const userAta = await getAssociatedTokenAddress(MEMO_MINT, user, false, TOKEN_2022_PROGRAM_ID);
 
-**Accounts** (in order):
+  // Build memo payload
+  const payload = encodeProfileCreation(user.toBase58(), username, image, aboutMe);
+  const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
-| # | Account | Signer | Writable | Description |
-|---|---------|--------|----------|-------------|
-| 0 | user | yes | yes | User's wallet |
-| 1 | profile_pda | no | yes | PDA: `[b"profile", user_pubkey]` from Profile Program |
-| 2 | memo_token_mint | no | yes | MEMO mint address |
-| 3 | user_token_account | no | yes | User's MEMO ATA |
-| 4 | user_burn_stats | no | yes | PDA: `[b"user_global_burn_stats", user_pubkey]` from Burn Program |
-| 5 | token_2022_program | no | no | Token-2022 program |
-| 6 | memo_burn_program | no | no | Burn Program ID |
-| 7 | system_program | no | no | `11111111111111111111111111111111` |
-| 8 | instructions_sysvar | no | no | Instructions sysvar |
+  const instructions = [];
 
-**Memo (index 0)**: BurnMemo { version: 1, burn_amount, payload: ProfileCreationData }
+  // 1. SPL Memo (index 0)
+  instructions.push(createMemoInstruction(memoBase64, user));
 
-**Minimum burn**: 420 MEMO tokens (burn_amount_units = 420 × 1,000,000)
+  // 2. Create profile instruction
+  const ixData = Buffer.concat([
+    anchorDiscriminator('create_profile'),
+    encodeBorshU64(burnAmountLamports),
+  ]);
+  instructions.push(new TransactionInstruction({
+    keys: [
+      { pubkey: user,              isSigner: true,  isWritable: true  },
+      { pubkey: profilePda,        isSigner: false, isWritable: true  },
+      { pubkey: MEMO_MINT,         isSigner: false, isWritable: true  },
+      { pubkey: userAta,           isSigner: false, isWritable: true  },
+      { pubkey: burnStatsPda,      isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: INSTRUCTIONS_SYSVAR,     isSigner: false, isWritable: false },
+    ],
+    programId: PROFILE_PROGRAM,
+    data: ixData,
+  }));
+
+  return await buildAndSendTransaction(connection, keypair, instructions);
+}
+```
 
 ### W5. Update User Profile
 
-Same as create, but uses `SHA256("global:update_profile")[..8]` discriminator.
+```javascript
+async function updateProfile(connection, keypair, username = null, image = null, aboutMe = undefined, burnAmount = 420) {
+  const user = keypair.publicKey;
+  const burnAmountLamports = burnAmount * 1_000_000;
 
-**Accounts** (in order):
+  const [profilePda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('profile'), user.toBuffer()], PROFILE_PROGRAM
+  );
+  const [burnStatsPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('user_global_burn_stats'), user.toBuffer()], BURN_PROGRAM
+  );
+  const userAta = await getAssociatedTokenAddress(MEMO_MINT, user, false, TOKEN_2022_PROGRAM_ID);
 
-| # | Account | Signer | Writable | Description |
-|---|---------|--------|----------|-------------|
-| 0 | user | yes | yes | User's wallet |
-| 1 | memo_token_mint | no | yes | MEMO mint address |
-| 2 | user_token_account | no | yes | User's MEMO ATA |
-| 3 | profile_pda | no | yes | Profile PDA |
-| 4 | user_burn_stats | no | yes | User burn stats PDA |
-| 5 | token_2022_program | no | no | Token-2022 program |
-| 6 | instructions_sysvar | no | no | Instructions sysvar |
-| 7 | memo_burn_program | no | no | Burn Program ID |
+  // Build ProfileUpdateData payload
+  const payload = Buffer.concat([
+    encodeBorshU8(1),
+    encodeBorshString('profile'),
+    encodeBorshString('update_profile'),
+    encodeBorshString(user.toBase58()),
+    encodeBorshOptionString(username),
+    encodeBorshOptionString(image),
+    // about_me is Option<Option<String>>: 0x00=skip, 0x01+0x00=set to None, 0x01+0x01+String=set value
+    aboutMe === undefined ? Buffer.from([0]) :
+      aboutMe === null ? Buffer.from([1, 0]) :
+      Buffer.concat([Buffer.from([1, 1]), encodeBorshString(aboutMe)]),
+  ]);
+  const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
-**Memo (index 0)**: BurnMemo { version: 1, burn_amount, payload: ProfileUpdateData }
+  const instructions = [];
+  instructions.push(createMemoInstruction(memoBase64, user));
+
+  const ixData = Buffer.concat([
+    anchorDiscriminator('update_profile'),
+    encodeBorshU64(burnAmountLamports),
+  ]);
+  instructions.push(new TransactionInstruction({
+    keys: [
+      { pubkey: user,              isSigner: true,  isWritable: true  },
+      { pubkey: MEMO_MINT,         isSigner: false, isWritable: true  },
+      { pubkey: userAta,           isSigner: false, isWritable: true  },
+      { pubkey: profilePda,        isSigner: false, isWritable: true  },
+      { pubkey: burnStatsPda,      isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+      { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
+    ],
+    programId: PROFILE_PROGRAM,
+    data: ixData,
+  }));
+
+  return await buildAndSendTransaction(connection, keypair, instructions);
+}
+```
 
 ### W6. Delete User Profile
 
-**Discriminator**: `SHA256("global:delete_profile")[..8]`
+```javascript
+async function deleteProfile(connection, keypair) {
+  const user = keypair.publicKey;
+  const [profilePda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('profile'), user.toBuffer()], PROFILE_PROGRAM
+  );
 
-**Instruction Data**: discriminator only (8 bytes)
+  const ix = new TransactionInstruction({
+    keys: [
+      { pubkey: user,       isSigner: true,  isWritable: true  },
+      { pubkey: profilePda, isSigner: false, isWritable: true  },
+    ],
+    programId: PROFILE_PROGRAM,
+    data: anchorDiscriminator('delete_profile'),
+  });
 
-**Accounts**:
-
-| # | Account | Signer | Writable | Description |
-|---|---------|--------|----------|-------------|
-| 0 | user | yes | yes | User's wallet |
-| 1 | profile_pda | no | yes | PDA: `[b"profile", user_pubkey]` from Profile Program |
-
-No memo required.
+  return await buildAndSendTransaction(connection, keypair, [ix], 200_000);
+}
+```
 
 ### W7. Send Chat Message
 
 Sends a message to a chat group and earns MEMO mint rewards.
 
-**Discriminator**: `SHA256("global:send_memo_to_group")[..8]`
+```javascript
+async function sendChatMessage(connection, keypair, groupId, message, receiver = null, replyToSig = null) {
+  const user = keypair.publicKey;
 
-**Instruction Data**: discriminator (8 bytes) + group_id (u64 LE)
+  const groupIdBuf = Buffer.alloc(8); groupIdBuf.writeBigUInt64LE(BigInt(groupId));
+  const [chatGroupPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('chat_group'), groupIdBuf], CHAT_PROGRAM
+  );
+  const [mintAuthority] = PublicKey.findProgramAddressSync(
+    [Buffer.from('mint_authority')], MINT_PROGRAM
+  );
+  const { ata: userAta, instructions: ataIxs } = await ensureATA(
+    connection, user, MEMO_MINT, user
+  );
 
-**Accounts** (in order):
+  // Encode memo (Pattern A: direct Borsh+Base64, no BurnMemo wrapper)
+  const memoBase64 = encodeChatMessage(groupId, user.toBase58(), message, receiver, replyToSig);
 
-| # | Account | Signer | Writable | Description |
-|---|---------|--------|----------|-------------|
-| 0 | user | yes | yes | User's wallet |
-| 1 | chat_group_pda | no | yes | PDA: `[b"chat_group", group_id.to_le_bytes()]` from Chat Program |
-| 2 | memo_token_mint | no | yes | MEMO mint address |
-| 3 | mint_authority | no | no | PDA: `[b"mint_authority"]` from Mint Program |
-| 4 | user_token_account | no | yes | User's MEMO ATA (create if needed) |
-| 5 | token_2022_program | no | no | Token-2022 program |
-| 6 | memo_mint_program | no | no | Mint Program ID |
-| 7 | instructions_sysvar | no | no | Instructions sysvar |
+  const instructions = [];
+  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(...ataIxs);
 
-**Memo (index 0)**: ChatMessageData (Borsh → Base64). Message max 512 chars.
+  const ixData = Buffer.concat([
+    anchorDiscriminator('send_memo_to_group'),
+    encodeBorshU64(groupId),
+  ]);
+  instructions.push(new TransactionInstruction({
+    keys: [
+      { pubkey: user,              isSigner: true,  isWritable: true  },
+      { pubkey: chatGroupPda,      isSigner: false, isWritable: true  },
+      { pubkey: MEMO_MINT,         isSigner: false, isWritable: true  },
+      { pubkey: mintAuthority,     isSigner: false, isWritable: false },
+      { pubkey: userAta,           isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: MINT_PROGRAM,      isSigner: false, isWritable: false },
+      { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+    ],
+    programId: CHAT_PROGRAM,
+    data: ixData,
+  }));
+
+  return await buildAndSendTransaction(connection, keypair, instructions);
+}
+```
 
 ### W8. Create Chat Group
 
-Burns MEMO tokens to create a new chat group.
+Burns MEMO tokens (minimum 42,069) to create a new chat group.
 
-**Discriminator**: `SHA256("global:create_chat_group")[..8]`
+```javascript
+async function createChatGroup(connection, keypair, name, description, image, tags = [], minMemoInterval = null, burnAmount = 42069) {
+  const user = keypair.publicKey;
+  const burnAmountLamports = burnAmount * 1_000_000;
 
-**Instruction Data**: discriminator (8 bytes) + expected_group_id (u64 LE) + burn_amount (u64 LE)
+  // Get expected group ID from global counter
+  const [globalCounter] = PublicKey.findProgramAddressSync(
+    [Buffer.from('global_counter')], CHAT_PROGRAM
+  );
+  const counterInfo = await connection.getAccountInfo(globalCounter);
+  const expectedGroupId = Number(Buffer.from(counterInfo.data).readBigUInt64LE(8));
 
-Get `expected_group_id` by querying global counter PDA: `[b"global_counter"]` from Chat Program.
+  const groupIdBuf = Buffer.alloc(8); groupIdBuf.writeBigUInt64LE(BigInt(expectedGroupId));
+  const [chatGroupPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('chat_group'), groupIdBuf], CHAT_PROGRAM
+  );
+  const [burnLeaderboard] = PublicKey.findProgramAddressSync(
+    [Buffer.from('burn_leaderboard')], CHAT_PROGRAM
+  );
+  const [burnStatsPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('user_global_burn_stats'), user.toBuffer()], BURN_PROGRAM
+  );
+  const userAta = await getAssociatedTokenAddress(MEMO_MINT, user, false, TOKEN_2022_PROGRAM_ID);
 
-**Accounts** (in order):
+  const payload = encodeChatGroupCreation(
+    user.toBase58(), expectedGroupId, name, description, image, tags, minMemoInterval
+  );
+  const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
-| # | Account | Signer | Writable | Description |
-|---|---------|--------|----------|-------------|
-| 0 | user | yes | yes | User's wallet |
-| 1 | global_counter | no | yes | PDA: `[b"global_counter"]` from Chat Program |
-| 2 | chat_group_pda | no | yes | PDA: `[b"chat_group", expected_group_id.to_le_bytes()]` from Chat Program |
-| 3 | burn_leaderboard | no | yes | PDA: `[b"burn_leaderboard"]` from Chat Program |
-| 4 | memo_token_mint | no | yes | MEMO mint address |
-| 5 | user_token_account | no | yes | User's MEMO ATA |
-| 6 | user_burn_stats | no | yes | PDA: `[b"user_global_burn_stats", user_pubkey]` from Burn Program |
-| 7 | token_2022_program | no | no | Token-2022 program |
-| 8 | memo_burn_program | no | no | Burn Program ID |
-| 9 | system_program | no | no | System program |
-| 10 | instructions_sysvar | no | no | Instructions sysvar |
+  const instructions = [];
+  instructions.push(createMemoInstruction(memoBase64, user));
 
-**Memo (index 0)**: BurnMemo { version: 1, burn_amount, payload: ChatGroupCreationData }
+  const ixData = Buffer.concat([
+    anchorDiscriminator('create_chat_group'),
+    encodeBorshU64(expectedGroupId),
+    encodeBorshU64(burnAmountLamports),
+  ]);
+  instructions.push(new TransactionInstruction({
+    keys: [
+      { pubkey: user,              isSigner: true,  isWritable: true  },
+      { pubkey: globalCounter,     isSigner: false, isWritable: true  },
+      { pubkey: chatGroupPda,      isSigner: false, isWritable: true  },
+      { pubkey: burnLeaderboard,   isSigner: false, isWritable: true  },
+      { pubkey: MEMO_MINT,         isSigner: false, isWritable: true  },
+      { pubkey: userAta,           isSigner: false, isWritable: true  },
+      { pubkey: burnStatsPda,      isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: INSTRUCTIONS_SYSVAR,     isSigner: false, isWritable: false },
+    ],
+    programId: CHAT_PROGRAM,
+    data: ixData,
+  }));
 
-**Minimum burn**: 42,069 MEMO tokens
+  return await buildAndSendTransaction(connection, keypair, instructions);
+}
+```
 
 ### W9. Burn Tokens for Chat Group
 
-Burns MEMO tokens for a group with an optional message.
+```javascript
+async function burnForGroup(connection, keypair, groupId, message, burnAmount = 1) {
+  const user = keypair.publicKey;
+  const burnAmountLamports = burnAmount * 1_000_000;
 
-**Discriminator**: `SHA256("global:burn_tokens_for_group")[..8]`
+  const groupIdBuf = Buffer.alloc(8); groupIdBuf.writeBigUInt64LE(BigInt(groupId));
+  const [chatGroupPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('chat_group'), groupIdBuf], CHAT_PROGRAM
+  );
+  const [burnLeaderboard] = PublicKey.findProgramAddressSync(
+    [Buffer.from('burn_leaderboard')], CHAT_PROGRAM
+  );
+  const [burnStatsPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('user_global_burn_stats'), user.toBuffer()], BURN_PROGRAM
+  );
+  const userAta = await getAssociatedTokenAddress(MEMO_MINT, user, false, TOKEN_2022_PROGRAM_ID);
 
-**Instruction Data**: discriminator (8 bytes) + group_id (u64 LE) + amount (u64 LE)
+  const payload = Buffer.concat([
+    encodeBorshU8(1), encodeBorshString('chat'), encodeBorshString('burn_for_group'),
+    encodeBorshU64(groupId), encodeBorshString(user.toBase58()), encodeBorshString(message),
+  ]);
+  const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
-**Accounts** (in order):
+  const instructions = [];
+  instructions.push(createMemoInstruction(memoBase64, user));
 
-| # | Account | Signer | Writable | Description |
-|---|---------|--------|----------|-------------|
-| 0 | user | yes | yes | User's wallet |
-| 1 | chat_group_pda | no | yes | Chat group PDA |
-| 2 | burn_leaderboard | no | yes | Burn leaderboard PDA |
-| 3 | memo_token_mint | no | yes | MEMO mint address |
-| 4 | user_token_account | no | yes | User's MEMO ATA |
-| 5 | user_burn_stats | no | yes | User burn stats PDA |
-| 6 | token_2022_program | no | no | Token-2022 program |
-| 7 | memo_burn_program | no | no | Burn Program ID |
-| 8 | instructions_sysvar | no | no | Instructions sysvar |
+  const ixData = Buffer.concat([
+    anchorDiscriminator('burn_tokens_for_group'),
+    encodeBorshU64(groupId),
+    encodeBorshU64(burnAmountLamports),
+  ]);
+  instructions.push(new TransactionInstruction({
+    keys: [
+      { pubkey: user,              isSigner: true,  isWritable: true  },
+      { pubkey: chatGroupPda,      isSigner: false, isWritable: true  },
+      { pubkey: burnLeaderboard,   isSigner: false, isWritable: true  },
+      { pubkey: MEMO_MINT,         isSigner: false, isWritable: true  },
+      { pubkey: userAta,           isSigner: false, isWritable: true  },
+      { pubkey: burnStatsPda,      isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
+      { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+    ],
+    programId: CHAT_PROGRAM,
+    data: ixData,
+  }));
 
-**Memo (index 0)**: BurnMemo { version: 1, burn_amount, payload: ChatGroupBurnData }
-
-**Minimum burn**: 1 MEMO token
+  return await buildAndSendTransaction(connection, keypair, instructions);
+}
+```
 
 ### W10. Initialize Burn Stats (PREREQUISITE)
 
-**IMPORTANT**: This must be executed ONCE per user BEFORE any burn operation (W4, W5, W8, W9, etc.). If the user's burn stats account does not exist, all burn transactions will fail. Query the stats PDA with `getAccountInfo` first — if `result.value` is `null`, call this instruction before proceeding with any burn.
+**IMPORTANT**: This must be executed ONCE per user BEFORE any burn operation (W4, W5, W8, W9, W12-W19). If the user's burn stats account does not exist, all burn transactions will fail. Query the stats PDA with `getAccountInfo` first — if the result is `null`, call this instruction before proceeding with any burn.
 
-**Discriminator**: `SHA256("global:initialize_user_global_burn_stats")[..8]`
+```javascript
+async function initializeBurnStats(connection, keypair) {
+  const user = keypair.publicKey;
+  const [statsPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('user_global_burn_stats'), user.toBuffer()], BURN_PROGRAM
+  );
 
-**Instruction Data**: discriminator only (8 bytes)
+  // Check if already initialized
+  const existing = await connection.getAccountInfo(statsPda);
+  if (existing) return null; // Already initialized
 
-**Accounts**:
+  const ix = new TransactionInstruction({
+    keys: [
+      { pubkey: user,     isSigner: true,  isWritable: true  },
+      { pubkey: statsPda, isSigner: false, isWritable: true  },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    programId: BURN_PROGRAM,
+    data: anchorDiscriminator('initialize_user_global_burn_stats'),
+  });
 
-| # | Account | Signer | Writable | Description |
-|---|---------|--------|----------|-------------|
-| 0 | user | yes | yes | User's wallet |
-| 1 | stats_pda | no | yes | PDA: `[b"user_global_burn_stats", user_pubkey]` from Burn Program |
-| 2 | system_program | no | no | System program |
-
-No memo required.
-
-### Transaction Building Example (Python with solders)
-
-```python
-from solders.keypair import Keypair
-from solders.pubkey import Pubkey
-from solders.instruction import Instruction, AccountMeta
-from solders.transaction import Transaction
-from solders.message import Message
-from solders.hash import Hash
-from solders.compute_budget import set_compute_unit_limit
-import base64, struct, hashlib, requests
-
-RPC = "https://rpc.mainnet.x1.xyz"
-
-def rpc_call(method, params):
-    resp = requests.post(RPC, json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
-    return resp.json()["result"]
-
-def anchor_discriminator(name):
-    """Compute Anchor instruction discriminator: SHA256('global:<name>')[..8]"""
-    return hashlib.sha256(f"global:{name}".encode()).digest()[:8]
-
-def build_and_send_mint_tx(keypair, memo_text):
-    """Example: Build, sign, and send a mint transaction"""
-    user = keypair.pubkey()
-
-    MINT_PROGRAM = Pubkey.from_string("8iq6zqaEVcfaym2u8t939PAN5jmfPVc6Z333RuxKTTZX")
-    MEMO_MINT = Pubkey.from_string("memoX1sJsBY6od7CfQ58XooRALwnocAZen4L7mW1ick")
-    TOKEN_2022 = Pubkey.from_string("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
-    SPL_MEMO = Pubkey.from_string("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr")
-    INSTRUCTIONS_SYSVAR = Pubkey.from_string("Sysvar1nstructions1111111111111111111111111")
-
-    # Derive PDAs
-    mint_authority, _ = Pubkey.find_program_address([b"mint_authority"], MINT_PROGRAM)
-    # Derive user's MEMO ATA (Token-2022)
-    ATA_PROGRAM = Pubkey.from_string("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")
-    user_ata, _ = Pubkey.find_program_address(
-        [bytes(user), bytes(TOKEN_2022), bytes(MEMO_MINT)], ATA_PROGRAM
-    )
-
-    # 1. SPL Memo instruction (must be index 0)
-    memo_ix = Instruction(
-        program_id=SPL_MEMO,
-        accounts=[AccountMeta(user, is_signer=True, is_writable=True)],
-        data=memo_text.encode('utf-8')
-    )
-
-    # 2. Mint instruction
-    mint_ix = Instruction(
-        program_id=MINT_PROGRAM,
-        accounts=[
-            AccountMeta(user, is_signer=True, is_writable=True),
-            AccountMeta(MEMO_MINT, is_signer=False, is_writable=True),
-            AccountMeta(mint_authority, is_signer=False, is_writable=False),
-            AccountMeta(user_ata, is_signer=False, is_writable=True),
-            AccountMeta(TOKEN_2022, is_signer=False, is_writable=False),
-            AccountMeta(INSTRUCTIONS_SYSVAR, is_signer=False, is_writable=False),
-        ],
-        data=bytes(anchor_discriminator("process_mint"))
-    )
-
-    # 3. Get blockhash
-    blockhash_resp = rpc_call("getLatestBlockhash", [{"commitment": "confirmed"}])
-    blockhash = Hash.from_string(blockhash_resp["value"]["blockhash"])
-
-    # 4. Add compute budget
-    cu_ix = set_compute_unit_limit(400_000)
-
-    # 5. Build, sign, send
-    msg = Message.new_with_payer([memo_ix, mint_ix, cu_ix], user)
-    tx = Transaction.new([keypair], msg, blockhash)
-    tx_b64 = base64.b64encode(bytes(tx)).decode('utf-8')
-
-    result = rpc_call("sendTransaction", [
-        tx_b64, {"encoding": "base64", "preflightCommitment": "confirmed", "maxRetries": 3}
-    ])
-    return result  # Transaction signature
+  return await buildAndSendTransaction(connection, keypair, [ix], 200_000);
+}
 ```
+
+### W11. Create Forum Post
+
+Burns MEMO tokens (minimum 1) to create a forum post.
+
+```javascript
+async function createForumPost(connection, keypair, title, content, image, burnAmount = 1) {
+  const user = keypair.publicKey;
+  const burnAmountLamports = burnAmount * 1_000_000;
+
+  // Get expected post ID
+  const [globalCounter] = PublicKey.findProgramAddressSync(
+    [Buffer.from('global_counter')], FORUM_PROGRAM
+  );
+  const counterInfo = await connection.getAccountInfo(globalCounter);
+  const expectedPostId = Number(Buffer.from(counterInfo.data).readBigUInt64LE(8));
+
+  const postIdBuf = Buffer.alloc(8); postIdBuf.writeBigUInt64LE(BigInt(expectedPostId));
+  const [postPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('post'), postIdBuf], FORUM_PROGRAM
+  );
+  const [burnStatsPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('user_global_burn_stats'), user.toBuffer()], BURN_PROGRAM
+  );
+  const userAta = await getAssociatedTokenAddress(MEMO_MINT, user, false, TOKEN_2022_PROGRAM_ID);
+
+  const payload = encodePostCreation(user.toBase58(), expectedPostId, title, content, image);
+  const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
+
+  const instructions = [];
+  instructions.push(createMemoInstruction(memoBase64, user));
+
+  const ixData = Buffer.concat([
+    anchorDiscriminator('create_post'),
+    encodeBorshU64(expectedPostId),
+    encodeBorshU64(burnAmountLamports),
+  ]);
+  instructions.push(new TransactionInstruction({
+    keys: [
+      { pubkey: user,              isSigner: true,  isWritable: true  },
+      { pubkey: globalCounter,     isSigner: false, isWritable: true  },
+      { pubkey: postPda,           isSigner: false, isWritable: true  },
+      { pubkey: MEMO_MINT,         isSigner: false, isWritable: true  },
+      { pubkey: userAta,           isSigner: false, isWritable: true  },
+      { pubkey: burnStatsPda,      isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: INSTRUCTIONS_SYSVAR,     isSigner: false, isWritable: false },
+    ],
+    programId: FORUM_PROGRAM,
+    data: ixData,
+  }));
+
+  return await buildAndSendTransaction(connection, keypair, instructions);
+}
+```
+
+### W12. Burn for Forum Post
+
+```javascript
+async function burnForPost(connection, keypair, postId, message, burnAmount = 1) {
+  const user = keypair.publicKey;
+  const burnAmountLamports = burnAmount * 1_000_000;
+
+  const postIdBuf = Buffer.alloc(8); postIdBuf.writeBigUInt64LE(BigInt(postId));
+  const [postPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('post'), postIdBuf], FORUM_PROGRAM
+  );
+  const [burnStatsPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('user_global_burn_stats'), user.toBuffer()], BURN_PROGRAM
+  );
+  const userAta = await getAssociatedTokenAddress(MEMO_MINT, user, false, TOKEN_2022_PROGRAM_ID);
+
+  const payload = Buffer.concat([
+    encodeBorshU8(1), encodeBorshString('forum'), encodeBorshString('burn_for_post'),
+    encodeBorshString(user.toBase58()), encodeBorshU64(postId), encodeBorshString(message),
+  ]);
+  const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
+
+  const instructions = [];
+  instructions.push(createMemoInstruction(memoBase64, user));
+
+  const ixData = Buffer.concat([
+    anchorDiscriminator('burn_for_post'),
+    encodeBorshU64(postId),
+    encodeBorshU64(burnAmountLamports),
+  ]);
+  instructions.push(new TransactionInstruction({
+    keys: [
+      { pubkey: user,              isSigner: true,  isWritable: true  },
+      { pubkey: postPda,           isSigner: false, isWritable: true  },
+      { pubkey: MEMO_MINT,         isSigner: false, isWritable: true  },
+      { pubkey: userAta,           isSigner: false, isWritable: true  },
+      { pubkey: burnStatsPda,      isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
+      { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+    ],
+    programId: FORUM_PROGRAM,
+    data: ixData,
+  }));
+
+  return await buildAndSendTransaction(connection, keypair, instructions);
+}
+```
+
+### W13. Mint for Forum Post
+
+```javascript
+async function mintForPost(connection, keypair, postId, message) {
+  const user = keypair.publicKey;
+
+  const postIdBuf = Buffer.alloc(8); postIdBuf.writeBigUInt64LE(BigInt(postId));
+  const [postPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('post'), postIdBuf], FORUM_PROGRAM
+  );
+  const [mintAuthority] = PublicKey.findProgramAddressSync(
+    [Buffer.from('mint_authority')], MINT_PROGRAM
+  );
+  const { ata: userAta, instructions: ataIxs } = await ensureATA(
+    connection, user, MEMO_MINT, user
+  );
+
+  const payload = Buffer.concat([
+    encodeBorshU8(1), encodeBorshString('forum'), encodeBorshString('mint_for_post'),
+    encodeBorshString(user.toBase58()), encodeBorshU64(postId), encodeBorshString(message),
+  ]);
+  // mint operations: BurnMemo with burn_amount = 0
+  const memoBase64 = encodeBurnMemo(0, payload);
+
+  const instructions = [];
+  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(...ataIxs);
+
+  const ixData = Buffer.concat([
+    anchorDiscriminator('mint_for_post'),
+    encodeBorshU64(postId),
+  ]);
+  instructions.push(new TransactionInstruction({
+    keys: [
+      { pubkey: user,              isSigner: true,  isWritable: true  },
+      { pubkey: postPda,           isSigner: false, isWritable: true  },
+      { pubkey: MEMO_MINT,         isSigner: false, isWritable: true  },
+      { pubkey: mintAuthority,     isSigner: false, isWritable: false },
+      { pubkey: userAta,           isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: MINT_PROGRAM,      isSigner: false, isWritable: false },
+      { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+    ],
+    programId: FORUM_PROGRAM,
+    data: ixData,
+  }));
+
+  return await buildAndSendTransaction(connection, keypair, instructions);
+}
+```
+
+### W14. Create Blog
+
+Burns MEMO tokens (minimum 1) to create a blog (one per user).
+
+```javascript
+async function createBlog(connection, keypair, name, description, image, burnAmount = 1) {
+  const user = keypair.publicKey;
+  const burnAmountLamports = burnAmount * 1_000_000;
+
+  const [blogPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('blog'), user.toBuffer()], BLOG_PROGRAM
+  );
+  const [burnStatsPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('user_global_burn_stats'), user.toBuffer()], BURN_PROGRAM
+  );
+  const userAta = await getAssociatedTokenAddress(MEMO_MINT, user, false, TOKEN_2022_PROGRAM_ID);
+
+  const payload = encodeBlogCreation(user.toBase58(), name, description, image);
+  const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
+
+  const instructions = [];
+  instructions.push(createMemoInstruction(memoBase64, user));
+
+  const ixData = Buffer.concat([
+    anchorDiscriminator('create_blog'),
+    encodeBorshU64(burnAmountLamports),
+  ]);
+  instructions.push(new TransactionInstruction({
+    keys: [
+      { pubkey: user,              isSigner: true,  isWritable: true  },
+      { pubkey: blogPda,           isSigner: false, isWritable: true  },
+      { pubkey: MEMO_MINT,         isSigner: false, isWritable: true  },
+      { pubkey: userAta,           isSigner: false, isWritable: true  },
+      { pubkey: burnStatsPda,      isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: INSTRUCTIONS_SYSVAR,     isSigner: false, isWritable: false },
+    ],
+    programId: BLOG_PROGRAM,
+    data: ixData,
+  }));
+
+  return await buildAndSendTransaction(connection, keypair, instructions);
+}
+```
+
+### W15. Update Blog
+
+```javascript
+async function updateBlog(connection, keypair, name = null, description = null, image = null, burnAmount = 1) {
+  const user = keypair.publicKey;
+  const burnAmountLamports = burnAmount * 1_000_000;
+
+  const [blogPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('blog'), user.toBuffer()], BLOG_PROGRAM
+  );
+  const [burnStatsPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('user_global_burn_stats'), user.toBuffer()], BURN_PROGRAM
+  );
+  const userAta = await getAssociatedTokenAddress(MEMO_MINT, user, false, TOKEN_2022_PROGRAM_ID);
+
+  const payload = Buffer.concat([
+    encodeBorshU8(1), encodeBorshString('blog'), encodeBorshString('update_blog'),
+    encodeBorshString(user.toBase58()),
+    encodeBorshOptionString(name), encodeBorshOptionString(description), encodeBorshOptionString(image),
+  ]);
+  const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
+
+  const instructions = [];
+  instructions.push(createMemoInstruction(memoBase64, user));
+
+  const ixData = Buffer.concat([
+    anchorDiscriminator('update_blog'),
+    encodeBorshU64(burnAmountLamports),
+  ]);
+  instructions.push(new TransactionInstruction({
+    keys: [
+      { pubkey: user,              isSigner: true,  isWritable: true  },
+      { pubkey: blogPda,           isSigner: false, isWritable: true  },
+      { pubkey: MEMO_MINT,         isSigner: false, isWritable: true  },
+      { pubkey: userAta,           isSigner: false, isWritable: true  },
+      { pubkey: burnStatsPda,      isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
+      { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+    ],
+    programId: BLOG_PROGRAM,
+    data: ixData,
+  }));
+
+  return await buildAndSendTransaction(connection, keypair, instructions);
+}
+```
+
+### W16. Burn for Blog
+
+```javascript
+async function burnForBlog(connection, keypair, blogOwnerPubkey, message, burnAmount = 1) {
+  const user = keypair.publicKey;
+  const burnAmountLamports = burnAmount * 1_000_000;
+
+  const [blogPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('blog'), new PublicKey(blogOwnerPubkey).toBuffer()], BLOG_PROGRAM
+  );
+  const [burnStatsPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('user_global_burn_stats'), user.toBuffer()], BURN_PROGRAM
+  );
+  const userAta = await getAssociatedTokenAddress(MEMO_MINT, user, false, TOKEN_2022_PROGRAM_ID);
+
+  const payload = Buffer.concat([
+    encodeBorshU8(1), encodeBorshString('blog'), encodeBorshString('burn_for_blog'),
+    encodeBorshString(user.toBase58()), encodeBorshString(message),
+  ]);
+  const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
+
+  const instructions = [];
+  instructions.push(createMemoInstruction(memoBase64, user));
+
+  const ixData = Buffer.concat([
+    anchorDiscriminator('burn_for_blog'),
+    encodeBorshU64(burnAmountLamports),
+  ]);
+  instructions.push(new TransactionInstruction({
+    keys: [
+      { pubkey: user,              isSigner: true,  isWritable: true  },
+      { pubkey: blogPda,           isSigner: false, isWritable: true  },
+      { pubkey: MEMO_MINT,         isSigner: false, isWritable: true  },
+      { pubkey: userAta,           isSigner: false, isWritable: true  },
+      { pubkey: burnStatsPda,      isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
+      { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+    ],
+    programId: BLOG_PROGRAM,
+    data: ixData,
+  }));
+
+  return await buildAndSendTransaction(connection, keypair, instructions);
+}
+```
+
+### W17. Mint for Blog
+
+```javascript
+async function mintForBlog(connection, keypair, blogOwnerPubkey, message) {
+  const user = keypair.publicKey;
+
+  const [blogPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('blog'), new PublicKey(blogOwnerPubkey).toBuffer()], BLOG_PROGRAM
+  );
+  const [mintAuthority] = PublicKey.findProgramAddressSync(
+    [Buffer.from('mint_authority')], MINT_PROGRAM
+  );
+  const { ata: userAta, instructions: ataIxs } = await ensureATA(
+    connection, user, MEMO_MINT, user
+  );
+
+  const payload = Buffer.concat([
+    encodeBorshU8(1), encodeBorshString('blog'), encodeBorshString('mint_for_blog'),
+    encodeBorshString(user.toBase58()), encodeBorshString(message),
+  ]);
+  const memoBase64 = encodeBurnMemo(0, payload);
+
+  const instructions = [];
+  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(...ataIxs);
+
+  instructions.push(new TransactionInstruction({
+    keys: [
+      { pubkey: user,              isSigner: true,  isWritable: true  },
+      { pubkey: blogPda,           isSigner: false, isWritable: true  },
+      { pubkey: MEMO_MINT,         isSigner: false, isWritable: true  },
+      { pubkey: mintAuthority,     isSigner: false, isWritable: false },
+      { pubkey: userAta,           isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: MINT_PROGRAM,      isSigner: false, isWritable: false },
+      { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+    ],
+    programId: BLOG_PROGRAM,
+    data: anchorDiscriminator('mint_for_blog'),
+  }));
+
+  return await buildAndSendTransaction(connection, keypair, instructions);
+}
+```
+
+### W18. Create Project
+
+Burns MEMO tokens (minimum 42,069) to create a project.
+
+```javascript
+async function createProject(connection, keypair, name, description, image, website, tags = [], burnAmount = 42069) {
+  const user = keypair.publicKey;
+  const burnAmountLamports = burnAmount * 1_000_000;
+
+  const [globalCounter] = PublicKey.findProgramAddressSync(
+    [Buffer.from('global_counter')], PROJECT_PROGRAM
+  );
+  const counterInfo = await connection.getAccountInfo(globalCounter);
+  const expectedProjectId = Number(Buffer.from(counterInfo.data).readBigUInt64LE(8));
+
+  const projectIdBuf = Buffer.alloc(8); projectIdBuf.writeBigUInt64LE(BigInt(expectedProjectId));
+  const [projectPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('project'), projectIdBuf], PROJECT_PROGRAM
+  );
+  const [burnLeaderboard] = PublicKey.findProgramAddressSync(
+    [Buffer.from('burn_leaderboard')], PROJECT_PROGRAM
+  );
+  const [burnStatsPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('user_global_burn_stats'), user.toBuffer()], BURN_PROGRAM
+  );
+  const userAta = await getAssociatedTokenAddress(MEMO_MINT, user, false, TOKEN_2022_PROGRAM_ID);
+
+  const payload = encodeProjectCreation(expectedProjectId, name, description, image, website, tags);
+  const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
+
+  const instructions = [];
+  instructions.push(createMemoInstruction(memoBase64, user));
+
+  const ixData = Buffer.concat([
+    anchorDiscriminator('create_project'),
+    encodeBorshU64(expectedProjectId),
+    encodeBorshU64(burnAmountLamports),
+  ]);
+  instructions.push(new TransactionInstruction({
+    keys: [
+      { pubkey: user,              isSigner: true,  isWritable: true  },
+      { pubkey: globalCounter,     isSigner: false, isWritable: true  },
+      { pubkey: projectPda,        isSigner: false, isWritable: true  },
+      { pubkey: burnLeaderboard,   isSigner: false, isWritable: true  },
+      { pubkey: MEMO_MINT,         isSigner: false, isWritable: true  },
+      { pubkey: userAta,           isSigner: false, isWritable: true  },
+      { pubkey: burnStatsPda,      isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: INSTRUCTIONS_SYSVAR,     isSigner: false, isWritable: false },
+    ],
+    programId: PROJECT_PROGRAM,
+    data: ixData,
+  }));
+
+  return await buildAndSendTransaction(connection, keypair, instructions);
+}
+```
+
+### W19. Update Project
+
+```javascript
+async function updateProject(connection, keypair, projectId, name = null, description = null, image = null, website = null, tags = null, burnAmount = 42069) {
+  const user = keypair.publicKey;
+  const burnAmountLamports = burnAmount * 1_000_000;
+
+  const projectIdBuf = Buffer.alloc(8); projectIdBuf.writeBigUInt64LE(BigInt(projectId));
+  const [projectPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('project'), projectIdBuf], PROJECT_PROGRAM
+  );
+  const [burnLeaderboard] = PublicKey.findProgramAddressSync(
+    [Buffer.from('burn_leaderboard')], PROJECT_PROGRAM
+  );
+  const [burnStatsPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('user_global_burn_stats'), user.toBuffer()], BURN_PROGRAM
+  );
+  const userAta = await getAssociatedTokenAddress(MEMO_MINT, user, false, TOKEN_2022_PROGRAM_ID);
+
+  // Encode Option<Vec<String>> for tags
+  function encodeBorshOptionVecString(arr) {
+    if (arr === null || arr === undefined) return Buffer.from([0]);
+    return Buffer.concat([Buffer.from([1]), encodeBorshVecString(arr)]);
+  }
+
+  const payload = Buffer.concat([
+    encodeBorshU8(1), encodeBorshString('project'), encodeBorshString('update_project'),
+    encodeBorshU64(projectId),
+    encodeBorshOptionString(name), encodeBorshOptionString(description),
+    encodeBorshOptionString(image), encodeBorshOptionString(website),
+    encodeBorshOptionVecString(tags),
+  ]);
+  const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
+
+  const instructions = [];
+  instructions.push(createMemoInstruction(memoBase64, user));
+
+  const ixData = Buffer.concat([
+    anchorDiscriminator('update_project'),
+    encodeBorshU64(projectId),
+    encodeBorshU64(burnAmountLamports),
+  ]);
+  instructions.push(new TransactionInstruction({
+    keys: [
+      { pubkey: user,              isSigner: true,  isWritable: true  },
+      { pubkey: projectPda,        isSigner: false, isWritable: true  },
+      { pubkey: burnLeaderboard,   isSigner: false, isWritable: true  },
+      { pubkey: MEMO_MINT,         isSigner: false, isWritable: true  },
+      { pubkey: userAta,           isSigner: false, isWritable: true  },
+      { pubkey: burnStatsPda,      isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
+      { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+    ],
+    programId: PROJECT_PROGRAM,
+    data: ixData,
+  }));
+
+  return await buildAndSendTransaction(connection, keypair, instructions);
+}
+```
+
+### W20. Burn for Project
+
+```javascript
+async function burnForProject(connection, keypair, projectId, message, burnAmount = 420) {
+  const user = keypair.publicKey;
+  const burnAmountLamports = burnAmount * 1_000_000;
+
+  const projectIdBuf = Buffer.alloc(8); projectIdBuf.writeBigUInt64LE(BigInt(projectId));
+  const [projectPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('project'), projectIdBuf], PROJECT_PROGRAM
+  );
+  const [burnLeaderboard] = PublicKey.findProgramAddressSync(
+    [Buffer.from('burn_leaderboard')], PROJECT_PROGRAM
+  );
+  const [burnStatsPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('user_global_burn_stats'), user.toBuffer()], BURN_PROGRAM
+  );
+  const userAta = await getAssociatedTokenAddress(MEMO_MINT, user, false, TOKEN_2022_PROGRAM_ID);
+
+  const payload = Buffer.concat([
+    encodeBorshU8(1), encodeBorshString('project'), encodeBorshString('burn_for_project'),
+    encodeBorshU64(projectId), encodeBorshString(user.toBase58()), encodeBorshString(message),
+  ]);
+  const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
+
+  const instructions = [];
+  instructions.push(createMemoInstruction(memoBase64, user));
+
+  const ixData = Buffer.concat([
+    anchorDiscriminator('burn_for_project'),
+    encodeBorshU64(projectId),
+    encodeBorshU64(burnAmountLamports),
+  ]);
+  instructions.push(new TransactionInstruction({
+    keys: [
+      { pubkey: user,              isSigner: true,  isWritable: true  },
+      { pubkey: projectPda,        isSigner: false, isWritable: true  },
+      { pubkey: burnLeaderboard,   isSigner: false, isWritable: true  },
+      { pubkey: MEMO_MINT,         isSigner: false, isWritable: true  },
+      { pubkey: userAta,           isSigner: false, isWritable: true  },
+      { pubkey: burnStatsPda,      isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
+      { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+    ],
+    programId: PROJECT_PROGRAM,
+    data: ixData,
+  }));
+
+  return await buildAndSendTransaction(connection, keypair, instructions);
+}
+```
+
+---
+
+## Minimum Burn Amounts
+
+| Operation | Minimum MEMO | Lamports |
+|---|---|---|
+| Create Profile | 420 | 420,000,000 |
+| Update Profile | 420 | 420,000,000 |
+| Create Chat Group | 42,069 | 42,069,000,000 |
+| Burn for Chat Group | 1 | 1,000,000 |
+| Create Forum Post | 1 | 1,000,000 |
+| Burn for Forum Post | 1 | 1,000,000 |
+| Create Blog | 1 | 1,000,000 |
+| Update Blog | 1 | 1,000,000 |
+| Burn for Blog | 1 | 1,000,000 |
+| Create Project | 42,069 | 42,069,000,000 |
+| Update Project | 42,069 | 42,069,000,000 |
+| Burn for Project | 420 | 420,000,000 |
 
 ---
 
 ## Error Handling
 
-RPC errors follow this structure:
-```json
-{
-  "error": {
-    "code": -32002,
-    "message": "Transaction simulation failed: ...",
-    "data": {
-      "err": {"InstructionError": [0, {"Custom": 6001}]},
-      "logs": ["Program log: Error Message: Memo too short"]
-    }
+```javascript
+try {
+  const sig = await buildAndSendTransaction(connection, keypair, instructions);
+} catch (error) {
+  // Extract program error from logs
+  if (error.logs) {
+    const errorLog = error.logs.find(log => log.includes('Error Message:'));
+    if (errorLog) console.error('Program error:', errorLog);
   }
+
+  // Common error codes:
+  // Custom(6001) → "Memo too short" (< 69 bytes)
+  // Custom(6002) → "Memo too long" (> 800 bytes)
+  // Custom(6003) → "Insufficient burn amount"
+  // 0x1 (InsufficientFunds) → not enough SOL/XNT for fees
+  // 0x1 (InsufficientFunds on token) → not enough MEMO tokens
 }
 ```
 
-Extract specific error messages from `data.logs` entries containing `"Error Message:"`.
+---
+
+## Instruction Discriminator Quick Reference
+
+| Instruction | Name for SHA256 |
+|---|---|
+| Mint MEMO | `process_mint` |
+| Create Profile | `create_profile` |
+| Update Profile | `update_profile` |
+| Delete Profile | `delete_profile` |
+| Send Chat Message | `send_memo_to_group` |
+| Create Chat Group | `create_chat_group` |
+| Burn for Chat Group | `burn_tokens_for_group` |
+| Create Forum Post | `create_post` |
+| Burn for Forum Post | `burn_for_post` |
+| Mint for Forum Post | `mint_for_post` |
+| Create Blog | `create_blog` |
+| Update Blog | `update_blog` |
+| Burn for Blog | `burn_for_blog` |
+| Mint for Blog | `mint_for_blog` |
+| Create Project | `create_project` |
+| Update Project | `update_project` |
+| Burn for Project | `burn_for_project` |
+| Init Burn Stats | `initialize_user_global_burn_stats` |
+
+All computed as: `SHA256("global:<name>").slice(0, 8)`
 
 ---
 
 ## Quick Reference: Common Queries
 
-| Task | Method | Key Param |
+| Task | web3.js Method | Key Param |
 |---|---|---|
-| Check XNT balance | `getBalance` | pubkey |
-| Check MEMO balance | `getTokenAccountsByOwner` | owner + mint filter |
-| MEMO total supply | `getTokenSupply` | MEMO mint address |
-| User profile | `getAccountInfo` | Profile PDA |
-| Token holders | `getProgramAccounts` | Token-2022 + memcmp mint |
-| Top burners | `getProgramAccounts` | Burn program + dataSize:65 |
-| Tx history | `getSignaturesForAddress` | address + limit |
-| Tx details | `getTransaction` | signature |
-| Health check | `getVersion` | (none) |
+| Check XNT balance | `connection.getBalance()` | pubkey |
+| Check MEMO balance | `connection.getTokenAccountsByOwner()` | owner + mint filter |
+| MEMO total supply | `connection.getTokenSupply()` | MEMO mint address |
+| User profile | `connection.getAccountInfo()` | Profile PDA |
+| Forum post | `connection.getAccountInfo()` | Post PDA |
+| Blog | `connection.getAccountInfo()` | Blog PDA |
+| Project | `connection.getAccountInfo()` | Project PDA |
+| Chat group | `connection.getAccountInfo()` | Chat Group PDA |
+| Token holders | `connection.getProgramAccounts()` | Token-2022 + memcmp mint |
+| Top burners | `connection.getProgramAccounts()` | Burn program + dataSize:65 |
+| Tx history | `connection.getSignaturesForAddress()` | address + limit |
+| Tx details | `connection.getTransaction()` | signature |
+| Chat messages | `getSignaturesForAddress()` on group PDA | parse memo field |
+| Health check | `connection.getVersion()` | (none) |
