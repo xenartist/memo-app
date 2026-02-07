@@ -60,6 +60,8 @@ Mainnet: https://rpc.mainnet.x1.xyz
 
 ### MEMO Supply Tiers (Mint Reward Schedule)
 
+**Maximum Supply Cap: 10 trillion (10,000,000,000,000) MEMO tokens**. When total supply reaches this cap, no more tokens can be minted.
+
 | Supply Range | Reward per Mint |
 |---|---|
 | 0 - 100M | 1.0 MEMO |
@@ -67,7 +69,7 @@ Mainnet: https://rpc.mainnet.x1.xyz
 | 1B - 10B | 0.01 MEMO |
 | 10B - 100B | 0.001 MEMO |
 | 100B - 1T | 0.0001 MEMO |
-| 1T+ | 0.000001 MEMO |
+| 1T - 10T | 0.000001 MEMO (1 lamport) |
 
 ---
 
@@ -680,10 +682,9 @@ Field              Type              Values
 version            u8                1
 category           String            "chat"
 operation          String            "create_group"
-creator            String            Base58 pubkey string
 group_id           u64               expected group ID
 name               String            1-64 chars
-description        String            max 256 chars
+description        String            max 128 chars
 image              String            max 256 chars (pixel art)
 tags               Vec<String>       max 4 tags, each max 32 chars
 min_memo_interval  Option<i64>       seconds (contract defaults to 60)
@@ -946,12 +947,12 @@ function encodeProjectCreation(projectId, name, description, image, website, tag
 ### Encode Chat Group Creation
 
 ```javascript
-function encodeChatGroupCreation(creator, groupId, name, description, image, tags, minMemoInterval = null) {
+function encodeChatGroupCreation(groupId, name, description, image, tags, minMemoInterval = null) {
+  // NOTE: No 'creator' field — the contract identifies creator from the transaction signer
   return Buffer.concat([
     encodeBorshU8(1),
     encodeBorshString('chat'),
     encodeBorshString('create_group'),
-    encodeBorshString(creator),
     encodeBorshU64(groupId),
     encodeBorshString(name),
     encodeBorshString(description),
@@ -1020,10 +1021,9 @@ function decodeBurnMemo(data) {
     Object.assign(result, { type: 'chat_burn', groupId, burner, message });
   }
   else if (pCategory === 'chat' && pOperation === 'create_group') {
-    let creator; [creator, pOffset] = decodeBorshString(payload, pOffset);
     let groupId; [groupId, pOffset] = decodeBorshU64(payload, pOffset);
     let name;    [name, pOffset]    = decodeBorshString(payload, pOffset);
-    Object.assign(result, { type: 'chat_group_creation', creator, groupId, name });
+    Object.assign(result, { type: 'chat_group_creation', groupId, name });
   }
   else if (pCategory === 'forum' && pOperation === 'create_post') {
     let creator; [creator, pOffset] = decodeBorshString(payload, pOffset);
@@ -1615,7 +1615,7 @@ async function createChatGroup(connection, keypair, name, description, image, ta
   const userAta = await getAssociatedTokenAddress(MEMO_MINT, user, false, TOKEN_2022_PROGRAM_ID);
 
   const payload = encodeChatGroupCreation(
-    user.toBase58(), expectedGroupId, name, description, image, tags, minMemoInterval
+    expectedGroupId, name, description, image, tags, minMemoInterval
   );
   const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
@@ -1790,6 +1790,8 @@ async function createForumPost(connection, keypair, title, content, image, burnA
 
 ### W12. Burn for Forum Post
 
+**ANY user** can burn tokens for any post (not restricted to creator). This is a key difference from Blog/Project.
+
 ```javascript
 async function burnForPost(connection, keypair, postId, message, burnAmount = 1) {
   const user = keypair.publicKey;
@@ -1838,6 +1840,8 @@ async function burnForPost(connection, keypair, postId, message, burnAmount = 1)
 ```
 
 ### W13. Mint for Forum Post
+
+**ANY user** can mint tokens for any post (not restricted to creator). This is a key difference from Blog/Project.
 
 ```javascript
 async function mintForPost(connection, keypair, postId, message) {
@@ -1937,6 +1941,8 @@ async function createBlog(connection, keypair, name, description, image, burnAmo
 
 ### W15. Update Blog
 
+**Creator-only**: Only the blog creator can update their own blog.
+
 ```javascript
 async function updateBlog(connection, keypair, name = null, description = null, image = null, burnAmount = 1) {
   const user = keypair.publicKey;
@@ -1985,6 +1991,8 @@ async function updateBlog(connection, keypair, name = null, description = null, 
 
 ### W16. Burn for Blog
 
+**Creator-only**: Only the blog creator can burn for their own blog. The Blog PDA is derived from the burner's pubkey.
+
 ```javascript
 async function burnForBlog(connection, keypair, blogOwnerPubkey, message, burnAmount = 1) {
   const user = keypair.publicKey;
@@ -2031,6 +2039,8 @@ async function burnForBlog(connection, keypair, blogOwnerPubkey, message, burnAm
 ```
 
 ### W17. Mint for Blog
+
+**Creator-only**: Only the blog creator can mint for their own blog.
 
 ```javascript
 async function mintForBlog(connection, keypair, blogOwnerPubkey, message) {
@@ -2137,6 +2147,8 @@ async function createProject(connection, keypair, name, description, image, webs
 
 ### W19. Update Project
 
+**Creator-only**: Only the project creator can update their own project.
+
 ```javascript
 async function updateProject(connection, keypair, projectId, name = null, description = null, image = null, website = null, tags = null, burnAmount = 42069) {
   const user = keypair.publicKey;
@@ -2198,6 +2210,8 @@ async function updateProject(connection, keypair, projectId, name = null, descri
 ```
 
 ### W20. Burn for Project
+
+**Creator-only**: Only the project creator can burn for their own project.
 
 ```javascript
 async function burnForProject(connection, keypair, projectId, message, burnAmount = 420) {
@@ -2268,6 +2282,31 @@ async function burnForProject(connection, keypair, projectId, message, burnAmoun
 | Create Project | 42,069 | 42,069,000,000 |
 | Update Project | 42,069 | 42,069,000,000 |
 | Burn for Project | 420 | 420,000,000 |
+
+---
+
+## Access Control Summary
+
+| Operation | Who Can Execute |
+|---|---|
+| Create Profile | Any user (for themselves) |
+| Update Profile | Profile owner only |
+| Delete Profile | Profile owner only |
+| Create Chat Group | Any user |
+| Send Chat Message | Any user (to any group) |
+| Burn for Chat Group | Any user (for any group) |
+| Create Forum Post | Any user |
+| **Burn for Forum Post** | **Any user** (for any post) |
+| **Mint for Forum Post** | **Any user** (for any post) |
+| Create Blog | Any user (one blog per user) |
+| Update Blog | **Blog creator only** |
+| Burn for Blog | **Blog creator only** |
+| Mint for Blog | **Blog creator only** |
+| Create Project | Any user |
+| Update Project | **Project creator only** |
+| Burn for Project | **Project creator only** |
+
+> **Key difference**: Forum posts allow any user to burn/mint (reply), while Blog and Project restrict burn/mint/update to the creator only.
 
 ---
 
