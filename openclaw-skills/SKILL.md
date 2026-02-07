@@ -56,6 +56,7 @@ const INSTRUCTIONS_SYSVAR = new PublicKey('Sysvar1nstructions1111111111111111111
 
 ```
 Mainnet: https://rpc.mainnet.x1.xyz
+Testnet: https://rpc.testnet.x1.xyz
 ```
 
 ### MEMO Supply Tiers (Mint Reward Schedule)
