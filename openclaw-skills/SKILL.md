@@ -330,18 +330,27 @@ const signatures = await connection.getSignaturesForAddress(
 
 ### 7. Get Top MEMO Token Holders
 
-```javascript
-const accounts = await connection.getProgramAccounts(TOKEN_2022_PROGRAM_ID, {
-  encoding: 'jsonParsed',
-  filters: [
-    { memcmp: { offset: 0, bytes: MEMO_MINT.toBase58() } }
-  ]
-});
+> **Note**: `getProgramAccounts` with `encoding:'jsonParsed'` on Token-2022 may fail on X1 RPC
+> due to extension parsing incompatibilities — some accounts fall back to raw `base64` format
+> instead of `parsed` objects. Use `getTokenLargestAccounts` instead — it is more stable and performant.
 
-const holders = accounts.map(a => ({
-  owner: a.account.data.parsed.info.owner,
-  balance: a.account.data.parsed.info.tokenAmount.uiAmount
-})).sort((a, b) => b.balance - a.balance);
+```javascript
+// Recommended: getTokenLargestAccounts (stable on X1, returns top 20)
+const result = await connection.getTokenLargestAccounts(MEMO_MINT);
+const topHolders = result.value.map(item => ({
+  tokenAccount: item.address.toBase58(),
+  amount: item.amount,       // raw amount in lamports
+  uiAmount: item.uiAmount,   // human-readable amount
+  decimals: item.decimals,
+}));
+
+// Optional: resolve owner addresses for each token account
+for (const holder of topHolders) {
+  const info = await connection.getParsedAccountInfo(new PublicKey(holder.tokenAccount));
+  if (info.value?.data?.parsed?.info?.owner) {
+    holder.owner = info.value.data.parsed.info.owner;
+  }
+}
 ```
 
 ### 8. Get Top Burners
@@ -1252,11 +1261,151 @@ const imageString = encodePixelArt(grid, 32, 32);
 // Use this string in the 'image' field of ProfileCreationData, PostCreationData, etc.
 ```
 
-### Rendering Pixel Art
+### Decoding Pipeline (Step-by-Step)
 
-- Each `true` = black pixel (filled), each `false` = white pixel (empty)
-- Render as a square grid at the decoded `width × height`
-- Display options: HTML Canvas, SVG, terminal block characters (`█` / ` `)
+The full decoding pipeline for a compressed pixel art string like
+`c:32x32:bY3RCcBADEKHERwgs2QBwf1nqGnvaKHnVx7PoH1Ku2mVYNOoxchlgPGIeZiteNX02ZunFY/pY/H36+VZuBeTfG7+Rxc=`
+
+```
+Step 1: Split by ':' (max 3 parts)
+  → fmt = "c"
+  → size = "32x32" → width=32, height=32
+  → data = "bY3RCcBADEKHERwgs2QBwf1nqGnvaKHnVx7PoH1Ku2mVYNOoxchlgPGIeZiteNX02ZunFY/pY/H36+VZuBeTfG7+Rxc="
+
+Step 2: Base64 decode 'data' → compressed bytes (raw binary, NOT pixels!)
+
+Step 3: Deflate decompress → "safe string" (171 chars for 32×32)
+  Example output: "#####A)B&Lk..." (171 ASCII characters)
+
+Step 4: Decode each safe-string character → 6-bit value (0-63)
+  e.g. '#' → 0 (000000), '$' → 1 (000001), '%' → 2 (000010), ...
+
+Step 5: Expand each 6-bit value → 6 individual pixel bits
+  e.g. value 42 = 101010 → pixels: [1,0,1,0,1,0]
+
+Step 6: Flatten all bits into a 1D array (row-major order)
+  Total bits = width × height = 1024 for 32×32
+  Pixel index: row = floor(i / width), col = i % width
+
+Step 7: Reshape into 2D grid
+  grid[row][col] = 1 (black/filled) or 0 (white/empty)
+```
+
+**IMPORTANT**: The Base64 data in `c:` format is NOT raw pixels! It is Base64-encoded **Deflate-compressed** safe-string characters. You MUST decompress first, then decode the safe-string character-by-character.
+
+For `n:` (normal) format, skip Steps 2-3 — the data after the second `:` IS the safe string directly.
+
+### Complete Rendering Example (JavaScript)
+
+```javascript
+import { inflateRawSync } from 'zlib';
+
+// Full pipeline: image string → ASCII art
+function renderPixelArt(imageString) {
+  // Step 1: Parse format
+  const parts = imageString.split(':');
+  let fmt, width, height, data;
+
+  if (parts.length === 3) {
+    fmt = parts[0];
+    const [w, h] = parts[1].split('x').map(Number);
+    width = w; height = h;
+    data = parts[2];
+  } else if (parts.length === 2) {
+    fmt = parts[0];
+    data = parts[1];
+    width = 32; height = 32;
+  } else {
+    return 'Invalid format';
+  }
+
+  // Step 2-3: Get safe string
+  let safeString;
+  if (fmt === 'c') {
+    // Compressed: Base64 → bytes → Deflate decompress → safe string
+    const compressed = Buffer.from(data, 'base64');
+    safeString = inflateRawSync(compressed).toString('ascii');
+  } else if (fmt === 'n') {
+    // Normal: data IS the safe string
+    safeString = data;
+  } else {
+    return 'Unknown format: ' + fmt;
+  }
+
+  // Step 4-5: Decode safe string → pixel bits
+  const pixels = [];
+  for (const c of safeString) {
+    const value = decodePixelChar(c);
+    if (value === null) return 'Invalid character: ' + c;
+    // Extract 6 bits, MSB first
+    for (let i = 5; i >= 0; i--) {
+      pixels.push((value >> i) & 1);
+    }
+  }
+
+  // Step 6-7: Reshape to 2D grid and render
+  const lines = [];
+  for (let y = 0; y < height; y++) {
+    let line = '';
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      const bit = idx < pixels.length ? pixels[idx] : 0;
+      line += bit ? '█' : '░';  // 1=black(filled), 0=white(empty)
+    }
+    lines.push(line);
+  }
+
+  return lines.join('\n');
+}
+
+// Render as raw binary matrix (0s and 1s)
+function renderPixelArtBinary(imageString) {
+  // ... same Steps 1-5 as above to get pixels[] ...
+  // (use decodePixelArt() from previous section to get { width, height, grid })
+
+  const result = decodePixelArt(imageString);
+  if (!result) return 'Decode failed';
+
+  const lines = [];
+  for (let y = 0; y < result.height; y++) {
+    let line = '';
+    for (let x = 0; x < result.width; x++) {
+      line += result.grid[y][x] ? '1' : '0';
+    }
+    lines.push(line);
+  }
+  return lines.join('\n');
+  // Output for 32x32:
+  // 10101001001010100101010010101010
+  // 01010010100101010010101001010101
+  // ... (32 lines of 32 chars each)
+}
+
+// Usage:
+const img = 'c:32x32:bY3RCcBADEKHERwgs2QBwf1nqGnvaKHnVx7PoH1Ku2mVYNOoxchlgPGIeZiteNX02ZunFY/pY/H36+VZuBeTfG7+Rxc=';
+console.log(renderPixelArt(img));     // Visual: █░█░...
+console.log(renderPixelArtBinary(img)); // Binary: 1010...
+```
+
+### Rendering Output Formats
+
+| Format | Black pixel (1) | White pixel (0) | Use case |
+|---|---|---|---|
+| Binary | `1` | `0` | Data processing, debugging |
+| Block chars | `█` | `░` | Terminal / monospace display |
+| Telegram | `⬛` | `⬜` | Chat bots (emoji blocks) |
+| HTML Canvas | `fillRect(x,y,s,s)` | (skip) | Web rendering |
+| SVG | `<rect fill="black"/>` | (skip) | Scalable display |
+
+### Key Facts for Agents
+
+- **1 bit per pixel**: each pixel is binary — black (1) or white (0), no colors, no palette
+- **6 bits per character**: each safe-string character encodes exactly 6 pixels
+- **32×32 = 1024 pixels = 171 characters** (ceil(1024/6) = 171)
+- **Compressed format `c:`** = Base64(Deflate(safe_string)), NOT Base64(raw_pixels)
+- **Normal format `n:`** = safe_string directly (no compression)
+- **Row-major order**: pixel index `i` → row `floor(i/width)`, col `i%width`
+- **Do NOT Base64-decode `c:` data and treat bytes as pixels** — you will get gibberish
 
 ---
 
@@ -2373,7 +2522,7 @@ All computed as: `SHA256("global:<name>").slice(0, 8)`
 | Blog | `connection.getAccountInfo()` | Blog PDA |
 | Project | `connection.getAccountInfo()` | Project PDA |
 | Chat group | `connection.getAccountInfo()` | Chat Group PDA |
-| Token holders | `connection.getProgramAccounts()` | Token-2022 + memcmp mint |
+| Token holders (top 20) | `connection.getTokenLargestAccounts()` | MEMO mint address |
 | Top burners | `connection.getProgramAccounts()` | Burn program + dataSize:65 |
 | Tx history | `connection.getSignaturesForAddress()` | address + limit |
 | Tx details | `connection.getTransaction()` | signature |
