@@ -1069,6 +1069,116 @@ const payload = encodePostCreation(
 const memoBase64 = encodeBurnMemo(1_000_000, payload); // burn 1 MEMO
 ```
 
+### Encode Forum Post Reply — Burn (burn_for_post)
+
+Burn tokens to reply to an existing forum post. Anyone can reply to any post.
+
+> **Note**: Unlike `create_post` which has separate title/content/image fields,
+> `burn_for_post` only has a single `message` field (max 512 chars).
+> If you need structured content in a reply, encode it as formatted text in the message.
+
+```javascript
+function encodePostBurn(user, postId, message) {
+  return Buffer.concat([
+    encodeBorshU8(1),                        // version
+    encodeBorshString('forum'),              // category
+    encodeBorshString('burn_for_post'),      // operation
+    encodeBorshString(user),                 // user (Base58 pubkey)
+    encodeBorshU64(postId),                  // post_id (target post)
+    encodeBorshString(message),              // reply message (max 512 chars)
+  ]);
+}
+
+// Example: reply to post #5 with a burn of 2 MEMO
+const payload = encodePostBurn(keypair.publicKey.toBase58(), 5, 'Great post! Burning 2 MEMO to support.');
+const memoBase64 = encodeBurnMemo(2_000_000, payload); // burn 2 MEMO
+```
+
+### Encode Forum Post Reply — Mint (mint_for_post)
+
+Mint tokens to reply to an existing forum post. Anyone can reply to any post.
+
+> **Note**: `mint_for_post` also only has a `message` field (same as burn_for_post).
+> The memo uses `BurnMemo` wrapper with `burn_amount = 0` (since no tokens are burned).
+
+```javascript
+function encodePostMint(user, postId, message) {
+  return Buffer.concat([
+    encodeBorshU8(1),                        // version
+    encodeBorshString('forum'),              // category
+    encodeBorshString('mint_for_post'),      // operation
+    encodeBorshString(user),                 // user (Base58 pubkey)
+    encodeBorshU64(postId),                  // post_id (target post)
+    encodeBorshString(message),              // reply message (max 512 chars)
+  ]);
+}
+
+// Example: reply to post #5 and earn a mint reward
+const payload = encodePostMint(keypair.publicKey.toBase58(), 5, 'Interesting perspective, thanks for sharing!');
+const memoBase64 = encodeBurnMemo(0, payload); // burn_amount = 0 for mint operations
+```
+
+### Encode Blog Burn (burn_for_blog)
+
+Burn tokens for a blog entry. **Creator-only** — only the blog owner can burn for their blog.
+
+```javascript
+function encodeBlogBurn(burner, message) {
+  return Buffer.concat([
+    encodeBorshU8(1),                        // version
+    encodeBorshString('blog'),               // category
+    encodeBorshString('burn_for_blog'),      // operation
+    encodeBorshString(burner),               // burner (Base58 pubkey, must be blog creator)
+    encodeBorshString(message),              // message (max 696 chars)
+  ]);
+}
+
+// Example: blog creator burns 10 MEMO with an update message
+const payload = encodeBlogBurn(keypair.publicKey.toBase58(), 'New article published! Burning to boost visibility.');
+const memoBase64 = encodeBurnMemo(10_000_000, payload); // burn 10 MEMO
+```
+
+### Encode Blog Mint (mint_for_blog)
+
+Mint tokens for a blog entry. **Creator-only** — only the blog owner can mint for their blog.
+
+```javascript
+function encodeBlogMint(minter, message) {
+  return Buffer.concat([
+    encodeBorshU8(1),                        // version
+    encodeBorshString('blog'),               // category
+    encodeBorshString('mint_for_blog'),      // operation
+    encodeBorshString(minter),               // minter (Base58 pubkey, must be blog creator)
+    encodeBorshString(message),              // message (max 696 chars)
+  ]);
+}
+
+// Example: blog creator mints with a log message
+const payload = encodeBlogMint(keypair.publicKey.toBase58(), 'Daily check-in on my tech blog.');
+const memoBase64 = encodeBurnMemo(0, payload); // burn_amount = 0 for mint operations
+```
+
+### Encode Project Burn (burn_for_project)
+
+Burn tokens for a project. **Creator-only** — only the project owner can burn for their project.
+
+```javascript
+function encodeProjectBurn(projectId, burner, message) {
+  return Buffer.concat([
+    encodeBorshU8(1),                        // version
+    encodeBorshString('project'),            // category
+    encodeBorshString('burn_for_project'),   // operation
+    encodeBorshU64(projectId),               // project_id (target project)
+    encodeBorshString(burner),               // burner (Base58 pubkey, must be project creator)
+    encodeBorshString(message),              // message (max 696 chars)
+  ]);
+}
+
+// Example: project creator burns 100 MEMO for project #3
+const payload = encodeProjectBurn(3, keypair.publicKey.toBase58(), 'Milestone 1 completed!');
+const memoBase64 = encodeBurnMemo(100_000_000, payload); // burn 100 MEMO
+```
+
 ### Encode Blog Creation
 
 ```javascript
@@ -2263,10 +2373,8 @@ async function burnForPost(connection, keypair, postId, message, burnAmount = 1)
   );
   const userAta = await getAssociatedTokenAddress(MEMO_MINT, user, false, TOKEN_2022_PROGRAM_ID);
 
-  const payload = Buffer.concat([
-    encodeBorshU8(1), encodeBorshString('forum'), encodeBorshString('burn_for_post'),
-    encodeBorshString(user.toBase58()), encodeBorshU64(postId), encodeBorshString(message),
-  ]);
+  // Build reply payload using helper (see "Encode Forum Post Reply — Burn")
+  const payload = encodePostBurn(user.toBase58(), postId, message);
   const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
   const instructions = [];
@@ -2294,6 +2402,9 @@ async function burnForPost(connection, keypair, postId, message, burnAmount = 1)
 
   return await buildAndSendTransaction(connection, keypair, instructions);
 }
+
+// Usage: reply to post #42 with a burn of 5 MEMO
+const sig = await burnForPost(connection, keypair, 42, 'Great analysis! Burning to support.', 5);
 ```
 
 ### W13. Mint for Forum Post
@@ -2315,11 +2426,9 @@ async function mintForPost(connection, keypair, postId, message) {
     connection, user, MEMO_MINT, user
   );
 
-  const payload = Buffer.concat([
-    encodeBorshU8(1), encodeBorshString('forum'), encodeBorshString('mint_for_post'),
-    encodeBorshString(user.toBase58()), encodeBorshU64(postId), encodeBorshString(message),
-  ]);
-  // mint operations: BurnMemo with burn_amount = 0
+  // Build reply payload using helper (see "Encode Forum Post Reply — Mint")
+  // mint operations: BurnMemo wrapper with burn_amount = 0
+  const payload = encodePostMint(user.toBase58(), postId, message);
   const memoBase64 = encodeBurnMemo(0, payload);
 
   const instructions = [];
@@ -2347,6 +2456,9 @@ async function mintForPost(connection, keypair, postId, message) {
 
   return await buildAndSendTransaction(connection, keypair, instructions);
 }
+
+// Usage: reply to post #42 and earn a mint reward
+const sig = await mintForPost(connection, keypair, 42, 'Thanks for the insight, really helpful!');
 ```
 
 ### W14. Create Blog
@@ -2463,10 +2575,8 @@ async function burnForBlog(connection, keypair, blogOwnerPubkey, message, burnAm
   );
   const userAta = await getAssociatedTokenAddress(MEMO_MINT, user, false, TOKEN_2022_PROGRAM_ID);
 
-  const payload = Buffer.concat([
-    encodeBorshU8(1), encodeBorshString('blog'), encodeBorshString('burn_for_blog'),
-    encodeBorshString(user.toBase58()), encodeBorshString(message),
-  ]);
+  // Build payload using helper (see "Encode Blog Burn")
+  const payload = encodeBlogBurn(user.toBase58(), message);
   const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
   const instructions = [];
@@ -2493,6 +2603,9 @@ async function burnForBlog(connection, keypair, blogOwnerPubkey, message, burnAm
 
   return await buildAndSendTransaction(connection, keypair, instructions);
 }
+
+// Usage: blog creator burns 5 MEMO with a message
+const sig = await burnForBlog(connection, keypair, keypair.publicKey.toBase58(), 'New article: Intro to X1', 5);
 ```
 
 ### W17. Mint for Blog
@@ -2513,10 +2626,8 @@ async function mintForBlog(connection, keypair, blogOwnerPubkey, message) {
     connection, user, MEMO_MINT, user
   );
 
-  const payload = Buffer.concat([
-    encodeBorshU8(1), encodeBorshString('blog'), encodeBorshString('mint_for_blog'),
-    encodeBorshString(user.toBase58()), encodeBorshString(message),
-  ]);
+  // Build payload using helper (see "Encode Blog Mint")
+  const payload = encodeBlogMint(user.toBase58(), message);
   const memoBase64 = encodeBurnMemo(0, payload);
 
   const instructions = [];
@@ -2540,6 +2651,9 @@ async function mintForBlog(connection, keypair, blogOwnerPubkey, message) {
 
   return await buildAndSendTransaction(connection, keypair, instructions);
 }
+
+// Usage: blog creator mints with a message
+const sig = await mintForBlog(connection, keypair, keypair.publicKey.toBase58(), 'Weekly update on my blog.');
 ```
 
 ### W18. Create Project
@@ -2687,10 +2801,8 @@ async function burnForProject(connection, keypair, projectId, message, burnAmoun
   );
   const userAta = await getAssociatedTokenAddress(MEMO_MINT, user, false, TOKEN_2022_PROGRAM_ID);
 
-  const payload = Buffer.concat([
-    encodeBorshU8(1), encodeBorshString('project'), encodeBorshString('burn_for_project'),
-    encodeBorshU64(projectId), encodeBorshString(user.toBase58()), encodeBorshString(message),
-  ]);
+  // Build payload using helper (see "Encode Project Burn")
+  const payload = encodeProjectBurn(projectId, user.toBase58(), message);
   const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
   const instructions = [];
@@ -2719,6 +2831,9 @@ async function burnForProject(connection, keypair, projectId, message, burnAmoun
 
   return await buildAndSendTransaction(connection, keypair, instructions);
 }
+
+// Usage: project creator burns 420 MEMO for project #3
+const sig = await burnForProject(connection, keypair, 3, 'Milestone 2 shipped!', 420);
 ```
 
 ---
