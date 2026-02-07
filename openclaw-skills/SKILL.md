@@ -76,6 +76,72 @@ Testnet: https://rpc.testnet.x1.xyz
 
 ## Architecture: How Mint & Burn Works
 
+### Contract Architecture (CPI Call Graph)
+
+```
+                    ┌───────────────────────────────────────┐
+                    │          MEMO Protocol                 │
+                    │       Contract Architecture            │
+                    └───────────────────────────────────────┘
+
+ ┌────────────────────────────────────────────────────────────────────────────┐
+ │                         Upper-layer Programs                               │
+ │       (business logic + state management, CPI-calls core for mint/burn)    │
+ │                                                                            │
+ │  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐   │
+ │  │  PROFILE   │ │   CHAT    │ │   FORUM   │ │   BLOG    │ │  PROJECT  │   │
+ │  │  2BY8v..   │ │  Hni4q..  │ │  6gzhG..  │ │  3EKdp..  │ │  6Vavo..  │   │
+ │  │            │ │           │ │           │ │           │ │           │   │
+ │  │ create     │ │ send_memo │ │create_post│ │create_blog│ │create_proj│   │
+ │  │ update     │ │create_grp │ │ burn_for  │ │update_blog│ │update_proj│   │
+ │  │ delete     │ │ burn_for  │ │ mint_for  │ │ burn_for  │ │ burn_for  │   │
+ │  │            │ │           │ │           │ │ mint_for  │ │           │   │
+ │  │  CPI:      │ │  CPI:     │ │  CPI:     │ │  CPI:     │ │  CPI:     │   │
+ │  │  BURN only │ │ BURN+MINT │ │ BURN+MINT │ │ BURN+MINT │ │ BURN only │   │
+ │  └─────┬──────┘ └──┬────┬──┘ └──┬────┬──┘ └──┬────┬──┘ └─────┬──────┘   │
+ │        │           │    │       │    │       │    │           │           │
+ └────────┼───────────┼────┼───────┼────┼───────┼────┼───────────┼───────────┘
+          │           │    │       │    │       │    │           │
+          │ CPI       │CPI │CPI   │CPI │CPI   │CPI │CPI       │ CPI
+          ▼           ▼    ▼      ▼    ▼      ▼    ▼           ▼
+ ┌────────────────────────────────────────────────────────────────────────────┐
+ │                          Core Programs                                     │
+ │                (atomic token operations, no business logic)                 │
+ │                                                                            │
+ │  ┌─────────────────────────────┐   ┌─────────────────────────────┐        │
+ │  │       BURN_PROGRAM          │   │       MINT_PROGRAM           │        │
+ │  │       2sb3g...              │   │       8iq6z...               │        │
+ │  │                             │   │                              │        │
+ │  │  process_burn()             │   │  process_mint()              │        │
+ │  │  initialize_burn_stats()    │   │  process_mint_to()           │        │
+ │  │                             │   │                              │        │
+ │  │  Validates:                 │   │  Validates:                  │        │
+ │  │  • SPL Memo at index 0     │   │  • SPL Memo at index 0      │        │
+ │  │  • Borsh+Base64 memo       │   │  • Memo length 69-800       │        │
+ │  │  • Burn amount match       │   │  • Supply cap (10T max)     │        │
+ │  │  • User burn stats update  │   │  • Dynamic mint amount      │        │
+ │  └──────────────┬──────────────┘   └──────────────┬───────────────┘        │
+ │                 │                                  │                        │
+ │                 ▼                                  ▼                        │
+ │  ┌─────────────────────────────────────────────────────────────┐           │
+ │  │              Token-2022 Program (SPL)                        │           │
+ │  │       MEMO Token: memoX1sJsBY6od7CfQ58XooRALwnocAZen        │           │
+ │  │                  burn() / mint_to()                          │           │
+ │  └─────────────────────────────────────────────────────────────┘           │
+ └────────────────────────────────────────────────────────────────────────────┘
+
+ CPI Direction Summary:
+ ──────────────────────
+ PROFILE  ──CPI──▶ BURN_PROGRAM ──▶ Token-2022.burn()
+ CHAT     ──CPI──▶ BURN_PROGRAM ──▶ Token-2022.burn()
+ CHAT     ──CPI──▶ MINT_PROGRAM ──▶ Token-2022.mint_to()
+ FORUM    ──CPI──▶ BURN_PROGRAM ──▶ Token-2022.burn()
+ FORUM    ──CPI──▶ MINT_PROGRAM ──▶ Token-2022.mint_to()
+ BLOG     ──CPI──▶ BURN_PROGRAM ──▶ Token-2022.burn()
+ BLOG     ──CPI──▶ MINT_PROGRAM ──▶ Token-2022.mint_to()
+ PROJECT  ──CPI──▶ BURN_PROGRAM ──▶ Token-2022.burn()
+```
+
 ### Two Paths to Mint/Burn
 
 | Path | When to use | What happens |
