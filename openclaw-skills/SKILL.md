@@ -74,6 +74,155 @@ Testnet: https://rpc.testnet.x1.xyz
 
 ---
 
+## Architecture: How Mint & Burn Works
+
+### Contract Architecture (CPI Call Graph)
+
+```
+                    ┌───────────────────────────────────────┐
+                    │          MEMO Protocol                 │
+                    │       Contract Architecture            │
+                    └───────────────────────────────────────┘
+
+ ┌────────────────────────────────────────────────────────────────────────────┐
+ │                         Upper-layer Programs                               │
+ │       (business logic + state management, CPI-calls core for mint/burn)    │
+ │                                                                            │
+ │  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐   │
+ │  │  PROFILE   │ │   CHAT    │ │   FORUM   │ │   BLOG    │ │  PROJECT  │   │
+ │  │  2BY8v..   │ │  Hni4q..  │ │  6gzhG..  │ │  3EKdp..  │ │  6Vavo..  │   │
+ │  │            │ │           │ │           │ │           │ │           │   │
+ │  │ create     │ │ send_memo │ │create_post│ │create_blog│ │create_proj│   │
+ │  │ update     │ │create_grp │ │ burn_for  │ │update_blog│ │update_proj│   │
+ │  │ delete     │ │ burn_for  │ │ mint_for  │ │ burn_for  │ │ burn_for  │   │
+ │  │            │ │           │ │           │ │ mint_for  │ │           │   │
+ │  │  CPI:      │ │  CPI:     │ │  CPI:     │ │  CPI:     │ │  CPI:     │   │
+ │  │  BURN only │ │ BURN+MINT │ │ BURN+MINT │ │ BURN+MINT │ │ BURN only │   │
+ │  └─────┬──────┘ └──┬────┬──┘ └──┬────┬──┘ └──┬────┬──┘ └─────┬──────┘   │
+ │        │           │    │       │    │       │    │           │           │
+ └────────┼───────────┼────┼───────┼────┼───────┼────┼───────────┼───────────┘
+          │           │    │       │    │       │    │           │
+          │ CPI       │CPI │CPI   │CPI │CPI   │CPI │CPI       │ CPI
+          ▼           ▼    ▼      ▼    ▼      ▼    ▼           ▼
+ ┌────────────────────────────────────────────────────────────────────────────┐
+ │                          Core Programs                                     │
+ │                (atomic token operations, no business logic)                 │
+ │                                                                            │
+ │  ┌─────────────────────────────┐   ┌─────────────────────────────┐        │
+ │  │       BURN_PROGRAM          │   │       MINT_PROGRAM           │        │
+ │  │       2sb3g...              │   │       8iq6z...               │        │
+ │  │                             │   │                              │        │
+ │  │  process_burn()             │   │  process_mint()              │        │
+ │  │  initialize_burn_stats()    │   │  process_mint_to()           │        │
+ │  │                             │   │                              │        │
+ │  │  Validates:                 │   │  Validates:                  │        │
+ │  │  • SPL Memo at index 0     │   │  • SPL Memo at index 0      │        │
+ │  │  • Borsh+Base64 memo       │   │  • Memo length 69-800       │        │
+ │  │  • Burn amount match       │   │  • Supply cap (10T max)     │        │
+ │  │  • User burn stats update  │   │  • Dynamic mint amount      │        │
+ │  └──────────────┬──────────────┘   └──────────────┬───────────────┘        │
+ │                 │                                  │                        │
+ │                 ▼                                  ▼                        │
+ │  ┌─────────────────────────────────────────────────────────────┐           │
+ │  │              Token-2022 Program (SPL)                        │           │
+ │  │       MEMO Token: memoX1sJsBY6od7CfQ58XooRALwnocAZen        │           │
+ │  │                  burn() / mint_to()                          │           │
+ │  └─────────────────────────────────────────────────────────────┘           │
+ └────────────────────────────────────────────────────────────────────────────┘
+
+ CPI Direction Summary:
+ ──────────────────────
+ PROFILE  ──CPI──▶ BURN_PROGRAM ──▶ Token-2022.burn()
+ CHAT     ──CPI──▶ BURN_PROGRAM ──▶ Token-2022.burn()
+ CHAT     ──CPI──▶ MINT_PROGRAM ──▶ Token-2022.mint_to()
+ FORUM    ──CPI──▶ BURN_PROGRAM ──▶ Token-2022.burn()
+ FORUM    ──CPI──▶ MINT_PROGRAM ──▶ Token-2022.mint_to()
+ BLOG     ──CPI──▶ BURN_PROGRAM ──▶ Token-2022.burn()
+ BLOG     ──CPI──▶ MINT_PROGRAM ──▶ Token-2022.mint_to()
+ PROJECT  ──CPI──▶ BURN_PROGRAM ──▶ Token-2022.burn()
+```
+
+### Two Paths to Mint/Burn
+
+| Path | When to use | What happens |
+|---|---|---|
+| **Direct → Core Program** (`MINT_PROGRAM` / `BURN_PROGRAM`) | Pure mint/burn with no business logic. Minimal dependencies, lowest complexity, easiest to debug. | Your transaction calls `process_mint` or `process_burn` directly. You build the SPL Memo instruction yourself and place it at index 0. |
+| **Via Upper-layer Program** (Forum / Chat / Project / Blog / Profile) | Mint/burn **+ business logic** (e.g. posting requires burn, chatting triggers mint, profile creation burns tokens). | Your transaction calls the upper-layer program (e.g. `create_post`). That program internally **CPI-calls** the core `BURN_PROGRAM` or `MINT_PROGRAM` to execute the actual token operation. |
+
+> **One-liner**: Core = atomic token operation; Upper-layer = atomic operation + business semantics + state changes.
+
+### The Role of SPL Memo
+
+SPL Memo is **not** the mechanism that performs mint/burn — it is a **data payload carrier**:
+
+- All MEMO Protocol contracts require an SPL Memo instruction at **index 0** of the transaction
+- The memo carries Borsh+Base64 encoded structured data (BurnMemo with payload)
+- The contract reads and validates the memo content from the Instructions Sysvar
+- The actual mint/burn is executed by the core program (directly or via CPI)
+
+```
+Transaction layout (upper-layer example):
+┌─────────────────────────────────────────────────────────┐
+│ Index 0: SPL Memo instruction (Borsh+Base64 payload)    │  ← data carrier
+│ Index 1: Upper-layer instruction (e.g. create_post)     │  ← business logic
+│          └─ CPI → BURN_PROGRAM.process_burn()           │  ← actual burn
+│ Index 2+: ComputeBudget instructions                    │  ← CU limit/price
+└─────────────────────────────────────────────────────────┘
+
+Transaction layout (direct core example):
+┌─────────────────────────────────────────────────────────┐
+│ Index 0: SPL Memo instruction (Borsh+Base64 payload)    │  ← data carrier
+│ Index 1: BURN_PROGRAM.process_burn(amount)              │  ← direct burn
+│ Index 2+: ComputeBudget instructions                    │  ← CU limit/price
+└─────────────────────────────────────────────────────────┘
+```
+
+### Verifying CPI Calls (Debug Method)
+
+To confirm an upper-layer program actually CPI'd into the core program, inspect the transaction logs:
+
+```javascript
+const tx = await connection.getTransaction(signature, {
+  maxSupportedTransactionVersion: 0,
+  commitment: 'confirmed',
+});
+
+// Method 1: Check logMessages for CPI invoke chain
+const logs = tx.meta.logMessages;
+// Look for patterns like:
+//   "Program <CHAT_PROGRAM> invoke [1]"       ← your instruction
+//   "Program <BURN_PROGRAM> invoke [2]"        ← CPI call to core
+//   "Program <BURN_PROGRAM> success"           ← core burn succeeded
+//   "Program <CHAT_PROGRAM> success"           ← upper-layer succeeded
+
+const cpiToBurn = logs.some(log =>
+  log.includes('2sb3gz5Cmr2g1ia5si2rmCZqPACxgaZXEmiS5k6Htcvh invoke [2]')
+);
+const cpiToMint = logs.some(log =>
+  log.includes('8iq6zqaEVcfaym2u8t939PAN5jmfPVc6Z333RuxKTTZX invoke [2]')
+);
+console.log('CPI to BURN_PROGRAM:', cpiToBurn);
+console.log('CPI to MINT_PROGRAM:', cpiToMint);
+
+// Method 2: Check innerInstructions for programId
+const innerIxs = tx.meta.innerInstructions || [];
+for (const inner of innerIxs) {
+  for (const ix of inner.instructions) {
+    const programId = tx.transaction.message.accountKeys[ix.programIdIndex];
+    if (programId.toString() === '2sb3gz5Cmr2g1ia5si2rmCZqPACxgaZXEmiS5k6Htcvh') {
+      console.log('Inner instruction calls BURN_PROGRAM');
+    }
+    if (programId.toString() === '8iq6zqaEVcfaym2u8t939PAN5jmfPVc6Z333RuxKTTZX') {
+      console.log('Inner instruction calls MINT_PROGRAM');
+    }
+  }
+}
+```
+
+The `invoke [2]` depth confirms it's a CPI call (depth 1 = top-level, depth 2 = CPI from depth 1).
+
+---
+
 ## Utility Functions
 
 ### Borsh Encoding/Decoding Helpers
