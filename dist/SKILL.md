@@ -1564,11 +1564,13 @@ All write operations follow this pattern:
 
 1. **Build instructions** (SPL Memo instruction MUST be at index 0 when required)
 2. **Get latest blockhash**
-3. **Simulate transaction** to estimate actual compute units consumed
-4. **Set precise compute budget** based on simulation result (with small buffer)
+3. **Simulate transaction** (via raw `fetch` JSON-RPC, NOT `connection.simulateTransaction()`) to estimate actual compute units consumed
+4. **Set precise compute budget** based on simulation result (with ~1% buffer)
 5. **Sign and send** the final transaction
 
 > **STRONGLY RECOMMENDED on X1**: Always simulate first to determine the exact CU needed, then set `ComputeUnitLimit` accordingly. This saves CU and reduces transaction fees. Do NOT hardcode a large CU value like 400,000 — use simulation to get the real number and add a ~1% buffer.
+>
+> **CRITICAL**: Use raw `fetch` to call `simulateTransaction` RPC — do NOT use `connection.simulateTransaction()` from `@solana/web3.js`. The SDK wrapper causes `"Invalid arguments"` errors on X1 RPC due to internal serialization differences. See the `buildAndSendTransaction` helper below for the correct implementation.
 
 ### SPL Memo Instruction Helper
 
@@ -1584,12 +1586,38 @@ function createMemoInstruction(memoData, signer) {
 
 ### Transaction Sending Helper (with Simulation-based CU)
 
+> **CRITICAL: X1 RPC Compatibility**
+> Do NOT use `connection.simulateTransaction()` from `@solana/web3.js` on X1.
+> The SDK wrapper may serialize parameters differently from what X1 RPC expects,
+> causing `"Invalid arguments"` errors. Always use **raw `fetch` JSON-RPC calls**
+> for simulation, as shown below. This matches how the official MEMO frontend works.
+
 ```javascript
+const RPC_URL = 'https://rpc.mainnet.x1.xyz';
+
+/**
+ * Send a raw JSON-RPC request to X1.
+ * Used for simulateTransaction because connection.simulateTransaction() is
+ * incompatible with X1 RPC (causes "Invalid arguments").
+ */
+async function rpcRequest(method, params) {
+  const res = await fetch(RPC_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+  });
+  const json = await res.json();
+  if (json.error) {
+    throw new Error(`RPC error ${json.error.code}: ${json.error.message}`);
+  }
+  return json.result;
+}
+
 async function buildAndSendTransaction(connection, keypair, instructions, cuBufferMultiplier = 1.01) {
   const { blockhash } = await connection.getLatestBlockhash('confirmed');
 
   // ── Step 1: Simulate to estimate compute units ──
-  // Build a simulation transaction with a high CU limit (unsigned, sigVerify: false)
+  // Build an UNSIGNED simulation transaction with a high CU limit
   const simTx = new Transaction();
   for (const ix of instructions) {
     simTx.add(ix);
@@ -1599,20 +1627,34 @@ async function buildAndSendTransaction(connection, keypair, instructions, cuBuff
   simTx.recentBlockhash = blockhash;
   simTx.feePayer = keypair.publicKey;
 
-  const simResult = await connection.simulateTransaction(simTx, {
-    sigVerify: false,               // skip signature verification (unsigned tx)
-    replaceRecentBlockhash: true,   // auto-replace blockhash for freshness
-    commitment: 'confirmed',
+  // Serialize unsigned transaction to base64 (same as Rust: bincode → base64)
+  const simTxBytes = simTx.serialize({
+    requireAllSignatures: false,    // allow unsigned
+    verifySignatures: false,
   });
+  const simTxBase64 = simTxBytes.toString('base64');
+
+  // Call simulateTransaction via raw fetch (NOT connection.simulateTransaction)
+  // This is critical for X1 compatibility — the web3.js wrapper causes "Invalid arguments"
+  const simResult = await rpcRequest('simulateTransaction', [
+    simTxBase64,
+    {
+      encoding: 'base64',
+      commitment: 'confirmed',
+      sigVerify: false,              // skip signature verification (unsigned tx)
+      replaceRecentBlockhash: true,  // auto-replace blockhash for freshness
+    },
+  ]);
 
   if (simResult.value.err) {
-    throw new Error(`Simulation failed: ${JSON.stringify(simResult.value.err)}\nLogs: ${simResult.value.logs?.join('\n')}`);
+    throw new Error(
+      `Simulation failed: ${JSON.stringify(simResult.value.err)}\n` +
+      `Logs: ${(simResult.value.logs || []).join('\n')}`
+    );
   }
 
   const simulatedCU = simResult.value.unitsConsumed;
-  // Apply buffer (default 1.4x = 40% buffer for safety)
   const finalCU = Math.ceil(simulatedCU * cuBufferMultiplier);
-
   console.log(`Simulated: ${simulatedCU} CU → Final: ${finalCU} CU (${cuBufferMultiplier}x buffer)`);
 
   // ── Step 2: Build final transaction with precise CU limit ──
@@ -1638,8 +1680,14 @@ async function buildAndSendTransaction(connection, keypair, instructions, cuBuff
 **Why simulate first?**
 - Default CU limit on X1 is 400,000 per instruction. If you hardcode a large value like 400,000, you pay fees for unused CU.
 - Simulation runs the transaction without signing or committing, returning `unitsConsumed` — the exact CU the transaction will use.
-- Set `sigVerify: false` and `replaceRecentBlockhash: true` so you don't need to sign the simulation transaction.
+- We use `sigVerify: false` and `replaceRecentBlockhash: true` so you don't need to sign the simulation transaction.
 - Add a small buffer (~1.01x) because actual execution may vary slightly from simulation.
+
+**Why raw `fetch` instead of `connection.simulateTransaction()`?**
+- `@solana/web3.js`'s `connection.simulateTransaction()` wrapper internally serializes the transaction and parameters in a way that X1 RPC may reject with `"Invalid arguments"`.
+- The official MEMO frontend (Rust/WASM) uses raw JSON-RPC `fetch` calls for simulation — this is the **proven, working approach** on X1.
+- By calling `simulateTransaction` via raw `fetch`, you have full control over the encoding (`base64`), `sigVerify`, and `replaceRecentBlockhash` parameters, exactly matching what the RPC endpoint expects.
+- `connection.getLatestBlockhash()`, `sendAndConfirmTransaction()`, and other read/write SDK methods work fine on X1 — the issue is specifically with `simulateTransaction`.
 
 ### ATA Helper (Create if Needed)
 
@@ -2666,6 +2714,14 @@ try {
 }
 ```
 
+### X1 RPC Known Compatibility Issues
+
+| Issue | Symptom | Solution |
+|---|---|---|
+| `connection.simulateTransaction()` fails | `"Invalid arguments"` before reaching program logic | Use raw `fetch` JSON-RPC call instead (see `rpcRequest` + `buildAndSendTransaction` helper) |
+| `getProgramAccounts` with `jsonParsed` for Token-2022 | Returns unparseable data or Buffer | Use `getTokenLargestAccounts` for token holders instead |
+| Transaction encoding | Some SDK wrappers use incompatible serialization | Always serialize with `tx.serialize({ requireAllSignatures: false, verifySignatures: false })` and encode as base64 manually |
+
 ---
 
 ## Instruction Discriminator Quick Reference
@@ -2697,7 +2753,7 @@ All computed as: `SHA256("global:<name>").slice(0, 8)`
 
 ## Quick Reference: Common Queries
 
-| Task | web3.js Method | Key Param |
+| Task | Method | Key Param |
 |---|---|---|
 | Check XNT balance | `connection.getBalance()` | pubkey |
 | Check MEMO balance | `connection.getTokenAccountsByOwner()` | owner + mint filter |
@@ -2712,4 +2768,5 @@ All computed as: `SHA256("global:<name>").slice(0, 8)`
 | Tx history | `connection.getSignaturesForAddress()` | address + limit |
 | Tx details | `connection.getTransaction()` | signature |
 | Chat messages | `getSignaturesForAddress()` on group PDA | parse memo field |
+| Simulate transaction | raw `fetch` → `simulateTransaction` RPC | base64 tx + `sigVerify:false` |
 | Health check | `connection.getVersion()` | (none) |
