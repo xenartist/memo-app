@@ -2882,6 +2882,442 @@ const sig = await burnForProject(connection, keypair, 3, 'Milestone 2 shipped!',
 
 ---
 
+## Pre-flight Checklist (Balance & Prerequisites)
+
+Before executing any write operation, verify these prerequisites. Skipping these checks is the #1 cause of transaction failures.
+
+### Universal Checks (ALL write operations)
+
+```javascript
+// 1. Check XNT (SOL) balance for gas fees
+const balance = await connection.getBalance(keypair.publicKey);
+const MIN_GAS_LAMPORTS = 10_000_000; // 0.01 XNT — safe minimum for most txs
+if (balance < MIN_GAS_LAMPORTS) {
+  throw new Error(`Insufficient XNT for gas: ${balance / 1e9} XNT (need ≥ 0.01)`);
+}
+
+// 2. Check MEMO token balance (for burn operations)
+async function getMemoBalance(connection, owner) {
+  const ata = await getAssociatedTokenAddress(MEMO_MINT, owner, false, TOKEN_2022_PROGRAM_ID);
+  const info = await connection.getAccountInfo(ata);
+  if (!info) return { exists: false, balance: 0 };
+  // Token account data: offset 64 = amount (u64 LE)
+  const amount = Number(info.data.readBigUInt64LE(64));
+  return { exists: true, balance: amount };
+}
+
+// 3. Check if burn stats are initialized (required for ALL burn operations)
+async function isBurnStatsInitialized(connection, user) {
+  const [statsPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('user_global_burn_stats'), user.toBuffer()], BURN_PROGRAM
+  );
+  const info = await connection.getAccountInfo(statsPda);
+  return info !== null;
+}
+```
+
+### Per-Operation Checklist
+
+| Operation | XNT Gas | MEMO ATA | MEMO Balance | Burn Stats | Other |
+|---|---|---|---|---|---|
+| **W1. Mint MEMO** | ✅ | auto-created | — | — | Memo text 69-800 bytes |
+| **W2. Transfer XNT** | ✅ | — | — | — | Sufficient XNT for transfer + gas |
+| **W3. Transfer MEMO** | ✅ | ✅ | ✅ amount | — | Recipient ATA may need creation |
+| **W4. Create Profile** | ✅ | ✅ | ✅ ≥ 420 | ✅ init first | — |
+| **W5. Update Profile** | ✅ | ✅ | ✅ ≥ 420 | ✅ | Profile must exist |
+| **W6. Delete Profile** | ✅ | — | — | — | Profile must exist |
+| **W7. Send Chat Message** | ✅ | auto-created | — | — | Group must exist |
+| **W8. Create Chat Group** | ✅ | ✅ | ✅ ≥ 42,069 | ✅ init first | — |
+| **W9. Burn for Chat Group** | ✅ | ✅ | ✅ ≥ 1 | ✅ | Group must exist |
+| **W10. Init Burn Stats** | ✅ | — | — | creates it | One-time per user |
+| **W10b. Direct Core Burn** | ✅ | ✅ | ✅ ≥ 1 | ✅ | — |
+| **W11. Create Forum Post** | ✅ | ✅ | ✅ ≥ 1 | ✅ init first | — |
+| **W12. Burn for Forum Post** | ✅ | ✅ | ✅ ≥ 1 | ✅ | Post must exist |
+| **W13. Mint for Forum Post** | ✅ | auto-created | — | — | Post must exist |
+| **W14. Create Blog** | ✅ | ✅ | ✅ ≥ 1 | ✅ init first | One blog per user |
+| **W15. Update Blog** | ✅ | ✅ | ✅ ≥ 1 | ✅ | Blog must exist, creator only |
+| **W16. Burn for Blog** | ✅ | ✅ | ✅ ≥ 1 | ✅ | Blog must exist, creator only |
+| **W17. Mint for Blog** | ✅ | auto-created | — | — | Blog must exist, creator only |
+| **W18. Create Project** | ✅ | ✅ | ✅ ≥ 42,069 | ✅ init first | — |
+| **W19. Update Project** | ✅ | ✅ | ✅ ≥ 42,069 | ✅ | Project must exist, creator only |
+| **W20. Burn for Project** | ✅ | ✅ | ✅ ≥ 420 | ✅ | Project must exist, creator only |
+
+**Legend**: ✅ = required, — = not needed, "auto-created" = `ensureATA` handles it, "init first" = call W10 if not yet initialized
+
+### Recommended Pre-flight Sequence
+
+```javascript
+// Run this before any burn operation:
+async function preflight(connection, keypair, requiredMemoTokens = 0) {
+  const user = keypair.publicKey;
+
+  // 1. Gas check
+  const xntBalance = await connection.getBalance(user);
+  if (xntBalance < 10_000_000) {
+    throw new Error(`Need XNT for gas. Balance: ${xntBalance / 1e9} XNT`);
+  }
+
+  // 2. MEMO balance check (for burn operations)
+  if (requiredMemoTokens > 0) {
+    const { exists, balance } = await getMemoBalance(connection, user);
+    const requiredLamports = requiredMemoTokens * 1_000_000;
+    if (!exists) {
+      throw new Error('MEMO token account does not exist. Mint some MEMO first (W1).');
+    }
+    if (balance < requiredLamports) {
+      throw new Error(
+        `Insufficient MEMO: have ${balance / 1e6}, need ${requiredMemoTokens}. Mint more (W1).`
+      );
+    }
+  }
+
+  // 3. Burn stats check (for burn operations)
+  if (requiredMemoTokens > 0) {
+    const initialized = await isBurnStatsInitialized(connection, user);
+    if (!initialized) {
+      console.log('Burn stats not initialized. Initializing now...');
+      await initializeBurnStats(connection, keypair); // W10
+    }
+  }
+
+  console.log('Pre-flight checks passed.');
+}
+
+// Usage:
+await preflight(connection, keypair, 420); // Need 420 MEMO for profile creation
+await createProfile(connection, keypair, 'alice', 'n:32x32:...', 'Hello!', 420);
+```
+
+---
+
+## Error Code Quick Reference
+
+### How to Extract Errors
+
+```javascript
+try {
+  const sig = await buildAndSendTransaction(connection, keypair, instructions);
+} catch (error) {
+  // Method 1: From simulation logs
+  if (error.logs) {
+    const errorLog = error.logs.find(log => log.includes('Error Message:'));
+    if (errorLog) console.error('Program error:', errorLog);
+  }
+
+  // Method 2: From error message
+  // The error string often contains "custom program error: 0xNNNN"
+  const match = error.message?.match(/custom program error: (0x[0-9a-fA-F]+)/);
+  if (match) {
+    const code = parseInt(match[1], 16);
+    console.error(`Error code: ${code} (${match[1]})`);
+  }
+
+  // Method 3: RPC-level error (before reaching program)
+  if (error.message?.includes('Invalid arguments')) {
+    console.error('RPC rejected the request. Use raw fetch for simulateTransaction.');
+  }
+}
+```
+
+### Anchor Error Codes (All Programs)
+
+Anchor reserves codes 6000+. Each program starts from 6000 for its own errors.
+
+#### Core Burn Program (BURN_PROGRAM)
+
+| Code | Hex | Name | Cause | Fix |
+|---|---|---|---|---|
+| 6000 | 0x1770 | MemoRequired | No SPL Memo at index 0 | Add memo instruction as first instruction |
+| 6001 | 0x1771 | InvalidMemoFormat | Memo is not valid Borsh+Base64 | Check encoding: Borsh serialize → Base64 encode |
+| 6002 | 0x1772 | UnsupportedMemoVersion | `version` ≠ 1 | Set `version: 1` in BurnMemo |
+| 6003 | 0x1773 | BurnAmountTooSmall | Amount < 1 token (< 1,000,000) | Increase burn amount to ≥ 1 token |
+| 6004 | 0x1774 | BurnAmountTooLarge | Amount > 1T tokens per tx | Reduce burn amount |
+| 6005 | 0x1775 | InvalidBurnAmount | Amount not multiple of 1,000,000 | Use whole token amounts only |
+| 6006 | 0x1776 | InvalidTokenAccount | Token account wrong mint | Check ATA is for MEMO_MINT |
+| 6007 | 0x1777 | UnauthorizedMint | Mint ≠ MEMO_MINT | Use correct MEMO_MINT address |
+| 6008 | 0x1778 | UnauthorizedTokenAccount | ATA owner ≠ signer | Use signer's own ATA |
+| 6009 | 0x1779 | BurnAmountMismatch | Memo `burn_amount` ≠ instruction amount | Ensure they match exactly |
+| 6010 | 0x177A | MemoTooShort | Memo < 69 bytes | Ensure encoded memo ≥ 69 bytes |
+| 6011 | 0x177B | MemoTooLong | Memo > 800 bytes | Shorten payload content |
+| 6012 | 0x177C | PayloadTooLong | Payload > 787 bytes | Reduce payload size |
+| 6013 | 0x177D | UnauthorizedUser | Burn stats user ≠ signer | Use correct burn stats PDA |
+
+#### Core Mint Program (MINT_PROGRAM)
+
+| Code | Hex | Name | Cause | Fix |
+|---|---|---|---|---|
+| 6000 | 0x1770 | MemoRequired | No SPL Memo at index 0 | Add memo instruction first |
+| 6001 | 0x1771 | InvalidMemoFormat | Memo contains null bytes | Remove null bytes |
+| 6002 | 0x1772 | MemoTooShort | Memo < 69 bytes | Ensure memo ≥ 69 bytes |
+| 6003 | 0x1773 | MemoTooLong | Memo > 800 bytes | Shorten memo |
+| 6004 | 0x1774 | InvalidTokenAccount | Wrong mint | Use MEMO_MINT ATA |
+| 6005 | 0x1775 | UnauthorizedMint | Wrong mint address | Use correct MEMO_MINT |
+| 6006 | 0x1776 | UnauthorizedTokenAccount | ATA owner ≠ signer | Use signer's own ATA |
+| 6007 | 0x1777 | InvalidMintAuthority | PDA mismatch | Derive from MINT_PROGRAM with seed `"mint_authority"` |
+| 6008 | 0x1778 | SupplyLimitReached | Supply ≥ 10T tokens | Max supply cap hit (unlikely) |
+
+#### Forum Program (FORUM_PROGRAM)
+
+| Code | Hex | Name | Cause | Fix |
+|---|---|---|---|---|
+| 6000 | 0x1770 | MemoRequired | No SPL Memo at index 0 | Add memo instruction first |
+| 6001 | 0x1771 | InvalidMemoFormat | Bad Borsh+Base64 | Check encoding |
+| 6002 | 0x1772 | UnsupportedMemoVersion | `version` ≠ 1 | Set `version: 1` |
+| 6003 | 0x1773 | BurnAmountTooSmall | Burn < 1 MEMO for post | Increase burn amount |
+| 6007 | 0x1777 | InvalidPostDataFormat | `PostCreationData` Borsh decode failed | Check field order and types |
+| 6008 | 0x1778 | InvalidPostBurnDataFormat | `PostBurnData` Borsh decode failed | Check field order: version, category, operation, user, post_id, message |
+| 6009 | 0x1779 | InvalidPostMintDataFormat | `PostMintData` Borsh decode failed | Check field order |
+| 6010 | 0x177A | InvalidMintMemoFormat | Mint memo has `burn_amount` ≠ 0 | Set `burn_amount: 0` for mint ops |
+| 6015 | 0x177F | PostIdMismatch | Expected post ID ≠ actual | Re-read global counter |
+| 6019 | 0x1783 | CreatorPubkeyMismatch | Memo creator ≠ signer | Use signer's pubkey in payload |
+| 6026 | 0x178A | ReplyMessageTooLong | Reply > 512 chars | Shorten message |
+
+#### Solana Runtime Errors (Pre-program)
+
+| Error | Cause | Fix |
+|---|---|---|
+| `"Invalid arguments"` | `connection.simulateTransaction()` on X1 | Use raw `fetch` JSON-RPC (see `rpcRequest` helper) |
+| `InsufficientFunds` (0x1) | Not enough XNT for gas fees | Fund wallet with XNT |
+| `InsufficientFunds` on token transfer | Not enough MEMO to burn | Mint more MEMO first (W1) |
+| `AccountNotFound` | PDA/ATA does not exist | Create it first (init burn stats, ensure ATA, etc.) |
+| `AccountAlreadyInUse` | Trying to init already-existing account | Check with `getAccountInfo` before init |
+| `TransactionTooLarge` | Transaction > 1232 bytes | Reduce payload / split into multiple txs |
+| `BlockhashNotFound` | Blockhash expired | Retry with fresh `getLatestBlockhash()` |
+
+---
+
+## ComputeBudget Instruction Placement
+
+> **CRITICAL RULE**: MEMO Protocol contracts require `SPL Memo at index 0`. This means `ComputeBudgetProgram` instructions **cannot** be placed at the front of the instruction list.
+
+### Placement Rules
+
+```
+✅ CORRECT instruction order:
+  Index 0: SPL Memo instruction          ← REQUIRED at index 0 by contract
+  Index 1: Program instruction (mint/burn/create_post/etc.)
+  Index 2: ComputeBudgetProgram.setComputeUnitLimit(...)
+  Index 3: ComputeBudgetProgram.setComputeUnitPrice(...)   (optional)
+
+❌ WRONG — will cause MemoRequired error:
+  Index 0: ComputeBudgetProgram.setComputeUnitLimit(...)   ← NOT a memo!
+  Index 1: SPL Memo instruction
+  Index 2: Program instruction
+```
+
+**Why this works**: Solana runtime processes `ComputeBudgetProgram` instructions **before** executing any other instruction, regardless of their position in the instruction list. So even at index 2/3, they take effect before the program runs.
+
+**Exceptions**: Operations that don't require SPL Memo (e.g., `initializeBurnStats`, `deleteProfile`, `transferXNT`) can place `ComputeBudget` instructions anywhere.
+
+The `buildAndSendTransaction` helper handles this automatically — it always appends `ComputeBudget` instructions **after** your base instructions.
+
+---
+
+## Runnable Minimum Example
+
+Copy-paste this script to verify your setup works. It performs a core mint (W1) — the simplest write operation (no MEMO balance needed, no burn stats needed).
+
+```javascript
+// ── minimum_test.mjs ──
+// Usage: node minimum_test.mjs <base58_private_key>
+// Requires: npm install @solana/web3.js @solana/spl-token
+
+import { Connection, Keypair, Transaction, PublicKey, TransactionInstruction } from '@solana/web3.js';
+import { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
+import { createHash } from 'crypto';
+
+// ── Constants ──
+const RPC_URL   = 'https://rpc.mainnet.x1.xyz';
+const MEMO_MINT = new PublicKey('memoX1sJsBY6od7CfQ58XooRALwnocAZen4L7mW1ick');
+const MINT_PROGRAM    = new PublicKey('8iq6zqaEVcfaym2u8t939PAN5jmfPVc6Z333RuxKTTZX');
+const SPL_MEMO_PROGRAM = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
+const INSTRUCTIONS_SYSVAR = new PublicKey('Sysvar1nstructions1111111111111111111111111');
+
+// ── Helpers ──
+function anchorDiscriminator(name) {
+  return createHash('sha256').update(`global:${name}`).digest().subarray(0, 8);
+}
+
+async function rpcRequest(method, params) {
+  const res = await fetch(RPC_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+  });
+  const json = await res.json();
+  if (json.error) throw new Error(`RPC error ${json.error.code}: ${json.error.message}`);
+  return json.result;
+}
+
+// ── Main ──
+async function main() {
+  const secret = Uint8Array.from(JSON.parse(process.argv[2] || '[]'));
+  if (secret.length !== 64) {
+    // Try base58 decode if not JSON array
+    const bs58 = await import('bs58');
+    const key = bs58.default.decode(process.argv[2]);
+    var keypair = Keypair.fromSecretKey(key);
+  } else {
+    var keypair = Keypair.fromSecretKey(secret);
+  }
+  const connection = new Connection(RPC_URL, 'confirmed');
+  const user = keypair.publicKey;
+  console.log('Wallet:', user.toBase58());
+
+  // Step 1: Check gas balance
+  const balance = await connection.getBalance(user);
+  console.log('XNT balance:', balance / 1e9);
+  if (balance < 5_000_000) throw new Error('Need at least 0.005 XNT for gas');
+
+  // Step 2: Build memo text (must be 69-800 bytes)
+  const memoText = 'Hello MEMO Protocol! ' + 'x'.repeat(50); // pad to ≥ 69 bytes
+
+  // Step 3: Derive PDAs and ATA
+  const [mintAuthority] = PublicKey.findProgramAddressSync(
+    [Buffer.from('mint_authority')], MINT_PROGRAM
+  );
+  const userAta = await getAssociatedTokenAddress(MEMO_MINT, user, false, TOKEN_2022_PROGRAM_ID);
+
+  // Step 4: Build instructions
+  const instructions = [];
+
+  // Index 0: SPL Memo
+  instructions.push(new TransactionInstruction({
+    keys: [{ pubkey: user, isSigner: true, isWritable: true }],
+    programId: SPL_MEMO_PROGRAM,
+    data: Buffer.from(memoText, 'utf-8'),
+  }));
+
+  // Create ATA if needed
+  const ataInfo = await connection.getAccountInfo(userAta);
+  if (!ataInfo) {
+    instructions.push(
+      createAssociatedTokenAccountInstruction(user, userAta, user, MEMO_MINT, TOKEN_2022_PROGRAM_ID)
+    );
+  }
+
+  // Mint instruction
+  instructions.push(new TransactionInstruction({
+    keys: [
+      { pubkey: user,              isSigner: true,  isWritable: true  },
+      { pubkey: MEMO_MINT,         isSigner: false, isWritable: true  },
+      { pubkey: mintAuthority,     isSigner: false, isWritable: false },
+      { pubkey: userAta,           isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+    ],
+    programId: MINT_PROGRAM,
+    data: anchorDiscriminator('process_mint'),
+  }));
+
+  // Step 5: Simulate (raw fetch)
+  const { blockhash } = await connection.getLatestBlockhash('confirmed');
+  const { ComputeBudgetProgram } = await import('@solana/web3.js');
+  const simTx = new Transaction();
+  instructions.forEach(ix => simTx.add(ix));
+  simTx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
+  simTx.recentBlockhash = blockhash;
+  simTx.feePayer = user;
+
+  const simBytes = simTx.serialize({ requireAllSignatures: false, verifySignatures: false });
+  const simResult = await rpcRequest('simulateTransaction', [
+    simBytes.toString('base64'),
+    { encoding: 'base64', commitment: 'confirmed', sigVerify: false, replaceRecentBlockhash: true },
+  ]);
+
+  if (simResult.value.err) {
+    console.error('Simulation FAILED:', JSON.stringify(simResult.value.err));
+    console.error('Logs:', simResult.value.logs?.join('\n'));
+    process.exit(1);
+  }
+
+  const cu = simResult.value.unitsConsumed;
+  console.log(`Simulation OK: ${cu} CU consumed`);
+
+  // Step 6: Build final tx with precise CU
+  const finalTx = new Transaction();
+  instructions.forEach(ix => finalTx.add(ix));
+  finalTx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: Math.ceil(cu * 1.01) }));
+  finalTx.recentBlockhash = blockhash;
+  finalTx.feePayer = user;
+
+  // Step 7: Sign and send
+  const { sendAndConfirmTransaction } = await import('@solana/web3.js');
+  const sig = await sendAndConfirmTransaction(connection, finalTx, [keypair], {
+    commitment: 'confirmed', maxRetries: 3,
+  });
+  console.log('SUCCESS! Signature:', sig);
+  console.log(`Explorer: https://explorer.x1.xyz/tx/${sig}`);
+}
+
+main().catch(err => { console.error(err); process.exit(1); });
+```
+
+**Test sequence (recommended order):**
+1. `minimum_test.mjs` (core mint) — verifies wallet, gas, RPC, simulation all work
+2. `initializeBurnStats` (W10) — one-time prerequisite
+3. `directCoreBurn` (W10b) with 1 MEMO — verifies burn path
+4. `burnForPost` / `mintForPost` (W12/W13) — verifies upper-layer CPI
+
+---
+
+## Security & Production Best Practices
+
+### Wallet Safety
+
+- **NEVER use your main wallet for automated agents.** Create a dedicated hot wallet with limited funds.
+- Set an XNT upper limit on the hot wallet (e.g., 1 XNT = ~1000 transactions).
+- Monitor the hot wallet balance and alert if it drops unexpectedly.
+
+### Data Immutability
+
+- **Everything on-chain is permanent and public.** The `message`, `title`, `content`, and `image` fields in memos **cannot be deleted or edited** after submission.
+- Never include private keys, passwords, API tokens, PII, or sensitive data in any memo field.
+- Consider content moderation policies before auto-posting with agents.
+
+### Rate Limiting & Retry Strategy
+
+```javascript
+// Recommended retry wrapper for agents
+async function withRetry(fn, maxRetries = 3, baseDelayMs = 2000) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const isRetryable =
+        error.message?.includes('BlockhashNotFound') ||
+        error.message?.includes('blockhash') ||
+        error.message?.includes('Too many requests') ||
+        error.message?.includes('429');
+
+      if (!isRetryable || attempt === maxRetries) throw error;
+
+      const delay = baseDelayMs * Math.pow(2, attempt - 1); // exponential backoff
+      console.log(`Attempt ${attempt} failed (${error.message}). Retrying in ${delay}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+}
+
+// Usage:
+const sig = await withRetry(() => buildAndSendTransaction(connection, keypair, instructions));
+```
+
+### Idempotency
+
+- **`initializeBurnStats`** is idempotent — always check with `getAccountInfo` first (the W10 helper does this).
+- **`createProfile` / `createBlog` / `createProject`** are NOT idempotent — calling twice will fail (`AccountAlreadyInUse`). Always check if the PDA already exists.
+- **`mint_for_post` / `burn_for_post`** are inherently non-idempotent (each call creates a new reply). Use a nonce or dedup key in your agent logic if needed.
+
+### Agent-Specific Recommendations
+
+- Add a **cooldown** between auto-posts (e.g., 10s minimum) to avoid rate limits.
+- Log every transaction signature for auditability.
+- Use `preflight()` helper before every write operation.
+- Set a daily budget limit (total MEMO burned) for unattended agents.
+
+---
+
 ## Error Handling
 
 ```javascript
@@ -2893,13 +3329,6 @@ try {
     const errorLog = error.logs.find(log => log.includes('Error Message:'));
     if (errorLog) console.error('Program error:', errorLog);
   }
-
-  // Common error codes:
-  // Custom(6001) → "Memo too short" (< 69 bytes)
-  // Custom(6002) → "Memo too long" (> 800 bytes)
-  // Custom(6003) → "Insufficient burn amount"
-  // 0x1 (InsufficientFunds) → not enough SOL/XNT for fees
-  // 0x1 (InsufficientFunds on token) → not enough MEMO tokens
 }
 ```
 
