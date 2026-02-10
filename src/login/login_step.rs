@@ -9,6 +9,14 @@ use crate::pages::pixel_view::LazyPixelView;
 use crate::CreateWalletStep;
 use wasm_bindgen::JsCast;
 
+/// Check if running on Android (Tauri mobile or Android browser)
+fn is_android() -> bool {
+    web_sys::window()
+        .and_then(|win| win.navigator().user_agent().ok())
+        .map(|ua| ua.to_lowercase().contains("android"))
+        .unwrap_or(false)
+}
+
 #[derive(Clone, PartialEq)]
 enum ResetState {
     None,
@@ -146,8 +154,11 @@ pub fn LoginStep(
 
     view! {
         <>
-        // Latest burn card (outside login container)
+        // Latest burn card (outside login container, hidden on Android to save space)
         {move || {
+            if is_android() {
+                return view! { <></> }.into_view();
+            }
             if let Some(burn) = latest_burn.get() {
                 view! {
                     <div class="latest-burn-card-external">
@@ -392,30 +403,39 @@ pub fn LoginStep(
                                     </div>
                                 </form>
                                 
-                                <div class="divider">
-                                    <span class="divider-text">"OR"</span>
-                                </div>
-                                
-                                <div class="button-group wallet-connect-buttons">
-                                    <button
-                                        class="wallet-btn x1-wallet"
-                                        on:click=move |_| {
-                                            set_current_step.set(CreateWalletStep::X1Connect);
-                                        }
-                                    >
-                                        <img src="https://x1logos.s3.us-east-1.amazonaws.com/128+-+wallet.png" alt="X1" class="x1-icon-img" />
-                                        " Connect X1 Wallet"
-                                    </button>
-                                    <button
-                                        class="wallet-btn backpack-wallet"
-                                        on:click=move |_| {
-                                            set_current_step.set(CreateWalletStep::BackpackConnect);
-                                        }
-                                    >
-                                        <span class="backpack-icon">"🎒"</span>
-                                        " Connect Backpack Wallet"
-                                    </button>
-                                </div>
+                                // Browser extension wallets are not available on Android
+                                {if !is_android() {
+                                    view! {
+                                        <>
+                                        <div class="divider">
+                                            <span class="divider-text">"OR"</span>
+                                        </div>
+
+                                        <div class="button-group wallet-connect-buttons">
+                                            <button
+                                                class="wallet-btn x1-wallet"
+                                                on:click=move |_| {
+                                                    set_current_step.set(CreateWalletStep::X1Connect);
+                                                }
+                                            >
+                                                <img src="https://x1logos.s3.us-east-1.amazonaws.com/128+-+wallet.png" alt="X1" class="x1-icon-img" />
+                                                " Connect X1 Wallet"
+                                            </button>
+                                            <button
+                                                class="wallet-btn backpack-wallet"
+                                                on:click=move |_| {
+                                                    set_current_step.set(CreateWalletStep::BackpackConnect);
+                                                }
+                                            >
+                                                <span class="backpack-icon">"🎒"</span>
+                                                " Connect Backpack Wallet"
+                                            </button>
+                                        </div>
+                                        </>
+                                    }.into_view()
+                                } else {
+                                    view! { <></> }.into_view()
+                                }}
                             </div>
                         }
                     }
