@@ -77,28 +77,18 @@ pub fn TradePage(
             set_error.set(None);
             
             log::info!("Fetching xDEX pools...");
-            
+
             let xdex = XDexConnection::new();
-            match xdex.get_all_pools().await {
-                Ok(all_pools) => {
-                    log::info!("Successfully fetched {} pools in total", all_pools.len());
-                    
-                    // Filter to only show specific pools for debugging
-                    let target_pools = vec![
-                        "GRYbq732zobr8fwDkqnjnaNCg5Qf5Y7vgRWBhKLFRu3j",  // XNT/MEMO
-                        "CAJeVEoSm1QQZccnCqYu9cnNF7TTD2fcUA3E5HQoxRvR",  // XNT/USDC.X
-                        "8hEhKFmb43qkcctdV94VjwQxUubZ7zCTyG7Hsb1BWcsq",  // XNT/XBLK
-                        "8EUkm5ChdmLm9pxKX3Q99APck1URfVqP9m9R3FQcP6Tb",
-                        "9oNpPyK6z1S2VCNZeAT1NfEXoLi2poMsxsycLbQdYrQe",
-                    ];
-                    
-                    let pool_list: Vec<PoolInfo> = all_pools.into_iter()
-                        .filter(|pool| {
-                            target_pools.contains(&pool.address.as_str())
-                        })
-                        .collect();
-                    
-                    log::info!("Filtered to {} pool(s) from target list", pool_list.len());
+            let target_pools = &[
+                "GRYbq732zobr8fwDkqnjnaNCg5Qf5Y7vgRWBhKLFRu3j",  // XNT/MEMO
+                "CAJeVEoSm1QQZccnCqYu9cnNF7TTD2fcUA3E5HQoxRvR",  // XNT/USDC.X
+                "8hEhKFmb43qkcctdV94VjwQxUubZ7zCTyG7Hsb1BWcsq",  // XNT/XBLK
+                "8EUkm5ChdmLm9pxKX3Q99APck1URfVqP9m9R3FQcP6Tb",
+                "9oNpPyK6z1S2VCNZeAT1NfEXoLi2poMsxsycLbQdYrQe",
+            ];
+            match xdex.get_pools_by_addresses(target_pools).await {
+                Ok(pool_list) => {
+                    log::info!("Fetched {} pool(s) via getMultipleAccounts", pool_list.len());
                     
                     set_pools.set(pool_list.clone());
                     set_loading.set(false);
@@ -175,9 +165,16 @@ pub fn TradePage(
         spawn_local(async move {
             set_loading.set(true);
             set_error.set(None);
-            
+
             let xdex = XDexConnection::new();
-            match xdex.get_all_pools().await {
+            let target_pools = &[
+                "GRYbq732zobr8fwDkqnjnaNCg5Qf5Y7vgRWBhKLFRu3j",  // XNT/MEMO
+                "CAJeVEoSm1QQZccnCqYu9cnNF7TTD2fcUA3E5HQoxRvR",  // XNT/USDC.X
+                "8hEhKFmb43qkcctdV94VjwQxUubZ7zCTyG7Hsb1BWcsq",  // XNT/XBLK
+                "8EUkm5ChdmLm9pxKX3Q99APck1URfVqP9m9R3FQcP6Tb",
+                "9oNpPyK6z1S2VCNZeAT1NfEXoLi2poMsxsycLbQdYrQe",
+            ];
+            match xdex.get_pools_by_addresses(target_pools).await {
                 Ok(pool_list) => {
                     set_pools.set(pool_list);
                     set_loading.set(false);
@@ -727,11 +724,7 @@ pub fn TradePage(
                     if active_tab.get() == "autobot" {
                         view! {
                             <div class="autobot-tab">
-                                <div class="coming-soon">
-                                    <i class="fas fa-robot"></i>
-                                    <h3>"Auto Bot"</h3>
-                                    <p>"Coming soon..."</p>
-                                </div>
+                                <AutoBotTab session=_session />
                             </div>
                         }.into_view()
                     } else {
@@ -1004,12 +997,9 @@ fn SwapForm(
     create_effect(move |_| {
         spawn_local(async move {
             let xdex = XDexConnection::new();
-            if let Ok(all_pools) = xdex.get_all_pools().await {
-                if let Some(pool) = all_pools.iter().find(|p| p.address == XNT_USDC_POOL) {
+            if let Ok(pools) = xdex.get_pools_by_addresses(&[XNT_USDC_POOL]).await {
+                if let Some(pool) = pools.first() {
                     if let Ok(price_info) = xdex.get_pool_price(pool).await {
-                        // XNT is token0, USDC.X is token1
-                        // price_info.price = reserve_0 / reserve_1 = XNT / USDC
-                        // So 1 XNT = 1 / price_info.price USDC
                         let xnt_price_usd = 1.0 / price_info.price;
                         set_xnt_usd_price.set(Some(xnt_price_usd));
                     }
@@ -1022,9 +1012,9 @@ fn SwapForm(
     create_effect(move |_| {
         spawn_local(async move {
             let xdex = XDexConnection::new();
-            if let Ok(all_pools) = xdex.get_all_pools().await {
+            if let Ok(pools) = xdex.get_pools_by_addresses(&[XNT_USDC_POOL, XNT_MEMO_POOL]).await {
                 // First get XNT price in USD
-                let xnt_price_usd = if let Some(xnt_usdc_pool) = all_pools.iter().find(|p| p.address == XNT_USDC_POOL) {
+                let xnt_price_usd = if let Some(xnt_usdc_pool) = pools.iter().find(|p| p.address == XNT_USDC_POOL) {
                     if let Ok(price_info) = xdex.get_pool_price(xnt_usdc_pool).await {
                         Some(1.0 / price_info.price)
                     } else {
@@ -1033,17 +1023,12 @@ fn SwapForm(
                 } else {
                     None
                 };
-                
+
                 // Then calculate MEMO price in USD via XNT
                 if let Some(xnt_price) = xnt_price_usd {
-                    if let Some(xnt_memo_pool) = all_pools.iter().find(|p| p.address == XNT_MEMO_POOL) {
+                    if let Some(xnt_memo_pool) = pools.iter().find(|p| p.address == XNT_MEMO_POOL) {
                         if let Ok(price_info) = xdex.get_pool_price(xnt_memo_pool).await {
-                            // XNT/MEMO pool: XNT is token0, MEMO is token1
-                            // price_info.price = reserve_0 / reserve_1 = XNT / MEMO
-                            // This ratio tells us: 1 MEMO = price_info.price XNT
-                            // Example: if reserve_XNT=1000, reserve_MEMO=1690000
-                            // price = 1000/1690000 = 0.000591 (means 1 MEMO = 0.000591 XNT)
-                            let memo_price_in_xnt = price_info.price;  // Direct use, no reciprocal
+                            let memo_price_in_xnt = price_info.price;
                             let memo_price_usd = memo_price_in_xnt * xnt_price;
                             set_memo_usd_price.set(Some(memo_price_usd));
                         }
@@ -1067,8 +1052,8 @@ fn SwapForm(
                 XNT_MEMO_POOL
             };
             
-            if let Ok(all_pools) = xdex.get_all_pools().await {
-                if let Some(pool) = all_pools.iter().find(|p| p.address == pool_addr) {
+            if let Ok(pools) = xdex.get_pools_by_addresses(&[pool_addr]).await {
+                if let Some(pool) = pools.first() {
                     if let Ok(price_info) = xdex.get_pool_price(pool).await {
                         // Cache pool data
                         set_pool_cache.set(Some((
@@ -1641,3 +1626,598 @@ fn SwapForm(
         </div>
     }
 }
+
+// ==================== AUTO BOT COMPONENTS ====================
+
+/// Bot type enum
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum BotType {
+    DCA,        // Dollar Cost Averaging
+}
+
+impl BotType {
+    fn as_str(&self) -> &'static str {
+        match self {
+            BotType::DCA => "DCA",
+        }
+    }
+
+    fn description(&self) -> &'static str {
+        match self {
+            BotType::DCA => "Dollar Cost Averaging - Buy at regular intervals",
+        }
+    }
+
+    fn icon(&self) -> &'static str {
+        match self {
+            BotType::DCA => "fa-chart-line",
+        }
+    }
+}
+
+/// Bot status enum
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum BotStatus {
+    Running,
+    Paused,
+    Completed,
+    Error,
+}
+
+impl BotStatus {
+    fn as_str(&self) -> &'static str {
+        match self {
+            BotStatus::Running => "Running",
+            BotStatus::Paused => "Paused",
+            BotStatus::Completed => "Completed",
+            BotStatus::Error => "Error",
+        }
+    }
+    
+    fn icon(&self) -> &'static str {
+        match self {
+            BotStatus::Running => "fa-play-circle",
+            BotStatus::Paused => "fa-pause-circle",
+            BotStatus::Completed => "fa-check-circle",
+            BotStatus::Error => "fa-exclamation-circle",
+        }
+    }
+    
+    fn class(&self) -> &'static str {
+        match self {
+            BotStatus::Running => "status-running",
+            BotStatus::Paused => "status-paused",
+            BotStatus::Completed => "status-completed",
+            BotStatus::Error => "status-error",
+        }
+    }
+}
+
+/// DCA frequency enum
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum DCAFrequency {
+    Hourly,
+    Daily,
+    Weekly,
+    Monthly,
+}
+
+impl DCAFrequency {
+    fn as_str(&self) -> &'static str {
+        match self {
+            DCAFrequency::Hourly => "Hourly",
+            DCAFrequency::Daily => "Daily",
+            DCAFrequency::Weekly => "Weekly",
+            DCAFrequency::Monthly => "Monthly",
+        }
+    }
+}
+
+/// Bot configuration struct
+#[derive(Clone, Debug)]
+pub struct BotConfig {
+    pub id: String,
+    pub name: String,
+    pub bot_type: BotType,
+    pub token_in: String,
+    pub token_out: String,
+    pub status: BotStatus,
+    // DCA specific
+    pub dca_amount: Option<f64>,
+    pub dca_frequency: Option<DCAFrequency>,
+    pub dca_total_investment: Option<f64>,
+    pub dca_invested: Option<f64>,
+    // Stats
+    pub executed_count: u32,
+    pub total_pnl: f64,
+    pub created_at: String,
+}
+
+/// Main Auto Bot Tab Component
+#[component]
+fn AutoBotTab(
+    session: RwSignal<Session>
+) -> impl IntoView {
+    // Bot list state
+    let (bots, set_bots) = create_signal::<Vec<BotConfig>>(Vec::new());
+    let (show_create_dialog, set_show_create_dialog) = create_signal(false);
+    // For future use: editing existing bots
+    let (_editing_bot, _set_editing_bot) = create_signal::<Option<BotConfig>>(None);
+    
+    // Demo: Add some sample bots for UI testing (in production, load from storage)
+    create_effect(move |_| {
+        // Load bots from local storage or initialize empty
+        // For now, we start with an empty list
+        set_bots.set(Vec::new());
+    });
+    
+    // Handle create new bot
+    let handle_create_bot = move |config: BotConfig| {
+        set_bots.update(|list| {
+            list.push(config);
+        });
+        set_show_create_dialog.set(false);
+    };
+    
+    // Handle delete bot
+    let handle_delete_bot = move |bot_id: String| {
+        set_bots.update(|list| {
+            list.retain(|b| b.id != bot_id);
+        });
+    };
+    
+    // Handle toggle bot status
+    let handle_toggle_bot = move |bot_id: String| {
+        set_bots.update(|list| {
+            if let Some(bot) = list.iter_mut().find(|b| b.id == bot_id) {
+                bot.status = match bot.status {
+                    BotStatus::Running => BotStatus::Paused,
+                    BotStatus::Paused => BotStatus::Running,
+                    _ => bot.status,
+                };
+            }
+        });
+    };
+    
+    view! {
+        <div class="autobot-content">
+            // Header with create button
+            <div class="autobot-header">
+                <h3>"Trading Bots"</h3>
+                <button 
+                    class="create-bot-btn"
+                    on:click=move |_| set_show_create_dialog.set(true)
+                >
+                    <i class="fas fa-plus"></i>
+                    " Create Bot"
+                </button>
+            </div>
+            
+            // Bot cards or empty state
+            {move || {
+                let bot_list = bots.get();
+                if bot_list.is_empty() {
+                    view! {
+                        <div class="bots-empty">
+                            <i class="fas fa-robot"></i>
+                            <h4>"No Trading Bots Yet"</h4>
+                            <p>"Create your first automated trading bot to get started."</p>
+                            <button 
+                                class="create-first-bot-btn"
+                                on:click=move |_| set_show_create_dialog.set(true)
+                            >
+                                <i class="fas fa-plus"></i>
+                                " Create Your First Bot"
+                            </button>
+                        </div>
+                    }.into_view()
+                } else {
+                    view! {
+                        <div class="bots-grid">
+                            {bot_list.into_iter().map(|bot| {
+                                let bot_id = bot.id.clone();
+                                let bot_id_for_toggle = bot.id.clone();
+                                let bot_id_for_delete = bot.id.clone();
+                                view! {
+                                    <BotCard 
+                                        bot=bot
+                                        on_toggle=move |_| handle_toggle_bot(bot_id_for_toggle.clone())
+                                        on_delete=move |_| handle_delete_bot(bot_id_for_delete.clone())
+                                    />
+                                }
+                            }).collect::<Vec<_>>()}
+                        </div>
+                    }.into_view()
+                }
+            }}
+            
+            // Create Bot Dialog
+            {move || {
+                if show_create_dialog.get() {
+                    view! {
+                        <CreateBotDialog 
+                            on_close=move |_| set_show_create_dialog.set(false)
+                            on_create=handle_create_bot
+                        />
+                    }.into_view()
+                } else {
+                    view! { <div></div> }.into_view()
+                }
+            }}
+        </div>
+    }
+}
+
+/// Bot Card Component
+#[component]
+fn BotCard(
+    bot: BotConfig,
+    on_toggle: impl Fn(()) + 'static,
+    on_delete: impl Fn(()) + 'static,
+) -> impl IntoView {
+    let status_class = bot.status.class();
+    let can_toggle = bot.status == BotStatus::Running || bot.status == BotStatus::Paused;
+    
+    view! {
+        <div class="bot-card">
+            <div class="bot-card-header">
+                <div class="bot-type-badge">
+                    <i class=format!("fas {}", bot.bot_type.icon())></i>
+                    {bot.bot_type.as_str()}
+                </div>
+                <div class=format!("bot-status {}", status_class)>
+                    <i class=format!("fas {}", bot.status.icon())></i>
+                    {bot.status.as_str()}
+                </div>
+            </div>
+            
+            <div class="bot-card-body">
+                <div class="bot-name">{bot.name.clone()}</div>
+                <div class="bot-pair">
+                    <span class="token-from">{bot.token_in.clone()}</span>
+                    <i class="fas fa-arrow-right"></i>
+                    <span class="token-to">{bot.token_out.clone()}</span>
+                </div>
+                
+                // Bot-specific info
+                {match bot.bot_type {
+                    BotType::DCA => {
+                        view! {
+                            <div class="bot-details">
+                                <div class="detail-row">
+                                    <span class="detail-label">"Amount:"</span>
+                                    <span class="detail-value">{format!("{:.2}", bot.dca_amount.unwrap_or(0.0))} " " {bot.token_in.clone()}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">"Frequency:"</span>
+                                    <span class="detail-value">{bot.dca_frequency.map(|f| f.as_str()).unwrap_or("N/A")}</span>
+                                </div>
+                            </div>
+                        }.into_view()
+                    },
+                }}
+                
+                // Stats
+                <div class="bot-stats">
+                    <div class="stat">
+                        <span class="stat-label">"Executed"</span>
+                        <span class="stat-value">{bot.executed_count}</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">"P&L"</span>
+                        <span class=format!("stat-value {}", if bot.total_pnl >= 0.0 { "success" } else { "danger" })>
+                            {if bot.total_pnl >= 0.0 { "+" } else { "" }}
+                            {format!("{:.2}%", bot.total_pnl)}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bot-card-actions">
+                {if can_toggle {
+                    let toggle_text = if bot.status == BotStatus::Running { "Pause" } else { "Start" };
+                    let toggle_icon = if bot.status == BotStatus::Running { "fa-pause" } else { "fa-play" };
+                    view! {
+                        <button class="bot-action-btn toggle-btn" on:click=move |_| on_toggle(())>
+                            <i class=format!("fas {}", toggle_icon)></i>
+                            {toggle_text}
+                        </button>
+                    }.into_view()
+                } else {
+                    view! { <div></div> }.into_view()
+                }}
+                <button class="bot-action-btn delete-btn" on:click=move |_| on_delete(())>
+                    <i class="fas fa-trash"></i>
+                    "Delete"
+                </button>
+            </div>
+        </div>
+    }
+}
+
+/// Create Bot Dialog Component
+#[component]
+fn CreateBotDialog(
+    on_close: impl Fn(()) + 'static + Clone,
+    on_create: impl Fn(BotConfig) + 'static,
+) -> impl IntoView {
+    // Dialog state
+    let (selected_type, set_selected_type) = create_signal(BotType::DCA);
+    let (bot_name, set_bot_name) = create_signal(String::new());
+    let (token_in, set_token_in) = create_signal("XNT".to_string());
+    let (token_out, set_token_out) = create_signal("MEMO".to_string());
+    
+    // DCA config
+    let (dca_amount, set_dca_amount) = create_signal("10".to_string());
+    let (dca_frequency, set_dca_frequency) = create_signal(DCAFrequency::Daily);
+    let (dca_total, set_dca_total) = create_signal("1000".to_string());
+    
+    // Slippage (shared)
+    let (slippage, set_slippage) = create_signal("1.0".to_string());
+    
+    // Validation
+    let (error_msg, set_error_msg) = create_signal::<Option<String>>(None);
+    
+    // Clone on_close for different closures
+    let on_close_for_overlay = on_close.clone();
+    let on_close_for_header = on_close.clone();
+    let on_close_for_footer = on_close.clone();
+    
+    // Handle form submit
+    let handle_submit = move |_| {
+        // Validate and create bot config
+        let name = if bot_name.get().is_empty() {
+            format!("{} Bot #{}", selected_type.get().as_str(), js_sys::Date::now() as u64 % 10000)
+        } else {
+            bot_name.get()
+        };
+        
+        let mut config = BotConfig {
+            id: format!("bot_{}", js_sys::Date::now() as u64),
+            name,
+            bot_type: selected_type.get(),
+            token_in: token_in.get(),
+            token_out: token_out.get(),
+            status: BotStatus::Paused,
+            dca_amount: None,
+            dca_frequency: None,
+            dca_total_investment: None,
+            dca_invested: None,
+            executed_count: 0,
+            total_pnl: 0.0,
+            created_at: js_sys::Date::new_0().to_iso_string().as_string().unwrap_or_default(),
+        };
+        
+        // Fill type-specific config
+        match selected_type.get() {
+            BotType::DCA => {
+                config.dca_amount = dca_amount.get().parse().ok();
+                config.dca_frequency = Some(dca_frequency.get());
+                config.dca_total_investment = dca_total.get().parse().ok();
+                config.dca_invested = Some(0.0);
+            },
+        }
+        
+        on_create(config);
+    };
+    
+    view! {
+        <div class="dialog-overlay" on:click=move |_| on_close_for_overlay(())>
+            <div class="create-bot-dialog" on:click=|e| e.stop_propagation()>
+                <div class="dialog-header">
+                    <h3>"Create Trading Bot"</h3>
+                    <button class="dialog-close-btn" on:click=move |_| on_close_for_header(())>
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <div class="dialog-body">
+                    // Bot Type Selector (Shared Component)
+                    <div class="config-section">
+                        <label class="config-label">"Bot Type"</label>
+                        <div class="bot-type-selector">
+                            <button 
+                                class="bot-type-btn"
+                                class:active=move || selected_type.get() == BotType::DCA
+                                on:click=move |_| set_selected_type.set(BotType::DCA)
+                            >
+                                <i class="fas fa-chart-line"></i>
+                                <span>"DCA"</span>
+                                <small>"Buy at intervals"</small>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    // Bot Name (Shared Component)
+                    <div class="config-section">
+                        <label class="config-label">"Bot Name (Optional)"</label>
+                        <input 
+                            type="text"
+                            class="config-input"
+                            placeholder="My Trading Bot"
+                            prop:value=move || bot_name.get()
+                            on:input=move |ev| set_bot_name.set(event_target_value(&ev))
+                        />
+                    </div>
+                    
+                    // Token Pair Selector (Shared Component)
+                    <div class="config-section">
+                        <label class="config-label">"Trading Pair"</label>
+                        <div class="token-pair-selector">
+                            <select 
+                                class="token-select"
+                                prop:value=move || token_in.get()
+                                on:change=move |ev| set_token_in.set(event_target_value(&ev))
+                            >
+                                <option value="XNT">"XNT"</option>
+                                <option value="MEMO">"MEMO"</option>
+                                <option value="USDC.X">"USDC.X"</option>
+                            </select>
+                            <span class="pair-arrow">
+                                <i class="fas fa-arrow-right"></i>
+                            </span>
+                            <select 
+                                class="token-select"
+                                prop:value=move || token_out.get()
+                                on:change=move |ev| set_token_out.set(event_target_value(&ev))
+                            >
+                                <option value="MEMO">"MEMO"</option>
+                                <option value="XNT">"XNT"</option>
+                                <option value="USDC.X">"USDC.X"</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    // Type-specific config panels
+                    {move || {
+                        match selected_type.get() {
+                            BotType::DCA => {
+                                view! {
+                                    <DCAConfigPanel 
+                                        amount=dca_amount
+                                        set_amount=set_dca_amount
+                                        frequency=dca_frequency
+                                        set_frequency=set_dca_frequency
+                                        total=dca_total
+                                        set_total=set_dca_total
+                                        token_in=token_in.get()
+                                    />
+                                }.into_view()
+                            },
+                        }
+                    }}
+                    
+                    // Advanced Settings (Shared Component)
+                    <div class="config-section advanced-section">
+                        <div class="advanced-header">
+                            <label class="config-label">"Advanced Settings"</label>
+                        </div>
+                        <div class="advanced-content">
+                            <div class="config-row">
+                                <label>"Slippage Tolerance"</label>
+                                <div class="slippage-input-group">
+                                    <input 
+                                        type="number"
+                                        class="config-input small"
+                                        step="0.1"
+                                        min="0.1"
+                                        max="10"
+                                        prop:value=move || slippage.get()
+                                        on:input=move |ev| set_slippage.set(event_target_value(&ev))
+                                    />
+                                    <span class="input-suffix">"%"</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    // Error message
+                    {move || error_msg.get().map(|msg| {
+                        view! {
+                            <div class="error-message">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                {msg}
+                            </div>
+                        }
+                    })}
+                </div>
+                
+                <div class="dialog-footer">
+                    <button class="dialog-btn cancel-btn" on:click=move |_| on_close_for_footer(())>
+                        "Cancel"
+                    </button>
+                    <button class="dialog-btn create-btn" on:click=handle_submit>
+                        <i class="fas fa-plus"></i>
+                        " Create Bot"
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+/// DCA Config Panel Component
+#[component]
+fn DCAConfigPanel(
+    amount: ReadSignal<String>,
+    set_amount: WriteSignal<String>,
+    frequency: ReadSignal<DCAFrequency>,
+    set_frequency: WriteSignal<DCAFrequency>,
+    total: ReadSignal<String>,
+    set_total: WriteSignal<String>,
+    token_in: String,
+) -> impl IntoView {
+    view! {
+        <div class="type-config-panel dca-config">
+            <div class="config-section">
+                <label class="config-label">"Amount per Order"</label>
+                <div class="input-with-suffix">
+                    <input 
+                        type="number"
+                        class="config-input"
+                        step="0.01"
+                        min="0"
+                        placeholder="10"
+                        prop:value=move || amount.get()
+                        on:input=move |ev| set_amount.set(event_target_value(&ev))
+                    />
+                    <span class="input-suffix">{token_in.clone()}</span>
+                </div>
+            </div>
+            
+            <div class="config-section">
+                <label class="config-label">"Frequency"</label>
+                <div class="frequency-selector">
+                    <button 
+                        class="freq-btn"
+                        class:active=move || frequency.get() == DCAFrequency::Hourly
+                        on:click=move |_| set_frequency.set(DCAFrequency::Hourly)
+                    >
+                        "Hourly"
+                    </button>
+                    <button 
+                        class="freq-btn"
+                        class:active=move || frequency.get() == DCAFrequency::Daily
+                        on:click=move |_| set_frequency.set(DCAFrequency::Daily)
+                    >
+                        "Daily"
+                    </button>
+                    <button 
+                        class="freq-btn"
+                        class:active=move || frequency.get() == DCAFrequency::Weekly
+                        on:click=move |_| set_frequency.set(DCAFrequency::Weekly)
+                    >
+                        "Weekly"
+                    </button>
+                    <button 
+                        class="freq-btn"
+                        class:active=move || frequency.get() == DCAFrequency::Monthly
+                        on:click=move |_| set_frequency.set(DCAFrequency::Monthly)
+                    >
+                        "Monthly"
+                    </button>
+                </div>
+            </div>
+            
+            <div class="config-section">
+                <label class="config-label">"Total Investment Budget"</label>
+                <div class="input-with-suffix">
+                    <input 
+                        type="number"
+                        class="config-input"
+                        step="1"
+                        min="0"
+                        placeholder="1000"
+                        prop:value=move || total.get()
+                        on:input=move |ev| set_total.set(event_target_value(&ev))
+                    />
+                    <span class="input-suffix">{token_in}</span>
+                </div>
+                <div class="config-hint">
+                    "Bot will stop when total investment is reached"
+                </div>
+            </div>
+        </div>
+    }
+}
+

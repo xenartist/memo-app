@@ -190,41 +190,78 @@ impl XDexConnection {
         }
     }
 
-    /// Get all pools from the xDEX program
-    /// 
-    /// This queries all PoolState accounts owned by the xDEX program
+    /// Get specific pools by their addresses using getMultipleAccounts
+    ///
+    /// This is much more efficient than getProgramAccounts as it only fetches
+    /// the specified accounts instead of all accounts owned by the program.
+    pub async fn get_pools_by_addresses(&self, addresses: &[&str]) -> Result<Vec<PoolInfo>, RpcError> {
+        let params = serde_json::json!([
+            addresses,
+            {
+                "encoding": "base64"
+            }
+        ]);
+
+        let result: serde_json::Value = self.rpc.send_request("getMultipleAccounts", params).await?;
+
+        let mut pools = Vec::new();
+
+        if let Some(accounts) = result.get("value").and_then(|v| v.as_array()) {
+            for (i, account) in accounts.iter().enumerate() {
+                if account.is_null() {
+                    log::warn!("Account not found: {}", addresses.get(i).unwrap_or(&"unknown"));
+                    continue;
+                }
+                if let Some(data_array) = account.get("data").and_then(|d| d.as_array()) {
+                    if let Some(data_str) = data_array.first().and_then(|d| d.as_str()) {
+                        match base64::decode(data_str) {
+                            Ok(decoded) => {
+                                if let Ok(pool_info) = Self::parse_pool_state(addresses[i], &decoded) {
+                                    pools.push(pool_info);
+                                }
+                            },
+                            Err(e) => {
+                                log::error!("Failed to decode base64 for {}: {}", addresses[i], e);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(pools)
+    }
+
+    /// Get all pools from the xDEX program using getProgramAccounts
+    ///
+    /// Note: This is a heavy RPC call. Prefer get_pools_by_addresses() when
+    /// the pool addresses are known.
     pub async fn get_all_pools(&self) -> Result<Vec<PoolInfo>, RpcError> {
-        // Use getProgramAccounts to fetch all pool accounts
         let params = serde_json::json!([
             XDEX_PROGRAM_ID,
             {
                 "encoding": "base64"
             }
         ]);
-        
+
         let result: serde_json::Value = self.rpc.send_request("getProgramAccounts", params).await?;
-        
+
         let mut pools = Vec::new();
-        
-        // Parse the accounts
+
         if let Some(accounts) = result.as_array() {
             for account in accounts.iter() {
                 if let Some(pubkey) = account.get("pubkey").and_then(|p| p.as_str()) {
                     if let Some(account_data) = account.get("account") {
                         if let Some(data_array) = account_data.get("data").and_then(|d| d.as_array()) {
-                            if data_array.len() >= 1 {
-                                if let Some(data_str) = data_array[0].as_str() {
-                                    // Decode base64 data
-                                    match base64::decode(data_str) {
-                                        Ok(decoded) => {
-                                            // Parse pool state from raw bytes
-                                            if let Ok(pool_info) = Self::parse_pool_state(pubkey, &decoded) {
-                                                pools.push(pool_info);
-                                            }
-                                        },
-                                        Err(e) => {
-                                            log::error!("Failed to decode base64: {}", e);
+                            if let Some(data_str) = data_array.first().and_then(|d| d.as_str()) {
+                                match base64::decode(data_str) {
+                                    Ok(decoded) => {
+                                        if let Ok(pool_info) = Self::parse_pool_state(pubkey, &decoded) {
+                                            pools.push(pool_info);
                                         }
+                                    },
+                                    Err(e) => {
+                                        log::error!("Failed to decode base64: {}", e);
                                     }
                                 }
                             }
@@ -233,7 +270,7 @@ impl XDexConnection {
                 }
             }
         }
-        
+
         Ok(pools)
     }
 

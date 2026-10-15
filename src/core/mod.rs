@@ -4,6 +4,7 @@ pub mod wallet;
 pub mod session;
 pub mod backpack;
 pub mod x1;
+pub mod seed_vault;
 pub mod rpc_base;
 pub mod pixel;
 pub mod constants;

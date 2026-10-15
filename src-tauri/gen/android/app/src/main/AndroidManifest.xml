@@ -24,6 +24,11 @@
             </intent-filter>
         </activity>
 
+        <!-- Seed Vault Plugin -->
+        <meta-data
+            android:name="app.tauri.plugins.seed-vault"
+            android:value="rip.memo.app.SeedVaultPlugin" />
+
         <provider
           android:name="androidx.core.content.FileProvider"
           android:authorities="${applicationId}.fileprovider"
