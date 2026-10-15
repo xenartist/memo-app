@@ -235,10 +235,11 @@ function debugString(val) {
     return className;
 }
 
-function _assertClass(instance, klass) {
-    if (!(instance instanceof klass)) {
-        throw new Error(`expected instance of ${klass.name}`);
-    }
+function passArray8ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 1, 1) >>> 0;
+    getUint8ArrayMemory0().set(arg, ptr / 1);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
 }
 
 function takeFromExternrefTable0(idx) {
@@ -247,17 +248,10 @@ function takeFromExternrefTable0(idx) {
     return value;
 }
 
-function passArray8ToWasm0(arg, malloc) {
-    const ptr = malloc(arg.length * 1, 1) >>> 0;
-    getUint8ArrayMemory0().set(arg, ptr / 1);
-    WASM_VECTOR_LEN = arg.length;
-    return ptr;
-}
-/**
- * Initialize Javascript logging and panic handler
- */
-export function solana_program_init() {
-    wasm.solana_program_init();
+function _assertClass(instance, klass) {
+    if (!(instance instanceof klass)) {
+        throw new Error(`expected instance of ${klass.name}`);
+    }
 }
 
 function passArrayJsValueToWasm0(array, malloc) {
@@ -269,32 +263,35 @@ function passArrayJsValueToWasm0(array, malloc) {
     WASM_VECTOR_LEN = array.length;
     return ptr;
 }
+/**
+ * Initialize Javascript logging and panic handler
+ */
+export function solana_program_init() {
+    wasm.solana_program_init();
+}
+
 function __wbg_adapter_50(arg0, arg1, arg2) {
-    wasm.closure1900_externref_shim(arg0, arg1, arg2);
+    wasm.closure2467_externref_shim(arg0, arg1, arg2);
 }
 
 function __wbg_adapter_59(arg0, arg1) {
-    wasm._dyn_core__ops__function__FnMut_____Output___R_as_wasm_bindgen__closure__WasmClosure___describe__invoke__ha663ba5bf6a5fd58(arg0, arg1);
+    wasm._dyn_core__ops__function__FnMut_____Output___R_as_wasm_bindgen__closure__WasmClosure___describe__invoke__h8fbc5a6010e8691e(arg0, arg1);
 }
 
 function __wbg_adapter_62(arg0, arg1) {
-    wasm._dyn_core__ops__function__Fn_____Output___R_as_wasm_bindgen__closure__WasmClosure___describe__invoke__hf1c769ddeb0086b6(arg0, arg1);
+    wasm._dyn_core__ops__function__Fn_____Output___R_as_wasm_bindgen__closure__WasmClosure___describe__invoke__h7f7ce302e0fe6ab4(arg0, arg1);
 }
 
-function __wbg_adapter_65(arg0, arg1) {
-    wasm._dyn_core__ops__function__FnMut_____Output___R_as_wasm_bindgen__closure__WasmClosure___describe__invoke__h05a65348a58ad6c0(arg0, arg1);
+function __wbg_adapter_65(arg0, arg1, arg2) {
+    wasm.closure3393_externref_shim(arg0, arg1, arg2);
 }
 
 function __wbg_adapter_68(arg0, arg1, arg2) {
-    wasm.closure3253_externref_shim(arg0, arg1, arg2);
+    wasm.closure3417_externref_shim(arg0, arg1, arg2);
 }
 
-function __wbg_adapter_71(arg0, arg1, arg2) {
-    wasm.closure3276_externref_shim(arg0, arg1, arg2);
-}
-
-function __wbg_adapter_521(arg0, arg1, arg2, arg3) {
-    wasm.closure3318_externref_shim(arg0, arg1, arg2, arg3);
+function __wbg_adapter_536(arg0, arg1, arg2, arg3) {
+    wasm.closure3461_externref_shim(arg0, arg1, arg2, arg3);
 }
 
 const __wbindgen_enum_ReadableStreamType = ["bytes"];
@@ -353,16 +350,6 @@ export class Hash {
         return this;
     }
     /**
-     * Return the base58 string representation of the hash
-     * @returns {string}
-     */
-    toString() {
-        const ret = wasm.hash_toString(this.__wbg_ptr);
-        var v1 = getCachedStringFromWasm0(ret[0], ret[1]);
-        if (ret[0] !== 0) { wasm.__wbindgen_free(ret[0], ret[1], 1); }
-        return v1;
-    }
-    /**
      * Checks if two `Hash`s are equal
      * @param {Hash} other
      * @returns {boolean}
@@ -380,6 +367,16 @@ export class Hash {
         const ret = wasm.hash_toBytes(this.__wbg_ptr);
         var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * Return the base58 string representation of the hash
+     * @returns {string}
+     */
+    toString() {
+        const ret = wasm.hash_toString(this.__wbg_ptr);
+        var v1 = getCachedStringFromWasm0(ret[0], ret[1]);
+        if (ret[0] !== 0) { wasm.__wbindgen_free(ret[0], ret[1], 1); }
         return v1;
     }
 }
@@ -522,13 +519,6 @@ export class IntoUnderlyingByteSource {
         wasm.__wbg_intounderlyingbytesource_free(ptr, 0);
     }
     /**
-     * @returns {ReadableStreamType}
-     */
-    get type() {
-        const ret = wasm.intounderlyingbytesource_type(this.__wbg_ptr);
-        return __wbindgen_enum_ReadableStreamType[ret];
-    }
-    /**
      * @returns {number}
      */
     get autoAllocateChunkSize() {
@@ -537,17 +527,24 @@ export class IntoUnderlyingByteSource {
     }
     /**
      * @param {ReadableByteStreamController} controller
-     */
-    start(controller) {
-        wasm.intounderlyingbytesource_start(this.__wbg_ptr, controller);
-    }
-    /**
-     * @param {ReadableByteStreamController} controller
      * @returns {Promise<any>}
      */
     pull(controller) {
         const ret = wasm.intounderlyingbytesource_pull(this.__wbg_ptr, controller);
         return ret;
+    }
+    /**
+     * @param {ReadableByteStreamController} controller
+     */
+    start(controller) {
+        wasm.intounderlyingbytesource_start(this.__wbg_ptr, controller);
+    }
+    /**
+     * @returns {ReadableStreamType}
+     */
+    get type() {
+        const ret = wasm.intounderlyingbytesource_type(this.__wbg_ptr);
+        return __wbindgen_enum_ReadableStreamType[ret];
     }
     cancel() {
         const ptr = this.__destroy_into_raw();
@@ -573,11 +570,12 @@ export class IntoUnderlyingSink {
         wasm.__wbg_intounderlyingsink_free(ptr, 0);
     }
     /**
-     * @param {any} chunk
+     * @param {any} reason
      * @returns {Promise<any>}
      */
-    write(chunk) {
-        const ret = wasm.intounderlyingsink_write(this.__wbg_ptr, chunk);
+    abort(reason) {
+        const ptr = this.__destroy_into_raw();
+        const ret = wasm.intounderlyingsink_abort(ptr, reason);
         return ret;
     }
     /**
@@ -589,12 +587,11 @@ export class IntoUnderlyingSink {
         return ret;
     }
     /**
-     * @param {any} reason
+     * @param {any} chunk
      * @returns {Promise<any>}
      */
-    abort(reason) {
-        const ptr = this.__destroy_into_raw();
-        const ret = wasm.intounderlyingsink_abort(ptr, reason);
+    write(chunk) {
+        const ret = wasm.intounderlyingsink_write(this.__wbg_ptr, chunk);
         return ret;
     }
 }
@@ -815,44 +812,6 @@ export class Pubkey {
         return this;
     }
     /**
-     * Return the base58 string representation of the public key
-     * @returns {string}
-     */
-    toString() {
-        const ret = wasm.pubkey_toString(this.__wbg_ptr);
-        var v1 = getCachedStringFromWasm0(ret[0], ret[1]);
-        if (ret[0] !== 0) { wasm.__wbindgen_free(ret[0], ret[1], 1); }
-        return v1;
-    }
-    /**
-     * Check if a `Pubkey` is on the ed25519 curve.
-     * @returns {boolean}
-     */
-    isOnCurve() {
-        const ret = wasm.pubkey_isOnCurve(this.__wbg_ptr);
-        return ret !== 0;
-    }
-    /**
-     * Checks if two `Pubkey`s are equal
-     * @param {Pubkey} other
-     * @returns {boolean}
-     */
-    equals(other) {
-        _assertClass(other, Pubkey);
-        const ret = wasm.pubkey_equals(this.__wbg_ptr, other.__wbg_ptr);
-        return ret !== 0;
-    }
-    /**
-     * Return the `Uint8Array` representation of the public key
-     * @returns {Uint8Array}
-     */
-    toBytes() {
-        const ret = wasm.pubkey_toBytes(this.__wbg_ptr);
-        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
-        return v1;
-    }
-    /**
      * Derive a Pubkey from another Pubkey, string seed, and a program id
      * @param {Pubkey} base
      * @param {string} seed
@@ -865,22 +824,6 @@ export class Pubkey {
         const len0 = WASM_VECTOR_LEN;
         _assertClass(owner, Pubkey);
         const ret = wasm.pubkey_createWithSeed(base.__wbg_ptr, ptr0, len0, owner.__wbg_ptr);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return Pubkey.__wrap(ret[0]);
-    }
-    /**
-     * Derive a program address from seeds and a program id
-     * @param {any[]} seeds
-     * @param {Pubkey} program_id
-     * @returns {Pubkey}
-     */
-    static createProgramAddress(seeds, program_id) {
-        const ptr0 = passArrayJsValueToWasm0(seeds, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        _assertClass(program_id, Pubkey);
-        const ret = wasm.pubkey_createProgramAddress(ptr0, len0, program_id.__wbg_ptr);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -904,6 +847,60 @@ export class Pubkey {
             throw takeFromExternrefTable0(ret[1]);
         }
         return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * Derive a program address from seeds and a program id
+     * @param {any[]} seeds
+     * @param {Pubkey} program_id
+     * @returns {Pubkey}
+     */
+    static createProgramAddress(seeds, program_id) {
+        const ptr0 = passArrayJsValueToWasm0(seeds, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        _assertClass(program_id, Pubkey);
+        const ret = wasm.pubkey_createProgramAddress(ptr0, len0, program_id.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return Pubkey.__wrap(ret[0]);
+    }
+    /**
+     * Checks if two `Pubkey`s are equal
+     * @param {Pubkey} other
+     * @returns {boolean}
+     */
+    equals(other) {
+        _assertClass(other, Pubkey);
+        const ret = wasm.pubkey_equals(this.__wbg_ptr, other.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * Return the `Uint8Array` representation of the public key
+     * @returns {Uint8Array}
+     */
+    toBytes() {
+        const ret = wasm.pubkey_toBytes(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * Return the base58 string representation of the public key
+     * @returns {string}
+     */
+    toString() {
+        const ret = wasm.pubkey_toString(this.__wbg_ptr);
+        var v1 = getCachedStringFromWasm0(ret[0], ret[1]);
+        if (ret[0] !== 0) { wasm.__wbindgen_free(ret[0], ret[1], 1); }
+        return v1;
+    }
+    /**
+     * Check if a `Pubkey` is on the ed25519 curve.
+     * @returns {boolean}
+     */
+    isOnCurve() {
+        const ret = wasm.pubkey_isOnCurve(this.__wbg_ptr);
+        return ret !== 0;
     }
 }
 
@@ -940,37 +937,6 @@ export class SystemInstruction {
         return Instruction.__wrap(ret);
     }
     /**
-     * @param {Pubkey} from_pubkey
-     * @param {Pubkey} to_pubkey
-     * @param {Pubkey} base
-     * @param {string} seed
-     * @param {bigint} lamports
-     * @param {bigint} space
-     * @param {Pubkey} owner
-     * @returns {Instruction}
-     */
-    static createAccountWithSeed(from_pubkey, to_pubkey, base, seed, lamports, space, owner) {
-        _assertClass(from_pubkey, Pubkey);
-        _assertClass(to_pubkey, Pubkey);
-        _assertClass(base, Pubkey);
-        const ptr0 = passStringToWasm0(seed, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        _assertClass(owner, Pubkey);
-        const ret = wasm.systeminstruction_createAccountWithSeed(from_pubkey.__wbg_ptr, to_pubkey.__wbg_ptr, base.__wbg_ptr, ptr0, len0, lamports, space, owner.__wbg_ptr);
-        return Instruction.__wrap(ret);
-    }
-    /**
-     * @param {Pubkey} pubkey
-     * @param {Pubkey} owner
-     * @returns {Instruction}
-     */
-    static assign(pubkey, owner) {
-        _assertClass(pubkey, Pubkey);
-        _assertClass(owner, Pubkey);
-        const ret = wasm.systeminstruction_assign(pubkey.__wbg_ptr, owner.__wbg_ptr);
-        return Instruction.__wrap(ret);
-    }
-    /**
      * @param {Pubkey} pubkey
      * @param {Pubkey} base
      * @param {string} seed
@@ -987,15 +953,20 @@ export class SystemInstruction {
         return Instruction.__wrap(ret);
     }
     /**
-     * @param {Pubkey} from_pubkey
-     * @param {Pubkey} to_pubkey
-     * @param {bigint} lamports
+     * @param {Pubkey} address
+     * @param {Pubkey} base
+     * @param {string} seed
+     * @param {bigint} space
+     * @param {Pubkey} owner
      * @returns {Instruction}
      */
-    static transfer(from_pubkey, to_pubkey, lamports) {
-        _assertClass(from_pubkey, Pubkey);
-        _assertClass(to_pubkey, Pubkey);
-        const ret = wasm.systeminstruction_transfer(from_pubkey.__wbg_ptr, to_pubkey.__wbg_ptr, lamports);
+    static allocateWithSeed(address, base, seed, space, owner) {
+        _assertClass(address, Pubkey);
+        _assertClass(base, Pubkey);
+        const ptr0 = passStringToWasm0(seed, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        _assertClass(owner, Pubkey);
+        const ret = wasm.systeminstruction_allocateWithSeed(address.__wbg_ptr, base.__wbg_ptr, ptr0, len0, space, owner.__wbg_ptr);
         return Instruction.__wrap(ret);
     }
     /**
@@ -1015,33 +986,6 @@ export class SystemInstruction {
         _assertClass(from_owner, Pubkey);
         _assertClass(to_pubkey, Pubkey);
         const ret = wasm.systeminstruction_transferWithSeed(from_pubkey.__wbg_ptr, from_base.__wbg_ptr, ptr0, len0, from_owner.__wbg_ptr, to_pubkey.__wbg_ptr, lamports);
-        return Instruction.__wrap(ret);
-    }
-    /**
-     * @param {Pubkey} pubkey
-     * @param {bigint} space
-     * @returns {Instruction}
-     */
-    static allocate(pubkey, space) {
-        _assertClass(pubkey, Pubkey);
-        const ret = wasm.systeminstruction_allocate(pubkey.__wbg_ptr, space);
-        return Instruction.__wrap(ret);
-    }
-    /**
-     * @param {Pubkey} address
-     * @param {Pubkey} base
-     * @param {string} seed
-     * @param {bigint} space
-     * @param {Pubkey} owner
-     * @returns {Instruction}
-     */
-    static allocateWithSeed(address, base, seed, space, owner) {
-        _assertClass(address, Pubkey);
-        _assertClass(base, Pubkey);
-        const ptr0 = passStringToWasm0(seed, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        _assertClass(owner, Pubkey);
-        const ret = wasm.systeminstruction_allocateWithSeed(address.__wbg_ptr, base.__wbg_ptr, ptr0, len0, space, owner.__wbg_ptr);
         return Instruction.__wrap(ret);
     }
     /**
@@ -1096,6 +1040,59 @@ export class SystemInstruction {
         const ret = wasm.systeminstruction_authorizeNonceAccount(nonce_pubkey.__wbg_ptr, authorized_pubkey.__wbg_ptr, new_authority.__wbg_ptr);
         return Instruction.__wrap(ret);
     }
+    /**
+     * @param {Pubkey} from_pubkey
+     * @param {Pubkey} to_pubkey
+     * @param {Pubkey} base
+     * @param {string} seed
+     * @param {bigint} lamports
+     * @param {bigint} space
+     * @param {Pubkey} owner
+     * @returns {Instruction}
+     */
+    static createAccountWithSeed(from_pubkey, to_pubkey, base, seed, lamports, space, owner) {
+        _assertClass(from_pubkey, Pubkey);
+        _assertClass(to_pubkey, Pubkey);
+        _assertClass(base, Pubkey);
+        const ptr0 = passStringToWasm0(seed, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        _assertClass(owner, Pubkey);
+        const ret = wasm.systeminstruction_createAccountWithSeed(from_pubkey.__wbg_ptr, to_pubkey.__wbg_ptr, base.__wbg_ptr, ptr0, len0, lamports, space, owner.__wbg_ptr);
+        return Instruction.__wrap(ret);
+    }
+    /**
+     * @param {Pubkey} pubkey
+     * @param {Pubkey} owner
+     * @returns {Instruction}
+     */
+    static assign(pubkey, owner) {
+        _assertClass(pubkey, Pubkey);
+        _assertClass(owner, Pubkey);
+        const ret = wasm.systeminstruction_assign(pubkey.__wbg_ptr, owner.__wbg_ptr);
+        return Instruction.__wrap(ret);
+    }
+    /**
+     * @param {Pubkey} pubkey
+     * @param {bigint} space
+     * @returns {Instruction}
+     */
+    static allocate(pubkey, space) {
+        _assertClass(pubkey, Pubkey);
+        const ret = wasm.systeminstruction_allocate(pubkey.__wbg_ptr, space);
+        return Instruction.__wrap(ret);
+    }
+    /**
+     * @param {Pubkey} from_pubkey
+     * @param {Pubkey} to_pubkey
+     * @param {bigint} lamports
+     * @returns {Instruction}
+     */
+    static transfer(from_pubkey, to_pubkey, lamports) {
+        _assertClass(from_pubkey, Pubkey);
+        _assertClass(to_pubkey, Pubkey);
+        const ret = wasm.systeminstruction_transfer(from_pubkey.__wbg_ptr, to_pubkey.__wbg_ptr, lamports);
+        return Instruction.__wrap(ret);
+    }
 }
 
 const TransactionFinalization = (typeof FinalizationRegistry === 'undefined')
@@ -1145,6 +1142,14 @@ export class Transaction {
         wasm.__wbg_transaction_free(ptr, 0);
     }
     /**
+     * Return a message containing all data that should be signed.
+     * @returns {Message}
+     */
+    message() {
+        const ret = wasm.transaction_message(this.__wbg_ptr);
+        return Message.__wrap(ret);
+    }
+    /**
      * Create a new `Transaction`
      * @param {Instructions} instructions
      * @param {Pubkey | null} [payer]
@@ -1163,14 +1168,6 @@ export class Transaction {
         return this;
     }
     /**
-     * Return a message containing all data that should be signed.
-     * @returns {Message}
-     */
-    message() {
-        const ret = wasm.transaction_message(this.__wbg_ptr);
-        return Message.__wrap(ret);
-    }
-    /**
      * Return the serialized message data to sign.
      * @returns {Uint8Array}
      */
@@ -1179,15 +1176,6 @@ export class Transaction {
         var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
         return v1;
-    }
-    /**
-     * Verify the transaction
-     */
-    verify() {
-        const ret = wasm.transaction_verify(this.__wbg_ptr);
-        if (ret[1]) {
-            throw takeFromExternrefTable0(ret[0]);
-        }
     }
     /**
      * @param {Keypair} keypair
@@ -1199,13 +1187,6 @@ export class Transaction {
         wasm.transaction_partialSign(this.__wbg_ptr, keypair.__wbg_ptr, recent_blockhash.__wbg_ptr);
     }
     /**
-     * @returns {boolean}
-     */
-    isSigned() {
-        const ret = wasm.transaction_isSigned(this.__wbg_ptr);
-        return ret !== 0;
-    }
-    /**
      * @returns {Uint8Array}
      */
     toBytes() {
@@ -1213,6 +1194,13 @@ export class Transaction {
         var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
         return v1;
+    }
+    /**
+     * @returns {boolean}
+     */
+    isSigned() {
+        const ret = wasm.transaction_isSigned(this.__wbg_ptr);
+        return ret !== 0;
     }
     /**
      * @param {Uint8Array} bytes
@@ -1226,6 +1214,15 @@ export class Transaction {
             throw takeFromExternrefTable0(ret[1]);
         }
         return Transaction.__wrap(ret[0]);
+    }
+    /**
+     * Verify the transaction
+     */
+    verify() {
+        const ret = wasm.transaction_verify(this.__wbg_ptr);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
 }
 
@@ -1694,6 +1691,11 @@ function __wbg_get_imports() {
         const ret = Instruction.__wrap(arg0);
         return ret;
     };
+    imports.wbg.__wbg_invoke_66a7d88994b712cf = function(arg0, arg1, arg2) {
+        var v0 = getCachedStringFromWasm0(arg0, arg1);
+        const ret = window.__TAURI__.core.invoke(v0, arg2);
+        return ret;
+    };
     imports.wbg.__wbg_isArray_a1eab7e0d067391b = function(arg0) {
         const ret = Array.isArray(arg0);
         return ret;
@@ -1791,7 +1793,7 @@ function __wbg_get_imports() {
                 const a = state0.a;
                 state0.a = 0;
                 try {
-                    return __wbg_adapter_521(a, state0.b, arg0, arg1);
+                    return __wbg_adapter_536(a, state0.b, arg0, arg1);
                 } finally {
                     state0.a = a;
                 }
@@ -2230,6 +2232,13 @@ function __wbg_get_imports() {
         getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
         getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
     };
+    imports.wbg.__wbg_userAgent_12e9d8e62297563f = function() { return handleError(function (arg0, arg1) {
+        const ret = arg1.userAgent;
+        const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
+        getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
+    }, arguments) };
     imports.wbg.__wbg_value_91cbf0dd3ab84c1e = function(arg0, arg1) {
         const ret = arg1.value;
         const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -2286,40 +2295,36 @@ function __wbg_get_imports() {
         const ret = false;
         return ret;
     };
-    imports.wbg.__wbindgen_closure_wrapper3624 = function(arg0, arg1, arg2) {
-        const ret = makeMutClosure(arg0, arg1, 1901, __wbg_adapter_50);
+    imports.wbg.__wbindgen_closure_wrapper4769 = function(arg0, arg1, arg2) {
+        const ret = makeMutClosure(arg0, arg1, 2468, __wbg_adapter_50);
         return ret;
     };
-    imports.wbg.__wbindgen_closure_wrapper3626 = function(arg0, arg1, arg2) {
-        const ret = makeMutClosure(arg0, arg1, 1901, __wbg_adapter_50);
+    imports.wbg.__wbindgen_closure_wrapper4771 = function(arg0, arg1, arg2) {
+        const ret = makeMutClosure(arg0, arg1, 2468, __wbg_adapter_50);
         return ret;
     };
-    imports.wbg.__wbindgen_closure_wrapper3628 = function(arg0, arg1, arg2) {
-        const ret = makeMutClosure(arg0, arg1, 1901, __wbg_adapter_50);
+    imports.wbg.__wbindgen_closure_wrapper4773 = function(arg0, arg1, arg2) {
+        const ret = makeMutClosure(arg0, arg1, 2468, __wbg_adapter_50);
         return ret;
     };
-    imports.wbg.__wbindgen_closure_wrapper3630 = function(arg0, arg1, arg2) {
-        const ret = makeMutClosure(arg0, arg1, 1901, __wbg_adapter_50);
+    imports.wbg.__wbindgen_closure_wrapper4775 = function(arg0, arg1, arg2) {
+        const ret = makeMutClosure(arg0, arg1, 2468, __wbg_adapter_50);
         return ret;
     };
-    imports.wbg.__wbindgen_closure_wrapper5988 = function(arg0, arg1, arg2) {
-        const ret = makeMutClosure(arg0, arg1, 3134, __wbg_adapter_59);
+    imports.wbg.__wbindgen_closure_wrapper6205 = function(arg0, arg1, arg2) {
+        const ret = makeMutClosure(arg0, arg1, 3254, __wbg_adapter_59);
         return ret;
     };
-    imports.wbg.__wbindgen_closure_wrapper6245 = function(arg0, arg1, arg2) {
-        const ret = makeClosure(arg0, arg1, 3213, __wbg_adapter_62);
+    imports.wbg.__wbindgen_closure_wrapper6563 = function(arg0, arg1, arg2) {
+        const ret = makeClosure(arg0, arg1, 3382, __wbg_adapter_62);
         return ret;
     };
-    imports.wbg.__wbindgen_closure_wrapper6343 = function(arg0, arg1, arg2) {
-        const ret = makeMutClosure(arg0, arg1, 3250, __wbg_adapter_65);
+    imports.wbg.__wbindgen_closure_wrapper6584 = function(arg0, arg1, arg2) {
+        const ret = makeMutClosure(arg0, arg1, 3394, __wbg_adapter_65);
         return ret;
     };
-    imports.wbg.__wbindgen_closure_wrapper6345 = function(arg0, arg1, arg2) {
-        const ret = makeMutClosure(arg0, arg1, 3250, __wbg_adapter_68);
-        return ret;
-    };
-    imports.wbg.__wbindgen_closure_wrapper7969 = function(arg0, arg1, arg2) {
-        const ret = makeMutClosure(arg0, arg1, 3277, __wbg_adapter_71);
+    imports.wbg.__wbindgen_closure_wrapper8214 = function(arg0, arg1, arg2) {
+        const ret = makeMutClosure(arg0, arg1, 3418, __wbg_adapter_68);
         return ret;
     };
     imports.wbg.__wbindgen_debug_string = function(arg0, arg1) {
