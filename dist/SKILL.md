@@ -48,6 +48,11 @@ const SPL_MEMO_PROGRAM   = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLG
 const ATA_PROGRAM        = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
 const INSTRUCTIONS_SYSVAR = new PublicKey('Sysvar1nstructions1111111111111111111111111');
 
+// Global state PDAs. Every minting instruction takes MINT_STATE as its LAST account,
+// every burning instruction (process_burn and all app burns) takes GLOBAL_BURN_STATS as its LAST account.
+const [MINT_STATE]        = PublicKey.findProgramAddressSync([Buffer.from('mint_state')], MINT_PROGRAM);
+const [GLOBAL_BURN_STATS] = PublicKey.findProgramAddressSync([Buffer.from('global_burn_stats')], BURN_PROGRAM);
+
 // XNT (native token): 9 decimals
 // MEMO token: 6 decimals (1 MEMO = 1_000_000 lamports)
 ```
@@ -63,8 +68,27 @@ Testnet: https://rpc.testnet.x1.xyz
 
 **Maximum Supply Cap: 10 trillion (10,000,000,000,000) MEMO tokens**. When total supply reaches this cap, no more tokens can be minted.
 
-| Supply Range | Reward per Mint |
+The reward per mint depends on the circulating supply and steps down at every round number
+(memo-mint 0.3.0):
+
+| Supply reaches | Reward per Mint |
 |---|---|
+| below 20M | 1 MEMO |
+| 20M, 30M, ..., 90M | 0.9, 0.8, ..., 0.2 MEMO |
+| 100M | 0.1 MEMO |
+| 200M, ..., 900M | 0.09, ..., 0.02 MEMO |
+| 1B | 0.01 MEMO |
+| each further 10x | 10x less, down to 1 lamport (0.000001 MEMO) just below the cap |
+
+Exact rule (amounts in lamports, 1 MEMO = 1,000,000): below 10M MEMO the reward is 1 MEMO; from
+10M on, in the decade `[10M·10^n, 10M·10^(n+1))` with leading digit `d`, the reward is
+`(1 MEMO / 10^n) · (11 − d) / 10`. Burns lower the circulating supply, so minting never stops permanently.
+
+**One mint per transaction**: a transaction can mint only once, whether it calls `process_mint`
+directly, through chat/blog/forum, or through any other program via CPI. A second mint in the same
+transaction fails with `OneMintPerTransaction`.
+
+---|---|
 | 0 - 100M | 1.0 MEMO |
 | 100M - 1B | 0.1 MEMO |
 | 1B - 10B | 0.01 MEMO |
@@ -117,8 +141,8 @@ Testnet: https://rpc.testnet.x1.xyz
  │  │                             │   │                              │        │
  │  │  Validates:                 │   │  Validates:                  │        │
  │  │  • SPL Memo at index 0     │   │  • SPL Memo at index 0      │        │
- │  │  • Borsh+Base64 memo       │   │  • Memo length 69-800       │        │
- │  │  • Burn amount match       │   │  • Supply cap (10T max)     │        │
+ │  │  • Borsh+Base64 memo       │   │  • Memo ≥ 69 bytes          │        │
+ │  │  • Burn amount match       │   │  • One mint per transaction │        │
  │  │  • User burn stats update  │   │  • Dynamic mint amount      │        │
  │  └──────────────┬──────────────┘   └──────────────┬───────────────┘        │
  │                 │                                  │                        │
@@ -403,6 +427,8 @@ const userAta = await getAssociatedTokenAddress(
 | Account Type | Seeds | Program |
 |---|---|---|
 | Mint Authority | `["mint_authority"]` | Mint Program |
+| Mint State (one mint per tx; LAST account of every mint) | `["mint_state"]` | Mint Program |
+| Global Burn Stats (LAST account of every burn) | `["global_burn_stats"]` | Burn Program |
 | User Profile | `["profile", user_pubkey]` | Profile Program |
 | User Burn Stats | `["user_global_burn_stats", user_pubkey]` | Burn Program |
 | Chat Group | `["chat_group", group_id (u64 LE)]` | Chat Program |
@@ -766,7 +792,9 @@ UTF-8 string → SPL Memo instruction data
 ### Memo Constraints
 
 - Minimum memo length: 69 bytes (Base64 string length)
-- Maximum memo length: 800 bytes (Base64 string length)
+- No contract maximum: the 1,232-byte transaction size limit applies, so the usable length depends on the
+  instruction (more accounts leave less room). Keep memos under ~750 bytes for direct mints and smaller
+  for app instructions, or check the serialized transaction size before sending.
 - SPL Memo instruction must be at **index 0** in the transaction
 
 ### Borsh Encoding Reference
@@ -1850,6 +1878,7 @@ async function mintMemo(connection, keypair, memoText) {
       { pubkey: userAta,           isSigner: false, isWritable: true  },
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+      { pubkey: MINT_STATE,        isSigner: false, isWritable: true  },  // LAST: one mint per transaction
     ],
     programId: MINT_PROGRAM,
     data: anchorDiscriminator('process_mint'),
@@ -1862,7 +1891,9 @@ async function mintMemo(connection, keypair, memoText) {
 const sig = await mintMemo(connection, keypair, 'Hello, MEMO Protocol! This is my first memo on X1.');
 ```
 
-**Memo content**: Plain text, 69-800 bytes. The user writes anything they want.
+**Memo content**: Plain text, at least 69 bytes (no contract maximum; the transaction must fit in 1,232 bytes). The user writes anything they want.
+
+**One mint per transaction**: put exactly one minting instruction in each transaction. To mint several times, send several transactions, each with its own memo.
 
 ### W2. Transfer Native XNT
 
@@ -1943,6 +1974,7 @@ async function createProfile(connection, keypair, username, image, aboutMe = nul
       { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: INSTRUCTIONS_SYSVAR,     isSigner: false, isWritable: false },
+      { pubkey: GLOBAL_BURN_STATS, isSigner: false, isWritable: true  },  // LAST: global burn statistics
     ],
     programId: PROFILE_PROGRAM,
     data: ixData,
@@ -1999,6 +2031,7 @@ async function updateProfile(connection, keypair, username = null, image = null,
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
       { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
+      { pubkey: GLOBAL_BURN_STATS, isSigner: false, isWritable: true  },  // LAST: global burn statistics
     ],
     programId: PROFILE_PROGRAM,
     data: ixData,
@@ -2070,6 +2103,7 @@ async function sendChatMessage(connection, keypair, groupId, message, receiver =
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: MINT_PROGRAM,      isSigner: false, isWritable: false },
       { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+      { pubkey: MINT_STATE,        isSigner: false, isWritable: true  },  // LAST: one mint per transaction
     ],
     programId: CHAT_PROGRAM,
     data: ixData,
@@ -2133,6 +2167,7 @@ async function createChatGroup(connection, keypair, name, description, image, ta
       { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: INSTRUCTIONS_SYSVAR,     isSigner: false, isWritable: false },
+      { pubkey: GLOBAL_BURN_STATS, isSigner: false, isWritable: true  },  // LAST: global burn statistics
     ],
     programId: CHAT_PROGRAM,
     data: ixData,
@@ -2186,6 +2221,7 @@ async function burnForGroup(connection, keypair, groupId, message, burnAmount = 
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
       { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+      { pubkey: GLOBAL_BURN_STATS, isSigner: false, isWritable: true  },  // LAST: global burn statistics
     ],
     programId: CHAT_PROGRAM,
     data: ixData,
@@ -2275,6 +2311,7 @@ async function directCoreBurn(connection, keypair, burnAmountTokens, payload = B
       { pubkey: burnStatsPda,      isSigner: false, isWritable: true  },  // user_global_burn_stats
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },  // token_program
       { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },  // instructions sysvar
+      { pubkey: GLOBAL_BURN_STATS, isSigner: false, isWritable: true  },  // LAST: global burn statistics
     ],
     programId: BURN_PROGRAM,
     data: ixData,
@@ -2346,6 +2383,7 @@ async function createForumPost(connection, keypair, title, content, image, burnA
       { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: INSTRUCTIONS_SYSVAR,     isSigner: false, isWritable: false },
+      { pubkey: GLOBAL_BURN_STATS, isSigner: false, isWritable: true  },  // LAST: global burn statistics
     ],
     programId: FORUM_PROGRAM,
     data: ixData,
@@ -2395,6 +2433,7 @@ async function burnForPost(connection, keypair, postId, message, burnAmount = 1)
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
       { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+      { pubkey: GLOBAL_BURN_STATS, isSigner: false, isWritable: true  },  // LAST: global burn statistics
     ],
     programId: FORUM_PROGRAM,
     data: ixData,
@@ -2449,6 +2488,7 @@ async function mintForPost(connection, keypair, postId, message) {
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: MINT_PROGRAM,      isSigner: false, isWritable: false },
       { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+      { pubkey: MINT_STATE,        isSigner: false, isWritable: true  },  // LAST: one mint per transaction
     ],
     programId: FORUM_PROGRAM,
     data: ixData,
@@ -2499,6 +2539,7 @@ async function createBlog(connection, keypair, name, description, image, burnAmo
       { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: INSTRUCTIONS_SYSVAR,     isSigner: false, isWritable: false },
+      { pubkey: GLOBAL_BURN_STATS, isSigner: false, isWritable: true  },  // LAST: global burn statistics
     ],
     programId: BLOG_PROGRAM,
     data: ixData,
@@ -2549,6 +2590,7 @@ async function updateBlog(connection, keypair, name = null, description = null, 
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
       { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+      { pubkey: GLOBAL_BURN_STATS, isSigner: false, isWritable: true  },  // LAST: global burn statistics
     ],
     programId: BLOG_PROGRAM,
     data: ixData,
@@ -2596,6 +2638,7 @@ async function burnForBlog(connection, keypair, blogOwnerPubkey, message, burnAm
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
       { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+      { pubkey: GLOBAL_BURN_STATS, isSigner: false, isWritable: true  },  // LAST: global burn statistics
     ],
     programId: BLOG_PROGRAM,
     data: ixData,
@@ -2644,6 +2687,7 @@ async function mintForBlog(connection, keypair, blogOwnerPubkey, message) {
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: MINT_PROGRAM,      isSigner: false, isWritable: false },
       { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+      { pubkey: MINT_STATE,        isSigner: false, isWritable: true  },  // LAST: one mint per transaction
     ],
     programId: BLOG_PROGRAM,
     data: anchorDiscriminator('mint_for_blog'),
@@ -2707,6 +2751,7 @@ async function createProject(connection, keypair, name, description, image, webs
       { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: INSTRUCTIONS_SYSVAR,     isSigner: false, isWritable: false },
+      { pubkey: GLOBAL_BURN_STATS, isSigner: false, isWritable: true  },  // LAST: global burn statistics
     ],
     programId: PROJECT_PROGRAM,
     data: ixData,
@@ -2771,6 +2816,7 @@ async function updateProject(connection, keypair, projectId, name = null, descri
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
       { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+      { pubkey: GLOBAL_BURN_STATS, isSigner: false, isWritable: true  },  // LAST: global burn statistics
     ],
     programId: PROJECT_PROGRAM,
     data: ixData,
@@ -2824,6 +2870,7 @@ async function burnForProject(connection, keypair, projectId, message, burnAmoun
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: BURN_PROGRAM,      isSigner: false, isWritable: false },
       { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+      { pubkey: GLOBAL_BURN_STATS, isSigner: false, isWritable: true  },  // LAST: global burn statistics
     ],
     programId: PROJECT_PROGRAM,
     data: ixData,
@@ -3023,54 +3070,258 @@ try {
 
 Anchor reserves codes 6000+. Each program starts from 6000 for its own errors.
 
+Codes below match memo-mint 0.3.0, memo-burn 0.2.0 and the app programs deployed with them.
+**Match errors by name, not by number**: every program numbers its errors from 6000, so the same
+number means different things in different programs (e.g. 6008 is `OneMintPerTransaction` in the
+mint program but `MemoTooFrequent` in the chat program), and an app instruction can fail inside a CPI
+to the mint or burn program. Simulation logs contain `Error Code: <Name>`; use that.
+
 #### Core Burn Program (BURN_PROGRAM)
 
-| Code | Hex | Name | Cause | Fix |
-|---|---|---|---|---|
-| 6000 | 0x1770 | MemoRequired | No SPL Memo at index 0 | Add memo instruction as first instruction |
-| 6001 | 0x1771 | InvalidMemoFormat | Memo is not valid Borsh+Base64 | Check encoding: Borsh serialize → Base64 encode |
-| 6002 | 0x1772 | UnsupportedMemoVersion | `version` ≠ 1 | Set `version: 1` in BurnMemo |
-| 6003 | 0x1773 | BurnAmountTooSmall | Amount < 1 token (< 1,000,000) | Increase burn amount to ≥ 1 token |
-| 6004 | 0x1774 | BurnAmountTooLarge | Amount > 1T tokens per tx | Reduce burn amount |
-| 6005 | 0x1775 | InvalidBurnAmount | Amount not multiple of 1,000,000 | Use whole token amounts only |
-| 6006 | 0x1776 | InvalidTokenAccount | Token account wrong mint | Check ATA is for MEMO_MINT |
-| 6007 | 0x1777 | UnauthorizedMint | Mint ≠ MEMO_MINT | Use correct MEMO_MINT address |
-| 6008 | 0x1778 | UnauthorizedTokenAccount | ATA owner ≠ signer | Use signer's own ATA |
-| 6009 | 0x1779 | BurnAmountMismatch | Memo `burn_amount` ≠ instruction amount | Ensure they match exactly |
-| 6010 | 0x177A | MemoTooShort | Memo < 69 bytes | Ensure encoded memo ≥ 69 bytes |
-| 6011 | 0x177B | MemoTooLong | Memo > 800 bytes | Shorten payload content |
-| 6012 | 0x177C | PayloadTooLong | Payload > 787 bytes | Reduce payload size |
-| 6013 | 0x177D | UnauthorizedUser | Burn stats user ≠ signer | Use correct burn stats PDA |
+| Code | Hex | Name | Message |
+|---|---|---|---|
+| 6000 | 0x1770 | MemoRequired | Transaction must include a memo. |
+| 6001 | 0x1771 | InvalidMemoFormat | Invalid memo format. Expected Borsh-serialized structure. |
+| 6002 | 0x1772 | UnsupportedMemoVersion | Unsupported memo version. Please use the correct memo structure version. |
+| 6003 | 0x1773 | BurnAmountTooSmall | Burn amount too small. Must burn at least 1 token (1,000,000 units for decimal=6). |
+| 6004 | 0x1774 | BurnAmountTooLarge | Burn amount too large. Maximum allowed: 1,000,000,000,000 tokens per burn instruction. |
+| 6005 | 0x1775 | InvalidBurnAmount | Invalid burn amount. Amount must be a multiple of 1,000,000 units (whole tokens only). |
+| 6006 | 0x1776 | InvalidTokenAccount | Invalid token account. Token account must belong to the correct mint. |
+| 6007 | 0x1777 | UnauthorizedMint | Unauthorized mint. Only the specified mint can be used. |
+| 6008 | 0x1778 | UnauthorizedTokenAccount | Unauthorized token account. User must own the token account. |
+| 6009 | 0x1779 | BurnAmountMismatch | Burn amount mismatch. The burn_amount in memo must match the burn amount (in units). |
+| 6010 | 0x177A | MemoTooShort | Memo too short (minimum 69 bytes). |
+| 6011 | 0x177B | UnauthorizedUser | Unauthorized user. User mismatch in global burn statistics account. |
+| 6012 | 0x177C | UnauthorizedAdmin | Unauthorized admin. Only the authorized admin can initialize global burn statistics. |
 
 #### Core Mint Program (MINT_PROGRAM)
 
-| Code | Hex | Name | Cause | Fix |
-|---|---|---|---|---|
-| 6000 | 0x1770 | MemoRequired | No SPL Memo at index 0 | Add memo instruction first |
-| 6001 | 0x1771 | InvalidMemoFormat | Memo contains null bytes | Remove null bytes |
-| 6002 | 0x1772 | MemoTooShort | Memo < 69 bytes | Ensure memo ≥ 69 bytes |
-| 6003 | 0x1773 | MemoTooLong | Memo > 800 bytes | Shorten memo |
-| 6004 | 0x1774 | InvalidTokenAccount | Wrong mint | Use MEMO_MINT ATA |
-| 6005 | 0x1775 | UnauthorizedMint | Wrong mint address | Use correct MEMO_MINT |
-| 6006 | 0x1776 | UnauthorizedTokenAccount | ATA owner ≠ signer | Use signer's own ATA |
-| 6007 | 0x1777 | InvalidMintAuthority | PDA mismatch | Derive from MINT_PROGRAM with seed `"mint_authority"` |
-| 6008 | 0x1778 | SupplyLimitReached | Supply ≥ 10T tokens | Max supply cap hit (unlikely) |
+| Code | Hex | Name | Message |
+|---|---|---|---|
+| 6000 | 0x1770 | MemoRequired | Transaction must include a memo instruction. |
+| 6001 | 0x1771 | MemoTooShort | Memo too short. Must be at least 69 bytes. |
+| 6002 | 0x1772 | InvalidTokenAccount | Invalid token account: Account must belong to the correct mint. |
+| 6003 | 0x1773 | UnauthorizedMint | Unauthorized mint: Only the specified mint address can be used. |
+| 6004 | 0x1774 | UnauthorizedTokenAccount | Unauthorized token account: Token account must be owned by the minting user or the declared recipient. |
+| 6005 | 0x1775 | SupplyLimitReached | Supply limit reached. Maximum supply is 10 trillion tokens. |
+| 6006 | 0x1776 | ArithmeticOverflow | Arithmetic overflow detected. |
+| 6007 | 0x1777 | UnauthorizedAdmin | Unauthorized admin: Only the authorized admin can perform this operation. |
+| 6008 | 0x1778 | OneMintPerTransaction | Only one mint is allowed per transaction. |
+
+#### Chat Program (CHAT_PROGRAM)
+
+| Code | Hex | Name | Message |
+|---|---|---|---|
+| 6000 | 0x1770 | MemoTooShort | Memo too short. Must be at least 69 bytes to meet memo requirements. |
+| 6001 | 0x1771 | InvalidTokenAccount | Invalid token account: Account must belong to the correct mint. |
+| 6002 | 0x1772 | UnauthorizedMint | Unauthorized mint: Only the specified mint address can be used. |
+| 6003 | 0x1773 | UnauthorizedTokenAccount | Unauthorized token account: User must own the token account. |
+| 6004 | 0x1774 | InvalidGroupName | Invalid group name: Name must be 1-64 characters. |
+| 6005 | 0x1775 | InvalidGroupDescription | Invalid group description: Description must be at most 128 characters. |
+| 6006 | 0x1776 | TooManyTags | Too many tags: Maximum 4 tags allowed. |
+| 6007 | 0x1777 | InvalidTag | Invalid tag: Tag must be 1-32 characters. |
+| 6008 | 0x1778 | MemoTooFrequent | Memo sent too frequently: Please wait before sending another memo. |
+| 6009 | 0x1779 | GroupNotFound | Chat group not found. |
+| 6010 | 0x177A | MemoRequired | Memo required: SPL Memo instruction must be present with valid memo content. |
+| 6011 | 0x177B | InvalidMemoFormat | Invalid memo format: Memo must contain valid Borsh-formatted data. |
+| 6012 | 0x177C | UnsupportedMemoVersion | Unsupported memo version. Please use the correct memo structure version. |
+| 6013 | 0x177D | UnsupportedChatGroupDataVersion | Unsupported chat group creation data version. Please use the correct structure version. |
+| 6014 | 0x177E | InvalidChatGroupDataFormat | Invalid chat group creation data format in user_data. Must be valid Borsh-serialized data. |
+| 6015 | 0x177F | GroupIdMismatch | Group ID mismatch: Group ID from memo does not match instruction parameter. |
+| 6016 | 0x1780 | MissingGroupIdField | Missing group_id field in memo. |
+| 6017 | 0x1781 | MissingNameField | Missing name field in memo. |
+| 6018 | 0x1782 | InvalidTagsFormat | Invalid tags format: Tags must be an array of strings. |
+| 6019 | 0x1783 | InvalidGroupIdFormat | Invalid group ID format: Group ID must be a valid u64 number. |
+| 6020 | 0x1784 | BurnAmountTooSmall | Burn amount too small. Must burn at least 42069 tokens (42,069,000,000 units for decimal=6). |
+| 6021 | 0x1785 | InvalidBurnAmount | Invalid burn amount. Amount must be a multiple of 1,000,000 units (whole tokens only). |
+| 6022 | 0x1786 | MissingBurnAmountField | Missing burn_amount field in memo. |
+| 6023 | 0x1787 | InvalidBurnAmountFormat | Invalid burn_amount format in memo. Must be a positive integer in units. |
+| 6024 | 0x1788 | BurnAmountMismatch | Burn amount mismatch. The burn_amount in memo must match the burn amount (in units). |
+| 6025 | 0x1789 | GroupCounterOverflow | Group counter overflow. Maximum number of groups reached. |
+| 6026 | 0x178A | InvalidChatGroupPDA | Invalid chat group PDA. The provided account does not match the expected PDA for this group ID. |
+| 6027 | 0x178B | UnauthorizedAdmin | Unauthorized admin. Only the authorized admin can perform this operation. |
+| 6028 | 0x178C | InvalidGroupImage | Invalid group image: Image info must be at most 256 characters. |
+| 6029 | 0x178D | InvalidCategory | Invalid category: Must be 'chat' for chat group operations. |
+| 6030 | 0x178E | InvalidCategoryLength | Invalid category length. Category must be exactly the expected length. |
+| 6031 | 0x178F | MissingSenderField | Missing sender field in memo. |
+| 6032 | 0x1790 | InvalidSenderFormat | Invalid sender format in memo. Must be a valid Pubkey string. |
+| 6033 | 0x1791 | SenderMismatch | Sender mismatch: The sender in memo must match the transaction signer. |
+| 6034 | 0x1792 | MissingMessageField | Missing message field in memo. |
+| 6035 | 0x1793 | EmptyMessage | Empty message: Message field cannot be empty. |
+| 6036 | 0x1794 | MessageTooLong | Message too long: Message must be at most 512 characters. |
+| 6037 | 0x1795 | InvalidReceiverFormat | Invalid receiver format in memo. Must be a valid Pubkey string. |
+| 6038 | 0x1796 | InvalidReplySignatureFormat | Invalid reply signature format in memo. Must be a valid base58-encoded signature string. |
+| 6039 | 0x1797 | MissingOperationField | Missing operation field in memo. |
+| 6040 | 0x1798 | InvalidOperation | Invalid operation: Operation does not match the expected operation for this instruction. |
+| 6041 | 0x1799 | InvalidOperationLength | Invalid operation length. Operation must be exactly the expected length. |
+| 6042 | 0x179A | UserDataTooLong | User data too long. (maximum 787 bytes). |
+| 6043 | 0x179B | InvalidMemoInterval | Invalid memo interval: Must be between 0 and 86400 seconds (24 hours). |
+| 6044 | 0x179C | UnsupportedChatMessageDataVersion | Unsupported chat message data version. Please use the correct structure version. |
+| 6045 | 0x179D | InvalidChatMessageDataFormat | Invalid chat message data format in payload. Must be valid Borsh-serialized data. |
+| 6046 | 0x179E | UnsupportedChatGroupBurnDataVersion | Unsupported chat group burn data version. Please use the correct structure version. |
+| 6047 | 0x179F | InvalidChatGroupBurnDataFormat | Invalid chat group burn data format in payload. Must be valid Borsh-serialized data. |
+| 6048 | 0x17A0 | InvalidBurnerFormat | Invalid burner format in memo. Must be a valid Pubkey string. |
+| 6049 | 0x17A1 | BurnerMismatch | Burner mismatch: The burner in memo must match the transaction signer. |
+| 6050 | 0x17A2 | BurnMessageTooLong | Burn message too long: Message must be at most 512 characters. |
+| 6051 | 0x17A3 | LeaderboardUpdateFailed | Leaderboard update failed. Unable to process leaderboard entry. |
+| 6052 | 0x17A4 | LeaderboardFull | Leaderboard full. Entry does not qualify for top 100. |
+| 6053 | 0x17A5 | BurnAmountTooLarge | Burn amount too large. Maximum allowed: 1,000,000,000,000 tokens per burn instruction. |
+
+#### Profile Program (PROFILE_PROGRAM)
+
+| Code | Hex | Name | Message |
+|---|---|---|---|
+| 6000 | 0x1770 | MemoTooShort | Memo too short. Must be at least 69 bytes to meet memo requirements. |
+| 6001 | 0x1771 | InvalidTokenAccount | Invalid token account: Account must belong to the correct mint. |
+| 6002 | 0x1772 | UnauthorizedMint | Unauthorized mint: Only the specified mint address can be used. |
+| 6003 | 0x1773 | UnauthorizedTokenAccount | Unauthorized token account: User must own the token account. |
+| 6004 | 0x1774 | UnauthorizedProfileAccess | Unauthorized profile access: User can only access their own profile. |
+| 6005 | 0x1775 | MemoRequired | Memo required: SPL Memo instruction must be present with valid memo content. |
+| 6006 | 0x1776 | InvalidMemoFormat | Invalid memo format: Memo must contain valid Borsh-formatted data. |
+| 6007 | 0x1777 | UnsupportedMemoVersion | Unsupported memo version. Please use the correct memo structure version. |
+| 6008 | 0x1778 | UnsupportedProfileDataVersion | Unsupported profile creation data version. Please use the correct structure version. |
+| 6009 | 0x1779 | InvalidProfileDataFormat | Invalid profile creation data format. Must be valid Borsh-serialized data. |
+| 6010 | 0x177A | InvalidCategory | Invalid category: Must be 'profile' for profile operations. |
+| 6011 | 0x177B | InvalidOperation | Invalid operation: Operation does not match the expected operation for this instruction. |
+| 6012 | 0x177C | InvalidUserPubkeyFormat | Invalid user pubkey format in memo. Must be a valid Pubkey string. |
+| 6013 | 0x177D | UserPubkeyMismatch | User pubkey mismatch: The user pubkey in memo must match the transaction signer. |
+| 6014 | 0x177E | EmptyUsername | Empty username: Username field cannot be empty. |
+| 6015 | 0x177F | UsernameTooLong | Username too long: Username must be at most 32 characters. |
+| 6016 | 0x1780 | ProfileImageTooLong | Profile image too long: Image info must be at most 256 characters. |
+| 6017 | 0x1781 | AboutMeTooLong | About me too long: About me must be at most 128 characters. |
+| 6018 | 0x1782 | BurnAmountTooSmall | Burn amount too small. Must burn at least 420 tokens (420,000,000 units for decimal=6). |
+| 6019 | 0x1783 | BurnAmountTooLarge | Burn amount too large. Maximum allowed: 1,000,000,000,000 tokens per burn instruction. |
+| 6020 | 0x1784 | InvalidBurnAmount | Invalid burn amount. Amount must be a multiple of 1,000,000 units (whole tokens only). |
+| 6021 | 0x1785 | BurnAmountMismatch | Burn amount mismatch. The burn_amount in memo must match the burn amount (in units). |
+
+#### Project Program (PROJECT_PROGRAM)
+
+| Code | Hex | Name | Message |
+|---|---|---|---|
+| 6000 | 0x1770 | MemoTooShort | Memo too short. Must be at least 69 bytes to meet memo requirements. |
+| 6001 | 0x1771 | InvalidTokenAccount | Invalid token account: Account must belong to the correct mint. |
+| 6002 | 0x1772 | UnauthorizedMint | Unauthorized mint: Only the specified mint address can be used. |
+| 6003 | 0x1773 | UnauthorizedTokenAccount | Unauthorized token account: User must own the token account. |
+| 6004 | 0x1774 | UnauthorizedProjectAccess | Unauthorized project access: Only the project creator can perform this operation. |
+| 6005 | 0x1775 | MemoRequired | Memo required: SPL Memo instruction must be present with valid memo content. |
+| 6006 | 0x1776 | InvalidMemoFormat | Invalid memo format: Memo must contain valid Borsh-formatted data. |
+| 6007 | 0x1777 | UnsupportedMemoVersion | Unsupported memo version. Please use the correct memo structure version. |
+| 6008 | 0x1778 | UnsupportedProjectDataVersion | Unsupported project creation data version. Please use the correct structure version. |
+| 6009 | 0x1779 | InvalidProjectDataFormat | Invalid project creation data format. Must be valid Borsh-serialized data. |
+| 6010 | 0x177A | InvalidCategory | Invalid category: Must be 'project' for project operations. |
+| 6011 | 0x177B | InvalidCategoryLength | Invalid category length. Category must be exactly the expected length. |
+| 6012 | 0x177C | InvalidOperation | Invalid operation: Operation does not match the expected operation for this instruction. |
+| 6013 | 0x177D | InvalidOperationLength | Invalid operation length. Operation must be exactly the expected length. |
+| 6014 | 0x177E | InvalidUserPubkeyFormat | Invalid user pubkey format in memo. Must be a valid Pubkey string. |
+| 6015 | 0x177F | UserPubkeyMismatch | User pubkey mismatch: The user pubkey in memo must match the transaction signer. |
+| 6016 | 0x1780 | EmptyProjectName | Empty project name: Project name field cannot be empty. |
+| 6017 | 0x1781 | ProjectNameTooLong | Project name too long: Project name must be at most 64 characters. |
+| 6018 | 0x1782 | InvalidProjectName | Invalid project name: Project name contains invalid characters or format. |
+| 6019 | 0x1783 | ProjectDescriptionTooLong | Project description too long: Description must be at most 128 characters. |
+| 6020 | 0x1784 | InvalidProjectDescription | Invalid project description: Description contains invalid characters or format. |
+| 6021 | 0x1785 | ProjectImageTooLong | Project image too long: Image info must be at most 256 characters. |
+| 6022 | 0x1786 | InvalidProjectImage | Invalid project image: Image info contains invalid characters or format. |
+| 6023 | 0x1787 | ProjectWebsiteTooLong | Project website too long: Website URL must be at most 128 characters. |
+| 6024 | 0x1788 | InvalidProjectWebsite | Invalid project website: Website URL contains invalid characters or format. |
+| 6025 | 0x1789 | InvalidTag | Invalid tag: Tag must be at most 32 characters. |
+| 6026 | 0x178A | TooManyTags | Too many tags: Maximum 4 tags allowed. |
+| 6027 | 0x178B | BurnAmountTooSmall | Burn amount too small. Must burn at least 420 tokens (420,000,000 units for decimal=6). |
+| 6028 | 0x178C | BurnAmountTooLarge | Burn amount too large. Maximum allowed: 1,000,000,000,000 tokens per burn instruction. |
+| 6029 | 0x178D | InvalidBurnAmount | Invalid burn amount. Amount must be a multiple of 1,000,000 units (whole tokens only). |
+| 6030 | 0x178E | BurnAmountMismatch | Burn amount mismatch. The burn_amount in memo must match the burn amount (in units). |
+| 6031 | 0x178F | UnauthorizedAdmin | Unauthorized admin: Only the authorized admin can perform this operation. |
+| 6032 | 0x1790 | GlobalProjectCounterAlreadyInitialized | Global project counter already initialized. |
+| 6033 | 0x1791 | BurnLeaderboardAlreadyInitialized | Burn leaderboard already initialized. |
+| 6034 | 0x1792 | ProjectCounterOverflow | Project counter overflow: Cannot create more projects due to counter overflow. |
+| 6035 | 0x1793 | ProjectIdMismatch | Project ID mismatch: The project_id in memo must match the target project. |
+| 6036 | 0x1794 | UnsupportedProjectBurnDataVersion | Unsupported project burn data version. Please use the correct structure version. |
+| 6037 | 0x1795 | InvalidProjectBurnDataFormat | Invalid project burn data format. Must be valid Borsh-serialized data. |
+| 6038 | 0x1796 | InvalidBurnerPubkeyFormat | Invalid burner pubkey format in memo. Must be a valid Pubkey string. |
+| 6039 | 0x1797 | BurnerPubkeyMismatch | Burner pubkey mismatch: The burner pubkey in memo must match the transaction signer. |
+| 6040 | 0x1798 | BurnMessageTooLong | Burn message too long: Message must be at most 696 characters. |
+
+#### Blog Program (BLOG_PROGRAM)
+
+| Code | Hex | Name | Message |
+|---|---|---|---|
+| 6000 | 0x1770 | MemoTooShort | Memo too short. Must be at least 69 bytes to meet memo requirements. |
+| 6001 | 0x1771 | InvalidTokenAccount | Invalid token account: Account must belong to the correct mint. |
+| 6002 | 0x1772 | UnauthorizedMint | Unauthorized mint: Only the specified mint address can be used. |
+| 6003 | 0x1773 | UnauthorizedTokenAccount | Unauthorized token account: User must own the token account. |
+| 6004 | 0x1774 | UnauthorizedBlogAccess | Unauthorized blog access: Only the blog creator can perform this operation. |
+| 6005 | 0x1775 | MemoRequired | Memo required: SPL Memo instruction must be present with valid memo content. |
+| 6006 | 0x1776 | InvalidMemoFormat | Invalid memo format: Memo must contain valid Borsh-formatted data. |
+| 6007 | 0x1777 | InvalidMintMemoFormat | Invalid mint memo format: For mint operations, burn_amount must be 0. |
+| 6008 | 0x1778 | UnsupportedMemoVersion | Unsupported memo version. Please use the correct memo structure version. |
+| 6009 | 0x1779 | UnsupportedBlogDataVersion | Unsupported blog creation data version. Please use the correct structure version. |
+| 6010 | 0x177A | InvalidBlogDataFormat | Invalid blog creation data format. Must be valid Borsh-serialized data. |
+| 6011 | 0x177B | InvalidCategory | Invalid category: Must be 'blog' for blog operations. |
+| 6012 | 0x177C | InvalidCategoryLength | Invalid category length. Category must be exactly the expected length. |
+| 6013 | 0x177D | InvalidOperation | Invalid operation: Operation does not match the expected operation for this instruction. |
+| 6014 | 0x177E | InvalidOperationLength | Invalid operation length. Operation must be exactly the expected length. |
+| 6015 | 0x177F | InvalidUserPubkeyFormat | Invalid user pubkey format in memo. Must be a valid Pubkey string. |
+| 6016 | 0x1780 | UserPubkeyMismatch | User pubkey mismatch: The user pubkey in memo must match the transaction signer. |
+| 6017 | 0x1781 | EmptyBlogName | Empty blog name: Blog name field cannot be empty. |
+| 6018 | 0x1782 | BlogNameTooLong | Blog name too long: Blog name must be at most 64 characters. |
+| 6019 | 0x1783 | InvalidBlogName | Invalid blog name: Blog name contains invalid characters or format. |
+| 6020 | 0x1784 | BlogDescriptionTooLong | Blog description too long: Description must be at most 256 characters. |
+| 6021 | 0x1785 | InvalidBlogDescription | Invalid blog description: Description contains invalid characters or format. |
+| 6022 | 0x1786 | BlogImageTooLong | Blog image too long: Image info must be at most 256 characters. |
+| 6023 | 0x1787 | InvalidBlogImage | Invalid blog image: Image info contains invalid characters or format. |
+| 6024 | 0x1788 | BurnAmountTooSmall | Burn amount too small. Must burn at least 1 token (1,000,000 units for decimal=6). |
+| 6025 | 0x1789 | BurnAmountTooLarge | Burn amount too large. Maximum allowed: 1,000,000,000,000 tokens per burn instruction. |
+| 6026 | 0x178A | InvalidBurnAmount | Invalid burn amount. Amount must be a multiple of 1,000,000 units (whole tokens only). |
+| 6027 | 0x178B | BurnAmountMismatch | Burn amount mismatch. The burn_amount in memo must match the burn amount (in units). |
+| 6028 | 0x178C | InvalidCreatorPubkeyFormat | Invalid creator pubkey format in memo. Must be a valid Pubkey string. |
+| 6029 | 0x178D | CreatorPubkeyMismatch | Creator pubkey mismatch: The creator pubkey in memo must match the transaction signer. |
+| 6030 | 0x178E | UnsupportedBlogBurnDataVersion | Unsupported blog burn data version. Please use the correct structure version. |
+| 6031 | 0x178F | InvalidBlogBurnDataFormat | Invalid blog burn data format. Must be valid Borsh-serialized data. |
+| 6032 | 0x1790 | UnsupportedBlogMintDataVersion | Unsupported blog mint data version. Please use the correct structure version. |
+| 6033 | 0x1791 | InvalidBlogMintDataFormat | Invalid blog mint data format. Must be valid Borsh-serialized data. |
+| 6034 | 0x1792 | InvalidBurnerPubkeyFormat | Invalid burner pubkey format in memo. Must be a valid Pubkey string. |
+| 6035 | 0x1793 | BurnerPubkeyMismatch | Burner pubkey mismatch: The burner pubkey in memo must match the transaction signer. |
+| 6036 | 0x1794 | InvalidMinterPubkeyFormat | Invalid minter pubkey format in memo. Must be a valid Pubkey string. |
+| 6037 | 0x1795 | MinterPubkeyMismatch | Minter pubkey mismatch: The minter pubkey in memo must match the transaction signer. |
+| 6038 | 0x1796 | MessageTooLong | Message too long: Message must be at most 696 characters. |
 
 #### Forum Program (FORUM_PROGRAM)
 
-| Code | Hex | Name | Cause | Fix |
-|---|---|---|---|---|
-| 6000 | 0x1770 | MemoRequired | No SPL Memo at index 0 | Add memo instruction first |
-| 6001 | 0x1771 | InvalidMemoFormat | Bad Borsh+Base64 | Check encoding |
-| 6002 | 0x1772 | UnsupportedMemoVersion | `version` ≠ 1 | Set `version: 1` |
-| 6003 | 0x1773 | BurnAmountTooSmall | Burn < 1 MEMO for post | Increase burn amount |
-| 6007 | 0x1777 | InvalidPostDataFormat | `PostCreationData` Borsh decode failed | Check field order and types |
-| 6008 | 0x1778 | InvalidPostBurnDataFormat | `PostBurnData` Borsh decode failed | Check field order: version, category, operation, user, post_id, message |
-| 6009 | 0x1779 | InvalidPostMintDataFormat | `PostMintData` Borsh decode failed | Check field order |
-| 6010 | 0x177A | InvalidMintMemoFormat | Mint memo has `burn_amount` ≠ 0 | Set `burn_amount: 0` for mint ops |
-| 6015 | 0x177F | PostIdMismatch | Expected post ID ≠ actual | Re-read global counter |
-| 6019 | 0x1783 | CreatorPubkeyMismatch | Memo creator ≠ signer | Use signer's pubkey in payload |
-| 6026 | 0x178A | ReplyMessageTooLong | Reply > 512 chars | Shorten message |
+| Code | Hex | Name | Message |
+|---|---|---|---|
+| 6000 | 0x1770 | MemoTooShort | Memo too short. Must be at least 69 bytes to meet memo requirements. |
+| 6001 | 0x1771 | InvalidTokenAccount | Invalid token account: Account must belong to the correct mint. |
+| 6002 | 0x1772 | UnauthorizedMint | Unauthorized mint: Only the specified mint address can be used. |
+| 6003 | 0x1773 | UnauthorizedTokenAccount | Unauthorized token account: User must own the token account. |
+| 6004 | 0x1774 | UnauthorizedPostAccess | Unauthorized post access: Only the post creator can perform this operation. |
+| 6005 | 0x1775 | UnauthorizedAdmin | Unauthorized admin: Only the designated admin can perform this operation. |
+| 6006 | 0x1776 | PostCounterOverflow | Post counter overflow: Maximum number of posts (u64::MAX) reached. No more posts can be created. |
+| 6007 | 0x1777 | MemoRequired | Memo required: SPL Memo instruction must be present with valid memo content. |
+| 6008 | 0x1778 | InvalidMemoFormat | Invalid memo format: Memo must contain valid Borsh-formatted data. |
+| 6009 | 0x1779 | InvalidMintMemoFormat | Invalid mint memo format: For mint operations, burn_amount must be 0. |
+| 6010 | 0x177A | UnsupportedMemoVersion | Unsupported memo version. Please use the correct memo structure version. |
+| 6011 | 0x177B | UnsupportedPostDataVersion | Unsupported post creation/update data version. Please use the correct structure version. |
+| 6012 | 0x177C | InvalidPostDataFormat | Invalid post creation/update data format. Must be valid Borsh-serialized data. |
+| 6013 | 0x177D | InvalidCategory | Invalid category: Must be 'forum' for forum operations. |
+| 6014 | 0x177E | InvalidCategoryLength | Invalid category length. Category must be exactly the expected length. |
+| 6015 | 0x177F | InvalidOperation | Invalid operation: Operation does not match the expected operation for this instruction. |
+| 6016 | 0x1780 | InvalidOperationLength | Invalid operation length. Operation must be exactly the expected length. |
+| 6017 | 0x1781 | InvalidCreatorPubkeyFormat | Invalid creator pubkey format in memo. Must be a valid Pubkey string. |
+| 6018 | 0x1782 | CreatorPubkeyMismatch | Creator pubkey mismatch: The creator pubkey in memo must match the transaction signer. |
+| 6019 | 0x1783 | InvalidUserPubkeyFormat | Invalid user pubkey format in memo. Must be a valid Pubkey string. |
+| 6020 | 0x1784 | UserPubkeyMismatch | User pubkey mismatch: The user pubkey in memo must match the transaction signer. |
+| 6021 | 0x1785 | PostIdMismatch | Post ID mismatch: The post_id in memo must match the instruction parameter. |
+| 6022 | 0x1786 | InvalidPostTitle | Invalid post title: Title must be 1-128 characters. |
+| 6023 | 0x1787 | InvalidPostContent | Invalid post content: Content must be 1-512 characters. |
+| 6024 | 0x1788 | InvalidPostImage | Invalid post image: Image must be at most 256 characters. |
+| 6025 | 0x1789 | BurnAmountTooSmall | Burn amount too small. Must burn at least 1 token (1,000,000 units for decimal=6). |
+| 6026 | 0x178A | BurnAmountTooLarge | Burn amount too large. Maximum allowed: 1,000,000,000,000 tokens per burn instruction. |
+| 6027 | 0x178B | InvalidBurnAmount | Invalid burn amount. Amount must be a multiple of 1,000,000 units (whole tokens only). |
+| 6028 | 0x178C | BurnAmountMismatch | Burn amount mismatch. The burn_amount in memo must match the burn amount (in units). |
+| 6029 | 0x178D | UnsupportedPostBurnDataVersion | Unsupported post burn data version. Please use the correct structure version. |
+| 6030 | 0x178E | InvalidPostBurnDataFormat | Invalid post burn data format. Must be valid Borsh-serialized data. |
+| 6031 | 0x178F | UnsupportedPostMintDataVersion | Unsupported post mint data version. Please use the correct structure version. |
+| 6032 | 0x1790 | InvalidPostMintDataFormat | Invalid post mint data format. Must be valid Borsh-serialized data. |
+| 6033 | 0x1791 | ReplyMessageTooLong | Reply message too long: Message must be at most 512 characters. |
 
 #### Solana Runtime Errors (Pre-program)
 
@@ -3132,6 +3383,7 @@ const MEMO_MINT = new PublicKey('memoX1sJsBY6od7CfQ58XooRALwnocAZen4L7mW1ick');
 const MINT_PROGRAM    = new PublicKey('8iq6zqaEVcfaym2u8t939PAN5jmfPVc6Z333RuxKTTZX');
 const SPL_MEMO_PROGRAM = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
 const INSTRUCTIONS_SYSVAR = new PublicKey('Sysvar1nstructions1111111111111111111111111');
+const [MINT_STATE] = PublicKey.findProgramAddressSync([Buffer.from('mint_state')], MINT_PROGRAM);
 
 // ── Helpers ──
 function anchorDiscriminator(name) {
@@ -3205,6 +3457,7 @@ async function main() {
       { pubkey: userAta,           isSigner: false, isWritable: true  },
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: INSTRUCTIONS_SYSVAR,   isSigner: false, isWritable: false },
+      { pubkey: MINT_STATE,        isSigner: false, isWritable: true  },  // LAST: one mint per transaction
     ],
     programId: MINT_PROGRAM,
     data: anchorDiscriminator('process_mint'),

@@ -281,10 +281,18 @@ impl RpcConnection {
                                         for log_entry in logs {
                                             if let Some(log_str) = log_entry.as_str() {
                                                 if log_str.contains("Error Message:") {
-                                                    // Extract the error message after "Error Message:"
+                                                    // Extract the error message after "Error Message:", plus the
+                                                    // error name after "Error Code:" (names are stable, numbers are not)
                                                     if let Some(msg_start) = log_str.find("Error Message:") {
                                                         let error_msg = &log_str[msg_start + 14..].trim();
-                                                        specific_error = Some(error_msg.to_string());
+                                                        let error_name = log_str.find("Error Code: ").and_then(|start| {
+                                                            let rest = &log_str[start + 12..];
+                                                            rest.find('.').map(|end| rest[..end].to_string())
+                                                        });
+                                                        specific_error = Some(match error_name {
+                                                            Some(name) => format!("{} [{}]", error_msg, name),
+                                                            None => error_msg.to_string(),
+                                                        });
                                                         log::error!("Extracted error message: {}", error_msg);
                                                         break;
                                                     }
@@ -363,6 +371,10 @@ impl RpcConnection {
     }
 
     pub async fn simulate_transaction(&self, serialized_tx: &str, options: Option<serde_json::Value>) -> Result<String, RpcError> {
+        // base64 (with padding) -> raw byte length
+        let padding = serialized_tx.bytes().rev().take_while(|b| *b == b'=').count();
+        check_transaction_size(serialized_tx.len() / 4 * 3 - padding)?;
+
         let params = if let Some(opts) = options {
             serde_json::json!([serialized_tx, opts])
         } else {
@@ -428,16 +440,28 @@ impl RpcConnection {
         let post_token_balances = result["meta"]["postTokenBalances"]
             .as_array();
         
-        let memo_balance = if let Some(token_balances) = post_token_balances {
+        let memo_from_tx = post_token_balances.and_then(|token_balances| {
             token_balances.iter()
                 .find(|tb| {
                     tb["mint"].as_str() == Some(memo_mint) &&
                     tb["owner"].as_str() == Some(user_pubkey)
                 })
                 .and_then(|tb| tb["uiTokenAmount"]["uiAmount"].as_f64())
-                .unwrap_or(0.0)
-        } else {
-            0.0
+        });
+
+        // A transaction that does not touch the user's MEMO account (e.g. initializing burn
+        // stats) has no MEMO post balance; read the current balance instead of reporting 0.
+        let memo_balance = match memo_from_tx {
+            Some(balance) => balance,
+            None => {
+                let accounts: serde_json::Value = serde_json::from_str(&self.get_token_balance(user_pubkey, memo_mint).await?)
+                    .map_err(|e| RpcError::Other(format!("Failed to parse token balance: {}", e)))?;
+                accounts["value"].as_array()
+                    .map(|list| list.iter()
+                        .filter_map(|a| a["account"]["data"]["parsed"]["info"]["tokenAmount"]["uiAmount"].as_f64())
+                        .sum())
+                    .unwrap_or(0.0)
+            }
         };
         
         Ok((sol_balance, memo_balance))
@@ -482,8 +506,10 @@ impl RpcConnection {
         transaction: &Transaction,
     ) -> Result<String, RpcError> {
         // Serialize transaction
-        let serialized_tx = base64::encode(bincode::serialize(transaction)
-            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?);
+        let tx_bytes = bincode::serialize(transaction)
+            .map_err(|e| RpcError::Other(format!("Failed to serialize transaction: {}", e)))?;
+        check_transaction_size(tx_bytes.len())?;
+        let serialized_tx = base64::encode(tx_bytes);
         
         let params = serde_json::json!([
             serialized_tx,
@@ -631,6 +657,38 @@ pub fn get_token_mint() -> Result<Pubkey, RpcError> {
     let program_ids = get_program_ids();
     Pubkey::from_str(program_ids.token_mint)
         .map_err(|e| RpcError::InvalidAddress(format!("Invalid token mint: {}", e)))
+}
+
+/// memo-mint's MintState PDA (seeds = [b"mint_state"]).
+/// Every minting instruction (process_mint, and the chat/blog/forum mint instructions)
+/// takes it as its LAST account; the contract allows one mint per transaction.
+pub fn get_mint_state_pda() -> Result<Pubkey, RpcError> {
+    let program_ids = get_program_ids();
+    let mint_program_id = Pubkey::from_str(program_ids.mint_program_id)
+        .map_err(|e| RpcError::InvalidAddress(format!("Invalid mint program ID: {}", e)))?;
+    Ok(Pubkey::find_program_address(&[b"mint_state"], &mint_program_id).0)
+}
+
+/// memo-burn's GlobalBurnStats PDA (seeds = [b"global_burn_stats"]).
+/// Every burning instruction (process_burn, and every app instruction that burns via memo-burn)
+/// takes it as its LAST account.
+pub fn get_global_burn_stats_pda() -> Result<Pubkey, RpcError> {
+    let program_ids = get_program_ids();
+    let burn_program_id = Pubkey::from_str(program_ids.burn_program_id)
+        .map_err(|e| RpcError::InvalidAddress(format!("Invalid burn program ID: {}", e)))?;
+    Ok(Pubkey::find_program_address(&[b"global_burn_stats"], &burn_program_id).0)
+}
+
+/// The contracts have no maximum memo length; the transaction size limit applies instead.
+/// Reject oversized transactions with a clear message before the RPC does.
+pub fn check_transaction_size(size: usize) -> Result<(), RpcError> {
+    if size > MAX_TRANSACTION_SIZE {
+        return Err(RpcError::Other(format!(
+            "Content too long: the transaction is {} bytes, {} bytes over the {}-byte limit. Please shorten the text.",
+            size, size - MAX_TRANSACTION_SIZE, MAX_TRANSACTION_SIZE
+        )));
+    }
+    Ok(())
 }
 
 /// Get the Token 2022 program ID from network configuration

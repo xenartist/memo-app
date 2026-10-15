@@ -43,6 +43,16 @@ impl ToString for GroupsDisplayMode {
     }
 }
 
+
+/// Drop the "[ErrorName]" suffix that rpc_base adds after a contract error message
+/// (kept in the error string for matching, not meant for display)
+fn strip_error_name(msg: &str) -> &str {
+    match msg.rfind(" [") {
+        Some(pos) if msg.ends_with(']') => &msg[..pos],
+        _ => msg,
+    }
+}
+
 #[component]
 pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     // state for burn leaderboard
@@ -99,11 +109,15 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
     create_effect(move |_| {
         let _ = messages.get(); // Track messages changes
         
+        // Grab the element now, while the component is alive: after the delay below the page may
+        // have been left and the node ref disposed (reading it then would panic and abort the app)
+        let messages_area = messages_area_ref.get_untracked();
+
         // Small delay to ensure DOM is updated
         spawn_local(async move {
             TimeoutFuture::new(100).await;
             
-            if let Some(messages_area) = messages_area_ref.get() {
+            if let Some(messages_area) = messages_area {
                 // Scroll to maximum position to show new messages above the input area
                 // scrollHeight - clientHeight gives the maximum scrollable position
                 // The 300px bottom padding ensures messages stay visible above the fixed input
@@ -562,12 +576,12 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                 if let Some(dash_pos) = error_string.rfind(" - ") {
                                     let specific_msg = &error_string[dash_pos + 3..];
                                     // Clean up the message (remove trailing dots if any)
-                                    let cleaned_msg = specific_msg.trim_end_matches('.');
+                                    let cleaned_msg = strip_error_name(specific_msg).trim_end_matches('.');
                                     if !cleaned_msg.is_empty() {
                                         cleaned_msg.to_string()
                                     } else {
                                         // Fallback to checking known error types
-                                        if error_string.contains("MemoTooFrequent") || error_string.contains("6009") {
+                                        if error_string.contains("MemoTooFrequent") {
                                             "Message sent too frequently. Please wait before sending another message.".to_string()
                                         } else if error_string.contains("timeout") {
                                             "Message send timeout. Please try again.".to_string()
@@ -579,7 +593,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                                     }
                                 } else {
                                     // Fallback to checking known error types
-                                    if error_string.contains("MemoTooFrequent") || error_string.contains("6009") {
+                                    if error_string.contains("MemoTooFrequent") {
                                         "Message sent too frequently. Please wait before sending another message.".to_string()
                                     } else if error_string.contains("timeout") {
                                         "Message send timeout. Please try again.".to_string()
@@ -711,7 +725,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                             log::error!("Retry failed: {}", e);
                             
                             // Parse error to show user-friendly English message
-                            let user_friendly_error = if e.to_string().contains("MemoTooFrequent") || e.to_string().contains("6009") {
+                            let user_friendly_error = if e.to_string().contains("MemoTooFrequent") {
                                 "Message sent too frequently. Please wait before sending another message."
                             } else if e.to_string().contains("timeout") {
                                 "Message send timeout. Please try again."
@@ -758,7 +772,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
 
     // Helper function to extract fallback error messages
     let _extract_fallback_error_message = |error_str: &str| -> String {
-        if error_str.contains("MemoTooFrequent") || error_str.contains("6009") {
+        if error_str.contains("MemoTooFrequent") {
             "Message sent too frequently. Please wait before sending another message.".to_string()
         } else if error_str.contains("timeout") {
             "Message send timeout. Please try again.".to_string()
@@ -923,7 +937,7 @@ pub fn ChatPage(session: RwSignal<Session>) -> impl IntoView {
                             let user_friendly_error = 
                                 if let Some(dash_pos) = error_string.rfind(" - ") {
                                     let specific_msg = &error_string[dash_pos + 3..];
-                                    let cleaned_msg = specific_msg.trim_end_matches('.');
+                                    let cleaned_msg = strip_error_name(specific_msg).trim_end_matches('.');
                                     if !cleaned_msg.is_empty() {
                                         cleaned_msg.to_string()
                                     } else {
