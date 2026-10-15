@@ -436,6 +436,31 @@ pub fn LoginStep(
                                 } else {
                                     view! { <></> }.into_view()
                                 }}
+
+                                // Seed Vault is only available on Android
+                                {if is_android() {
+                                    view! {
+                                        <>
+                                        <div class="divider">
+                                            <span class="divider-text">"OR"</span>
+                                        </div>
+
+                                        <div class="button-group wallet-connect-buttons">
+                                            <button
+                                                class="wallet-btn seed-vault-wallet"
+                                                on:click=move |_| {
+                                                    set_current_step.set(CreateWalletStep::SeedVaultConnect);
+                                                }
+                                            >
+                                                <span class="seed-vault-icon">"🔐"</span>
+                                                " Connect Seed Vault"
+                                            </button>
+                                        </div>
+                                        </>
+                                    }.into_view()
+                                } else {
+                                    view! { <></> }.into_view()
+                                }}
                             </div>
                         }
                     }

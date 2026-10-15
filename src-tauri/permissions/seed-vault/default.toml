@@ -1,0 +1,37 @@
+"$schema" = "../../gen/schemas/schema.json"
+
+[[permission]]
+identifier = "allow-is-available"
+description = "Enables the is_available command"
+commands.allow = ["is_available"]
+
+[[permission]]
+identifier = "allow-authorize-seed"
+description = "Enables the authorize_seed command"
+commands.allow = ["authorize_seed"]
+
+[[permission]]
+identifier = "allow-get-authorized-seeds"
+description = "Enables the get_authorized_seeds command"
+commands.allow = ["get_authorized_seeds"]
+
+[[permission]]
+identifier = "allow-get-accounts"
+description = "Enables the get_accounts command"
+commands.allow = ["get_accounts"]
+
+[[permission]]
+identifier = "allow-sign-transaction"
+description = "Enables the sign_transaction command"
+commands.allow = ["sign_transaction"]
+
+[[set]]
+identifier = "default"
+description = "Default permissions for the seed-vault plugin"
+permissions = [
+  "allow-is-available",
+  "allow-authorize-seed",
+  "allow-get-authorized-seeds",
+  "allow-get-accounts",
+  "allow-sign-transaction"
+]

@@ -9,6 +9,11 @@
     "core:default",
     "opener:default",
     "log:default",
-    "store:default"
+    "store:default",
+    "allow-is-available",
+    "allow-authorize-seed",
+    "allow-get-authorized-seeds",
+    "allow-get-accounts",
+    "allow-sign-transaction"
   ]
 }

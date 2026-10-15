@@ -8,6 +8,7 @@ use crate::core::rpc_burn::{UserGlobalBurnStats};
 use crate::core::network_config::{NetworkType, clear_network};
 use crate::core::backpack::{BackpackWallet, BackpackError};
 use crate::core::x1::{X1Wallet, X1Error};
+use crate::core::seed_vault::{SeedVault, SeedVaultError};
 use crate::core::rpc_xdex::XDexConnection;
 use web_sys::js_sys::Date;
 use secrecy::{Secret, ExposeSecret};
@@ -30,6 +31,8 @@ pub enum WalletType {
     Backpack,
     /// X1 web wallet
     X1,
+    /// Solana Mobile Seed Vault (Android only)
+    SeedVault,
 }
 
 #[derive(Debug, Clone)]
@@ -42,6 +45,7 @@ pub enum SessionError {
     ProfileError(String),
     BackpackError(String),
     X1Error(String),
+    SeedVaultError(String),
 }
 
 impl fmt::Display for SessionError {
@@ -55,6 +59,7 @@ impl fmt::Display for SessionError {
             SessionError::ProfileError(msg) => write!(f, "Profile error: {}", msg),
             SessionError::BackpackError(msg) => write!(f, "Backpack wallet error: {}", msg),
             SessionError::X1Error(msg) => write!(f, "X1 wallet error: {}", msg),
+            SessionError::SeedVaultError(msg) => write!(f, "Seed Vault error: {}", msg),
         }
     }
 }
@@ -68,6 +73,12 @@ impl From<BackpackError> for SessionError {
 impl From<X1Error> for SessionError {
     fn from(error: X1Error) -> Self {
         SessionError::X1Error(error.to_string())
+    }
+}
+
+impl From<SeedVaultError> for SessionError {
+    fn from(error: SeedVaultError) -> Self {
+        SessionError::SeedVaultError(error.to_string())
     }
 }
 
@@ -104,6 +115,10 @@ pub struct Session {
     backpack_pubkey: Option<String>,
     // X1 public key (only for X1 wallet)
     x1_pubkey: Option<String>,
+    // Seed Vault public key (only for SeedVault wallet)
+    seed_vault_pubkey: Option<String>,
+    // Seed Vault auth token (only for SeedVault wallet)
+    seed_vault_auth_token: Option<i64>,
     // UI locked
     ui_locked: bool,
     // user profile
@@ -131,6 +146,8 @@ impl Session {
             session_key: None,
             backpack_pubkey: None,
             x1_pubkey: None,
+            seed_vault_pubkey: None,
+            seed_vault_auth_token: None,
             ui_locked: false,
             user_profile: None,
             cached_pubkey: None,
@@ -161,6 +178,16 @@ impl Session {
     pub fn is_internal_wallet(&self) -> bool {
         self.wallet_type == WalletType::Internal
     }
+
+    /// Check if session is using Seed Vault
+    pub fn is_seed_vault(&self) -> bool {
+        self.wallet_type == WalletType::SeedVault
+    }
+
+    /// Get Seed Vault auth token (needed for signing)
+    pub fn get_seed_vault_auth_token(&self) -> Option<i64> {
+        self.seed_vault_auth_token
+    }
     
     /// Set network for this session (called during login)
     pub fn set_network(&mut self, network: NetworkType) {
@@ -185,6 +212,8 @@ impl Session {
         self.session_key = None;
         self.backpack_pubkey = None;
         self.x1_pubkey = None;
+        self.seed_vault_pubkey = None;
+        self.seed_vault_auth_token = None;
         self.user_profile = None;
         self.cached_pubkey = None;
         self.sol_balance = 0.0;
@@ -328,6 +357,37 @@ impl Session {
         Ok(pubkey)
     }
 
+    /// Initialize session with Seed Vault (Android only)
+    ///
+    /// This method authorizes a seed in the Seed Vault and retrieves the public key.
+    /// No private key is ever exposed - all signing is done through the Seed Vault secure environment.
+    pub async fn initialize_with_seed_vault(&mut self) -> Result<String, SessionError> {
+        log::info!("Initializing session with Seed Vault...");
+
+        // Connect to Seed Vault (authorize seed + get public key)
+        let (auth_token, pubkey) = SeedVault::connect().await?;
+
+        log::info!("Connected to Seed Vault: {}", &pubkey);
+
+        // Validate the public key
+        Pubkey::from_str(&pubkey)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid public key from Seed Vault: {}", e)))?;
+
+        // Save session info (SeedVault wallet)
+        self.wallet_type = WalletType::SeedVault;
+        self.seed_vault_pubkey = Some(pubkey.clone());
+        self.seed_vault_auth_token = Some(auth_token);
+        self.backpack_pubkey = None;
+        self.x1_pubkey = None;
+        self.cached_pubkey = Some(pubkey.clone());
+        self.encrypted_seed = None;
+        self.session_key = None;
+        self.start_time = Date::now();
+
+        log::info!("Session initialized with Seed Vault");
+        Ok(pubkey)
+    }
+
     // check if session is expired
     pub fn is_expired(&self) -> bool {
         match self.config.timeout_minutes {
@@ -370,6 +430,8 @@ impl Session {
         self.encrypted_seed = None;
         self.backpack_pubkey = None;
         self.x1_pubkey = None;
+        self.seed_vault_pubkey = None;
+        self.seed_vault_auth_token = None;
         self.cached_pubkey = None;
         self.user_profile = None;
         self.sol_balance = 0.0;
@@ -646,6 +708,10 @@ impl Session {
             WalletType::X1 => {
                 // X1 wallet: sign via JavaScript bridge
                 self.sign_transaction_x1(transaction).await
+            },
+            WalletType::SeedVault => {
+                // Seed Vault: sign via Tauri plugin bridge
+                self.sign_transaction_seed_vault(transaction).await
             }
         }
     }
@@ -733,7 +799,50 @@ impl Session {
         *transaction = signed_transaction;
         
         log::debug!("Transaction signed successfully with X1 wallet");
-        
+
+        Ok(())
+    }
+
+    /// Sign a transaction using Seed Vault (Android only)
+    ///
+    /// The Seed Vault signs the transaction in a secure execution environment.
+    /// The private key never leaves the secure environment.
+    async fn sign_transaction_seed_vault(&self, transaction: &mut Transaction) -> Result<(), SessionError> {
+        let auth_token = self.seed_vault_auth_token
+            .ok_or_else(|| SessionError::SeedVaultError("No Seed Vault auth token".to_string()))?;
+
+        // Serialize transaction to base64
+        let tx_bytes = bincode::serialize(&transaction)
+            .map_err(|e| SessionError::InvalidData(format!("Failed to serialize transaction: {}", e)))?;
+        let tx_base64 = base64::encode(&tx_bytes);
+
+        log::debug!("Requesting signature from Seed Vault...");
+
+        // Call Seed Vault to sign the transaction
+        let signature_base64 = SeedVault::sign_transaction(auth_token, &tx_base64).await?;
+
+        // Decode the signature (64 bytes Ed25519 signature)
+        let signature_bytes = base64::decode(&signature_base64)
+            .map_err(|e| SessionError::InvalidData(format!("Failed to decode Seed Vault signature: {}", e)))?;
+
+        let signature = solana_sdk::signature::Signature::try_from(signature_bytes.as_slice())
+            .map_err(|e| SessionError::InvalidData(format!("Invalid signature from Seed Vault: {}", e)))?;
+
+        // Get the pubkey to find the right position in the signature list
+        let pubkey_str = self.seed_vault_pubkey.as_ref()
+            .ok_or_else(|| SessionError::SeedVaultError("No Seed Vault pubkey".to_string()))?;
+        let pubkey = Pubkey::from_str(pubkey_str)
+            .map_err(|e| SessionError::InvalidData(format!("Invalid Seed Vault pubkey: {}", e)))?;
+
+        // Find the signer index and insert the signature
+        let position = transaction.message.account_keys.iter()
+            .position(|k| k == &pubkey)
+            .ok_or_else(|| SessionError::SeedVaultError("Pubkey not found in transaction signers".to_string()))?;
+
+        transaction.signatures[position] = signature;
+
+        log::debug!("Transaction signed successfully with Seed Vault");
+
         Ok(())
     }
 
