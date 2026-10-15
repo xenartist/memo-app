@@ -23,9 +23,24 @@ use serde::{Serialize, Deserialize};
 pub struct SupplyTier {
     pub min: u64,
     pub max: u64,
+    /// Reward per mint in tokens. For the current tier (get_current_supply_tier) this is the
+    /// exact reward at the current supply; in get_supply_tiers it is the reward at the tier start.
     pub reward: f64,
     pub label: String,
+    /// Reward range inside the tier, for display (e.g. "0.9 → 0.2")
+    pub reward_label: String,
 }
+
+// Emission curve, identical to memo-mint 0.3.0 (amounts in units, 1 token = 1,000,000 units).
+// Below 10M every mint pays 1 token. From 10M on, supply is split into decades
+// [10M * 10^n, 10M * 10^(n+1)); inside a decade, supply with leading digit d pays
+// decade_base * (11 - d) / 10, decade_base = 1 token / 10^n, so the reward drops by a tenth
+// of the decade base at every round number: 10M: 1, 20M: 0.9, ..., 90M: 0.2, 100M: 0.1,
+// 200M: 0.09, ..., 1B: 0.01, ... down to 1 unit just below the 10T cap.
+const UNITS_PER_TOKEN: u64 = 1_000_000;
+const CURVE_START_UNITS: u64 = 10_000_000 * UNITS_PER_TOKEN;
+const BASE_MINT_UNITS: u64 = UNITS_PER_TOKEN;
+const MAX_SUPPLY_UNITS: u64 = 10_000_000_000_000 * UNITS_PER_TOKEN;
 
 // Mint contract configuration
 pub struct MintConfig;
@@ -70,29 +85,56 @@ impl MintConfig {
         discriminator
     }
 
-    /// Get all available supply tiers
+    /// Exact mint amount in units at the given supply (0 once the 10T cap is reached),
+    /// same arithmetic as the memo-mint contract
+    pub fn calculate_mint_amount_units(supply: u64) -> u64 {
+        if supply >= MAX_SUPPLY_UNITS {
+            return 0;
+        }
+        let amount = if supply < CURVE_START_UNITS {
+            BASE_MINT_UNITS
+        } else {
+            let mut magnitude = CURVE_START_UNITS;
+            let mut decade_base = BASE_MINT_UNITS;
+            while supply / 10 >= magnitude {
+                magnitude *= 10;
+                decade_base /= 10;
+            }
+            let digit = supply / magnitude; // 1..=9
+            decade_base * (11 - digit) / 10
+        };
+        if supply.saturating_add(amount) > MAX_SUPPLY_UNITS { 0 } else { amount }
+    }
+
+    /// Get all supply tiers shown on the progress bar (one per decade; the reward steps down
+    /// at every round number inside a tier)
     pub fn get_supply_tiers() -> Vec<SupplyTier> {
+        const M: u64 = 1_000_000 * UNITS_PER_TOKEN; // 1M tokens in units
+        let tier = |min: u64, max: u64, reward: f64, label: &str, reward_label: &str| SupplyTier {
+            min, max, reward, label: label.to_string(), reward_label: reward_label.to_string(),
+        };
         vec![
-            SupplyTier { min: 0, max: 100_000_000_000_000, reward: 1.0, label: "0-100M".to_string() },
-            SupplyTier { min: 100_000_000_000_000, max: 1_000_000_000_000_000, reward: 0.1, label: "100M-1B".to_string() },
-            SupplyTier { min: 1_000_000_000_000_000, max: 10_000_000_000_000_000, reward: 0.01, label: "1B-10B".to_string() },
-            SupplyTier { min: 10_000_000_000_000_000, max: 100_000_000_000_000_000, reward: 0.001, label: "10B-100B".to_string() },
-            SupplyTier { min: 100_000_000_000_000_000, max: 1_000_000_000_000_000_000, reward: 0.0001, label: "100B-1T".to_string() },
-            SupplyTier { min: 1_000_000_000_000_000_000, max: u64::MAX, reward: 0.000001, label: "1T+".to_string() },
+            tier(0, 20 * M, 1.0, "0-20M", "1"),
+            tier(20 * M, 100 * M, 0.9, "20M-100M", "0.9 → 0.2"),
+            tier(100 * M, 1_000 * M, 0.1, "100M-1B", "0.1 → 0.02"),
+            tier(1_000 * M, 10_000 * M, 0.01, "1B-10B", "0.01 → 0.002"),
+            tier(10_000 * M, 100_000 * M, 0.001, "10B-100B", "0.001 → 0.0002"),
+            tier(100_000 * M, MAX_SUPPLY_UNITS, 0.0001, "100B-10T", "0.0001 → 0.000001"),
         ]
     }
     
-    /// Get the current supply tier based on total supply
+    /// Get the current supply tier; its `reward` is the exact reward at this supply
     pub fn get_current_supply_tier(supply: u64) -> SupplyTier {
-        Self::get_supply_tiers().into_iter()
+        let mut tier = Self::get_supply_tiers().into_iter()
             .find(|tier| supply >= tier.min && supply < tier.max)
-            .unwrap_or_else(|| Self::get_supply_tiers().last().unwrap().clone())
+            .unwrap_or_else(|| Self::get_supply_tiers().last().unwrap().clone());
+        tier.reward = Self::calculate_mint_reward(supply);
+        tier
     }
     
-    /// Calculate mint reward amount based on current supply
+    /// Calculate mint reward (in tokens) based on current supply
     pub fn calculate_mint_reward(supply: u64) -> f64 {
-        let tier = Self::get_current_supply_tier(supply);
-        tier.reward
+        Self::calculate_mint_amount_units(supply) as f64 / UNITS_PER_TOKEN as f64
     }
     
     /// Format mint amount for display (smart decimal precision)
@@ -129,12 +171,13 @@ impl MintConfig {
     pub fn calculate_visual_progress_percentage(supply: u64) -> f64 {
         // Define visual breakpoints to make the left range look bigger
         let visual_breakpoints = [
-            (0u64, 0.0f64),                           // 0% 
-            (100_000_000_000_000u64, 50.0f64),        // 50% - 0-100M tier gets 50% space
-            (1_000_000_000_000_000u64, 75.0f64),      // 75% - 100M-1B tier gets 25% space  
-            (10_000_000_000_000_000u64, 87.0f64),     // 87% - 1B-10B tier gets 12% space
-            (100_000_000_000_000_000u64, 95.0f64),    // 95% - 10B-100B tier gets 8% space
-            (1_000_000_000_000_000_000u64, 100.0f64), // 100% - 100B-1T tier gets 5% space
+            (0u64, 0.0f64),                              // 0%
+            (20_000_000_000_000u64, 40.0f64),            // 0-20M tier gets 40% space
+            (100_000_000_000_000u64, 60.0f64),           // 20M-100M tier gets 20% space
+            (1_000_000_000_000_000u64, 75.0f64),         // 100M-1B tier gets 15% space
+            (10_000_000_000_000_000u64, 87.0f64),        // 1B-10B tier gets 12% space
+            (100_000_000_000_000_000u64, 95.0f64),       // 10B-100B tier gets 8% space
+            (MAX_SUPPLY_UNITS, 100.0f64),                // 100B-10T tier gets 5% space
         ];
         
         // Find current supply in which interval
@@ -169,7 +212,7 @@ impl RpcConnection {
     /// 
     /// # Parameters
     /// * `user_pubkey` - The user's public key
-    /// * `memo` - The memo text (must be 69-800 bytes)
+    /// * `memo` - The memo text (at least 69 bytes; this client caps it at 800, the transaction size limit applies)
     /// 
     /// # Returns
     /// An unsigned Transaction ready to be signed
@@ -238,6 +281,7 @@ impl RpcConnection {
             AccountMeta::new(token_account, false),                 // token_account
             AccountMeta::new_readonly(token_2022_program_id, false), // Token 2022 program
             AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false), // instructions sysvar
+            AccountMeta::new(super::rpc_base::get_mint_state_pda()?, false), // mint_state (last; one mint per transaction)
         ];
         
         // Add mint instruction

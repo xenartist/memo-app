@@ -121,8 +121,9 @@ pub fn SupplyProgressBar() -> impl IntoView {
                                 // wait 3600 seconds (1 hour)
                                 TimeoutFuture::new(3600_000).await;
                                 
-                                // check if timer should still run
-                                if !timer_active.get() {
+                                // check if timer should still run; stop if the page has been
+                                // left (disposed signal) instead of panicking
+                                if !timer_active.try_get_untracked().unwrap_or(false) {
                                     break;
                                 }
                                 
@@ -237,7 +238,7 @@ pub fn SupplyProgressBar() -> impl IntoView {
                                         <div class="supply-progress-label">
                                             {tier.label.clone()}
                                             <br/>
-                                            {format!("{} token", tier.reward)}
+                                            {format!("{} token", tier.reward_label)}
                                         </div>
                                     }
                                 }).collect::<Vec<_>>()}

@@ -10,8 +10,12 @@
 /// Minimum memo length (from contract constraint: 69 bytes)
 pub const MIN_MEMO_LENGTH: usize = 69;
 
-/// Maximum memo length (from contract constraint: 800 bytes)
+/// Maximum memo length accepted by this client. The contracts have no maximum
+/// (the transaction size limit applies); 800 keeps the editors' limits and meters.
 pub const MAX_MEMO_LENGTH: usize = 800;
+
+/// Maximum serialized transaction size (Solana/X1 packet limit)
+pub const MAX_TRANSACTION_SIZE: usize = 1232;
 
 // ============================================================================
 // Compute Unit Configuration
