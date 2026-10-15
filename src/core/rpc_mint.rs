@@ -24,19 +24,20 @@ pub struct SupplyTier {
     pub min: u64,
     pub max: u64,
     /// Reward per mint in tokens. For the current tier (get_current_supply_tier) this is the
-    /// exact reward at the current supply; in get_supply_tiers it is the reward at the tier start.
+    /// exact reward at the current supply; in get_supply_tiers it is the reward at the tier's lower end.
     pub reward: f64,
     pub label: String,
-    /// Reward range inside the tier, for display (e.g. "0.9 → 0.2")
+    /// Reward at both ends of the tier, for display (e.g. "1 → 0.1")
     pub reward_label: String,
 }
 
-// Emission curve, identical to memo-mint 0.3.0 (amounts in units, 1 token = 1,000,000 units).
-// Below 10M every mint pays 1 token. From 10M on, supply is split into decades
-// [10M * 10^n, 10M * 10^(n+1)); inside a decade, supply with leading digit d pays
-// decade_base * (11 - d) / 10, decade_base = 1 token / 10^n, so the reward drops by a tenth
-// of the decade base at every round number: 10M: 1, 20M: 0.9, ..., 90M: 0.2, 100M: 0.1,
-// 200M: 0.09, ..., 1B: 0.01, ... down to 1 unit just below the 10T cap.
+// Emission curve, identical to memo-mint 0.4.0 (amounts in units, 1 token = 1,000,000 units).
+// Up to and including 10M every mint pays 1 token. Above it, supply in (d * 10^k, (d+1) * 10^k]
+// inside the decade (10M * 10^n, 10M * 10^(n+1)] pays decade_base * (10 - d) / 10,
+// decade_base = 1 token / 10^n: the reward drops by a tenth of the decade base just above every
+// round number (a mint at exactly a round number still pays the previous step):
+// up to 10M: 1, above 10M: 0.9, ..., above 90M: 0.1, above 100M: 0.09, ..., above 1B: 0.009, ...
+// down to 1 unit above 9T.
 const UNITS_PER_TOKEN: u64 = 1_000_000;
 const CURVE_START_UNITS: u64 = 10_000_000 * UNITS_PER_TOKEN;
 const BASE_MINT_UNITS: u64 = UNITS_PER_TOKEN;
@@ -91,17 +92,19 @@ impl MintConfig {
         if supply >= MAX_SUPPLY_UNITS {
             return 0;
         }
-        let amount = if supply < CURVE_START_UNITS {
+        let amount = if supply <= CURVE_START_UNITS {
             BASE_MINT_UNITS
         } else {
+            // Steps take effect just above each round number
+            let below = supply - 1;
             let mut magnitude = CURVE_START_UNITS;
             let mut decade_base = BASE_MINT_UNITS;
-            while supply / 10 >= magnitude {
+            while below / 10 >= magnitude {
                 magnitude *= 10;
                 decade_base /= 10;
             }
-            let digit = supply / magnitude; // 1..=9
-            decade_base * (11 - digit) / 10
+            let digit = below / magnitude; // 1..=9
+            decade_base * (10 - digit) / 10
         };
         if supply.saturating_add(amount) > MAX_SUPPLY_UNITS { 0 } else { amount }
     }
@@ -114,19 +117,21 @@ impl MintConfig {
             min, max, reward, label: label.to_string(), reward_label: reward_label.to_string(),
         };
         vec![
-            tier(0, 20 * M, 1.0, "0-20M", "1"),
-            tier(20 * M, 100 * M, 0.9, "20M-100M", "0.9 → 0.2"),
-            tier(100 * M, 1_000 * M, 0.1, "100M-1B", "0.1 → 0.02"),
-            tier(1_000 * M, 10_000 * M, 0.01, "1B-10B", "0.01 → 0.002"),
-            tier(10_000 * M, 100_000 * M, 0.001, "10B-100B", "0.001 → 0.0002"),
+            // Labels give the reward at both ends of each tier (at exactly 10M: 1, at exactly 100M: 0.1)
+            tier(0, 10 * M, 1.0, "0-10M", "1"),
+            tier(10 * M, 100 * M, 1.0, "10M-100M", "1 → 0.1"),
+            tier(100 * M, 1_000 * M, 0.1, "100M-1B", "0.1 → 0.01"),
+            tier(1_000 * M, 10_000 * M, 0.01, "1B-10B", "0.01 → 0.001"),
+            tier(10_000 * M, 100_000 * M, 0.001, "10B-100B", "0.001 → 0.0001"),
             tier(100_000 * M, MAX_SUPPLY_UNITS, 0.0001, "100B-10T", "0.0001 → 0.000001"),
         ]
     }
     
     /// Get the current supply tier; its `reward` is the exact reward at this supply
     pub fn get_current_supply_tier(supply: u64) -> SupplyTier {
+        // Tiers cover (min, max]: a supply at exactly a tier's max still pays that tier's last step
         let mut tier = Self::get_supply_tiers().into_iter()
-            .find(|tier| supply >= tier.min && supply < tier.max)
+            .find(|tier| supply <= tier.max)
             .unwrap_or_else(|| Self::get_supply_tiers().last().unwrap().clone());
         tier.reward = Self::calculate_mint_reward(supply);
         tier
@@ -172,8 +177,8 @@ impl MintConfig {
         // Define visual breakpoints to make the left range look bigger
         let visual_breakpoints = [
             (0u64, 0.0f64),                              // 0%
-            (20_000_000_000_000u64, 40.0f64),            // 0-20M tier gets 40% space
-            (100_000_000_000_000u64, 60.0f64),           // 20M-100M tier gets 20% space
+            (10_000_000_000_000u64, 40.0f64),            // 0-10M tier gets 40% space
+            (100_000_000_000_000u64, 60.0f64),           // 10M-100M tier gets 20% space
             (1_000_000_000_000_000u64, 75.0f64),         // 100M-1B tier gets 15% space
             (10_000_000_000_000_000u64, 87.0f64),        // 1B-10B tier gets 12% space
             (100_000_000_000_000_000u64, 95.0f64),       // 10B-100B tier gets 8% space

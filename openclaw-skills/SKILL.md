@@ -68,21 +68,21 @@ Testnet: https://rpc.testnet.x1.xyz
 
 **Maximum Supply Cap: 10 trillion (10,000,000,000,000) MEMO tokens**. When total supply reaches this cap, no more tokens can be minted.
 
-The reward per mint depends on the circulating supply and steps down at every round number
-(memo-mint 0.3.0):
+The reward per mint depends on the circulating supply before the mint and steps down just above
+every round number from 10M on (memo-mint 0.4.0). A mint at exactly a round number still pays the
+previous step:
 
-| Supply reaches | Reward per Mint |
+| Supply before the mint | Reward per Mint |
 |---|---|
-| below 20M | 1 MEMO |
-| 20M, 30M, ..., 90M | 0.9, 0.8, ..., 0.2 MEMO |
-| 100M | 0.1 MEMO |
-| 200M, ..., 900M | 0.09, ..., 0.02 MEMO |
-| 1B | 0.01 MEMO |
-| each further 10x | 10x less, down to 1 lamport (0.000001 MEMO) just below the cap |
+| up to and including 10M | 1 MEMO |
+| above 10M, 20M, ..., 90M | 0.9, 0.8, ..., 0.1 MEMO |
+| above 100M, 200M, ..., 900M | 0.09, 0.08, ..., 0.01 MEMO |
+| above 1B, ..., 9B | 0.009, ..., 0.001 MEMO |
+| each further 10x | 10x less, down to 1 lamport (0.000001 MEMO) above 9T, up to the 10T cap |
 
-Exact rule (amounts in lamports, 1 MEMO = 1,000,000): below 10M MEMO the reward is 1 MEMO; from
-10M on, in the decade `[10M·10^n, 10M·10^(n+1))` with leading digit `d`, the reward is
-`(1 MEMO / 10^n) · (11 − d) / 10`. Burns lower the circulating supply, so minting never stops permanently.
+Exact rule (amounts in lamports, 1 MEMO = 1,000,000): up to and including 10M MEMO the reward is
+1 MEMO; above it, for supply in `(d·10^k, (d+1)·10^k]` inside the decade `(10M·10^n, 10M·10^(n+1)]`,
+the reward is `(1 MEMO / 10^n) · (10 − d) / 10`. Burns lower the circulating supply, so minting never stops permanently.
 
 **One mint per transaction**: a transaction can mint only once, whether it calls `process_mint`
 directly, through chat/blog/forum, or through any other program via CPI. A second mint in the same
