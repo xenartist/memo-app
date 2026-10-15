@@ -271,7 +271,7 @@ export function solana_program_init() {
 }
 
 function __wbg_adapter_50(arg0, arg1, arg2) {
-    wasm.closure2467_externref_shim(arg0, arg1, arg2);
+    wasm.closure2014_externref_shim(arg0, arg1, arg2);
 }
 
 function __wbg_adapter_59(arg0, arg1) {
@@ -2295,20 +2295,20 @@ function __wbg_get_imports() {
         const ret = false;
         return ret;
     };
-    imports.wbg.__wbindgen_closure_wrapper4769 = function(arg0, arg1, arg2) {
-        const ret = makeMutClosure(arg0, arg1, 2468, __wbg_adapter_50);
+    imports.wbg.__wbindgen_closure_wrapper4016 = function(arg0, arg1, arg2) {
+        const ret = makeMutClosure(arg0, arg1, 2015, __wbg_adapter_50);
         return ret;
     };
-    imports.wbg.__wbindgen_closure_wrapper4771 = function(arg0, arg1, arg2) {
-        const ret = makeMutClosure(arg0, arg1, 2468, __wbg_adapter_50);
+    imports.wbg.__wbindgen_closure_wrapper4018 = function(arg0, arg1, arg2) {
+        const ret = makeMutClosure(arg0, arg1, 2015, __wbg_adapter_50);
         return ret;
     };
-    imports.wbg.__wbindgen_closure_wrapper4773 = function(arg0, arg1, arg2) {
-        const ret = makeMutClosure(arg0, arg1, 2468, __wbg_adapter_50);
+    imports.wbg.__wbindgen_closure_wrapper4020 = function(arg0, arg1, arg2) {
+        const ret = makeMutClosure(arg0, arg1, 2015, __wbg_adapter_50);
         return ret;
     };
-    imports.wbg.__wbindgen_closure_wrapper4775 = function(arg0, arg1, arg2) {
-        const ret = makeMutClosure(arg0, arg1, 2468, __wbg_adapter_50);
+    imports.wbg.__wbindgen_closure_wrapper4022 = function(arg0, arg1, arg2) {
+        const ret = makeMutClosure(arg0, arg1, 2015, __wbg_adapter_50);
         return ret;
     };
     imports.wbg.__wbindgen_closure_wrapper6205 = function(arg0, arg1, arg2) {
