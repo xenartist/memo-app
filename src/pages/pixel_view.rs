@@ -24,6 +24,15 @@ pub fn PixelView(
     
     // Canvas element reference
     let canvas_ref = create_node_ref::<Canvas>();
+
+    // Drawing runs in a requestAnimationFrame callback, i.e. after the current render. If the
+    // component is disposed in between (e.g. a carousel switches slides), its signals are gone and
+    // reading them panics, which aborts the whole WASM app. Track liveness and skip late draws.
+    let alive = std::rc::Rc::new(std::cell::Cell::new(true));
+    {
+        let alive = alive.clone();
+        on_cleanup(move || alive.set(false));
+    }
     
     // store click callback
     let on_click = store_value(on_click);
@@ -114,8 +123,11 @@ pub fn PixelView(
     create_effect(move |_| {
         pixel_data.track();
         // use request_animation_frame to ensure DOM is updated
+        let alive = alive.clone();
         request_animation_frame(move || {
-            draw_canvas();
+            if alive.get() {
+                draw_canvas();
+            }
         });
     });
     
@@ -202,7 +214,8 @@ pub fn LazyPixelView(
         spawn_local(async move {
             // Canvas rendering is fast, can shorten delay
             TimeoutFuture::new(50).await;
-            set_is_loaded.set(true);
+            // the component may have been disposed during the delay; try_set is a no-op then
+            let _ = set_is_loaded.try_set(true);
         });
     });
     

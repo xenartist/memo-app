@@ -874,6 +874,7 @@ impl RpcConnection {
                 AccountMeta::new_readonly(memo_burn_program_id, false),
                 AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
                 AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false),
+                AccountMeta::new(super::rpc_base::get_global_burn_stats_pda()?, false), // global_burn_stats (last)
             ],
         ));
         
@@ -1019,6 +1020,7 @@ impl RpcConnection {
                 AccountMeta::new_readonly(token_2022_program_id, false),
                 AccountMeta::new_readonly(memo_burn_program_id, false),
                 AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false),
+                AccountMeta::new(super::rpc_base::get_global_burn_stats_pda()?, false), // global_burn_stats (last)
             ],
         ));
         
@@ -1161,6 +1163,7 @@ impl RpcConnection {
                 AccountMeta::new_readonly(token_2022_program_id, false),
                 AccountMeta::new_readonly(memo_burn_program_id, false),
                 AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false),
+                AccountMeta::new(super::rpc_base::get_global_burn_stats_pda()?, false), // global_burn_stats (last)
             ],
         ));
         
@@ -1285,6 +1288,7 @@ impl RpcConnection {
                 AccountMeta::new_readonly(token_2022_program_id, false),
                 AccountMeta::new_readonly(memo_mint_program_id, false),
                 AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false),
+                AccountMeta::new(super::rpc_base::get_mint_state_pda()?, false), // mint_state (last; one mint per transaction)
             ],
         ));
         
