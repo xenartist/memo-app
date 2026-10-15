@@ -150,6 +150,14 @@ pub fn LockScreen(
                         <p class="hint">"Please use Backpack's built-in security features."</p>
                     </div>
                 </Show>
+
+                // Seed Vault wallet message
+                <Show when=move || matches!(wallet_type.with_value(|f| f()), WalletType::SeedVault)>
+                    <div class="backpack-lock-message">
+                        <p>"Lock screen is not available for Seed Vault."</p>
+                        <p class="hint">"Your keys are secured by the device's hardware security module."</p>
+                    </div>
+                </Show>
             </div>
         </div>
     }
