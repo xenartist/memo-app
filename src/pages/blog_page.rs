@@ -392,7 +392,7 @@ fn render_transaction_card(
                         
                         // Fetch current supply and calculate mint reward
                         let rpc = RpcConnection::new();
-                        if let Ok((supply, _tier)) = rpc.get_current_supply_tier_info().await {
+                        if let Ok(supply) = rpc.get_token_supply().await {
                             let reward = MintConfig::calculate_mint_reward(supply);
                             set_mint_reward.set(Some(reward));
                         }
