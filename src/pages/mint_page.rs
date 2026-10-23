@@ -1,7 +1,7 @@
 use leptos::*;
 use crate::core::session::Session;
 use crate::core::rpc_base::RpcConnection;
-use crate::core::rpc_mint::{MintConfig, SupplyTier};
+use crate::core::rpc_mint::MintConfig;
 use crate::core::rpc_profile::UserDisplayInfo;
 use crate::pages::pixel_view::LazyPixelView;
 use wasm_bindgen_futures::spawn_local;
@@ -89,9 +89,196 @@ fn format_supply_display(supply_tokens: f64) -> String {
     }
 }
 
+// Exact token amount from units (6 decimals), trailing zeros trimmed: 900000 -> "0.9"
+fn format_units(units: u64) -> String {
+    let whole = units / 1_000_000;
+    let frac = units % 1_000_000;
+    if frac == 0 {
+        whole.to_string()
+    } else {
+        format!("{}.{}", whole, format!("{:06}", frac).trim_end_matches('0'))
+    }
+}
+
+// Round supply in units to a short label: 10M, 200M, 1B, 10T
+fn format_supply_short(units: u64) -> String {
+    let tokens = units / 1_000_000;
+    for (div, suffix) in [(1_000_000_000_000u64, "T"), (1_000_000_000, "B"), (1_000_000, "M")] {
+        if tokens >= div && tokens % div == 0 {
+            return format!("{}{}", tokens / div, suffix);
+        }
+    }
+    tokens.to_string()
+}
+
+// Staircase of the whole emission curve as inline SVG: x = stages of equal width (9 equal steps
+// inside each), y = reward per mint on a log scale (1 at the top, 0.000001 at the bottom).
+// The mined part (up to `position`, 0.0-1.0) is filled; `current_units` places the marker.
+fn supply_curve_svg(position: f64, current_units: u64) -> String {
+    const W: f64 = 700.0;
+    const H: f64 = 180.0;
+    const PAD: f64 = 8.0;
+    let stages = MintConfig::emission_stages();
+    let stage_w = W / stages.len() as f64;
+    let y = |units: u64| PAD + (6.0 - (units.max(1) as f64).log10()) / 6.0 * (H - 2.0 * PAD);
+
+    let mut line = String::new();
+    for (i, stage) in stages.iter().enumerate() {
+        let step_w = stage_w / stage.steps.len() as f64;
+        for (j, step) in stage.steps.iter().enumerate() {
+            let x0 = i as f64 * stage_w + j as f64 * step_w;
+            let cmd = if line.is_empty() { "M" } else { "L" };
+            line.push_str(&format!("{}{:.1},{:.1} H{:.1} ", cmd, x0, y(step.reward_units), x0 + step_w));
+        }
+    }
+    let area = format!("{}V{:.1} H0 Z", line, H);
+    let mined_w = position.clamp(0.0, 1.0) * W;
+    let marker_x = mined_w.clamp(1.5, W - 1.5);
+    let marker_y = y(current_units);
+
+    let separators: String = (1..stages.len())
+        .map(|i| {
+            let x = i as f64 * stage_w;
+            format!(r#"<line class="curve-separator" x1="{x:.1}" y1="0" x2="{x:.1}" y2="{H}"/>"#)
+        })
+        .collect();
+
+    format!(
+        r#"<svg class="supply-curve-svg" viewBox="0 0 {W} {H}" role="img" aria-label="Mint reward by total supply">
+<defs><clipPath id="supply-curve-mined"><rect x="0" y="0" width="{mined_w:.1}" height="{H}"/></clipPath></defs>
+{separators}
+<path class="curve-area" d="{area}"/>
+<path class="curve-area-mined" d="{area}" clip-path="url(#supply-curve-mined)"/>
+<path class="curve-line" d="{line}"/>
+<line class="curve-marker" x1="{marker_x:.1}" y1="0" x2="{marker_x:.1}" y2="{H}"/>
+<circle class="curve-marker-dot" cx="{marker_x:.1}" cy="{marker_y:.1}" r="5"/>
+</svg>"#
+    )
+}
+
+#[component]
+fn SupplyCurve(supply: u64) -> impl IntoView {
+    let stages = MintConfig::emission_stages();
+    let (stage_idx, step_idx) = MintConfig::locate_step(supply);
+    let reward = MintConfig::calculate_mint_amount_units(supply);
+    let svg = supply_curve_svg(MintConfig::curve_position(supply), reward);
+
+    // Steps panel: the current stage, or the first reduction stage while still in the flat start
+    let (panel_idx, current_step) = if stage_idx == 0 { (1, None) } else { (stage_idx, Some(step_idx)) };
+    let panel = stages[panel_idx].clone();
+    let panel_top = panel.steps[0].reward_units * 10 / 9; // decade base: the 0.9 step is 90% high
+    let panel_title = if stage_idx == 0 {
+        format!(
+            "Every mint pays 1 MEMO up to {} supply. Then the reward drops one step every {}:",
+            format_supply_short(panel.start),
+            format_supply_short(panel.start)
+        )
+    } else {
+        format!(
+            "Stage {} of {}: {} \u{2013} {}, the reward drops by {} MEMO every {}",
+            stage_idx,
+            stages.len() - 1,
+            format_supply_short(panel.start),
+            format_supply_short(panel.end),
+            format_units(panel_top / 10),
+            format_supply_short(panel.start)
+        )
+    };
+
+    let next = MintConfig::next_reduction(supply);
+    let supply_tokens = supply as f64 / 1_000_000.0;
+
+    view! {
+        <div class="supply-curve">
+            <div class="supply-curve-chart" inner_html=svg></div>
+            <div class="supply-stage-labels">
+                {stages.iter().enumerate().map(|(i, stage)| {
+                    let first = stage.steps.first().unwrap().reward_units;
+                    let last = stage.steps.last().unwrap().reward_units;
+                    let range = if i == 0 {
+                        format!("\u{2264} {}", format_supply_short(stage.end))
+                    } else {
+                        format!("{}\u{2013}{}", format_supply_short(stage.start), format_supply_short(stage.end))
+                    };
+                    let rewards = if first == last {
+                        format_units(first)
+                    } else {
+                        format!("{} \u{2192} {}", format_units(first), format_units(last))
+                    };
+                    view! {
+                        <div class="supply-stage-label" class:current=i == stage_idx>
+                            <span class="supply-stage-range">{range}</span>
+                            <span class="supply-stage-reward">{rewards}</span>
+                        </div>
+                    }
+                }).collect::<Vec<_>>()}
+            </div>
+            <p class="supply-curve-caption">"Reward per mint in MEMO (log scale). A mint at exactly a round number still pays the previous step."</p>
+
+            <div class="supply-steps">
+                <div class="supply-steps-title">{panel_title}</div>
+                <div class="supply-steps-bars">
+                    {panel.steps.iter().enumerate().map(|(j, step)| {
+                        let state = match current_step {
+                            Some(c) if j < c => "passed",
+                            Some(c) if j == c => "current",
+                            _ => "upcoming",
+                        };
+                        let height = step.reward_units as f64 / panel_top as f64 * 100.0;
+                        let title = format!(
+                            "Supply {} \u{2013} {}: {} MEMO per mint",
+                            format_supply_short(step.start),
+                            format_supply_short(step.end),
+                            format_units(step.reward_units)
+                        );
+                        view! {
+                            <div class=format!("supply-step {}", state) title=title>
+                                <div class="supply-step-value">{format_units(step.reward_units)}</div>
+                                <div class="supply-step-bar-wrap">
+                                    <div class="supply-step-bar" style:height=format!("{:.1}%", height)></div>
+                                </div>
+                                <div class="supply-step-start">{format!(">{}", format_supply_short(step.start))}</div>
+                            </div>
+                        }
+                    }).collect::<Vec<_>>()}
+                </div>
+            </div>
+
+            <div class="supply-current-info">
+                <div class="supply-info-item">
+                    <div class="supply-info-label">"Current Supply"</div>
+                    <div class="supply-info-value">{format_supply_display(supply_tokens)}</div>
+                </div>
+                <div class="supply-info-item">
+                    <div class="supply-info-label">"Current Reward"</div>
+                    <div class="supply-info-value">{format!("{} MEMO", format_units(reward))}</div>
+                </div>
+                <div class="supply-info-item">
+                    <div class="supply-info-label">"Next Reduction"</div>
+                    <div class="supply-info-value">
+                        {match next {
+                            Some((at, after)) => format!("{} MEMO above {}", format_units(after), format_supply_short(at)),
+                            None => "None (final step)".to_string(),
+                        }}
+                    </div>
+                </div>
+                <div class="supply-info-item">
+                    <div class="supply-info-label">"Supply Until Then"</div>
+                    <div class="supply-info-value">
+                        {match next {
+                            Some((at, _)) => format_supply_display(at.saturating_sub(supply) as f64 / 1_000_000.0),
+                            None => "\u{2013}".to_string(),
+                        }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}
+
 #[component]
 pub fn SupplyProgressBar() -> impl IntoView {
-    let (supply_info, set_supply_info) = create_signal::<Option<(u64, SupplyTier)>>(None);
+    let (supply_info, set_supply_info) = create_signal::<Option<u64>>(None);
     let (loading, set_loading) = create_signal(true);
     let (error, set_error) = create_signal::<Option<String>>(None);
     let (timer_active, set_timer_active) = create_signal(false);
@@ -105,9 +292,9 @@ pub fn SupplyProgressBar() -> impl IntoView {
             set_error.set(None);
             
             let rpc = RpcConnection::new();
-            match rpc.get_current_supply_tier_info().await {
-                Ok((supply, tier)) => {
-                    set_supply_info.set(Some((supply, tier)));
+            match rpc.get_token_supply().await {
+                Ok(supply) => {
+                    set_supply_info.set(Some(supply));
                     set_loading.set(false);
                     
                     // after first successful fetch, start timer
@@ -131,9 +318,9 @@ pub fn SupplyProgressBar() -> impl IntoView {
                                 
                                 // background update data (no loading state)
                                 let rpc = RpcConnection::new();
-                                match rpc.get_current_supply_tier_info().await {
-                                    Ok((supply, tier)) => {
-                                        set_supply_info.set(Some((supply, tier)));
+                                match rpc.get_token_supply().await {
+                                    Ok(supply) => {
+                                        set_supply_info.set(Some(supply));
                                         log::info!("Supply data auto-refreshed successfully");
                                     },
                                     Err(e) => {
@@ -179,7 +366,7 @@ pub fn SupplyProgressBar() -> impl IntoView {
                         <i class="fas fa-chart-line"></i>
                         "Token Supply Progress"
                     </h3>
-                    <p>"Current mining tier based on total supply"</p>
+                    <p>"Mint reward per stage of the total supply"</p>
                 </div>
                 <button 
                     class="supply-refresh-btn"
@@ -207,59 +394,8 @@ pub fn SupplyProgressBar() -> impl IntoView {
                             " " {err}
                         </div>
                     }.into_view()
-                } else if let Some((supply, tier)) = supply_info.get() {
-                    let progress = MintConfig::calculate_visual_progress_percentage(supply);
-                    let tiers = MintConfig::get_supply_tiers();
-                    let supply_tokens = supply as f64 / 1_000_000.0; // Convert to tokens (6 decimals)
-                    
-                    view! {
-                        <div>
-                            <div class="supply-progress-track">
-                                <div 
-                                    class="supply-progress-fill"
-                                    style:width=format!("{}%", progress)
-                                ></div>
-                                <div class="supply-progress-markers">
-                                    {tiers.iter().take(5).enumerate().map(|(_, tier)| {
-                                        let marker_position = MintConfig::calculate_visual_marker_position(tier.max);
-                                        view! {
-                                            <div 
-                                                class="supply-progress-marker"
-                                                style:left=format!("{}%", marker_position)
-                                            ></div>
-                                        }
-                                    }).collect::<Vec<_>>()}
-                                </div>
-                            </div>
-                            
-                            <div class="supply-progress-labels">
-                                {tiers.iter().map(|tier| {
-                                    view! {
-                                        <div class="supply-progress-label">
-                                            {tier.label.clone()}
-                                            <br/>
-                                            {format!("{} token", tier.reward_label)}
-                                        </div>
-                                    }
-                                }).collect::<Vec<_>>()}
-                            </div>
-
-                            <div class="supply-current-info">
-                                <div class="supply-info-item">
-                                    <div class="supply-info-label">"Current Supply"</div>
-                                    <div class="supply-info-value">
-                                        {format_supply_display(supply_tokens)}
-                                    </div>
-                                </div>
-                                <div class="supply-info-item">
-                                    <div class="supply-info-label">"Current Reward"</div>
-                                    <div class="supply-info-value">
-                                        {format!("{} token", tier.reward)}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    }.into_view()
+                } else if let Some(supply) = supply_info.get() {
+                    view! { <SupplyCurve supply=supply/> }.into_view()
                 } else {
                     view! { <div></div> }.into_view()
                 }

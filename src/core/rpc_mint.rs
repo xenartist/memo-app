@@ -16,19 +16,22 @@ use base64;
 use bincode;
 use spl_associated_token_account;
 use spl_memo;
-use serde::{Serialize, Deserialize};
 
-/// Supply tier configuration for mint rewards
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SupplyTier {
-    pub min: u64,
-    pub max: u64,
-    /// Reward per mint in tokens. For the current tier (get_current_supply_tier) this is the
-    /// exact reward at the current supply; in get_supply_tiers it is the reward at the tier's lower end.
-    pub reward: f64,
-    pub label: String,
-    /// Reward at both ends of the tier, for display (e.g. "1 → 0.1")
-    pub reward_label: String,
+/// One reward step of the emission curve: a mint at supply in (start, end] pays `reward_units`
+#[derive(Debug, Clone, PartialEq)]
+pub struct EmissionStep {
+    pub start: u64,
+    pub end: u64,
+    pub reward_units: u64,
+}
+
+/// A stage of the emission curve: the flat start (0, 10M], then one stage per decade
+/// (10M * 10^n, 10M * 10^(n+1)], each split into 9 equal steps
+#[derive(Debug, Clone, PartialEq)]
+pub struct EmissionStage {
+    pub start: u64,
+    pub end: u64,
+    pub steps: Vec<EmissionStep>,
 }
 
 // Emission curve, identical to memo-mint 0.4.0 (amounts in units, 1 token = 1,000,000 units).
@@ -109,32 +112,63 @@ impl MintConfig {
         if supply.saturating_add(amount) > MAX_SUPPLY_UNITS { 0 } else { amount }
     }
 
-    /// Get all supply tiers shown on the progress bar (one per decade; the reward steps down
-    /// at every round number inside a tier)
-    pub fn get_supply_tiers() -> Vec<SupplyTier> {
-        const M: u64 = 1_000_000 * UNITS_PER_TOKEN; // 1M tokens in units
-        let tier = |min: u64, max: u64, reward: f64, label: &str, reward_label: &str| SupplyTier {
-            min, max, reward, label: label.to_string(), reward_label: reward_label.to_string(),
-        };
-        vec![
-            // Labels give the reward at both ends of each tier (at exactly 10M: 1, at exactly 100M: 0.1)
-            tier(0, 10 * M, 1.0, "0-10M", "1"),
-            tier(10 * M, 100 * M, 1.0, "10M-100M", "1 → 0.1"),
-            tier(100 * M, 1_000 * M, 0.1, "100M-1B", "0.1 → 0.01"),
-            tier(1_000 * M, 10_000 * M, 0.01, "1B-10B", "0.01 → 0.001"),
-            tier(10_000 * M, 100_000 * M, 0.001, "10B-100B", "0.001 → 0.0001"),
-            tier(100_000 * M, MAX_SUPPLY_UNITS, 0.0001, "100B-10T", "0.0001 → 0.000001"),
-        ]
+    /// All stages of the emission curve: (0, 10M] pays 1, then 6 decades of 9 steps each
+    pub fn emission_stages() -> Vec<EmissionStage> {
+        let mut stages = vec![EmissionStage {
+            start: 0,
+            end: CURVE_START_UNITS,
+            steps: vec![EmissionStep { start: 0, end: CURVE_START_UNITS, reward_units: BASE_MINT_UNITS }],
+        }];
+        let mut magnitude = CURVE_START_UNITS;
+        let mut decade_base = BASE_MINT_UNITS;
+        while magnitude < MAX_SUPPLY_UNITS {
+            let steps = (1..=9u64)
+                .map(|d| EmissionStep {
+                    start: d * magnitude,
+                    end: (d + 1) * magnitude,
+                    reward_units: decade_base * (10 - d) / 10,
+                })
+                .collect();
+            stages.push(EmissionStage { start: magnitude, end: magnitude * 10, steps });
+            magnitude *= 10;
+            decade_base /= 10;
+        }
+        stages
     }
-    
-    /// Get the current supply tier; its `reward` is the exact reward at this supply
-    pub fn get_current_supply_tier(supply: u64) -> SupplyTier {
-        // Tiers cover (min, max]: a supply at exactly a tier's max still pays that tier's last step
-        let mut tier = Self::get_supply_tiers().into_iter()
-            .find(|tier| supply <= tier.max)
-            .unwrap_or_else(|| Self::get_supply_tiers().last().unwrap().clone());
-        tier.reward = Self::calculate_mint_reward(supply);
-        tier
+
+    /// Index of the stage and step that a mint at this supply falls in (the last step once the cap is reached)
+    pub fn locate_step(supply: u64) -> (usize, usize) {
+        let stages = Self::emission_stages();
+        for (i, stage) in stages.iter().enumerate() {
+            if let Some(j) = stage.steps.iter().position(|step| supply <= step.end) {
+                return (i, j);
+            }
+        }
+        (stages.len() - 1, 8)
+    }
+
+    /// Position of this supply along the curve chart, 0.0 to 1.0: every stage gets the same width,
+    /// and inside a stage supply is linear, so each of its 9 steps is equally wide
+    pub fn curve_position(supply: u64) -> f64 {
+        let stages = Self::emission_stages();
+        let (i, _) = Self::locate_step(supply);
+        let stage = &stages[i];
+        let ratio = (supply.min(stage.end).saturating_sub(stage.start)) as f64
+            / (stage.end - stage.start) as f64;
+        (i as f64 + ratio) / stages.len() as f64
+    }
+
+    /// The next reward reduction: (supply it takes effect above, reward after it in units).
+    /// None once the last step (1 unit) is reached.
+    pub fn next_reduction(supply: u64) -> Option<(u64, u64)> {
+        Self::emission_stages()
+            .iter()
+            .flat_map(|stage| stage.steps.iter())
+            .find(|step| step.end >= supply)
+            .and_then(|step| {
+                let after = Self::calculate_mint_amount_units(step.end + 1);
+                (step.end < MAX_SUPPLY_UNITS && after > 0).then_some((step.end, after))
+            })
     }
     
     /// Calculate mint reward (in tokens) based on current supply
@@ -170,44 +204,6 @@ impl MintConfig {
             let trimmed = formatted.trim_end_matches('0').trim_end_matches('.');
             format!("+{} MEMO", trimmed)
         }
-    }
-
-    /// Calculate visual progress percentage for supply progress bar
-    pub fn calculate_visual_progress_percentage(supply: u64) -> f64 {
-        // Define visual breakpoints to make the left range look bigger
-        let visual_breakpoints = [
-            (0u64, 0.0f64),                              // 0%
-            (10_000_000_000_000u64, 40.0f64),            // 0-10M tier gets 40% space
-            (100_000_000_000_000u64, 60.0f64),           // 10M-100M tier gets 20% space
-            (1_000_000_000_000_000u64, 75.0f64),         // 100M-1B tier gets 15% space
-            (10_000_000_000_000_000u64, 87.0f64),        // 1B-10B tier gets 12% space
-            (100_000_000_000_000_000u64, 95.0f64),       // 10B-100B tier gets 8% space
-            (MAX_SUPPLY_UNITS, 100.0f64),                // 100B-10T tier gets 5% space
-        ];
-        
-        // Find current supply in which interval
-        for i in 0..visual_breakpoints.len() - 1 {
-            let (lower_supply, lower_percent) = visual_breakpoints[i];
-            let (upper_supply, upper_percent) = visual_breakpoints[i + 1];
-            
-            if supply >= lower_supply && supply <= upper_supply {
-                if upper_supply == lower_supply {
-                    return lower_percent;
-                }
-                
-                // Linear interpolation in the interval
-                let ratio = (supply - lower_supply) as f64 / (upper_supply - lower_supply) as f64;
-                return lower_percent + ratio * (upper_percent - lower_percent);
-            }
-        }
-        
-        // If out of range, return 100%
-        100.0
-    }
-    
-    /// Calculate visual position for tier markers
-    pub fn calculate_visual_marker_position(tier_max: u64) -> f64 {
-        Self::calculate_visual_progress_percentage(tier_max)
     }
 }
 
@@ -413,16 +409,6 @@ impl RpcConnection {
         let supply = self.get_token_supply().await?;
         let reward_amount = MintConfig::calculate_mint_reward(supply);
         Ok(MintConfig::format_mint_reward(reward_amount))
-    }
-
-    /// Get current supply tier information
-    /// 
-    /// # Returns
-    /// Tuple of (current_supply, current_tier)
-    pub async fn get_current_supply_tier_info(&self) -> Result<(u64, SupplyTier), RpcError> {
-        let supply = self.get_token_supply().await?;
-        let tier = MintConfig::get_current_supply_tier(supply);
-        Ok((supply, tier))
     }
 
     /// Get token holders using getProgramAccounts
