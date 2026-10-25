@@ -5,8 +5,9 @@ use crate::wallet::WalletKind;
 use leptos::*;
 use wasm_bindgen_futures::spawn_local;
 
-/// Where users download the desktop miner; None until it is published
-const MINER_URL: Option<&str> = None;
+/// Where users download MEMO Miner (the latest release for every platform)
+const MINER_URL: &str = "https://github.com/xenartist/memo-miner/releases/latest";
+const MINER_SOURCE_URL: &str = "https://github.com/xenartist/memo-miner";
 
 const LAMPORTS_PER_XNT: u64 = 1_000_000_000;
 
@@ -225,9 +226,37 @@ fn TokenPage() -> impl IntoView {
             <SupplyPanel/>
             <div class="side-col">
                 <MintCard/>
+                <MinerPanel/>
                 <TpmPanel/>
             </div>
         </div>
+    }
+}
+
+/// Download card for MEMO Miner, the terminal app that mints automatically
+#[component]
+fn MinerPanel() -> impl IntoView {
+    view! {
+        <section class="panel miner-panel">
+            <div class="miner-head">
+                <span class="miner-icon" aria-hidden="true">">_"</span>
+                <div>
+                    <div class="miner-title">"MEMO Miner"</div>
+                    <div class="miner-sub">"Mint automatically from your terminal"</div>
+                </div>
+            </div>
+            <ul class="miner-points">
+                <li>"Mints every few seconds until you stop it"</li>
+                <li>"Spreads requests over many X1 RPC nodes"</li>
+                <li>"Wallet made by the official Solana CLI"</li>
+            </ul>
+            <a class="btn-primary btn-wide btn-link" href=MINER_URL target="_blank" rel="noopener">"Download MEMO Miner"</a>
+            <p class="miner-foot">
+                "Windows · macOS · Linux · free and open source ("
+                <a href=MINER_SOURCE_URL target="_blank" rel="noopener">"GitHub ↗"</a>
+                ")"
+            </p>
+        </section>
     }
 }
 
@@ -628,13 +657,6 @@ fn MintCard() -> impl IntoView {
                 _ => ().into_view(),
             }}
 
-            <p class="miner-line">
-                "Want to mine automatically? "
-                {match MINER_URL {
-                    Some(url) => view! { <a href=url target="_blank" rel="noopener">"Download MEMO Miner ↗"</a> }.into_view(),
-                    None => view! { <span class="soon">"MEMO Miner"<em>"coming soon"</em></span> }.into_view(),
-                }}
-            </p>
         </section>
     }
 }
