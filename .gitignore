@@ -1,4 +1,7 @@
 /target/
 /test-keypair/memo-test-keypair.json
 .DS_Store
-/src/idl
+/v1/src/idl
+/v1/target/
+/v1/dist/
+/dist/.stage/
