@@ -1,31 +1,21 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>MEMO Engraves Memories Onchain</title>
-    <!-- <link data-trunk rel="css" href="styles.css" /> -->
-    <link rel="stylesheet" href="/global-a912538aebe398.css" integrity="sha384-31XZx8Ffe7QxNguY94gjk2KdSKAyEzPbCNEjUZjBmI1lLUqChK4FuZfN6+MAKHfd"/>
-    <link rel="stylesheet" href="/login-1de2dcc80303f77b.css" integrity="sha384-1ZJ2TIgMF5BemKDKrBfYqRtuPfA29JBaDqfRrETDOZkmxqIk/Mv8dsij/a/1bcWI"/>
-    <link rel="stylesheet" href="/main_page-8dd136d7704b593d.css" integrity="sha384-An/wXXEgEkErEKKK1FQuFKVrxoVxl0lcOvBiRs8eKNuY5fV6FKsBO/bTtxY1pDrP"/>
-    <link rel="stylesheet" href="/pixel_view-124c498dc3f1fb3a.css" integrity="sha384-mPrLa8YEbbx1TMDVXDRQQrFT4UJbHLgeZI//HT5e3bYrm7zJFUjSZOEi7Q6/Yxef"/>
-    <link rel="stylesheet" href="/mint_page-ecad7eec23549bdb.css" integrity="sha384-S4CQ5qz7cnG4vYE3tH7bXnuemIUFOULABTJsCeLiDf+aUXlP1WoKIcwkxtx2dQBC"/>
-    <link rel="stylesheet" href="/mint_form-c636a1b266475564.css" integrity="sha384-wI1jDxZbLPWehspgXFOY9clw6VlBsPhbgTHWe+KA/a91TPrKvOBIiWjMP6X5yiHA"/>
-    <link rel="stylesheet" href="/log_view-cde55dc4226cb326.css" integrity="sha384-EYp+NhDt9GR7wZLUAdMMVb6hr0BHPS9/iWj+IVhjWTZ8TTF+ejeyLXezbgN63J+F"/>
-    <link rel="stylesheet" href="/profile_page-65c27a7c42349920.css" integrity="sha384-id9/a2gPbv8o4UWd++MfybDfL4Jk+UDMB9NHRoqco7O8UHquenfukuf8DmcVklJH"/>
-    <link rel="stylesheet" href="/project_page-b29ff2dcc8ec1fd3.css" integrity="sha384-RXHWd2qYFulFnYnXuced/D8g7fxAsdY/Y7Q8XGF8KKPioj1IhkfEEpPU57i00GZO"/>
-    <link rel="stylesheet" href="/blog_page-5cbfa1078a600b7d.css" integrity="sha384-0DCarVgElEyL++w0wuMJ2z/5FhB+eS+zpCSwSwnB9+Ns5jRoyhlzl1IVQ3yIMnh1"/>
-    <link rel="stylesheet" href="/forum_page-8d76b53324d47b26.css" integrity="sha384-i0gllAulDTRxxMaDJyizhKAEzqlXXspegDYwOBNHomFX/M+t5XUSnxTTrEkRNeRv"/>
-    <link rel="stylesheet" href="/settings_page-38c4399734115f8f.css" integrity="sha384-N4W9emkn5/zCNXIH/3UDjCOO19q15DRdQptOlX5WH9W+l0l7IeJ1snK0STgr0NBH"/>
-    <link rel="stylesheet" href="/chat_page-441d12e60560141c.css" integrity="sha384-QmcexwsJthaLPoxuQvXcUO36Hu7R/Xzh9BClVjKFisP/uZgh6I1oxlpMDu4TOoxX"/>
-    <link rel="stylesheet" href="/faucet_page-c33bac7df58f14a5.css" integrity="sha384-ui0YPdhY1CdDkCXQh1A8PIuXK8QQeQmJLwdkv4OA4sQyzCD601oWikEzwV+9ssLy"/>
-    <link rel="stylesheet" href="/trade_page-e7e760a601b0217.css" integrity="sha384-s/Xvdai6dYbaK7Xqyqv5TA3R9fdEs4SCVfCB7POdwvPWW+OKROyJPnwwgyE31fZ+"/>
-    <link rel="stylesheet" href="/lock_screen-56e3c5cd6db3f1f0.css" integrity="sha384-+Jsj0DPvkXnlYIZhW14+RW0UAy2XPo7ytkECsiNKqDSR0BALeAKlYk9h9tW2/wnu"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MEMO · Engraves Memories Onchain</title>
+    <meta name="description" content="MEMO Engraves Memories Onchain. Write a memo on X1 and mint MEMO."/>
+    <link rel="icon" href="/public/memo-logo.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/app-bf18dec890966cb1.css" integrity="sha384-LWipTwuoxqLH+r0VvKgSnjNdS4IJvHIcBUSeaTuEaqSofo37PDiZaIe8M+KA1MiN"/>
     
     
     
 <script type="module">
-import init, * as bindings from '/memo-app-ui-8c53cb564e04cf3f.js';
-const wasm = await init({ module_or_path: '/memo-app-ui-8c53cb564e04cf3f_bg.wasm' });
+import init, * as bindings from '/memo-app-ui-ef160558bb6d3b6b.js';
+const wasm = await init({ module_or_path: '/memo-app-ui-ef160558bb6d3b6b_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -34,81 +24,22 @@ window.wasmBindings = bindings;
 dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
 
 </script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    
-    <!-- Google Fonts - Cartoon fonts for title -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Righteous&display=swap" rel="stylesheet">
-    
-    <!-- Solana Web3.js -->
-    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
-    
-    <!-- Solana Wallet Adapter for Backpack -->
+
+    <!-- Backpack signs a web3.js Transaction object, not raw bytes -->
+    <script src="https://unpkg.com/@solana/web3.js@1.98.0/lib/index.iife.min.js"></script>
     <script>
-      // Simple Backpack wallet integration
-      window.BackpackWallet = {
-        isInstalled: function() {
-          return typeof window.backpack !== 'undefined';
+      window.MemoBackpack = {
+        signTransaction: async function (txBase64) {
+          const bytes = Uint8Array.from(atob(txBase64), (c) => c.charCodeAt(0));
+          const tx = window.solanaWeb3.Transaction.from(bytes);
+          const signed = await window.backpack.signTransaction(tx);
+          const out = signed.serialize();
+          let bin = '';
+          for (let i = 0; i < out.length; i++) bin += String.fromCharCode(out[i]);
+          return btoa(bin);
         },
-        connect: async function() {
-          if (!window.backpack) {
-            throw new Error('Backpack wallet is not installed');
-          }
-          try {
-            const response = await window.backpack.connect();
-            return response.publicKey.toString();
-          } catch (error) {
-            throw new Error('Failed to connect: ' + error.message);
-          }
-        },
-        disconnect: async function() {
-          if (window.backpack) {
-            await window.backpack.disconnect();
-          }
-        },
-        getPublicKey: function() {
-          if (window.backpack && window.backpack.publicKey) {
-            return window.backpack.publicKey.toString();
-          }
-          return null;
-        },
-        signTransaction: async function(transactionBase64) {
-          if (!window.backpack) {
-            throw new Error('Backpack wallet is not connected');
-          }
-          try {
-            // Decode base64 to Uint8Array
-            const binaryString = atob(transactionBase64);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i);
-            }
-            
-            // Deserialize transaction using Solana web3.js
-            const transaction = window.solanaWeb3.Transaction.from(bytes);
-            
-            // Sign with Backpack
-            const signedTx = await window.backpack.signTransaction(transaction);
-            
-            // Serialize the signed transaction
-            const signedBytes = signedTx.serialize();
-            
-            // Convert signed transaction back to base64
-            let binary = '';
-            for (let i = 0; i < signedBytes.byteLength; i++) {
-              binary += String.fromCharCode(signedBytes[i]);
-            }
-            return btoa(binary);
-          } catch (error) {
-            throw new Error('Failed to sign transaction: ' + error.message);
-          }
-        },
-        isConnected: function() {
-          return window.backpack && window.backpack.isConnected;
-        }
       };
     </script>
-  <link rel="modulepreload" href="/memo-app-ui-8c53cb564e04cf3f.js" crossorigin="anonymous" integrity="sha384-cWwr0oau/J1caL3H72pV60fsMlJfFyXRr15DrtVnsvvZu33gVGWODG6Jketcugys"><link rel="preload" href="/memo-app-ui-8c53cb564e04cf3f_bg.wasm" crossorigin="anonymous" integrity="sha384-x3mARFXE5CRrrtJV2V5546q+FzvupOi3uCV6D07ybS+8XCj8fVUCe3faGHS7Xh33" as="fetch" type="application/wasm"></head>
+  <link rel="modulepreload" href="/memo-app-ui-ef160558bb6d3b6b.js" crossorigin="anonymous" integrity="sha384-04TVoo+BTlUiy4xtv5oOGRTok0nP2iDJTvuYW00HevB2YT/qf1Ctdm+h4vdY7GFy"><link rel="preload" href="/memo-app-ui-ef160558bb6d3b6b_bg.wasm" crossorigin="anonymous" integrity="sha384-TQRu1M8Sfp9+bODYj1FadFCteJQweYCONFtJD3UryPTSGyxcwVcMQWk8+sxe/kQm" as="fetch" type="application/wasm"></head>
   <body></body>
 </html>

@@ -4,3 +4,4 @@
 /v1/src/idl
 /v1/target/
 /v1/dist/
+/dist/.stage/
