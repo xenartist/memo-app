@@ -15,9 +15,11 @@ use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Request, RequestInit, RequestMode, Response};
 
-/// The memo every mint carries unless the user writes their own (memo-mint needs at least 69 bytes)
+/// The memo every mint carries unless the user writes their own (memo-mint needs at least 69 characters)
 pub const DEFAULT_MEMO: &str = r#"{"action":"mint","platform":"memo-app","version":"2.0.0","chain":"X1"}"#;
-pub const MIN_MEMO_BYTES: usize = 69;
+/// memo-mint counts characters (Unicode scalar values), not bytes
+pub const MIN_MEMO_CHARS: usize = 69;
+/// memo-mint has no maximum; the bound is the 1,232-byte transaction size, so this cap counts bytes
 pub const MAX_MEMO_BYTES: usize = 800;
 
 pub struct Rpc {
@@ -143,7 +145,9 @@ impl Rpc {
         let (mint_authority, _) = Pubkey::find_program_address(&[b"mint_authority"], &program);
         let (mint_state, _) = Pubkey::find_program_address(&[b"mint_state"], &program);
 
-        let mut instructions = vec![spl_memo::build_memo(memo.as_bytes(), &[&user])];
+        // No memo signers: the user signs the transaction anyway, no MEMO program reads them, and each
+        // one costs about 13,500 compute units in the Memo program
+        let mut instructions = vec![spl_memo::build_memo(memo.as_bytes(), &[])];
         instructions.push(spl_associated_token_account::instruction::create_associated_token_account_idempotent(
             &user, &user, &mint, &token_program,
         ));

@@ -1,6 +1,6 @@
 use crate::curve::{self, fmt_supply_short, fmt_units, fmt_units_short};
 use crate::network::Network;
-use crate::rpc::{Rpc, DEFAULT_MEMO, MAX_MEMO_BYTES, MIN_MEMO_BYTES};
+use crate::rpc::{Rpc, DEFAULT_MEMO, MAX_MEMO_BYTES, MIN_MEMO_CHARS};
 use crate::wallet::WalletKind;
 use leptos::*;
 use wasm_bindgen_futures::spawn_local;
@@ -571,8 +571,9 @@ fn MintCard() -> impl IntoView {
     let state = expect_context::<AppState>();
     let memo = create_rw_signal(DEFAULT_MEMO.to_string());
     let status = create_rw_signal(MintStatus::Idle);
-    let memo_len = move || memo.with(|m| m.len());
-    let memo_ok = move || (MIN_MEMO_BYTES..=MAX_MEMO_BYTES).contains(&memo_len());
+    let memo_chars = move || memo.with(|m| m.chars().count());
+    let memo_bytes = move || memo.with(|m| m.len());
+    let memo_ok = move || memo_chars() >= MIN_MEMO_CHARS && memo_bytes() <= MAX_MEMO_BYTES;
     let busy = move || matches!(status.get(), MintStatus::Working(_));
     let low_xnt = move || state.balances.get().is_some_and(|(xnt, _)| xnt < LAMPORTS_PER_XNT / 1_000);
 
@@ -616,7 +617,10 @@ fn MintCard() -> impl IntoView {
                     on:input=move |ev| memo.set(event_target_value(&ev))
                 ></textarea>
                 <span class="field-foot" class:bad=move || !memo_ok()>
-                    {move || format!("{} bytes · {}–{} required", memo_len(), MIN_MEMO_BYTES, MAX_MEMO_BYTES)}
+                    {move || format!(
+                        "{} characters, {} bytes · at least {} characters, at most {} bytes",
+                        memo_chars(), memo_bytes(), MIN_MEMO_CHARS, MAX_MEMO_BYTES
+                    )}
                 </span>
             </label>
 

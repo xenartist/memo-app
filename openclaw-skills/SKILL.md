@@ -141,7 +141,7 @@ transaction fails with `OneMintPerTransaction`.
  │  │                             │   │                              │        │
  │  │  Validates:                 │   │  Validates:                  │        │
  │  │  • SPL Memo at index 0     │   │  • SPL Memo at index 0      │        │
- │  │  • Borsh+Base64 memo       │   │  • Memo ≥ 69 bytes          │        │
+ │  │  • Borsh+Base64 memo       │   │  • Memo ≥ 69 characters     │        │
  │  │  • Burn amount match       │   │  • One mint per transaction │        │
  │  │  • User burn stats update  │   │  • Dynamic mint amount      │        │
  │  └──────────────┬──────────────┘   └──────────────┬───────────────┘        │
@@ -791,7 +791,7 @@ UTF-8 string → SPL Memo instruction data
 
 ### Memo Constraints
 
-- Minimum memo length: 69 bytes (Base64 string length)
+- Minimum memo length: 69 characters for memo-mint (Unicode characters, not bytes; for an ASCII or Base64 memo the two are equal)
 - No contract maximum: the 1,232-byte transaction size limit applies, so the usable length depends on the
   instruction (more accounts leave less room). Keep memos under ~750 bytes for direct mints and smaller
   for app instructions, or check the serialized transaction size before sending.
@@ -1713,9 +1713,11 @@ All write operations follow this pattern:
 ### SPL Memo Instruction Helper
 
 ```javascript
-function createMemoInstruction(memoData, signer) {
+// No accounts: the user already signs the transaction, no MEMO program reads memo signers,
+// and each listed signer costs about 13,500 compute units in the Memo program.
+function createMemoInstruction(memoData) {
   return new TransactionInstruction({
-    keys: [{ pubkey: signer, isSigner: true, isWritable: true }],
+    keys: [],
     programId: SPL_MEMO_PROGRAM,
     data: Buffer.from(memoData, 'utf-8'),
   });
@@ -1864,7 +1866,7 @@ async function mintMemo(connection, keypair, memoText) {
   const instructions = [];
 
   // 1. SPL Memo instruction (MUST be at index 0)
-  instructions.push(createMemoInstruction(memoText, user));
+  instructions.push(createMemoInstruction(memoText));
 
   // 2. Create ATA if needed
   instructions.push(...ataIxs);
@@ -1891,7 +1893,7 @@ async function mintMemo(connection, keypair, memoText) {
 const sig = await mintMemo(connection, keypair, 'Hello, MEMO Protocol! This is my first memo on X1.');
 ```
 
-**Memo content**: Plain text, at least 69 bytes (no contract maximum; the transaction must fit in 1,232 bytes). The user writes anything they want.
+**Memo content**: Plain text, at least 69 characters (no contract maximum; the transaction must fit in 1,232 bytes). The user writes anything they want.
 
 **One mint per transaction**: put exactly one minting instruction in each transaction. To mint several times, send several transactions, each with its own memo.
 
@@ -1956,7 +1958,7 @@ async function createProfile(connection, keypair, username, image, aboutMe = nul
   const instructions = [];
 
   // 1. SPL Memo (index 0)
-  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(createMemoInstruction(memoBase64));
 
   // 2. Create profile instruction
   const ixData = Buffer.concat([
@@ -2015,7 +2017,7 @@ async function updateProfile(connection, keypair, username = null, image = null,
   const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
   const instructions = [];
-  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(createMemoInstruction(memoBase64));
 
   const ixData = Buffer.concat([
     anchorDiscriminator('update_profile'),
@@ -2086,7 +2088,7 @@ async function sendChatMessage(connection, keypair, groupId, message, receiver =
   const memoBase64 = encodeChatMessage(groupId, user.toBase58(), message, receiver, replyToSig);
 
   const instructions = [];
-  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(createMemoInstruction(memoBase64));
   instructions.push(...ataIxs);
 
   const ixData = Buffer.concat([
@@ -2147,7 +2149,7 @@ async function createChatGroup(connection, keypair, name, description, image, ta
   const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
   const instructions = [];
-  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(createMemoInstruction(memoBase64));
 
   const ixData = Buffer.concat([
     anchorDiscriminator('create_chat_group'),
@@ -2203,7 +2205,7 @@ async function burnForGroup(connection, keypair, groupId, message, burnAmount = 
   const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
   const instructions = [];
-  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(createMemoInstruction(memoBase64));
 
   const ixData = Buffer.concat([
     anchorDiscriminator('burn_tokens_for_group'),
@@ -2296,7 +2298,7 @@ async function directCoreBurn(connection, keypair, burnAmountTokens, payload = B
 
   // 1. SPL Memo instruction (MUST be at index 0)
   //    Contains Borsh+Base64 encoded BurnMemo data
-  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(createMemoInstruction(memoBase64));
 
   // 2. Core burn instruction
   const ixData = Buffer.concat([
@@ -2364,7 +2366,7 @@ async function createForumPost(connection, keypair, title, content, image, burnA
   const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
   const instructions = [];
-  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(createMemoInstruction(memoBase64));
 
   const ixData = Buffer.concat([
     anchorDiscriminator('create_post'),
@@ -2416,7 +2418,7 @@ async function burnForPost(connection, keypair, postId, message, burnAmount = 1)
   const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
   const instructions = [];
-  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(createMemoInstruction(memoBase64));
 
   const ixData = Buffer.concat([
     anchorDiscriminator('burn_for_post'),
@@ -2471,7 +2473,7 @@ async function mintForPost(connection, keypair, postId, message) {
   const memoBase64 = encodeBurnMemo(0, payload);
 
   const instructions = [];
-  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(createMemoInstruction(memoBase64));
   instructions.push(...ataIxs);
 
   const ixData = Buffer.concat([
@@ -2522,7 +2524,7 @@ async function createBlog(connection, keypair, name, description, image, burnAmo
   const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
   const instructions = [];
-  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(createMemoInstruction(memoBase64));
 
   const ixData = Buffer.concat([
     anchorDiscriminator('create_blog'),
@@ -2574,7 +2576,7 @@ async function updateBlog(connection, keypair, name = null, description = null, 
   const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
   const instructions = [];
-  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(createMemoInstruction(memoBase64));
 
   const ixData = Buffer.concat([
     anchorDiscriminator('update_blog'),
@@ -2622,7 +2624,7 @@ async function burnForBlog(connection, keypair, blogOwnerPubkey, message, burnAm
   const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
   const instructions = [];
-  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(createMemoInstruction(memoBase64));
 
   const ixData = Buffer.concat([
     anchorDiscriminator('burn_for_blog'),
@@ -2674,7 +2676,7 @@ async function mintForBlog(connection, keypair, blogOwnerPubkey, message) {
   const memoBase64 = encodeBurnMemo(0, payload);
 
   const instructions = [];
-  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(createMemoInstruction(memoBase64));
   instructions.push(...ataIxs);
 
   instructions.push(new TransactionInstruction({
@@ -2731,7 +2733,7 @@ async function createProject(connection, keypair, name, description, image, webs
   const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
   const instructions = [];
-  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(createMemoInstruction(memoBase64));
 
   const ixData = Buffer.concat([
     anchorDiscriminator('create_project'),
@@ -2798,7 +2800,7 @@ async function updateProject(connection, keypair, projectId, name = null, descri
   const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
   const instructions = [];
-  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(createMemoInstruction(memoBase64));
 
   const ixData = Buffer.concat([
     anchorDiscriminator('update_project'),
@@ -2852,7 +2854,7 @@ async function burnForProject(connection, keypair, projectId, message, burnAmoun
   const memoBase64 = encodeBurnMemo(burnAmountLamports, payload);
 
   const instructions = [];
-  instructions.push(createMemoInstruction(memoBase64, user));
+  instructions.push(createMemoInstruction(memoBase64));
 
   const ixData = Buffer.concat([
     anchorDiscriminator('burn_for_project'),
@@ -3099,7 +3101,7 @@ to the mint or burn program. Simulation logs contain `Error Code: <Name>`; use t
 | Code | Hex | Name | Message |
 |---|---|---|---|
 | 6000 | 0x1770 | MemoRequired | Transaction must include a memo instruction. |
-| 6001 | 0x1771 | MemoTooShort | Memo too short. Must be at least 69 bytes. |
+| 6001 | 0x1771 | MemoTooShort | Memo too short. Must be at least 69 characters. |
 | 6002 | 0x1772 | InvalidTokenAccount | Invalid token account: Account must belong to the correct mint. |
 | 6003 | 0x1773 | UnauthorizedMint | Unauthorized mint: Only the specified mint address can be used. |
 | 6004 | 0x1774 | UnauthorizedTokenAccount | Unauthorized token account: Token account must be owned by the minting user or the declared recipient. |
@@ -3421,8 +3423,8 @@ async function main() {
   console.log('XNT balance:', balance / 1e9);
   if (balance < 5_000_000) throw new Error('Need at least 0.005 XNT for gas');
 
-  // Step 2: Build memo text (must be 69-800 bytes)
-  const memoText = 'Hello MEMO Protocol! ' + 'x'.repeat(50); // pad to ≥ 69 bytes
+  // Step 2: Build memo text (at least 69 characters; the transaction must fit in 1,232 bytes)
+  const memoText = 'Hello MEMO Protocol! ' + 'x'.repeat(50); // pad to ≥ 69 characters
 
   // Step 3: Derive PDAs and ATA
   const [mintAuthority] = PublicKey.findProgramAddressSync(
